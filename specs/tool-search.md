@@ -47,6 +47,26 @@ Model sees name + description upfront, parameters loaded only when needed. For n
 
 Model emits `tool_search_call` → client responds with `tool_search_output` containing matched tools. Multi-turn handshake.
 
+## Two Implementations
+
+There are two capabilities, chosen by provider:
+
+- **`openai_tool_search`** — uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on `LlmModelProfile.tool_search`; cleared for unsupported models in `RuntimeAgentBuilder::build()`. Hosted mode only. See `crates/core/src/capabilities/openai_tool_search.rs`.
+- **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Anthropic, Gemini, OpenAI Completions, ...). See `crates/core/src/capabilities/tool_search.rs` and below.
+
+### Generic (client-side) tool_search
+
+Implemented entirely in core, with no driver or agent-loop changes:
+
+1. A `ToolDefinitionHook` (`DeferSchemaHook`) runs in `RuntimeAgentBuilder::build()`. When the agent carries `>= threshold` tools, it replaces each deferrable tool's parameter schema with a small stub (name + description survive). `DeferrablePolicy::Never` tools and the `tool_search` tool keep full schemas.
+2. A real `tool_search` tool is registered. On call it reads sibling tool schemas from `ToolContext::tool_registry` (the same mechanism `spawn_background` uses) and returns the full schemas of tools matching the query.
+3. A system-prompt note tells the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
+
+Because the underlying tools stay registered and executable, tool calls and results are unchanged — only how schemas reach the model differs. The search reads schemas from the worker-side registry, so it covers built-in tools and MCP tools. Two interactions matter:
+
+- **Mutually exclusive with hosted `openai_tool_search`.** `DeferSchemaHook` opts out of running when native hosted tool_search is configured (`ToolDefinitionHook::applies_with_native_tool_search()` → `false`), so the two never both strip schemas. `RuntimeAgentBuilder::build()` enforces this before the model-support check, so configuring `openai_tool_search` wins regardless of model.
+- **MCP tools keep full schemas.** MCP tool definitions become registry proxies in the act path; the hook does not strip them (else the proxy, and thus `tool_search` results, would only carry the stub). MCP tools are therefore searchable and executable but not themselves deferred under the generic capability. Deferring them would require plumbing full MCP schemas to the act path separately (follow-up).
+
 ## Design: Capability-Driven Tool Search
 
 ### Decision: Model Profile Flag

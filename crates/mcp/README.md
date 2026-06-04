@@ -17,7 +17,8 @@ design.
   hard-off boundary for non-HTTP transport.
 - Pluggable `McpAuthProvider` (web OAuth, static tokens, env, …) so non-web
   (CLI) hosts can authenticate.
-- `McpExecutor` / `CompositeToolExecutor` to route `mcp_*` tool calls.
+- `McpExecutor` (implements `everruns_core::McpToolInvoker`) so hosts register
+  MCP tools as first-class `Tool`s in the regular `ToolRegistry`.
 
 ## Example
 

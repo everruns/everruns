@@ -127,6 +127,7 @@ mod system_commands;
 mod test_math;
 mod test_weather;
 mod tool_output_persistence;
+mod tool_search;
 pub mod user_hooks;
 mod virtual_bash;
 mod web_fetch;
@@ -256,6 +257,9 @@ pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapabilit
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
+pub use tool_search::{
+    GenericToolSearchCapability, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchTool,
+};
 pub use user_hooks::UserHooksCapability;
 pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
 pub use web_fetch::{
@@ -728,6 +732,14 @@ pub trait Capability: Send + Sync {
 
 pub trait ToolDefinitionHook: Send + Sync {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition>;
+
+    /// Whether this hook should still run when the agent's model uses native
+    /// (hosted) tool_search. Client-side deferral hooks return `false` so they
+    /// don't strip schemas the hosted tool_search index needs (the two are
+    /// mutually exclusive). Defaults to `true`.
+    fn applies_with_native_tool_search(&self) -> bool {
+        true
+    }
 }
 
 pub trait ToolCallHook: Send + Sync {
@@ -905,6 +917,8 @@ impl CapabilityRegistry {
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
+        // Generic, provider-agnostic tool_search (client-side deferred loading)
+        registry.register(GenericToolSearchCapability::new());
         registry.register(PromptCachingCapability::new());
 
         // Skills (filesystem-based discovery + activation, all environments)
@@ -2049,6 +2063,7 @@ mod tests {
             "compaction",
             "memory",
             "openai_tool_search",
+            "tool_search",
             "prompt_caching",
             "skills",
             "subagents",

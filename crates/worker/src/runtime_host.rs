@@ -13,14 +13,70 @@ use everruns_core::{
     Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
     UtilityLlmService,
 };
+use everruns_mcp::{
+    McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
+};
 use everruns_runtime::{RuntimeHostAdapter, RuntimeHostTurnContext};
 use std::sync::Arc;
+use uuid::Uuid;
 
 use crate::worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
     AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
     AdapterSessionMutator, AdapterSessionStore, WorkerAdapters,
 };
+
+/// Resolves an `mcp_*` server prefix to a connection by asking the control
+/// plane over gRPC (`get_mcp_server_by_prefix`). The control plane returns a
+/// fully resolved descriptor.
+///
+/// Credential handling:
+/// - **API-key** servers carry the decrypted key, which we bake in as a
+///   `Bearer` Authorization header.
+/// - **OAuth** servers resolved via the *session-scoped* path arrive with the
+///   token already injected into `headers` (control plane downgrades auth mode).
+/// - We preserve `auth_mode`/`oauth_provider_id` on the connection so a future
+///   worker `McpAuthProvider` can resolve tokens. Until then, OAuth servers
+///   resolved via the non-scoped `resolve_by_prefix` fallback (which returns the
+///   OAuth metadata but no token in `headers`) are not authenticated — see the
+///   PR follow-up. The client uses `NoAuthProvider`, so auth must be expressed
+///   via `headers`.
+struct WorkerMcpResolver<A: WorkerAdapters> {
+    adapters: A,
+    org_id: i64,
+    session_id: Uuid,
+}
+
+#[async_trait]
+impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
+    async fn resolve(&self, server_prefix: &str) -> anyhow::Result<Option<McpConnection>> {
+        let info = self
+            .adapters
+            .get_mcp_server_by_prefix(self.org_id, Some(self.session_id), server_prefix)
+            .await
+            .map_err(|e| anyhow::anyhow!(e.to_string()))?;
+
+        let mut headers = info.headers;
+        if let Some(api_key) = info.api_key {
+            let has_authorization = headers
+                .keys()
+                .any(|k| k.eq_ignore_ascii_case("authorization"));
+            if !has_authorization {
+                headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
+            }
+        }
+
+        Ok(Some(McpConnection {
+            name: info.name,
+            endpoint: McpEndpoint::Http {
+                url: info.url,
+                headers,
+            },
+            auth_mode: info.auth_mode,
+            oauth_provider_id: info.oauth_provider_id,
+        }))
+    }
+}
 
 /// First-party adapter from worker backends into `everruns-runtime` host execution.
 ///
@@ -213,5 +269,20 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         org_id: i64,
     ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
         self.adapters.outbound_tool_rate_limiter(org_id)
+    }
+
+    /// Execute `mcp_*` tool calls by resolving server connections over gRPC and
+    /// calling them through the shared MCP client over the platform egress
+    /// boundary (SSRF-guarded). Returns `None` when no egress service is
+    /// available, in which case MCP tools are not registered for execution.
+    async fn mcp_executor(&self, org_id: i64, session_id: SessionId) -> Option<Arc<McpExecutor>> {
+        let egress = self.adapters.egress_service()?;
+        let client = Arc::new(McpClient::new(egress, Arc::new(NoAuthProvider)));
+        let resolver = Arc::new(WorkerMcpResolver {
+            adapters: self.adapters.clone(),
+            org_id,
+            session_id: session_id.uuid(),
+        });
+        Some(Arc::new(McpExecutor::new(client, resolver)))
     }
 }
