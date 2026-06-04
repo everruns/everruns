@@ -422,22 +422,23 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
-                            let reason = finish_reason.lock().unwrap().clone();
+                            let mut reason = finish_reason.lock().unwrap().clone();
 
                             let mut events = Vec::new();
 
-                            // Defense in depth (EVE-522): if the turn finished with
-                            // tool_calls but no chunk ever emitted them (e.g. a
-                            // provider whose finish chunk never reached the handler),
-                            // flush the accumulated calls before Done so they are
-                            // never silently dropped.
+                            // Defense in depth (EVE-522): flush any tool calls that
+                            // were accumulated but never emitted before Done, so they
+                            // are never silently dropped. The normal path drains the
+                            // accumulator at the finish chunk, so this only fires as a
+                            // fallback — e.g. a provider that ends the stream with
+                            // [DONE] without a tool_calls finish chunk reaching the
+                            // handler. When it fires, reflect the tool-call completion
+                            // in the reported finish_reason.
                             {
                                 let mut acc = accumulated_tool_calls.lock().unwrap();
-                                if reason.as_deref() == Some("tool_calls") && !acc.is_empty() {
-                                    let calls = std::mem::take(&mut *acc);
-                                    events.push(Ok(LlmStreamEvent::ToolCalls(
-                                        finalize_tool_calls(calls),
-                                    )));
+                                if let Some(event) = take_pending_tool_calls(&mut acc) {
+                                    events.push(Ok(event));
+                                    reason.get_or_insert_with(|| "tool_calls".to_string());
                                 }
                             }
 
@@ -760,6 +761,17 @@ fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
             tc
         })
         .collect()
+}
+
+/// Drains tool calls that were accumulated but not yet emitted, returning a
+/// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
+/// is pending (the common case, since the finish chunk normally drains them).
+fn take_pending_tool_calls(accumulated_tool_calls: &mut Vec<ToolCall>) -> Option<LlmStreamEvent> {
+    if accumulated_tool_calls.is_empty() {
+        return None;
+    }
+    let calls = std::mem::take(accumulated_tool_calls);
+    Some(LlmStreamEvent::ToolCalls(finalize_tool_calls(calls)))
 }
 
 /// Processes a single chat-completion stream choice, updating the running
@@ -1309,6 +1321,28 @@ mod tests {
             }
             other => panic!("expected ToolCalls, got {:?}", other),
         }
+    }
+
+    /// The [DONE] fallback flushes accumulated-but-unemitted tool calls and
+    /// drains the accumulator; once drained it returns None.
+    #[test]
+    fn test_take_pending_tool_calls_flushes_then_drains() {
+        let mut acc = vec![ToolCall {
+            id: "call_1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!(r#"{"path":"Cargo.toml"}"#),
+        }];
+
+        match take_pending_tool_calls(&mut acc) {
+            Some(LlmStreamEvent::ToolCalls(calls)) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].name, "read_file");
+                assert_eq!(calls[0].arguments, json!({"path": "Cargo.toml"}));
+            }
+            other => panic!("expected ToolCalls, got {:?}", other),
+        }
+        assert!(acc.is_empty(), "accumulator must be drained after flush");
+        assert!(take_pending_tool_calls(&mut acc).is_none());
     }
 
     #[test]
