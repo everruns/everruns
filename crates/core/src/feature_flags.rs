@@ -202,6 +202,11 @@ pub struct InternalFeatureFlags {
     /// Managed session-owned sandbox capability and lifecycle orchestration.
     /// Experimental and disabled by default.
     pub session_sandbox: bool,
+    /// Machine-payment capabilities (e.g. the Parallel paid search/extract/task
+    /// capability). Gates registration of any capability that spends real money
+    /// through `PaymentAuthority`. Disabled by default on all envs, including dev,
+    /// because spend is irreversible. Enable via `FEATURE_MACHINE_PAYMENTS=true`.
+    pub machine_payments: bool,
 }
 
 impl InternalFeatureFlags {
@@ -213,6 +218,7 @@ impl InternalFeatureFlags {
             docker_capability,
             container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
             session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
+            machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
         }
     }
 
@@ -222,6 +228,7 @@ impl InternalFeatureFlags {
             "docker_capability" => self.docker_capability,
             "container_sandbox" => self.container_sandbox,
             "session_sandbox" => self.session_sandbox,
+            "machine_payments" => self.machine_payments,
             _ => false,
         }
     }
@@ -255,6 +262,14 @@ mod tests {
 
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Restore an env var to a previously captured value, or remove it if it was unset.
+    fn restore_env(key: &str, prev: Option<String>) {
+        match prev {
+            Some(value) => unsafe { std::env::set_var(key, value) },
+            None => unsafe { std::env::remove_var(key) },
+        }
     }
 
     #[test]
@@ -454,6 +469,7 @@ mod tests {
         assert!(!flags.docker_capability);
         assert!(!flags.container_sandbox);
         assert!(!flags.session_sandbox);
+        assert!(!flags.machine_payments);
     }
 
     #[test]
@@ -502,11 +518,36 @@ mod tests {
             docker_capability: true,
             container_sandbox: true,
             session_sandbox: true,
+            machine_payments: true,
         };
         assert!(flags.is_enabled("docker_capability"));
         assert!(flags.is_enabled("container_sandbox"));
         assert!(flags.is_enabled("session_sandbox"));
+        assert!(flags.is_enabled("machine_payments"));
         assert!(!flags.is_enabled("nonexistent"));
+    }
+
+    #[test]
+    fn test_machine_payments_disabled_by_default() {
+        let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
+        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+        let flags = InternalFeatureFlags::from_env();
+        assert!(
+            !flags.machine_payments,
+            "machine_payments should be disabled by default on all envs"
+        );
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
+    }
+
+    #[test]
+    fn test_machine_payments_enabled_by_env_override() {
+        let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
+        unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
+        let flags = InternalFeatureFlags::from_env();
+        assert!(flags.machine_payments);
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
     }
 
     #[test]

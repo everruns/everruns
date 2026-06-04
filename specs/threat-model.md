@@ -836,7 +836,10 @@ no generic `paid_http_request` tool. The capability submits a typed payment requ
 `PaymentAuthority`; the server selects only active spend policies scoped to the current session,
 agent, agent identity, user, or organization and checks capability allowlist, host allowlist, rail
 preference, and per-request maximum before creating any rail-specific signature. Every attempt is
-persisted with status, amount, target URL, and receipt/error.
+persisted with status, amount, target URL, and receipt/error. Registration of any money-spending
+capability is additionally gated by the `machine_payments` feature flag
+(`FEATURE_MACHINE_PAYMENTS`), off by default on every grade, so spend tools are never offered
+unless deliberately enabled.
 
 ## 14. Voice Sessions (TM-VOICE)
 

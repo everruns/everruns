@@ -23,6 +23,23 @@ Every sandbox/execution integration crate must ship with the following artifacts
 
 New integrations should check off every row before merging. Existing integrations that are missing items should be brought up to parity incrementally.
 
+### Auth shape: connection-backed vs payment-backed
+
+The parity table above assumes a **connection-backed** integration: per-user OAuth/API-key
+credentials via a connection provider, validated with live-API tests. A **payment-backed**
+integration instead spends through the core `PaymentAuthority` (see
+[`specs/machine-payments.md`](machine-payments.md)) under a server-side wallet and policy,
+and has no per-user connection. For those, substitute the auth-shaped rows:
+
+| Connection-backed row | Payment-backed equivalent |
+|---|---|
+| Connection provider (OAuth/API-key form) | Declared `machine_payments` feature-flag gating + wallet/policy requirements |
+| Live API tests (real credentials) | Fail-closed tests (no authority → refuse) + `PaymentAuthority`-mock flows |
+| Threat model: integration-specific | Threat model: spend / prompt-injection (`TM-AGENT-022`, `TM-CRYPTO-008`) |
+
+A single vendor crate may host both shapes (e.g. `integrations/parallel` ships the free
+connection-backed `parallel_search` and the paid payment-backed `parallel`).
+
 ## CI Trigger Policy
 
 Integration coverage is intentionally split by cost and blast radius:
@@ -40,7 +57,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Integration | Spec | Summary |
 |---|---|---|
 | Brave Search | [`integrations/brave-search/SPEC.md`](../integrations/brave-search/SPEC.md) | Web search via Brave Search API. Experimental (Dev only). |
-| Parallel | [`integrations/parallel/SPEC.md`](../integrations/parallel/SPEC.md) | Web search and URL fetch through Parallel MCP. Experimental (Dev only). |
+| Parallel | [`integrations/parallel/SPEC.md`](../integrations/parallel/SPEC.md) | Two capabilities: free `parallel_search` (web search/fetch via Parallel MCP, Dev only) and paid `parallel` (machine-payment search/extract/task, gated by `FEATURE_MACHINE_PAYMENTS`). |
 | DuckDuckGo | [`integrations/duckduckgo/SPEC.md`](../integrations/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | GitHub | [`integrations/github/SPEC.md`](../integrations/github/SPEC.md) | GitHub Scout blueprint capability for read-only repository exploration. |
 | Browserless | [`integrations/browserless/SPEC.md`](../integrations/browserless/SPEC.md) | Cloud browser automation — screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
