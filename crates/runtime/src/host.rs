@@ -25,8 +25,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, EgressService, Harness, Session,
-    TokenUsage, ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService,
+    Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
+    Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService,
     org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use std::sync::Arc;
@@ -357,12 +357,17 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         registry.register_boxed(tool);
     }
 
+    // Only `Available` capabilities contribute hooks, matching
+    // `collect_capabilities_with_configs` (which skips non-available
+    // capabilities). This keeps a `ComingSoon`/unavailable capability from
+    // affecting execution via any of its hook seams.
     let mut post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>> = resolved
         .resolved_capability_configs
         .iter()
         .flat_map(|config| {
             capability_registry
                 .get(config.capability_id())
+                .filter(|capability| capability.status() == CapabilityStatus::Available)
                 .map(|capability| capability.post_tool_exec_hooks())
                 .unwrap_or_default()
         })
@@ -376,7 +381,19 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // every event finalizes specs identically.
     let user_hook_specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
-    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
+    // Capability-contributed pre-tool hooks run first (e.g. approval gating),
+    // then user-hook (`PreToolUse`) specs. The first hook to block wins.
+    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = resolved
+        .resolved_capability_configs
+        .iter()
+        .flat_map(|config| {
+            capability_registry
+                .get(config.capability_id())
+                .filter(|capability| capability.status() == CapabilityStatus::Available)
+                .map(|capability| capability.pre_tool_use_hooks())
+                .unwrap_or_default()
+        })
+        .collect();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
             everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
@@ -397,6 +414,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         .flat_map(|config| {
             capability_registry
                 .get(config.capability_id())
+                .filter(|capability| capability.status() == CapabilityStatus::Available)
                 .map(|capability| capability.tool_call_hooks())
                 .unwrap_or_default()
         })

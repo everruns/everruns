@@ -561,6 +561,20 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns pre-tool execution hooks provided by this capability.
+    ///
+    /// These hooks run before each individual tool is executed — for *every*
+    /// tool the agent calls (built-in, MCP, or client-side), not just this
+    /// capability's own tools. A hook can mutate the tool call or block it
+    /// outright (returning [`crate::atoms::PreToolUseDecision::Block`]), which
+    /// makes this the seam for cross-cutting policy such as approval gating.
+    /// The first hook to block wins.
+    ///
+    /// By default, returns an empty vector (no hooks).
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn crate::atoms::PreToolUseHook>> {
+        vec![]
+    }
+
     /// Returns post-tool execution hooks provided by this capability.
     ///
     /// These hooks run after each individual tool completes execution.
