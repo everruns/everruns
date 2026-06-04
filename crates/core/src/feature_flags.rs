@@ -264,6 +264,14 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Restore an env var to a previously captured value, or remove it if it was unset.
+    fn restore_env(key: &str, prev: Option<String>) {
+        match prev {
+            Some(value) => unsafe { std::env::set_var(key, value) },
+            None => unsafe { std::env::remove_var(key) },
+        }
+    }
+
     #[test]
     fn test_default_flags() {
         let flags = FeatureFlags::default();
@@ -522,21 +530,24 @@ mod tests {
     #[test]
     fn test_machine_payments_disabled_by_default() {
         let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
         unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
         let flags = InternalFeatureFlags::from_env();
         assert!(
             !flags.machine_payments,
             "machine_payments should be disabled by default on all envs"
         );
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
     }
 
     #[test]
     fn test_machine_payments_enabled_by_env_override() {
         let _lock = lock_env();
+        let prev = std::env::var("FEATURE_MACHINE_PAYMENTS").ok();
         unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
         let flags = InternalFeatureFlags::from_env();
         assert!(flags.machine_payments);
-        unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+        restore_env("FEATURE_MACHINE_PAYMENTS", prev);
     }
 
     #[test]
