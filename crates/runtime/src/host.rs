@@ -376,7 +376,18 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // every event finalizes specs identically.
     let user_hook_specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
-    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
+    // Capability-contributed pre-tool hooks run first (e.g. approval gating),
+    // then user-hook (`PreToolUse`) specs. The first hook to block wins.
+    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = resolved
+        .resolved_capability_configs
+        .iter()
+        .flat_map(|config| {
+            capability_registry
+                .get(config.capability_id())
+                .map(|capability| capability.pre_tool_use_hooks())
+                .unwrap_or_default()
+        })
+        .collect();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
             everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),

@@ -254,6 +254,54 @@ impl everruns_core::atoms::PostToolExecHook for OverlayHook {
     }
 }
 
+/// Test capability that contributes a pre-tool hook blocking `overlay_echo`.
+/// Exercises the `Capability::pre_tool_use_hooks` seam used for approval gating.
+struct GateCapability;
+
+impl Capability for GateCapability {
+    fn id(&self) -> &str {
+        "gate"
+    }
+
+    fn name(&self) -> &str {
+        "Gate"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability contributing a blocking pre-tool hook."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+        vec![Arc::new(BlockEchoHook)]
+    }
+}
+
+struct BlockEchoHook;
+
+#[async_trait]
+impl everruns_core::atoms::PreToolUseHook for BlockEchoHook {
+    async fn before_exec(
+        &self,
+        tool_call: ToolCall,
+        _tool_def: &everruns_core::ToolDefinition,
+        _context: &ToolContext,
+    ) -> everruns_core::atoms::PreToolUseDecision {
+        if tool_call.name == "overlay_echo" {
+            everruns_core::atoms::PreToolUseDecision::Block {
+                tool_call,
+                reason: "denied by test policy".into(),
+                user_message: None,
+            }
+        } else {
+            everruns_core::atoms::PreToolUseDecision::Continue(tool_call)
+        }
+    }
+}
+
 struct OverlayEchoCapability;
 
 impl Capability for OverlayEchoCapability {
@@ -781,6 +829,88 @@ async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
     assert_eq!(
         result.results[0].result.result.as_ref().unwrap()["hooked"],
         true
+    );
+}
+
+#[tokio::test]
+async fn act_activity_runs_capability_pre_tool_hook_and_blocks() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    adapter.capability_registry.register(GateCapability);
+    set_default_model(&adapter).await;
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![
+                AgentCapabilityConfig::new("overlay_echo"),
+                AgentCapabilityConfig::new("gate"),
+            ],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+    adapter
+        .session_store
+        .insert(Session {
+            agent_id: Some(agent_id),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_blocked".into(),
+                name: "overlay_echo".into(),
+                arguments: json!({"value": "hook"}),
+            }],
+            tool_definitions: reason_tool_definitions(
+                &adapter,
+                session_id,
+                harness_id,
+                Some(agent_id),
+            )
+            .await,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // The capability-contributed pre-tool hook blocked execution: the tool
+    // never ran (no `value` payload) and the error names the block reason.
+    assert_eq!(result.success_count, 0);
+    assert_eq!(result.error_count, 1);
+    let blocked = &result.results[0].result;
+    assert!(
+        blocked.result.is_none(),
+        "blocked tool should not produce output"
+    );
+    let error = blocked
+        .error
+        .as_ref()
+        .expect("blocked tool yields an error");
+    assert!(
+        error.contains("denied by test policy"),
+        "error should carry the hook's reason: {error}"
     );
 }
 

@@ -262,6 +262,16 @@ Current examples:
 
 This pattern is intended for tools that must call an external API directly while still relying on the control plane for secrets, org scoping, and durable storage.
 
+### PreToolUseHook (per-tool hooks)
+
+`PreToolUseHook` is an async hook that runs before each individual tool is executed — for *every* tool the agent calls (built-in, MCP, or client-side). A hook can mutate the `ToolCall` (returning `Continue`) or block it (returning `Block`, which skips execution and returns the hook's reason as the tool error). Hooks chain sequentially; the first `Block` wins.
+
+Two sources feed the chain, in this order:
+1. **Capability hooks** — from active capabilities via `Capability::pre_tool_use_hooks()`. This is the seam for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).
+2. **User-hook specs** — `pre_tool_use` hooks dispatched per `specs/user-hooks.md`.
+
+Because this runs uniformly for all tools, it is the right place to gate tools the host does not implement itself (e.g. MCP tools executed by the runtime). See `Capability::pre_tool_use_hooks` and `crates/runtime/src/host.rs` (`load_execution_capabilities`).
+
 ### PostToolExecHook (per-tool hooks)
 
 `PostToolExecHook` is an async hook that runs after each individual tool execution, before ActAtom emits events. Capabilities contribute hooks via `Capability::post_tool_exec_hooks()`.
