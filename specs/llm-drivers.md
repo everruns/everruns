@@ -289,6 +289,12 @@ Invariant: **a request with `previous_response_id` only carries delta items in `
 
 `OpenResponsesProtocolLlmDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/core/src/openresponses_protocol.rs`).
 
+### Stateless Gateways
+
+Server-side continuation only works where the endpoint actually stores responses. OpenAI-compatible gateways that expose a stateless `/responses` shim — e.g. OpenRouter and Google Gemini's compat endpoint — *accept* `previous_response_id` but silently ignore it (`store: false`). Chaining against them drops the conversation from turn 2 onward (only the latest tool output reaches the model), so the agent loses the task and loops on exploration.
+
+The driver therefore gates continuation on the endpoint: only `api.openai.com` and Azure OpenAI hosts (`endpoint_persists_responses`) are treated as stateful. For any other base URL the driver drops `previous_response_id` and replays the **full** transcript in `input` each turn. The full transcript is always available because the runtime reconstructs it from stored messages on every turn; delta trimming is purely a token-saving optimization for genuinely stateful endpoints.
+
 ## Automatic Retry for Transient Errors
 
 LLM drivers implement automatic retry with exponential backoff for transient errors. This follows official SDK behavior from OpenAI and Anthropic.
