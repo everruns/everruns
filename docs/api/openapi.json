@@ -19861,6 +19861,17 @@
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
                       "example": "claude-sonnet-4-5"
                     },
+                    "model_vendor": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ModelVendor",
+                          "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                        }
+                      ]
+                    },
                     "profile": {
                       "oneOf": [
                         {
@@ -21206,6 +21217,17 @@
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
             "example": "claude-sonnet-4-5"
           },
+          "model_vendor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelVendor",
+                "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+              }
+            ]
+          },
           "profile": {
             "oneOf": [
               {
@@ -22139,6 +22161,22 @@
             "description": "Provider ID (internal identifier)"
           }
         }
+      },
+      "ModelVendor": {
+        "type": "string",
+        "description": "Vendor / brand that authored a model. Independent of the provider type\nthat serves it (the same model may be offered by several providers or\ngateways). Primarily drives UI iconography.",
+        "enum": [
+          "openai",
+          "anthropic",
+          "google",
+          "nvidia",
+          "qwen",
+          "microsoft",
+          "minimax",
+          "moonshot",
+          "xai",
+          "llmsim"
+        ]
       },
       "MoveFileRequest": {
         "type": "object",
@@ -30495,6 +30533,17 @@
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
                 "example": "claude-sonnet-4-5"
+              },
+              "model_vendor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelVendor",
+                    "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                  }
+                ]
               },
               "profile": {
                 "oneOf": [
