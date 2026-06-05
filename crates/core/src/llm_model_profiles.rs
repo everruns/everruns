@@ -170,9 +170,14 @@ pub fn get_model_profile(
     model_id: &str,
 ) -> Option<LlmModelProfile> {
     match provider_type {
-        LlmProviderType::Openai
-        | LlmProviderType::AzureOpenai
-        | LlmProviderType::OpenaiCompletions => get_openai_profile(model_id),
+        // Open Responses (`openai`) and Azure only serve genuine OpenAI models.
+        LlmProviderType::Openai | LlmProviderType::AzureOpenai => get_openai_profile(model_id),
+        // The generic Chat Completions path additionally hosts third-party,
+        // OpenAI-compatible models (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI,
+        // ...), so fall back to their profiles only here.
+        LlmProviderType::OpenaiCompletions => {
+            get_openai_profile(model_id).or_else(|| get_openai_compatible_profile(model_id))
+        }
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
         LlmProviderType::Gemini => get_gemini_profile(model_id),
         LlmProviderType::LlmSim => get_llmsim_profile(model_id),
@@ -1501,25 +1506,25 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        // Fall through to third-party models served over the OpenAI-compatible
-        // Chat Completions API (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI, etc.).
-        _ => get_openai_compatible_profile(base_id),
+        _ => None,
     }
 }
 
 /// Profiles for non-OpenAI models exposed through the OpenAI-compatible
-/// Chat Completions API (`openai_completions` provider type). Sourced from
-/// models.dev unless noted otherwise.
+/// Chat Completions API. Reached only for the `openai_completions` provider
+/// type (see `get_model_profile`) — Open Responses / Azure do not serve these
+/// models, so they must not resolve there. Sourced from models.dev unless
+/// noted otherwise.
 ///
-/// Each arm accepts both the bare provider id and common vendor-prefixed
-/// aliases (OpenRouter style) so the profile resolves regardless of how the
-/// user registered the model id.
+/// Matching is case-insensitive and each arm accepts both the bare provider id
+/// and common vendor-prefixed aliases (OpenRouter style), so the profile
+/// resolves regardless of how the user registered the model id.
 ///
 /// `structured_output` is set to `false` where the upstream models.dev entry
 /// does not assert it: absence of the field is not a claim of support, so we
 /// do not advertise a capability we cannot confirm.
 fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
-    match model_id {
+    match model_id.to_ascii_lowercase().as_str() {
         // NVIDIA Nemotron 3 Super — flagship Nemotron reasoning model.
         // Source: models.dev (nvidia provider).
         "nemotron-3-super-120b-a12b" | "nvidia/nemotron-3-super-120b-a12b" => {
@@ -1600,7 +1605,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
         // text-only instruction model (not a reasoning model); context window,
         // pricing, and knowledge cutoff were never publicly disclosed, so cost
         // and limits are left unset rather than guessed.
-        "MAI-1-preview" | "mai-1-preview" | "microsoft/MAI-1-preview" => Some(LlmModelProfile {
+        "mai-1-preview" | "microsoft/mai-1-preview" => Some(LlmModelProfile {
             name: "MAI-1-preview".into(),
             family: "mai-1-preview".into(),
             description: None,
@@ -1626,7 +1631,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
 
         // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
         // provider). Reasoning is a toggle upstream (no graded effort).
-        "MiniMax-M3" | "minimax/MiniMax-M3" => Some(LlmModelProfile {
+        "minimax-m3" | "minimax/minimax-m3" => Some(LlmModelProfile {
             name: "MiniMax-M3".into(),
             family: "minimax-m3".into(),
             description: None,
@@ -3709,5 +3714,48 @@ mod tests {
     fn test_third_party_unknown_still_none() {
         let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "totally-made-up");
         assert!(profile.is_none());
+    }
+
+    #[test]
+    fn test_third_party_models_not_resolved_under_openai_or_azure() {
+        // The Chat-Completions-only third-party models must not appear as
+        // supported under the Open Responses (`openai`) or Azure providers,
+        // which only serve genuine OpenAI models.
+        for id in [
+            "qwen3.7-max",
+            "MiniMax-M3",
+            "grok-4.3",
+            "nemotron-3-super-120b-a12b",
+        ] {
+            assert!(
+                get_model_profile(&LlmProviderType::Openai, id).is_none(),
+                "{id} should not resolve under openai (Open Responses)"
+            );
+            assert!(
+                get_model_profile(&LlmProviderType::AzureOpenai, id).is_none(),
+                "{id} should not resolve under azure_openai"
+            );
+        }
+        // Genuine OpenAI models still resolve under all OpenAI-family types.
+        assert!(get_model_profile(&LlmProviderType::Openai, "gpt-4o").is_some());
+        assert!(get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o").is_some());
+    }
+
+    #[test]
+    fn test_third_party_alias_matching_is_case_insensitive() {
+        // Lowercased and vendor-prefixed variants all resolve to the same model.
+        let cases = [
+            ("minimax-m3", "MiniMax-M3"),
+            ("minimax/minimax-m3", "MiniMax-M3"),
+            ("MiniMax-M3", "MiniMax-M3"),
+            ("microsoft/mai-1-preview", "MAI-1-preview"),
+            ("MAI-1-PREVIEW", "MAI-1-preview"),
+            ("X-AI/Grok-4.3", "Grok 4.3"),
+        ];
+        for (id, name) in cases {
+            let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, id)
+                .unwrap_or_else(|| panic!("missing profile for {id}"));
+            assert_eq!(profile.name, name, "wrong profile for {id}");
+        }
     }
 }
