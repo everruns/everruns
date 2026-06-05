@@ -1361,9 +1361,15 @@ pub fn collect_message_filters_only(
 }
 
 /// Collect only model-view providers from capabilities.
+///
+/// `model` should be the LLM model name when it is known at call time (e.g. the
+/// ReasonAtom already holds `model_with_provider`). Pass `None` only when the
+/// model is genuinely unavailable so capabilities fall back to the model-agnostic
+/// variant.
 pub fn collect_model_view_providers(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
+    model: Option<&str>,
 ) -> CollectedModelViewProviders {
     let mut model_view_providers: Vec<(Arc<dyn ModelViewProvider>, serde_json::Value)> = Vec::new();
 
@@ -1373,9 +1379,8 @@ pub fn collect_model_view_providers(
             if capability.status() != CapabilityStatus::Available {
                 continue;
             }
-            // Resolve against None: no model is known at this collection point.
             let effective: &dyn Capability = capability
-                .resolve_for_model(None)
+                .resolve_for_model(model)
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.model_view_provider() {
                 model_view_providers.push((provider, cap_config.config.clone()));
@@ -3433,7 +3438,7 @@ mod tests {
             prior_usage: None,
         };
 
-        let no_compaction = collect_model_view_providers(&[], &registry);
+        let no_compaction = collect_model_view_providers(&[], &registry, None);
         let unmasked = no_compaction.apply_model_view(tool_heavy_messages(), &context);
         assert!(!first_tool_result_is_masked(&unmasked));
 
@@ -3443,11 +3448,162 @@ mod tests {
                 config: serde_json::json!({}),
             }],
             &registry,
+            None,
         );
         let masked = compaction.apply_model_view(tool_heavy_messages(), &context);
         assert!(first_tool_result_is_masked(&masked));
         let last_tool = masked.last().unwrap().tool_result_content().unwrap();
         assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
+    }
+
+    // Tests for resolve_for_model delegation in fast-path collectors
+
+    struct DelegatingFilterCap {
+        id: &'static str,
+        inner: std::sync::Arc<InnerFilterCap>,
+    }
+    struct InnerFilterCap;
+
+    impl Capability for InnerFilterCap {
+        fn id(&self) -> &str {
+            "inner_filter"
+        }
+        fn name(&self) -> &str {
+            "Inner Filter"
+        }
+        fn description(&self) -> &str {
+            "inner"
+        }
+        fn message_filter_provider(&self) -> Option<std::sync::Arc<dyn MessageFilterProvider>> {
+            Some(std::sync::Arc::new(SentinelFilter))
+        }
+    }
+    struct SentinelFilter;
+    impl MessageFilterProvider for SentinelFilter {
+        fn apply_filters(&self, _query: &mut MessageQuery, _config: &serde_json::Value) {}
+    }
+    impl Capability for DelegatingFilterCap {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn name(&self) -> &str {
+            "Delegating Filter"
+        }
+        fn description(&self) -> &str {
+            "delegating"
+        }
+        fn message_filter_provider(&self) -> Option<std::sync::Arc<dyn MessageFilterProvider>> {
+            None // outer provides nothing
+        }
+        fn resolve_for_model(&self, _model: Option<&str>) -> Option<&dyn Capability> {
+            Some(&*self.inner)
+        }
+    }
+
+    #[test]
+    fn test_collect_message_filters_only_honors_resolve_for_model_delegation() {
+        let inner = std::sync::Arc::new(InnerFilterCap);
+        let outer = DelegatingFilterCap {
+            id: "delegating_filter",
+            inner: inner.clone(),
+        };
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(outer);
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("delegating_filter"),
+            config: serde_json::json!({}),
+        }];
+
+        // Outer has no message_filter_provider; inner does. resolve_for_model
+        // delegates to inner so the provider should be collected.
+        let collected = collect_message_filters_only(&configs, &registry);
+        assert_eq!(
+            collected.message_filter_providers.len(),
+            1,
+            "provider from resolved inner capability must be collected"
+        );
+    }
+
+    struct DelegatingMvpCap {
+        id: &'static str,
+        inner: std::sync::Arc<InnerMvpCap>,
+    }
+    struct InnerMvpCap;
+
+    impl Capability for InnerMvpCap {
+        fn id(&self) -> &str {
+            "inner_mvp"
+        }
+        fn name(&self) -> &str {
+            "Inner MVP"
+        }
+        fn description(&self) -> &str {
+            "inner"
+        }
+        fn model_view_provider(
+            &self,
+        ) -> Option<std::sync::Arc<dyn crate::capabilities::ModelViewProvider>> {
+            // Return a no-op provider to prove delegation reached here.
+            struct NoopMvp;
+            impl crate::capabilities::ModelViewProvider for NoopMvp {
+                fn apply_model_view(
+                    &self,
+                    messages: Vec<Message>,
+                    _config: &serde_json::Value,
+                    _context: &ModelViewContext<'_>,
+                ) -> Vec<Message> {
+                    messages
+                }
+            }
+            Some(std::sync::Arc::new(NoopMvp))
+        }
+    }
+    impl Capability for DelegatingMvpCap {
+        fn id(&self) -> &str {
+            self.id
+        }
+        fn name(&self) -> &str {
+            "Delegating MVP"
+        }
+        fn description(&self) -> &str {
+            "delegating"
+        }
+        fn model_view_provider(
+            &self,
+        ) -> Option<std::sync::Arc<dyn crate::capabilities::ModelViewProvider>> {
+            None // outer provides nothing
+        }
+        fn resolve_for_model(&self, _model: Option<&str>) -> Option<&dyn Capability> {
+            Some(&*self.inner)
+        }
+    }
+
+    #[test]
+    fn test_collect_model_view_providers_honors_resolve_for_model_delegation() {
+        let inner = std::sync::Arc::new(InnerMvpCap);
+        let outer = DelegatingMvpCap {
+            id: "delegating_mvp",
+            inner: inner.clone(),
+        };
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(outer);
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("delegating_mvp"),
+            config: serde_json::json!({}),
+        }];
+
+        // Outer has no model_view_provider; inner does. resolve_for_model
+        // delegates to inner so the provider should be collected.
+        let collected = collect_model_view_providers(&configs, &registry, None);
+        assert_eq!(
+            collected.model_view_providers.len(),
+            1,
+            "provider from resolved inner capability must be collected"
+        );
     }
 
     // =========================================================================
