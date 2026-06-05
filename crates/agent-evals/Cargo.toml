@@ -12,8 +12,10 @@ name = "lua-vs-bash"
 path = "src/main.rs"
 
 [dependencies]
-# Lua engine must be compiled into core for this harness (piccolo).
-everruns-core = { path = "../core", features = ["lua"] }
+# Lua engine compiled into core for this harness.
+# `lua` = piccolo (native Rust); `lua-mlua` = mlua (full Lua 5.4 stdlib).
+# Switch this feature to pick the engine the eval exercises.
+everruns-core = { path = "../core", features = ["lua-mlua"] }
 everruns-runtime = { path = "../runtime" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-openai = { path = "../openai" }

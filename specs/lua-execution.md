@@ -246,27 +246,35 @@ Lives in a dedicated **`evals/`** tree (or a `crates/agent-evals` crate over
 The harness is implemented in `crates/agent-evals` (`lua-vs-bash` bin), runs both
 arms over `everruns-runtime`, and grades against the resulting workspace.
 
-### Empirical results (first run)
+### Empirical results
 
-Real Claude (`claude-haiku-4-5-20251001`), 4 tasks × 3 runs/arm:
+Real Claude (`claude-haiku-4-5-20251001`), 4 tasks × 3 runs/arm. Both Lua
+engines were measured against the same bash baseline:
 
 | arm | success | tool_calls | tool_errors | avg_iters | avg_ms |
 |---|---|---|---|---|---|
-| virtual_bash | 12/12 | 19 | 0 | 2.6 | 2607 |
-| lua | 9/12 | 46 | 27 | 4.6 | 7218 |
+| virtual_bash | 12/12 | 18 | 0 | 2.5 | 2597 |
+| lua — **mlua** | **12/12** | **12** | **0** | **2.0** | **2528** |
+| lua — piccolo | 9/12 | 46 | 27 | 4.6 | 7218 |
 
-Per-slice the thesis holds **and** the debt is now measured, not hypothesized:
+Findings:
 
-- **Structured tasks favor Lua.** On `math` and `json_sum` Lua used *fewer* tool
-  calls (1 vs 2) and was faster — it computes and returns a structured value in
-  one shot where bash needs a compute step plus a write step.
-- **The piccolo stdlib gap is a real blocker.** `transform` (sort lines) failed
-  3/3 on Lua with exactly 7 tool errors / 10 iterations each: the model reaches
-  for `table.sort`/`table.insert`/`string.format`, which piccolo 0.3.3 does not
-  define (its `table` lib exposes only `pack`/`unpack`). bash did it in one
-  `sort`. `grep_count` showed the same cause at lower severity.
-- **Conclusion.** The engine/VFS design is sound, but shimming the missing
-  stdlib (`table.sort/insert/remove/concat`, `string.format/find/match/gsub`) is
-  an **evidence-backed P0** for Phase 2 — without it Lua loses on exactly the
-  text/data munging bash is used for today, regardless of its structured-data
-  edge. Re-run the harness after the shims land.
+- **mlua matches bash on success and beats it on efficiency.** 12/12 with zero
+  tool errors, ~33% fewer tool calls (12 vs 18) and fewer iterations — the
+  structured-data edge materializes once the full stdlib is present (`json_sum`
+  and `math`: one Lua call computes and returns the value; bash needs compute +
+  write). This is the "replace bash" thesis confirmed with data.
+- **piccolo's stdlib gap is a hard blocker.** `transform` (sort lines) failed
+  3/3 on piccolo with 7 tool errors / 10 iterations each: the model reaches for
+  `table.sort`/`table.insert`/`string.format`, which piccolo 0.3.3 does not
+  define (its `table` lib exposes only `pack`/`unpack`). The same engine on mlua
+  passed it in one call. `grep_count` showed the same cause at lower severity.
+- **Decision.** Combined with piccolo being effectively unmaintained (no release
+  since 2024-06 vs mlua's monthly cadence) and the ~19-function-plus-pattern-
+  engine reimplementation cost, the evidence favors **mlua as the default
+  engine**. piccolo stays behind the seam for anyone wanting a pure-Rust VM and
+  willing to own the stdlib. License is a non-issue (both MIT; vendored Lua is
+  MIT).
+
+Re-run: `cargo run -p everruns-agent-evals --bin lua-vs-bash` (point the crate's
+`everruns-core` feature at `lua-mlua` or `lua` to pick the engine).
