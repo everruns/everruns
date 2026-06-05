@@ -170,9 +170,14 @@ pub fn get_model_profile(
     model_id: &str,
 ) -> Option<LlmModelProfile> {
     match provider_type {
-        LlmProviderType::Openai
-        | LlmProviderType::AzureOpenai
-        | LlmProviderType::OpenaiCompletions => get_openai_profile(model_id),
+        // Open Responses (`openai`) and Azure only serve genuine OpenAI models.
+        LlmProviderType::Openai | LlmProviderType::AzureOpenai => get_openai_profile(model_id),
+        // The generic Chat Completions path additionally hosts third-party,
+        // OpenAI-compatible models (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI,
+        // ...), so fall back to their profiles only here.
+        LlmProviderType::OpenaiCompletions => {
+            get_openai_profile(model_id).or_else(|| get_openai_compatible_profile(model_id))
+        }
         LlmProviderType::Anthropic => get_anthropic_profile(model_id),
         LlmProviderType::Gemini => get_gemini_profile(model_id),
         LlmProviderType::LlmSim => get_llmsim_profile(model_id),
@@ -1505,12 +1510,288 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
+/// Profiles for non-OpenAI models exposed through the OpenAI-compatible
+/// Chat Completions API. Reached only for the `openai_completions` provider
+/// type (see `get_model_profile`) — Open Responses / Azure do not serve these
+/// models, so they must not resolve there. Sourced from models.dev unless
+/// noted otherwise.
+///
+/// Matching is case-insensitive and each arm accepts both the bare provider id
+/// and common vendor-prefixed aliases (OpenRouter style), so the profile
+/// resolves regardless of how the user registered the model id.
+///
+/// `structured_output` is set to `false` where the upstream models.dev entry
+/// does not assert it: absence of the field is not a claim of support, so we
+/// do not advertise a capability we cannot confirm.
+fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
+    match model_id.to_ascii_lowercase().as_str() {
+        // NVIDIA Nemotron 3 Super — flagship Nemotron reasoning model.
+        // Source: models.dev (nvidia provider).
+        "nemotron-3-super-120b-a12b" | "nvidia/nemotron-3-super-120b-a12b" => {
+            Some(LlmModelProfile {
+                name: "Nemotron 3 Super".into(),
+                family: "nemotron-3-super".into(),
+                description: None,
+                release_date: Some("2026-03-11".into()),
+                last_updated: Some("2026-03-11".into()),
+                attachment: false,
+                reasoning: true,
+                temperature: true,
+                knowledge: Some("2024-04-01".into()),
+                tool_call: true,
+                structured_output: false,
+                open_weights: true,
+                cost: Some(LlmModelCost {
+                    input: 0.20,
+                    output: 0.80,
+                    cache_read: None,
+                    cost_tiers: vec![],
+                }),
+                limits: Some(LlmModelLimits {
+                    context: 262_144,
+                    input: None,
+                    output: 262_144,
+                    max_media: None,
+                }),
+                modalities: Some(LlmModelModalities {
+                    input: vec![Modality::Text],
+                    output: vec![Modality::Text],
+                }),
+                reasoning_effort: None,
+                tool_search: false,
+                supports_phases: false,
+            })
+        }
+
+        // Alibaba Qwen3.7 Max — flagship Qwen model.
+        // Source: models.dev (alibaba provider). Knowledge cutoff not published.
+        "qwen3.7-max" | "qwen/qwen3.7-max" => Some(LlmModelProfile {
+            name: "Qwen3.7 Max".into(),
+            family: "qwen3.7-max".into(),
+            description: None,
+            release_date: Some("2026-05-21".into()),
+            last_updated: Some("2026-05-21".into()),
+            attachment: false,
+            reasoning: true,
+            temperature: true,
+            knowledge: None,
+            tool_call: true,
+            structured_output: false,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 2.50,
+                output: 7.50,
+                cache_read: Some(0.50),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_000_000,
+                input: None,
+                output: 65_536,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // Microsoft MAI-1-preview — Microsoft's first end-to-end in-house
+        // foundation model. Not on models.dev; sourced from Microsoft's official
+        // announcement (microsoft.ai/news/two-new-in-house-models). It is a
+        // text-only instruction model (not a reasoning model); context window,
+        // pricing, and knowledge cutoff were never publicly disclosed, so cost
+        // and limits are left unset rather than guessed.
+        "mai-1-preview" | "microsoft/mai-1-preview" => Some(LlmModelProfile {
+            name: "MAI-1-preview".into(),
+            family: "mai-1-preview".into(),
+            description: None,
+            release_date: Some("2025-08-28".into()),
+            last_updated: None,
+            attachment: false,
+            reasoning: false,
+            temperature: true,
+            knowledge: None,
+            tool_call: false,
+            structured_output: false,
+            open_weights: false,
+            cost: None,
+            limits: None,
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
+        // provider). Reasoning is a toggle upstream (no graded effort).
+        "minimax-m3" | "minimax/minimax-m3" => Some(LlmModelProfile {
+            name: "MiniMax-M3".into(),
+            family: "minimax-m3".into(),
+            description: None,
+            release_date: Some("2026-06-01".into()),
+            last_updated: Some("2026-06-01".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: None,
+            tool_call: true,
+            structured_output: false,
+            open_weights: true,
+            cost: Some(LlmModelCost {
+                input: 0.60,
+                output: 2.40,
+                cache_read: Some(0.12),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 512_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Video],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // Moonshot Kimi K2 Thinking — flagship Kimi reasoning model.
+        // Source: models.dev (moonshotai provider).
+        "kimi-k2-thinking" | "moonshotai/kimi-k2-thinking" => Some(LlmModelProfile {
+            name: "Kimi K2 Thinking".into(),
+            family: "kimi-k2-thinking".into(),
+            description: None,
+            release_date: Some("2025-11-06".into()),
+            last_updated: Some("2025-11-06".into()),
+            attachment: false,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-08-01".into()),
+            tool_call: true,
+            structured_output: false,
+            open_weights: true,
+            cost: Some(LlmModelCost {
+                input: 0.60,
+                output: 2.50,
+                cache_read: Some(0.15),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 262_144,
+                input: None,
+                output: 262_144,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // xAI Grok 4.3 — flagship Grok model. Source: models.dev (xai provider).
+        // Pricing has a >200K-token tier. Knowledge cutoff not published.
+        "grok-4.3" | "x-ai/grok-4.3" | "xai/grok-4.3" => Some(LlmModelProfile {
+            name: "Grok 4.3".into(),
+            family: "grok-4.3".into(),
+            description: None,
+            release_date: Some("2026-04-17".into()),
+            last_updated: Some("2026-04-17".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: None,
+            tool_call: true,
+            structured_output: false,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 1.25,
+                output: 2.50,
+                cache_read: Some(0.20),
+                cost_tiers: vec![CostTier {
+                    above_tokens: 200_000,
+                    input: 2.50,
+                    output: 5.00,
+                    cache_read: Some(0.40),
+                }],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_000_000,
+                input: None,
+                output: 30_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        _ => None,
+    }
+}
+
 fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
     // Normalize model ID by extracting base name
     let base_id = normalize_anthropic_model_id(model_id);
 
     match base_id {
-        // Claude 4.7 series (newest)
+        // Claude 4.8 series (newest)
+        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
+        // docs.claude.com — Opus 4.8 is not yet in models.dev. Same API surface as
+        // Opus 4.7: adaptive thinking only, sampling parameters removed (temperature
+        // returns 400, hence `temperature: false`). Release/knowledge dates are not
+        // published in the model card; the Models API exposes them at runtime.
+        "claude-opus-4-8" => Some(LlmModelProfile {
+            name: "Claude Opus 4.8".into(),
+            family: "claude-opus-4-8".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 5.00,
+                output: 25.00,
+                cache_read: Some(0.50),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_000_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            tool_search: false,
+            supports_phases: false,
+        }),
+
+        // Claude 4.7 series
         "claude-opus-4-7" => Some(LlmModelProfile {
             name: "Claude Opus 4.7".into(),
             family: "claude-opus-4-7".into(),
@@ -2035,6 +2316,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
 /// e.g., "gemini-2.5-pro-preview-05-06" -> "gemini-2.5-pro"
 fn normalize_gemini_model_id(model_id: &str) -> &str {
     let patterns = [
+        "gemini-3.1-pro-preview",
         "gemini-2.5-flash",
         "gemini-2.5-pro",
         "gemini-2.0-flash",
@@ -2059,6 +2341,56 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
     let base_id = normalize_gemini_model_id(model_id);
 
     match base_id {
+        // Gemini 3.x series (newest). Source: models.dev (google provider).
+        // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
+        // current flagship Pro. Pricing has a >200K-token tier. Reasoning effort
+        // (low/medium/high) is offered upstream but, consistent with the other
+        // Gemini profiles here, effort selection is left unset.
+        "gemini-3.1-pro-preview" => Some(LlmModelProfile {
+            name: "Gemini 3.1 Pro Preview".into(),
+            family: "gemini-3.1-pro-preview".into(),
+            description: None,
+            release_date: Some("2026-02-19".into()),
+            last_updated: Some("2026-02-19".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2025-01-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 2.00,
+                output: 12.00,
+                cache_read: Some(0.20),
+                cost_tiers: vec![CostTier {
+                    above_tokens: 200_000,
+                    input: 4.00,
+                    output: 18.00,
+                    cache_read: Some(0.40),
+                }],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_048_576,
+                input: None,
+                output: 65_536,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                    Modality::Pdf,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supports_phases: false,
+        }),
+
         "gemini-2.5-pro" => Some(LlmModelProfile {
             name: "Gemini 2.5 Pro".into(),
             family: "gemini-2.5-pro".into(),
@@ -2368,6 +2700,8 @@ fn normalize_model_id(model_id: &str) -> &str {
 fn normalize_anthropic_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
+        // Claude 4.8
+        "claude-opus-4-8",
         // Claude 4.7 / 4.6
         "claude-opus-4-7",
         "claude-opus-4-6",
@@ -3302,5 +3636,126 @@ mod tests {
     fn test_gemini_unknown_model() {
         let profile = get_model_profile(&LlmProviderType::Gemini, "unknown-model");
         assert!(profile.is_none());
+    }
+
+    // Newly added flagship model profiles
+
+    #[test]
+    fn test_claude_opus_4_8_profile() {
+        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8").unwrap();
+        assert_eq!(profile.name, "Claude Opus 4.8");
+        assert_eq!(profile.family, "claude-opus-4-8");
+        assert!(profile.reasoning);
+        // Opus 4.8 removed sampling parameters (temperature returns 400).
+        assert!(!profile.temperature);
+        assert_eq!(profile.limits.as_ref().unwrap().context, 1_000_000);
+        assert!(profile.reasoning_effort.is_some());
+    }
+
+    #[test]
+    fn test_gemini_3_1_pro_preview_profile() {
+        let profile =
+            get_model_profile(&LlmProviderType::Gemini, "gemini-3.1-pro-preview").unwrap();
+        assert_eq!(profile.name, "Gemini 3.1 Pro Preview");
+        assert!(profile.reasoning);
+        // >200K-token pricing tier.
+        let cost = profile.cost.as_ref().unwrap();
+        assert_eq!(cost.cost_tiers.len(), 1);
+        assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
+        assert_eq!(cost.cost_tiers[0].input, 4.00);
+    }
+
+    #[test]
+    fn test_gemini_3_1_pro_preview_normalizes_dated_suffix() {
+        let profile =
+            get_model_profile(&LlmProviderType::Gemini, "gemini-3.1-pro-preview-02-19").unwrap();
+        assert_eq!(profile.family, "gemini-3.1-pro-preview");
+    }
+
+    #[test]
+    fn test_third_party_profiles_via_openai_completions() {
+        // Bare ids and common vendor-prefixed aliases both resolve.
+        let cases = [
+            ("nemotron-3-super-120b-a12b", "Nemotron 3 Super"),
+            ("nvidia/nemotron-3-super-120b-a12b", "Nemotron 3 Super"),
+            ("qwen3.7-max", "Qwen3.7 Max"),
+            ("MAI-1-preview", "MAI-1-preview"),
+            ("MiniMax-M3", "MiniMax-M3"),
+            ("kimi-k2-thinking", "Kimi K2 Thinking"),
+            ("grok-4.3", "Grok 4.3"),
+            ("x-ai/grok-4.3", "Grok 4.3"),
+        ];
+        for (id, name) in cases {
+            let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, id)
+                .unwrap_or_else(|| panic!("missing profile for {id}"));
+            assert_eq!(profile.name, name, "wrong profile for {id}");
+        }
+    }
+
+    #[test]
+    fn test_grok_4_3_has_context_tier() {
+        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "grok-4.3").unwrap();
+        let cost = profile.cost.as_ref().unwrap();
+        assert_eq!(cost.cost_tiers.len(), 1);
+        assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
+    }
+
+    #[test]
+    fn test_mai_preview_has_no_cost_or_limits() {
+        // Microsoft never published pricing/limits for MAI-1-preview.
+        let profile =
+            get_model_profile(&LlmProviderType::OpenaiCompletions, "MAI-1-preview").unwrap();
+        assert!(profile.cost.is_none());
+        assert!(profile.limits.is_none());
+        assert!(!profile.reasoning);
+    }
+
+    #[test]
+    fn test_third_party_unknown_still_none() {
+        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "totally-made-up");
+        assert!(profile.is_none());
+    }
+
+    #[test]
+    fn test_third_party_models_not_resolved_under_openai_or_azure() {
+        // The Chat-Completions-only third-party models must not appear as
+        // supported under the Open Responses (`openai`) or Azure providers,
+        // which only serve genuine OpenAI models.
+        for id in [
+            "qwen3.7-max",
+            "MiniMax-M3",
+            "grok-4.3",
+            "nemotron-3-super-120b-a12b",
+        ] {
+            assert!(
+                get_model_profile(&LlmProviderType::Openai, id).is_none(),
+                "{id} should not resolve under openai (Open Responses)"
+            );
+            assert!(
+                get_model_profile(&LlmProviderType::AzureOpenai, id).is_none(),
+                "{id} should not resolve under azure_openai"
+            );
+        }
+        // Genuine OpenAI models still resolve under all OpenAI-family types.
+        assert!(get_model_profile(&LlmProviderType::Openai, "gpt-4o").is_some());
+        assert!(get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o").is_some());
+    }
+
+    #[test]
+    fn test_third_party_alias_matching_is_case_insensitive() {
+        // Lowercased and vendor-prefixed variants all resolve to the same model.
+        let cases = [
+            ("minimax-m3", "MiniMax-M3"),
+            ("minimax/minimax-m3", "MiniMax-M3"),
+            ("MiniMax-M3", "MiniMax-M3"),
+            ("microsoft/mai-1-preview", "MAI-1-preview"),
+            ("MAI-1-PREVIEW", "MAI-1-preview"),
+            ("X-AI/Grok-4.3", "Grok 4.3"),
+        ];
+        for (id, name) in cases {
+            let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, id)
+                .unwrap_or_else(|| panic!("missing profile for {id}"));
+            assert_eq!(profile.name, name, "wrong profile for {id}");
+        }
     }
 }
