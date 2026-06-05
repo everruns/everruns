@@ -45,12 +45,8 @@ Tool search requires model-level support. Currently supported:
 | Model family | Supported |
 |---|---|
 | `gpt-5.4*` | Yes |
-| `gpt-5.5*` | Not yet — temporarily gated while the deferred-loading round-trip is verified |
+| `gpt-5.5*` | Yes |
 | All other models | No (capability is silently ignored) |
-
-The `gpt-5.5` family is temporarily gated: the OpenAI Responses deferred-loading
-round-trip fails with a `server_error` during the reasoning phase on these models,
-so the capability is silently skipped there until the round-trip is verified.
 
 When the capability is enabled but the model doesn't support tool_search, the feature is silently skipped — no errors, no behavior change.
 

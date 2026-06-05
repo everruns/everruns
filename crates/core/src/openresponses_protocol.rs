@@ -3842,6 +3842,94 @@ mod tests {
     }
 
     #[test]
+    fn test_hosted_tool_search_completed_event_preserves_response_id() {
+        let event_json = r#"{
+            "type": "response.completed",
+            "sequence_number": 8,
+            "response": {
+                "id": "resp_tool_search",
+                "object": "response",
+                "created_at": 1780000000,
+                "status": "completed",
+                "model": "gpt-5.5",
+                "output": [
+                    {
+                        "type": "tool_search_call",
+                        "execution": "server",
+                        "call_id": null,
+                        "status": "completed",
+                        "arguments": { "paths": ["Math"] }
+                    },
+                    {
+                        "type": "tool_search_output",
+                        "execution": "server",
+                        "call_id": null,
+                        "status": "completed",
+                        "tools": [
+                            {
+                                "type": "namespace",
+                                "name": "Math",
+                                "description": "Tools for Math",
+                                "tools": [
+                                    {
+                                        "type": "function",
+                                        "name": "add",
+                                        "description": "Add numbers.",
+                                        "defer_loading": true,
+                                        "parameters": {
+                                            "type": "object",
+                                            "properties": {
+                                                "a": { "type": "number" },
+                                                "b": { "type": "number" }
+                                            },
+                                            "required": ["a", "b"],
+                                            "additionalProperties": false
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "type": "function_call",
+                        "id": "fc_123",
+                        "call_id": "call_123",
+                        "name": "add",
+                        "namespace": "Math",
+                        "arguments": "{\"a\":7,\"b\":3}",
+                        "status": "completed"
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+        let stream_event = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(Some("tool_calls".to_string())),
+            "gpt-5.5".to_string(),
+            None,
+        );
+
+        match stream_event {
+            LlmStreamEvent::Done(metadata) => {
+                assert_eq!(metadata.response_id.as_deref(), Some("resp_tool_search"));
+                assert_eq!(metadata.finish_reason.as_deref(), Some("tool_calls"));
+            }
+            other => panic!("expected Done event, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn test_sanitize_parameters_adds_missing_properties() {
         let params = json!({"type": "object", "additionalProperties": false});
         let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);

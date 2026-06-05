@@ -716,6 +716,8 @@ pub enum OutputItem {
         id: String,
         call_id: String,
         name: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        namespace: Option<String>,
         arguments: String,
         status: ItemStatus,
     },
@@ -734,6 +736,22 @@ pub enum OutputItem {
         content: Option<Vec<ContentPart>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         encrypted_content: Option<String>,
+    },
+    #[serde(rename = "tool_search_call")]
+    ToolSearchCall {
+        execution: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
+        status: ItemStatus,
+        arguments: Value,
+    },
+    #[serde(rename = "tool_search_output")]
+    ToolSearchOutput {
+        execution: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        call_id: Option<String>,
+        status: ItemStatus,
+        tools: Vec<Value>,
     },
 }
 
@@ -1118,6 +1136,91 @@ mod tests {
         match event {
             StreamingEvent::OutputTextDelta { delta, .. } => assert_eq!(delta, "Hello"),
             _ => panic!("Wrong event type"),
+        }
+    }
+
+    #[test]
+    fn test_hosted_tool_search_response_output_deserialization() {
+        let json = r#"{
+            "id": "resp_123",
+            "object": "response",
+            "created_at": 1780000000,
+            "status": "completed",
+            "model": "gpt-5.5",
+            "output": [
+                {
+                    "type": "tool_search_call",
+                    "execution": "server",
+                    "call_id": null,
+                    "status": "completed",
+                    "arguments": { "paths": ["Math"] }
+                },
+                {
+                    "type": "tool_search_output",
+                    "execution": "server",
+                    "call_id": null,
+                    "status": "completed",
+                    "tools": [
+                        {
+                            "type": "namespace",
+                            "name": "Math",
+                            "description": "Tools for Math",
+                            "tools": [
+                                {
+                                    "type": "function",
+                                    "name": "add",
+                                    "description": "Add numbers.",
+                                    "defer_loading": true,
+                                    "parameters": {
+                                        "type": "object",
+                                        "properties": {
+                                            "a": { "type": "number" },
+                                            "b": { "type": "number" }
+                                        },
+                                        "required": ["a", "b"],
+                                        "additionalProperties": false
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "type": "function_call",
+                    "id": "fc_123",
+                    "call_id": "call_123",
+                    "name": "add",
+                    "namespace": "Math",
+                    "arguments": "{\"a\":7,\"b\":3}",
+                    "status": "completed"
+                }
+            ],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 5,
+                "total_tokens": 15
+            }
+        }"#;
+
+        let response: ResponseResource = serde_json::from_str(json).unwrap();
+        assert_eq!(response.id, "resp_123");
+        assert_eq!(response.output.len(), 3);
+        assert!(matches!(
+            response.output[0],
+            OutputItem::ToolSearchCall { .. }
+        ));
+        assert!(matches!(
+            response.output[1],
+            OutputItem::ToolSearchOutput { .. }
+        ));
+        match &response.output[2] {
+            OutputItem::FunctionCall {
+                namespace, call_id, ..
+            } => {
+                assert_eq!(namespace.as_deref(), Some("Math"));
+                assert_eq!(call_id, "call_123");
+            }
+            other => panic!("expected function_call, got {other:?}"),
         }
     }
 

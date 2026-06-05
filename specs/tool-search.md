@@ -195,11 +195,8 @@ Set `tool_search: true` for models that support it. Default `false` for all othe
 
 A model's `tool_search: true` flag must be backed by a verified end-to-end round-trip
 (deferred-load → schema fetch → tool call) against the live provider, not just the
-request-shaping unit tests. The `gpt-5.5` family is gated `false` because the live
-round-trip fails with a `server_error` during the reasoning phase (EVE-521), even
-though the unit tests pass. Keep the flag off until a live tool-using turn succeeds
-on that model; the `gpt-5.4*` family is the currently verified one (see
-`crates/llm-tests/tests/tool_search_test.rs`).
+request-shaping unit tests. The `gpt-5.4*` and `gpt-5.5*` families are covered by
+live OpenAI integration tests in `crates/llm-tests/tests/tool_search_test.rs`.
 
 ## OpenAI Driver Changes
 
@@ -231,7 +228,7 @@ Track tool_search effectiveness via existing metadata:
 ### Phase 1: Model Profile + Driver (Low Risk)
 
 1. Add `tool_search: bool` to `LlmModelProfile` (default false)
-2. Set `tool_search: true` for verified models (currently the GPT-5.4 family; the GPT-5.5 family is gated off pending live verification, see "Model Profile Updates")
+2. Set `tool_search: true` for verified models (currently the GPT-5.4 and GPT-5.5 families; see "Model Profile Updates")
 3. Add `category: Option<String>` to `BuiltinTool` / `ToolDefinition`
 4. Propagate capability category to tool definitions in `collect_capabilities()`
 5. Extend `ResponsesTool` enum with `Namespace` and `ToolSearch` variants
