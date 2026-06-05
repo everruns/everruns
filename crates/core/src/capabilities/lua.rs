@@ -62,11 +62,18 @@ Host API:
 - `fs.list(path)`, `fs.stat(path)`, `fs.remove(path[, recursive])`, `fs.mkdir(path)`
 - `fs.grep(pattern[, path])` (indexed search)
 - `json.encode(value)`, `json.decode(string)`
+- `base64.encode(string)`, `base64.decode(string)`
 - `print(...)` for output; `return value` to return a JSON-serializable result.
 
+Available base functions include `tonumber`, `tostring`, `type`, `pairs`,
+`ipairs`, `select`, `pcall`, `error`, `assert`, and `math.*`/`table.*`. NOTE:
+`string.format`, `string.find`, `string.match`, `string.gmatch`, and
+`string.gsub` are NOT available — build strings with concatenation and parse
+with `json.decode`/`fs.grep` instead.
+
 Paths are rooted at /workspace. Negative space (do not use — these are nil):
-no `io`, no `os.execute`/`os.getenv`, no `require`/`package`, no `load`/`dofile`,
-and no network. Use the `fs` table for all file access."#;
+no `io`, no `os`, no `require`/`package`, no `load`/`dofile`, and no network.
+Use the `fs` table for all file access."#;
 
 // ============================================================================
 // Capability
@@ -627,7 +634,9 @@ mod engine {
 
         let stash = lua.try_enter(|ctx| {
             install_print(ctx, stdout.clone(), output.clone(), limits.max_output_bytes);
+            install_stdlib_shims(ctx);
             install_json(ctx);
+            install_base64(ctx);
             install_fs(ctx, req_tx.clone());
             let closure = Closure::load(ctx, Some("agent_script"), script.as_bytes())?;
             Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
@@ -727,6 +736,57 @@ mod engine {
             Ok(CallbackReturn::Return)
         });
         ctx.set_global("print", print).ok();
+    }
+
+    /// Shims for base-library functions piccolo 0.3 does not provide but that
+    /// model-authored scripts commonly use. (piccolo's stdlib is partial; the
+    /// broader string.* gap is tracked in specs/lua-execution.md.)
+    fn install_stdlib_shims<'gc>(ctx: Context<'gc>) {
+        let tonumber = Callback::from_fn(&ctx, |ctx, _e, mut stack| {
+            let v = stack.get(0);
+            stack.clear();
+            let out = match v {
+                PValue::Integer(_) | PValue::Number(_) => v,
+                PValue::String(s) => {
+                    let raw = s.to_str_lossy();
+                    let t = raw.trim();
+                    if let Ok(i) = t.parse::<i64>() {
+                        PValue::Integer(i)
+                    } else if let Ok(f) = t.parse::<f64>() {
+                        PValue::Number(f)
+                    } else {
+                        PValue::Nil
+                    }
+                }
+                _ => PValue::Nil,
+            };
+            stack.replace(ctx, out);
+            Ok(CallbackReturn::Return)
+        });
+        ctx.set_global("tonumber", tonumber).ok();
+    }
+
+    /// `base64.encode(string) -> string` / `base64.decode(string) -> string`.
+    fn install_base64<'gc>(ctx: Context<'gc>) {
+        use base64::Engine as _;
+        let table = Table::new(&ctx);
+        let encode = Callback::from_fn(&ctx, |ctx, _e, mut stack| {
+            let s: piccolo::String = stack.consume(ctx)?;
+            let out = base64::engine::general_purpose::STANDARD.encode(s.as_bytes());
+            stack.replace(ctx, piccolo::String::from_slice(&ctx, out.as_bytes()));
+            Ok(CallbackReturn::Return)
+        });
+        let decode = Callback::from_fn(&ctx, |ctx, _e, mut stack| {
+            let s: piccolo::String = stack.consume(ctx)?;
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(s.as_bytes())
+                .map_err(|e| lua_err(ctx, e.to_string()))?;
+            stack.replace(ctx, piccolo::String::from_slice(&ctx, &bytes));
+            Ok(CallbackReturn::Return)
+        });
+        table.set(ctx, "encode", encode).ok();
+        table.set(ctx, "decode", decode).ok();
+        ctx.set_global("base64", table).ok();
     }
 
     fn install_json<'gc>(ctx: Context<'gc>) {
@@ -1641,6 +1701,22 @@ mod tests {
             )
             .await;
             assert_eq!(v["result"], json!(42));
+        }
+
+        #[tokio::test]
+        async fn tonumber_shim_works() {
+            let v = run(r#"return tonumber("41") + 1"#, Arc::new(EmptyFileStore)).await;
+            assert_eq!(v["result"], json!(42));
+        }
+
+        #[tokio::test]
+        async fn base64_roundtrip() {
+            let v = run(
+                r#"return base64.decode(base64.encode("hello"))"#,
+                Arc::new(EmptyFileStore),
+            )
+            .await;
+            assert_eq!(v["result"], json!("hello"));
         }
 
         #[tokio::test]

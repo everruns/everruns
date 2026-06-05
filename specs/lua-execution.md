@@ -71,11 +71,20 @@ calls (piccolo has no `create_async_function` equivalent).
 if the piccolo spike (below) shows it cannot run the scripts models actually
 write. **Never LuaJIT** under any engine (FFI = instant escape).
 
-**Spike gate (do first).** Before committing to piccolo, validate two unknowns
-with a short spike: (1) the async host-call bridge — a `fs.read` that round-trips
-to an async `SessionFileSystem`; (2) stdlib/language coverage against real
-model-authored snippets (`string.format`, `gmatch`, metatables, `pcall`). If
-either fails badly, fall back to `mlua` via the seam.
+**Spike gate (done).** Two unknowns were validated empirically:
+1. **Async host-call bridge — PASS.** piccolo is synchronous, so the VM runs on
+   a `spawn_blocking` thread and each `fs.*` callback marshals its request to the
+   tokio runtime over an `mpsc` channel and `blocking_recv`s the reply. The async
+   `SessionFileSystem` round-trips cleanly; fs/json round-trip tests pass.
+2. **Stdlib/language coverage — PARTIAL (tracked debt).** piccolo 0.3.3 ships a
+   thin stdlib. Confirmed missing and relevant to model-authored scripts:
+   `tonumber` (base); `string.format`, `string.find`, `string.match`,
+   `string.gmatch`, `string.gsub`, `string.rep` (string lib); no `os` library.
+   `tonumber` is shimmed as a host function; the broader `string.*` gap is open
+   Phase 2 work. This is real "replace-bash" debt: until these are shimmed (or
+   piccolo gains them), some model-written Lua will fail where bash would not —
+   the bash-vs-lua eval (Phase 3) must weight this. If the gap proves too costly,
+   the `lua-mlua` engine (full Lua 5.4 stdlib) remains a seam-level fallback.
 
 ## Sandbox model (multitenant safety)
 
@@ -97,7 +106,7 @@ state outlives a single tool call. Enforced at construction:
 The only way out of the VM is the injected host tables, all of which route
 through session-scoped stores.
 
-## Host API surface (Phase 1)
+## Host API surface (implemented)
 
 ```lua
 -- fs: backed by SessionFileSystem, /workspace-rooted
@@ -111,13 +120,18 @@ fs.remove(path[, recursive])
 fs.mkdir(path)
 fs.grep(pattern[, path]) -> { {path, line_number, line}, ... }  -- indexed grep_files
 
--- json: serde bridge
+-- data processing
 json.decode(s)           -> value
 json.encode(value)       -> string
+base64.encode(s) / base64.decode(s)
+tonumber(s)              -- shimmed (piccolo base lacks it)
 
 print(...)               -- captured, streamed as tool.output.delta, returned as stdout
 return value             -- serialized back to the model (json-encodable)
 ```
+
+Not yet available on the piccolo engine (Phase 2 stdlib work): `string.format`,
+`string.find`/`match`/`gmatch`/`gsub`/`rep`, `os.*`, `csv`/`yaml` modules.
 
 ## Threat model (TM-LUA-\*)
 

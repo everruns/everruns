@@ -932,6 +932,38 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | Privilege escalation | Blocked (no sudo/su) |
 | Resource exhaustion | Limited (commands, loops, depth, timeout) |
 
+## 15A. Lua Sandbox (TM-LUA)
+
+Experimental sandboxed Lua execution capability (`crates/core/src/capabilities/lua.rs`,
+`specs/lua-execution.md`). High risk, admin-gated (same gates as `virtual_bash`),
+behind the `FEATURE_LUA` flag; scripts run only when the `lua` cargo feature
+(native-Rust piccolo engine) or `lua-mlua` (reference engine) is compiled in. One
+fresh VM per invocation, never shared across sessions/tenants.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-LUA-001 | Arbitrary code execution | High | Admin-gated assignment (High risk tier); piccolo `core()` loads only base/coroutine/math/string/table — no io/os/package | MITIGATED |
+| TM-LUA-002 | CPU exhaustion | High | Fuel budget per executor step + wall-clock deadline checked between steps; outer tokio timeout backstop | MITIGATED |
+| TM-LUA-003 | Memory exhaustion | High | `Lua::total_memory()` checked between steps against a 32 MiB cap | MITIGATED |
+| TM-LUA-004 | Filesystem escape / cross-tenant access | High | All paths route through `LuaVfs` → session-scoped `SessionFileSystem`; `/workspace`-rooted, traversal/outside-workspace rejected; no `io` library | MITIGATED |
+| TM-LUA-005 | Network egress / exfiltration | High | No network host functions in Phase 1; HTTP (Phase 3) will require the egress allow-list (`ToolContext::network_access`) | MITIGATED (no network) |
+| TM-LUA-006 | Dynamic code / bytecode loading | Medium | piccolo defines no `load`/`loadstring`/`dofile`/`loadfile`/`require`; mlua engine scrubs them | MITIGATED |
+| TM-LUA-007 | Native escape (FFI) | High | Pure-Rust piccolo has no FFI; mlua engine uses Lua 5.4 (never LuaJIT) | MITIGATED |
+| TM-LUA-008 | Output-channel abuse | Medium | Captured `print` output capped (64 KiB) in-engine; tool result further shaped via `tool_output_sanitizer` | MITIGATED |
+
+### Lua Isolation Summary
+
+| Property | Status |
+|----------|--------|
+| Real filesystem access | Blocked (LuaVfs → session store only) |
+| Real process execution | Blocked (no os/io) |
+| Network access | Blocked (no host functions) |
+| Dynamic code loading | Blocked (no load/require) |
+| Native/FFI escape | Blocked (pure-Rust piccolo) |
+| CPU exhaustion | Bounded (fuel + deadline) |
+| Memory exhaustion | Bounded (total_memory cap) |
+| Cross-tenant state | Blocked (fresh VM per invocation) |
+
 ## 16. Denial of Service (TM-DOS)
 
 | ID | Threat | Severity | Mitigation | Status |
