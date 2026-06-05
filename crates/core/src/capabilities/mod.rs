@@ -4014,8 +4014,10 @@ mod tests {
             "auto_tool_search must contribute a client-side deferral hook"
         );
 
-        let transformed =
-            collected.tool_definition_hooks[0].transform(collected.tool_definitions.clone());
+        let mut transformed = collected.tool_definitions.clone();
+        for hook in &collected.tool_definition_hooks {
+            transformed = hook.transform(transformed);
+        }
         let add_tool = transformed
             .iter()
             .find(|tool| tool.name() == "add")
