@@ -386,7 +386,7 @@ When `limit` is provided:
 
 #### Model Sync
 
-The sync endpoint discovers available models from a provider's API. Returns `"status": "success"` with created/updated/stale counts, or `"status": "not_supported"` for providers with custom base URLs or providers that don't support model listing.
+The sync endpoint discovers available models from a provider's API. Returns `"status": "success"` with created/updated/stale counts, or `"status": "not_supported"` for providers with unsupported custom base URLs or providers that don't support model listing.
 
 #### List Models Query Parameters
 
