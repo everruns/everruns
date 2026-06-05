@@ -1125,13 +1125,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
-            // tool_search gated off pending live verification of the Responses-API
-            // deferred-loading round-trip on gpt-5.5. The round-trip reproducibly
-            // fails with a server_error during the reasoning phase (EVE-521), making
-            // the agent loop unusable on the default model. gpt-5.4 keeps tool_search
-            // (it has live integration coverage); re-enable here once the gpt-5.5
-            // round-trip is verified end-to-end.
-            tool_search: false,
+            tool_search: true,
             supports_phases: true,
         }),
 
@@ -1165,9 +1159,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
-            // Gated off with gpt-5.5: the deferred-loading round-trip fails during the
-            // reasoning phase on the gpt-5.5 family (EVE-521). Re-enable once verified.
-            tool_search: false,
+            tool_search: true,
             supports_phases: true,
         }),
 
@@ -3031,8 +3023,7 @@ mod tests {
         assert!(profile.reasoning);
         assert!(profile.tool_call);
         assert!(profile.structured_output);
-        // tool_search is gated off on gpt-5.5 pending live round-trip verification (EVE-521).
-        assert!(!profile.tool_search);
+        assert!(profile.tool_search);
         assert!(profile.supports_phases);
 
         let limits = profile.limits.unwrap();
@@ -3088,8 +3079,7 @@ mod tests {
         assert!(profile.reasoning);
         assert!(profile.tool_call);
         assert!(profile.structured_output);
-        // tool_search gated off with the rest of the gpt-5.5 family (EVE-521).
-        assert!(!profile.tool_search);
+        assert!(profile.tool_search);
         assert!(profile.supports_phases);
 
         let cost = profile.cost.unwrap();

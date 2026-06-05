@@ -1,9 +1,10 @@
 // Integration tests for tool_search (deferred tool loading).
 //
-// Tests the full pipeline: OpenAiToolSearchCapability → RuntimeAgent → LlmCallConfig →
-// OpenResponses driver with tool_search enabled.
+// Tests the full pipeline for provider-backed and generic client-side tool_search
+// capability wiring through RuntimeAgent and LlmCallConfig.
 //
-// Includes a real GPT-5.4 integration test that exercises tool_search end-to-end.
+// Includes real GPT-5.4 and GPT-5.5 integration tests that exercise hosted
+// tool_search end-to-end against the OpenAI API.
 //
 // Run all:
 //   cargo test -p everruns-llm-tests --test tool_search_test --features llm-tests
@@ -24,8 +25,29 @@ use everruns_core::capabilities::{
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 
+async fn assert_hosted_tool_search_was_enabled(runner: &InMemoryAgenticLoop) {
+    let generations = runner.events_by_type(LLM_GENERATION).await;
+    assert!(
+        !generations.is_empty(),
+        "expected at least one llm.generation event"
+    );
+    assert!(
+        generations.iter().any(|event| {
+            let EventData::LlmGeneration(data) = &event.data else {
+                return false;
+            };
+            data.metadata
+                .request_options
+                .as_ref()
+                .and_then(|options| options.tool_search.as_ref())
+                .is_some_and(|tool_search| tool_search.enabled)
+        }),
+        "expected an llm.generation event with hosted tool_search enabled"
+    );
+}
+
 // ============================================================================
-// Scenario: tool_search with GPT-5.4 (many tools → deferred loading)
+// Scenario: hosted OpenAI tool_search (deferred loading)
 // ============================================================================
 
 /// Tests tool_search end-to-end with GPT-5.4:
@@ -98,6 +120,43 @@ async fn test_gpt54_tool_search_low_threshold() {
         result.tool_calls_count > 0,
         "Model should call add tool even with deferred schemas"
     );
+    assert_hosted_tool_search_was_enabled(&runner).await;
+}
+
+/// Tests hosted tool_search with GPT-5.5 and a lower custom threshold.
+///
+/// This covers the current default OpenAI model family against the real API and
+/// verifies both halves of the contract: hosted tool_search is present on the
+/// request, and the deferred tool can still be called and completed by the loop.
+#[tokio::test]
+async fn test_gpt55_tool_search_low_threshold() {
+    let Some(model) = OPENAI_GPT55.model() else {
+        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("GPT-5.5 Tool Search Agent")
+        .system_prompt("When asked to add numbers, use the add tool.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(TestMathCapability)
+        .capability(CurrentTimeCapability)
+        // Low threshold: tool_search activates even with few tools (5 > 3).
+        .capability(OpenAiToolSearchCapability::with_threshold(3))
+        .max_iterations(5)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "GPT-5.5 should call add tool even with deferred schemas"
+    );
+    assert_hosted_tool_search_was_enabled(&runner).await;
 }
 
 /// Tests the model-adaptive `auto_tool_search` capability end-to-end on GPT-5.4.
@@ -159,6 +218,7 @@ async fn test_gpt54_auto_tool_search_resolves_to_hosted() {
             !generations.is_empty(),
             "expected at least one llm.generation event"
         );
+        assert_hosted_tool_search_was_enabled(&runner).await;
         for event in &generations {
             let EventData::LlmGeneration(data) = &event.data else {
                 continue;
@@ -193,6 +253,49 @@ async fn test_gpt54_auto_tool_search_resolves_to_hosted() {
         "auto_tool_search → hosted deferred loading should drive a get_current_time \
          call within {MAX_ATTEMPTS} attempts"
     );
+}
+
+/// Tests model-adaptive hosted resolution on GPT-5.5.
+#[tokio::test]
+async fn test_gpt55_auto_tool_search_resolves_to_hosted() {
+    let Some(model) = OPENAI_GPT55.model() else {
+        eprintln!("Skipping: {} not set", OPENAI_GPT55.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("GPT-5.5 Auto Tool Search Agent")
+        .system_prompt("When asked to add numbers, use the add tool.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(TestMathCapability)
+        .capability(CurrentTimeCapability)
+        .capability(AutoToolSearchCapability::with_threshold(3))
+        .max_iterations(5)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "GPT-5.5 auto_tool_search should call add through hosted deferred loading"
+    );
+    assert_hosted_tool_search_was_enabled(&runner).await;
+
+    let generations = runner.events_by_type(LLM_GENERATION).await;
+    for event in &generations {
+        let EventData::LlmGeneration(data) = &event.data else {
+            continue;
+        };
+        assert!(
+            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+            "auto_tool_search on GPT-5.5 must resolve to hosted: the client-side \
+             `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
+        );
+    }
 }
 
 // ============================================================================
