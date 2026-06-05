@@ -1235,6 +1235,8 @@ fn handle_streaming_event(
 
         StreamingEvent::ReasoningDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
 
+        StreamingEvent::ReasoningTextDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+
         StreamingEvent::ReasoningSummaryDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
 
         StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
