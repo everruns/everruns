@@ -17,10 +17,11 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
-    CurrentTimeCapability, FileSystemCapability, GenericToolSearchCapability,
-    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability, TestMathCapability,
-    TestWeatherCapability,
+    AutoToolSearchCapability, CurrentTimeCapability, FileSystemCapability,
+    GenericToolSearchCapability, OpenAiToolSearchCapability, SessionCapability,
+    StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability,
 };
+use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 
 // ============================================================================
@@ -96,6 +97,101 @@ async fn test_gpt54_tool_search_low_threshold() {
     assert!(
         result.tool_calls_count > 0,
         "Model should call add tool even with deferred schemas"
+    );
+}
+
+/// Tests the model-adaptive `auto_tool_search` capability end-to-end on GPT-5.4.
+///
+/// On a native model, `auto_tool_search` must resolve (at capability-collection
+/// time, via `Capability::resolve_for_model`) to the hosted OpenAI mechanism —
+/// not the client-side fallback. The test checks two things from the emitted
+/// `llm.generation` events:
+///
+/// 1. **Hosted was selected (deterministic).** The hosted mechanism offers the
+///    real (deferred) tools and adds *no* client-side `tool_search` tool, whereas
+///    the generic fallback *would* add one. So the absence of a `tool_search`
+///    tool in the model's tool list proves hosted resolution — independent of
+///    whether the model chose to call a tool on a given turn.
+/// 2. **The hosted round-trip executes (live).** The model actually calls
+///    `get_current_time` (deferred load → server-side search → tool call).
+///
+/// GPT-5.4 occasionally answers "what time is it" from priors without calling a
+/// tool, so the round-trip half is retried; the hosted-resolution half is
+/// asserted on every attempt's generation events.
+#[tokio::test]
+async fn test_gpt54_auto_tool_search_resolves_to_hosted() {
+    if OPENAI_GPT54.model().is_none() {
+        eprintln!("Skipping: {} not set", OPENAI_GPT54.label());
+        return;
+    }
+
+    const MAX_ATTEMPTS: usize = 5;
+    let mut called_get_current_time = false;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let model = OPENAI_GPT54.model().expect("checked above");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("Auto Tool Search Agent")
+            .system_prompt(
+                "You are a helpful assistant. When asked about time, use the get_current_time tool.",
+            )
+            .model(model)
+            .driver_registry(all_providers_registry())
+            // Multiple capabilities to exceed the 15-tool threshold (16 total).
+            .capability(CurrentTimeCapability) // 1 tool
+            .capability(TestMathCapability) // 4 tools
+            .capability(TestWeatherCapability) // 2 tools
+            .capability(FileSystemCapability) // 6 tools
+            .capability(SessionCapability) // 2 tools
+            .capability(StatelessTodoListCapability) // 1 tool
+            // Model-adaptive: on GPT-5.4 this must resolve to the hosted mechanism.
+            .capability(AutoToolSearchCapability::new())
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap();
+
+        let result = runner.run_turn("What time is it right now?").await.unwrap();
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+
+        let generations = runner.events_by_type(LLM_GENERATION).await;
+        assert!(
+            !generations.is_empty(),
+            "expected at least one llm.generation event"
+        );
+        for event in &generations {
+            let EventData::LlmGeneration(data) = &event.data else {
+                continue;
+            };
+            // (1) Hosted resolution: the client-side `tool_search` tool must not
+            // be offered to the model. Its presence would mean auto_tool_search
+            // fell back to the generic mechanism.
+            assert!(
+                !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+                "auto_tool_search on GPT-5.4 must resolve to hosted: the client-side \
+                 `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
+            );
+            // (2) Round-trip: the model executed the deferred get_current_time tool.
+            if data
+                .output
+                .tool_calls
+                .iter()
+                .any(|call| call.name == "get_current_time")
+            {
+                called_get_current_time = true;
+            }
+        }
+
+        if called_get_current_time {
+            break;
+        }
+        eprintln!("attempt {attempt}/{MAX_ATTEMPTS}: no get_current_time call yet; retrying");
+    }
+
+    assert!(
+        called_get_current_time,
+        "auto_tool_search → hosted deferred loading should drive a get_current_time \
+         call within {MAX_ATTEMPTS} attempts"
     );
 }
 
