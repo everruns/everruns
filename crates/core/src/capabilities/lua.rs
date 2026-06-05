@@ -9,10 +9,11 @@
 //! - `LuaVfs` owns the `/workspace` <-> session-store path translation and is the
 //!   single seam to the (already session-scoped) `SessionFileSystem`. Tenant
 //!   isolation falls out of routing every path through that store.
-//! - `LuaLimits` is plain data; `engine::run` enforces it. The `mlua`
-//!   implementation lives behind `#[cfg(feature = "lua-mlua")]`, so the default
-//!   workspace build never fetches or compiles `mlua`. Swapping to a pure-Rust
-//!   VM (`piccolo`) later replaces only the engine module.
+//! - `LuaLimits` is plain data; `engine::run` enforces it. The primary engine
+//!   is native-Rust `piccolo` (`feature = "lua"`); an `mlua` reference engine
+//!   (`feature = "lua-mlua"`) is kept as a fallback. With no engine feature the
+//!   default build pulls in no interpreter. The engine is the only swappable
+//!   module — capability, tool, VFS, and tests are engine-agnostic.
 //!
 //! Trust boundary (TM-LUA-001..008): `risk_level()` returns `High`; assigning
 //! this capability requires `OrgRole::Admin` via the same gates as
@@ -301,7 +302,7 @@ impl Tool for LuaTool {
 /// All fields but `timeout` are consumed only by the `mlua` engine, so they
 /// read as dead code in the default (feature-off) build.
 #[derive(Debug, Clone)]
-#[cfg_attr(not(feature = "lua-mlua"), allow(dead_code))]
+#[cfg_attr(not(any(feature = "lua", feature = "lua-mlua")), allow(dead_code))]
 pub struct LuaLimits {
     pub memory_bytes: usize,
     pub max_instructions: u64,
@@ -512,13 +513,552 @@ impl LuaVfs {
 // Engine seam
 // ============================================================================
 
-#[cfg(not(feature = "lua-mlua"))]
+// Primary engine: native-Rust piccolo 0.3 (no C/FFI). Sandbox is by
+// construction — `Lua::core()` loads only base/coroutine/math/string/table, so
+// there is no io/os/package/require/load to scrub (TM-LUA-001/006/007). CPU is
+// bounded by fuel per step + a wall-clock deadline (TM-LUA-002); memory by
+// `total_memory()` between steps (TM-LUA-003). piccolo is synchronous, so the
+// VM runs on a blocking thread and each async `fs.*` call is marshaled back to
+// the runtime over a channel (`blocking_recv`), which keeps tenant isolation in
+// the already session-scoped `LuaVfs`.
+#[cfg(feature = "lua")]
+mod engine {
+    use super::{LuaLimits, LuaOutcome, LuaVfs, VfsEntry, VfsGrepHit};
+    use piccolo::{
+        Callback, CallbackReturn, Closure, Context, Executor, Fuel, Lua, Table, Value as PValue,
+        Variadic,
+    };
+    use std::sync::{Arc, Mutex};
+    use std::time::Instant;
+    use tokio::sync::{mpsc, oneshot};
+
+    /// Fuel granted per executor step. Small enough that the deadline/budget are
+    /// checked frequently, large enough to amortize the enter() overhead.
+    const FUEL_PER_STEP: i32 = 8192;
+
+    // ---- VFS bridge: requests marshaled blocking-thread -> async runtime ----
+
+    enum VfsOp {
+        Read(String),
+        Write(String, String),
+        Append(String, String),
+        Exists(String),
+        Stat(String),
+        List(String),
+        Remove(String, bool),
+        Mkdir(String),
+        Grep(String, Option<String>),
+    }
+
+    enum VfsReply {
+        Str(String),
+        Bool(bool),
+        Unit,
+        Stat(Option<VfsEntry>),
+        List(Vec<VfsEntry>),
+        Grep(Vec<VfsGrepHit>),
+    }
+
+    struct VfsRequest {
+        op: VfsOp,
+        reply: oneshot::Sender<Result<VfsReply, String>>,
+    }
+
+    async fn dispatch(vfs: &LuaVfs, op: VfsOp) -> Result<VfsReply, String> {
+        match op {
+            VfsOp::Read(p) => vfs.read(&p).await.map(VfsReply::Str),
+            VfsOp::Write(p, c) => vfs.write(&p, &c).await.map(|_| VfsReply::Unit),
+            VfsOp::Append(p, c) => vfs.append(&p, &c).await.map(|_| VfsReply::Unit),
+            VfsOp::Exists(p) => vfs.exists(&p).await.map(VfsReply::Bool),
+            VfsOp::Stat(p) => vfs.stat(&p).await.map(VfsReply::Stat),
+            VfsOp::List(p) => vfs.list(&p).await.map(VfsReply::List),
+            VfsOp::Remove(p, r) => vfs.remove(&p, r).await.map(VfsReply::Bool),
+            VfsOp::Mkdir(p) => vfs.mkdir(&p).await.map(|_| VfsReply::Unit),
+            VfsOp::Grep(pat, scope) => {
+                vfs.grep(&pat, scope.as_deref()).await.map(VfsReply::Grep)
+            }
+        }
+    }
+
+    /// Synchronous VFS call from inside a piccolo callback (blocking thread).
+    fn vfs_call(tx: &mpsc::UnboundedSender<VfsRequest>, op: VfsOp) -> Result<VfsReply, String> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(VfsRequest { op, reply: reply_tx })
+            .map_err(|_| "vfs channel closed".to_string())?;
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| "vfs reply dropped".to_string())?
+    }
+
+    pub(super) async fn run(
+        script: &str,
+        vfs: Arc<LuaVfs>,
+        limits: &LuaLimits,
+        output: mpsc::UnboundedSender<String>,
+    ) -> LuaOutcome {
+        let (req_tx, mut req_rx) = mpsc::unbounded_channel::<VfsRequest>();
+        let script = script.to_string();
+        let limits = limits.clone();
+
+        let join = tokio::task::spawn_blocking(move || run_blocking(script, limits, req_tx, output));
+
+        // Service VFS requests until the blocking task drops every req_tx clone
+        // (which happens when the Lua VM and its callbacks are dropped).
+        while let Some(request) = req_rx.recv().await {
+            let result = dispatch(&vfs, request.op).await;
+            let _ = request.reply.send(result);
+        }
+
+        match join.await {
+            Ok(outcome) => outcome,
+            Err(e) => LuaOutcome::engine_error(format!("lua task panicked: {e}")),
+        }
+    }
+
+    fn run_blocking(
+        script: String,
+        limits: LuaLimits,
+        req_tx: mpsc::UnboundedSender<VfsRequest>,
+        output: mpsc::UnboundedSender<String>,
+    ) -> LuaOutcome {
+        let stdout = Arc::new(Mutex::new(String::new()));
+        // core() = base/coroutine/math/string/table only. No io/os/package.
+        let mut lua = Lua::core();
+
+        let stash = lua.try_enter(|ctx| {
+            install_print(ctx, stdout.clone(), output.clone(), limits.max_output_bytes);
+            install_json(ctx);
+            install_fs(ctx, req_tx.clone());
+            let closure = Closure::load(ctx, Some("agent_script"), script.as_bytes())?;
+            Ok(ctx.stash(Executor::start(ctx, closure.into(), ())))
+        });
+        let executor = match stash {
+            Ok(e) => e,
+            Err(e) => {
+                return LuaOutcome {
+                    stdout: take_stdout(&stdout),
+                    return_value: None,
+                    error: Some(e.to_string()),
+                };
+            }
+        };
+
+        let deadline = Instant::now() + limits.timeout;
+        let mut total_fuel: u64 = 0;
+        let finished: Result<(), String> = loop {
+            if Instant::now() >= deadline {
+                break Err("exceeded time limit".to_string());
+            }
+            if total_fuel >= limits.max_instructions {
+                break Err("exceeded instruction budget".to_string());
+            }
+            if lua.total_memory() > limits.memory_bytes {
+                break Err("exceeded memory limit".to_string());
+            }
+            total_fuel += FUEL_PER_STEP as u64;
+            let done = lua.enter(|ctx| {
+                let mut fuel = Fuel::with(FUEL_PER_STEP);
+                ctx.fetch(&executor).step(ctx, &mut fuel)
+            });
+            if done {
+                break Ok(());
+            }
+        };
+
+        let stdout_str = take_stdout(&stdout);
+        match finished {
+            Err(msg) => LuaOutcome {
+                stdout: stdout_str,
+                return_value: None,
+                error: Some(format!("lua: {msg}")),
+            },
+            Ok(()) => {
+                let ret = lua.try_enter(|ctx| {
+                    let values =
+                        ctx.fetch(&executor).take_result::<Variadic<Vec<PValue>>>(ctx)??;
+                    let first = values.0.into_iter().next().unwrap_or(PValue::Nil);
+                    Ok(pvalue_to_json_opt(ctx, first))
+                });
+                match ret {
+                    Ok(return_value) => LuaOutcome {
+                        stdout: stdout_str,
+                        return_value,
+                        error: None,
+                    },
+                    Err(e) => LuaOutcome {
+                        stdout: stdout_str,
+                        return_value: None,
+                        error: Some(e.to_string()),
+                    },
+                }
+            }
+        }
+    }
+
+    fn take_stdout(buf: &Arc<Mutex<String>>) -> String {
+        buf.lock().map(|s| s.clone()).unwrap_or_default()
+    }
+
+    /// Build a Lua error carrying a string message.
+    fn lua_err<'gc>(ctx: Context<'gc>, msg: String) -> piccolo::Error<'gc> {
+        PValue::String(piccolo::String::from_slice(&ctx, msg.as_bytes())).into()
+    }
+
+    fn install_print<'gc>(
+        ctx: Context<'gc>,
+        buf: Arc<Mutex<String>>,
+        sink: mpsc::UnboundedSender<String>,
+        cap: usize,
+    ) {
+        let print = Callback::from_fn(&ctx, move |ctx, _exec, mut stack| {
+            let mut parts = Vec::with_capacity(stack.len());
+            for i in 0..stack.len() {
+                parts.push(display_value(ctx, stack.get(i)));
+            }
+            stack.clear();
+            let mut line = parts.join("\t");
+            line.push('\n');
+            if let Ok(mut g) = buf.lock()
+                && g.len() < cap
+            {
+                g.push_str(&line);
+            }
+            let _ = sink.send(line);
+            Ok(CallbackReturn::Return)
+        });
+        ctx.set_global("print", print).ok();
+    }
+
+    fn install_json<'gc>(ctx: Context<'gc>) {
+        let json = Table::new(&ctx);
+        let encode = Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
+            let v = stack.get(0);
+            stack.clear();
+            let json = pvalue_to_json(ctx, v);
+            let s = serde_json::to_string(&json).map_err(|e| lua_err(ctx, e.to_string()))?;
+            stack.replace(ctx, piccolo::String::from_slice(&ctx, s.as_bytes()));
+            Ok(CallbackReturn::Return)
+        });
+        let decode = Callback::from_fn(&ctx, |ctx, _exec, mut stack| {
+            let s: piccolo::String = stack.consume(ctx)?;
+            let parsed: serde_json::Value = serde_json::from_slice(s.as_bytes())
+                .map_err(|e| lua_err(ctx, e.to_string()))?;
+            stack.replace(ctx, json_to_pvalue(ctx, &parsed));
+            Ok(CallbackReturn::Return)
+        });
+        json.set(ctx, "encode", encode).ok();
+        json.set(ctx, "decode", decode).ok();
+        ctx.set_global("json", json).ok();
+    }
+
+    fn install_fs<'gc>(ctx: Context<'gc>, tx: mpsc::UnboundedSender<VfsRequest>) {
+        let fs = Table::new(&ctx);
+
+        macro_rules! reply_str {
+            ($ctx:expr, $r:expr) => {
+                match $r {
+                    VfsReply::Str(s) => piccolo::String::from_slice(&$ctx, s.as_bytes()),
+                    _ => return Err(lua_err($ctx, "vfs: unexpected reply".to_string())),
+                }
+            };
+        }
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "read",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let path: piccolo::String = stack.consume(ctx)?;
+                let reply = vfs_call(&t, VfsOp::Read(path.to_str_lossy().into_owned()))
+                    .map_err(|e| lua_err(ctx, e))?;
+                stack.replace(ctx, reply_str!(ctx, reply));
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "write",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let (path, content): (piccolo::String, piccolo::String) = stack.consume(ctx)?;
+                vfs_call(
+                    &t,
+                    VfsOp::Write(
+                        path.to_str_lossy().into_owned(),
+                        content.to_str_lossy().into_owned(),
+                    ),
+                )
+                .map_err(|e| lua_err(ctx, e))?;
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "append",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let (path, content): (piccolo::String, piccolo::String) = stack.consume(ctx)?;
+                vfs_call(
+                    &t,
+                    VfsOp::Append(
+                        path.to_str_lossy().into_owned(),
+                        content.to_str_lossy().into_owned(),
+                    ),
+                )
+                .map_err(|e| lua_err(ctx, e))?;
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "exists",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let path: piccolo::String = stack.consume(ctx)?;
+                let reply = vfs_call(&t, VfsOp::Exists(path.to_str_lossy().into_owned()))
+                    .map_err(|e| lua_err(ctx, e))?;
+                let b = matches!(reply, VfsReply::Bool(true));
+                stack.replace(ctx, b);
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "stat",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let path: piccolo::String = stack.consume(ctx)?;
+                let reply = vfs_call(&t, VfsOp::Stat(path.to_str_lossy().into_owned()))
+                    .map_err(|e| lua_err(ctx, e))?;
+                match reply {
+                    VfsReply::Stat(Some(entry)) => stack.replace(ctx, entry_to_table(ctx, &entry)),
+                    VfsReply::Stat(None) => stack.replace(ctx, PValue::Nil),
+                    _ => return Err(lua_err(ctx, "vfs: unexpected reply".to_string())),
+                }
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "list",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let path: piccolo::String = stack.consume(ctx)?;
+                let reply = vfs_call(&t, VfsOp::List(path.to_str_lossy().into_owned()))
+                    .map_err(|e| lua_err(ctx, e))?;
+                let VfsReply::List(entries) = reply else {
+                    return Err(lua_err(ctx, "vfs: unexpected reply".to_string()));
+                };
+                let arr = Table::new(&ctx);
+                for (i, entry) in entries.iter().enumerate() {
+                    arr.set(ctx, (i + 1) as i64, entry_to_table(ctx, entry)).ok();
+                }
+                stack.replace(ctx, arr);
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "remove",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let (path, recursive): (piccolo::String, Option<bool>) = stack.consume(ctx)?;
+                let reply = vfs_call(
+                    &t,
+                    VfsOp::Remove(path.to_str_lossy().into_owned(), recursive.unwrap_or(false)),
+                )
+                .map_err(|e| lua_err(ctx, e))?;
+                stack.replace(ctx, matches!(reply, VfsReply::Bool(true)));
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "mkdir",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let path: piccolo::String = stack.consume(ctx)?;
+                vfs_call(&t, VfsOp::Mkdir(path.to_str_lossy().into_owned()))
+                    .map_err(|e| lua_err(ctx, e))?;
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        let t = tx.clone();
+        fs.set(
+            ctx,
+            "grep",
+            Callback::from_fn(&ctx, move |ctx, _e, mut stack| {
+                let (pattern, path): (piccolo::String, Option<piccolo::String>) =
+                    stack.consume(ctx)?;
+                let scope = path.map(|p| p.to_str_lossy().into_owned());
+                let reply = vfs_call(
+                    &t,
+                    VfsOp::Grep(pattern.to_str_lossy().into_owned(), scope),
+                )
+                .map_err(|e| lua_err(ctx, e))?;
+                let VfsReply::Grep(hits) = reply else {
+                    return Err(lua_err(ctx, "vfs: unexpected reply".to_string()));
+                };
+                let arr = Table::new(&ctx);
+                for (i, h) in hits.iter().enumerate() {
+                    let row = Table::new(&ctx);
+                    row.set(ctx, "path", piccolo::String::from_slice(&ctx, h.path.as_bytes()))
+                        .ok();
+                    row.set(ctx, "line_number", h.line_number as i64).ok();
+                    row.set(ctx, "line", piccolo::String::from_slice(&ctx, h.line.as_bytes()))
+                        .ok();
+                    arr.set(ctx, (i + 1) as i64, row).ok();
+                }
+                stack.replace(ctx, arr);
+                Ok(CallbackReturn::Return)
+            }),
+        )
+        .ok();
+
+        ctx.set_global("fs", fs).ok();
+    }
+
+    fn entry_to_table<'gc>(ctx: Context<'gc>, entry: &VfsEntry) -> Table<'gc> {
+        let t = Table::new(&ctx);
+        t.set(ctx, "name", piccolo::String::from_slice(&ctx, entry.name.as_bytes()))
+            .ok();
+        t.set(ctx, "is_dir", entry.is_dir).ok();
+        t.set(ctx, "size", entry.size).ok();
+        t
+    }
+
+    fn display_value<'gc>(ctx: Context<'gc>, v: PValue<'gc>) -> String {
+        match v {
+            PValue::Nil => "nil".to_string(),
+            PValue::Boolean(b) => b.to_string(),
+            PValue::Integer(i) => i.to_string(),
+            PValue::Number(n) => n.to_string(),
+            PValue::String(s) => s.to_str_lossy().into_owned(),
+            other => {
+                // Fall back to json for tables; opaque marker for the rest.
+                match pvalue_to_json(ctx, other) {
+                    serde_json::Value::Null => format!("{other:?}"),
+                    j => j.to_string(),
+                }
+            }
+        }
+    }
+
+    /// Top-level return conversion: a bare `nil` return means "no value".
+    fn pvalue_to_json_opt<'gc>(ctx: Context<'gc>, v: PValue<'gc>) -> Option<serde_json::Value> {
+        match v {
+            PValue::Nil => None,
+            other => Some(pvalue_to_json(ctx, other)),
+        }
+    }
+
+    fn pvalue_to_json<'gc>(ctx: Context<'gc>, v: PValue<'gc>) -> serde_json::Value {
+        use serde_json::Value as J;
+        match v {
+            PValue::Nil => J::Null,
+            PValue::Boolean(b) => J::Bool(b),
+            PValue::Integer(i) => J::Number(i.into()),
+            PValue::Number(n) => serde_json::Number::from_f64(n).map_or(J::Null, J::Number),
+            PValue::String(s) => J::String(s.to_str_lossy().into_owned()),
+            PValue::Table(t) => table_to_json(ctx, t),
+            // Functions/threads/userdata are not serializable.
+            _ => J::Null,
+        }
+    }
+
+    fn table_to_json<'gc>(ctx: Context<'gc>, t: Table<'gc>) -> serde_json::Value {
+        use serde_json::Value as J;
+        let len = t.length();
+        // Treat as an array iff keys are exactly 1..=len.
+        let mut is_array = len > 0;
+        let mut count = 0usize;
+        for (k, _) in t.iter() {
+            count += 1;
+            if !matches!(k, PValue::Integer(i) if i >= 1 && i <= len) {
+                is_array = false;
+            }
+        }
+        if is_array && count == len as usize {
+            let mut arr = Vec::with_capacity(len as usize);
+            for i in 1..=len {
+                arr.push(pvalue_to_json(ctx, t.get(ctx, i)));
+            }
+            J::Array(arr)
+        } else {
+            let mut map = serde_json::Map::new();
+            for (k, v) in t.iter() {
+                let key = match k {
+                    PValue::String(s) => s.to_str_lossy().into_owned(),
+                    PValue::Integer(i) => i.to_string(),
+                    PValue::Number(n) => n.to_string(),
+                    PValue::Boolean(b) => b.to_string(),
+                    _ => continue,
+                };
+                map.insert(key, pvalue_to_json(ctx, v));
+            }
+            J::Object(map)
+        }
+    }
+
+    fn json_to_pvalue<'gc>(ctx: Context<'gc>, v: &serde_json::Value) -> PValue<'gc> {
+        use serde_json::Value as J;
+        match v {
+            J::Null => PValue::Nil,
+            J::Bool(b) => PValue::Boolean(*b),
+            J::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    PValue::Integer(i)
+                } else {
+                    PValue::Number(n.as_f64().unwrap_or(0.0))
+                }
+            }
+            J::String(s) => PValue::String(piccolo::String::from_slice(&ctx, s.as_bytes())),
+            J::Array(items) => {
+                let t = Table::new(&ctx);
+                for (i, item) in items.iter().enumerate() {
+                    t.set(ctx, (i + 1) as i64, json_to_pvalue(ctx, item)).ok();
+                }
+                PValue::Table(t)
+            }
+            J::Object(obj) => {
+                let t = Table::new(&ctx);
+                for (k, val) in obj {
+                    t.set(
+                        ctx,
+                        piccolo::String::from_slice(&ctx, k.as_bytes()),
+                        json_to_pvalue(ctx, val),
+                    )
+                    .ok();
+                }
+                PValue::Table(t)
+            }
+        }
+    }
+}
+
+#[cfg(not(any(feature = "lua", feature = "lua-mlua")))]
 mod engine {
     use super::{LuaLimits, LuaOutcome, LuaVfs};
     use std::sync::Arc;
 
-    /// Stub used when the `lua` cargo feature is disabled (default). Keeps the
-    /// workspace buildable without pulling in `mlua`.
+    /// Stub used when no engine feature is enabled (default). Keeps the
+    /// workspace buildable without pulling in any interpreter.
     pub(super) async fn run(
         _script: &str,
         _vfs: Arc<LuaVfs>,
@@ -531,13 +1071,10 @@ mod engine {
     }
 }
 
-// NOTE: The `mlua` engine below targets mlua 0.10 (Lua 5.4, vendored). It is
-// compiled only with `--features lua` and is wired end to end in Phase 2
-// (`specs/lua-execution.md`); exact API details may need to be pinned to the
-// resolved mlua version. The sandbox controls (stdlib whitelist, global
-// scrubbing, memory limit, instruction/deadline hook, no network) are the
-// contract that must hold regardless of API shape.
-#[cfg(feature = "lua-mlua")]
+// Reference engine (mlua 0.10, vendored Lua 5.4). Compiled only with
+// `--features lua-mlua` and only when the primary piccolo engine is not also
+// enabled. Kept as a fallback per specs/lua-execution.md.
+#[cfg(all(feature = "lua-mlua", not(feature = "lua")))]
 mod engine {
     use super::{LuaLimits, LuaOutcome, LuaVfs};
     use mlua::{
@@ -663,10 +1200,10 @@ mod engine {
             }
             let mut line = parts.join("\t");
             line.push('\n');
-            if let Ok(mut g) = buf.lock() {
-                if g.len() < cap {
-                    g.push_str(&line);
-                }
+            if let Ok(mut g) = buf.lock()
+                && g.len() < cap
+            {
+                g.push_str(&line);
             }
             let _ = sink.send(line);
             Ok(())
@@ -915,7 +1452,7 @@ mod tests {
 
     // When the engine is not compiled in (default build), the tool surfaces a
     // clear error rather than silently succeeding.
-    #[cfg(not(feature = "lua-mlua"))]
+    #[cfg(not(any(feature = "lua", feature = "lua-mlua")))]
     #[tokio::test]
     async fn engine_disabled_reports_not_compiled() {
         let mut ctx = ToolContext::new(SessionId::new());
@@ -1016,10 +1553,10 @@ mod tests {
     }
 
     // ========================================================================
-    // End-to-end engine tests (only when the `lua` feature is compiled in).
+    // End-to-end engine tests (run for whichever engine feature is enabled).
     // ========================================================================
 
-    #[cfg(feature = "lua-mlua")]
+    #[cfg(any(feature = "lua", feature = "lua-mlua"))]
     mod engine_tests {
         use super::*;
         use std::collections::HashMap;
@@ -1052,23 +1589,25 @@ mod tests {
 
         #[tokio::test]
         async fn sandbox_blocks_dangerous_globals() {
-            // io/os.execute/load/require/dofile must be unavailable (TM-LUA-001/006).
+            // No filesystem/process/dynamic-code escape hatches (TM-LUA-001/006).
+            // Both engines guarantee these globals are nil.
             let script = r#"
                 return {
                     io = io == nil,
-                    exec = os.execute == nil,
-                    getenv = os.getenv == nil,
-                    load = load == nil,
+                    package = package == nil,
                     require = require == nil,
+                    load = load == nil,
                     dofile = dofile == nil,
                 }
             "#;
             let v = run(script, Arc::new(EmptyFileStore)).await;
-            for key in ["io", "exec", "getenv", "load", "require", "dofile"] {
+            for key in ["io", "package", "require", "load", "dofile"] {
                 assert_eq!(v["result"][key], json!(true), "{key} should be nil");
             }
         }
 
+        // os.* is a mlua-only safe subset; piccolo's core() loads no os library.
+        #[cfg(all(feature = "lua-mlua", not(feature = "lua")))]
         #[tokio::test]
         async fn safe_os_subset_available() {
             let v = run("return type(os.time())", Arc::new(EmptyFileStore)).await;
@@ -1254,10 +1793,10 @@ mod tests {
                 let files = self.files.lock().unwrap();
                 let mut out = Vec::new();
                 for (p, c) in files.iter() {
-                    if let Some(pp) = path_pattern {
-                        if !p.starts_with(pp) {
-                            continue;
-                        }
+                    if let Some(pp) = path_pattern
+                        && !p.starts_with(pp)
+                    {
+                        continue;
                     }
                     for (i, line) in c.lines().enumerate() {
                         if re.is_match(line) {
