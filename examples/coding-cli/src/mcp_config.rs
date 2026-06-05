@@ -11,14 +11,14 @@
 //! }
 //! ```
 //!
-//! Missing file → no servers. Both remote HTTP and local stdio
-//! (`{ "type": "stdio", "command": ..., "args": [...] }`) servers are
-//! supported; the CLI builds with the runtime's `mcp-stdio` feature.
+//! Missing file → no servers. Workspace-controlled local stdio servers are
+//! ignored because discovering them would spawn repository-provided commands
+//! before the user can approve them.
 
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use everruns_core::ScopedMcpServers;
+use everruns_core::{McpServerTransportType, ScopedMcpServers};
 use serde::Deserialize;
 
 /// File name read from the workspace root.
@@ -44,16 +44,29 @@ pub fn load_mcp_servers(workspace_root: &Path) -> Result<ScopedMcpServers> {
         }
     };
 
-    let config: McpConfigFile =
+    let mut config: McpConfigFile =
         serde_json::from_str(&raw).with_context(|| format!("parsing {}", path.display()))?;
+    // `.mcp.json` is workspace-controlled input. Stdio MCP discovery executes
+    // the configured command during turn-context loading, before the CLI can
+    // ask for approval, so only non-executing transports are accepted here.
+    config.mcp_servers.retain(|name, server| {
+        if server.transport_type == McpServerTransportType::Stdio {
+            tracing::warn!(
+                server = %name,
+                file = %path.display(),
+                "ignoring workspace stdio MCP server: local process execution from .mcp.json is not trusted"
+            );
+            false
+        } else {
+            true
+        }
+    });
     Ok(config.mcp_servers)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::McpServerTransportType;
-
     fn write(dir: &Path, contents: &str) {
         std::fs::write(dir.join(MCP_CONFIG_FILE), contents).unwrap();
     }
@@ -114,7 +127,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_stdio_server() {
+    fn ignores_stdio_server() {
         let dir = tempfile::tempdir().unwrap();
         write(
             dir.path(),
@@ -129,10 +142,6 @@ mod tests {
         );
 
         let servers = load_mcp_servers(dir.path()).unwrap();
-        let fs = servers.get("fs").expect("fs server");
-        assert_eq!(fs.transport_type, McpServerTransportType::Stdio);
-        assert_eq!(fs.command.as_deref(), Some("mcp-server-filesystem"));
-        assert_eq!(fs.args, vec!["/work".to_string()]);
-        assert_eq!(fs.env.get("RUST_LOG").map(String::as_str), Some("info"));
+        assert!(servers.is_empty());
     }
 }
