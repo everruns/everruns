@@ -855,6 +855,7 @@ impl ReasonAtom {
         let model_view_providers = crate::capabilities::collect_model_view_providers(
             &resolved_capability_configs,
             &self.capability_registry,
+            Some(model_with_provider.model.as_str()),
         );
         let model_view_context = crate::capabilities::ModelViewContext {
             session_id,

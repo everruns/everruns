@@ -424,6 +424,10 @@ impl InMemoryAgenticLoopBuilder {
         };
         session_store.add_session(session).await;
 
+        // Capture the configured model name before the if-let consumes self.model.
+        // Used below to resolve model-adaptive capabilities against the right variant.
+        let configured_model = self.model.as_ref().map(|m| m.model.clone());
+
         // Create provider store and driver registry
         let provider_store = InMemoryLlmProviderStore::new();
         let driver_registry =
@@ -453,12 +457,16 @@ impl InMemoryAgenticLoopBuilder {
                 registry
             };
 
-        // Build tool registry - include tools from capabilities
+        // Build tool registry - include tools from capabilities. Resolve each
+        // capability against the configured model so model-adaptive capabilities
+        // (e.g. auto_tool_search) contribute the right variant for this harness.
+        let configured_model_ref = configured_model.as_deref();
         let mut tool_builder = ToolRegistryBuilder::new();
-
-        // Add tools from capabilities first
         for capability in &self.capabilities {
-            for tool in capability.tools() {
+            let effective: &dyn crate::Capability = capability
+                .resolve_for_model(configured_model_ref)
+                .unwrap_or_else(|| capability.as_ref());
+            for tool in effective.tools() {
                 tool_builder = tool_builder.tool_boxed(tool);
             }
         }
