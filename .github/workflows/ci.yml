@@ -1319,6 +1319,7 @@ jobs:
       - changes
       - format
       - lockfile
+      - msrv
       - clippy
       - unit-test
       - worker-test
