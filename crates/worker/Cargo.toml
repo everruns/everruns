@@ -4,6 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Off by default; `lua` compiles the native-Rust piccolo engine into core,
+# `lua-mlua` the reference engine. Still also gated at runtime by FEATURE_LUA.
+lua = ["everruns-core/lua"]
+lua-mlua = ["everruns-core/lua-mlua"]
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true

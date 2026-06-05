@@ -1,0 +1,22 @@
+[package]
+name = "everruns-agent-evals"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "A/B evaluation harness comparing the lua vs virtual_bash execution capabilities"
+
+[[bin]]
+name = "lua-vs-bash"
+path = "src/main.rs"
+
+[dependencies]
+# Lua engine must be compiled into core for this harness (piccolo).
+everruns-core = { path = "../core", features = ["lua"] }
+everruns-runtime = { path = "../runtime" }
+everruns-anthropic = { path = "../anthropic" }
+everruns-openai = { path = "../openai" }
+tokio = { workspace = true, features = ["full"] }
+serde_json.workspace = true
+anyhow.workspace = true

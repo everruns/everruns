@@ -159,10 +159,13 @@ follow-up; enumerated here for review:
   engine seam, **native-Rust piccolo engine** with the async VFS bridge, full
   e2e tests. Feature-flagged (`FEATURE_LUA` + `lua` cargo feature), admin-gated.
 - **Phase 2 — PARTIAL.** `tonumber` shim; `print` capture+stream; TM-LUA in the
-  threat model. **Open:** the `string.*` stdlib gap (format/find/match/gmatch/
-  gsub/rep), `os.*` subset, background-execution parity (`BackgroundExecutableTool`).
-- **Phase 3 — PARTIAL.** `base64` module done. **Open:** `csv`/`yaml` modules;
-  the bash-vs-lua eval harness (see Evaluation below).
+  threat model. **Open (P0, evidence-backed by the eval below):** stdlib shims —
+  `table.sort/insert/remove/concat` and `string.format/find/match/gmatch/gsub/rep`
+  (their absence fails the sort task 3/3). Then `os.*` subset and
+  background-execution parity (`BackgroundExecutableTool`).
+- **Phase 3 — PARTIAL.** `base64` module + bash-vs-lua eval harness
+  (`crates/agent-evals`) done — see Evaluation results below. **Open:**
+  `csv`/`yaml` modules.
 - **Phase 4 — DESIGNED, deferred to dedicated security-reviewed PRs.** Each item
   expands the trust boundary and must clear `specs/threat-model.md` on its own:
 
@@ -239,3 +242,31 @@ Lives in a dedicated **`evals/`** tree (or a `crates/agent-evals` crate over
   before defaulting agents to Lua; a material win on structured/code-mode slices;
   no regression in sandbox incidents. The piccolo stdlib gap is expected to show
   up here and must be weighed.
+
+The harness is implemented in `crates/agent-evals` (`lua-vs-bash` bin), runs both
+arms over `everruns-runtime`, and grades against the resulting workspace.
+
+### Empirical results (first run)
+
+Real Claude (`claude-haiku-4-5-20251001`), 4 tasks × 3 runs/arm:
+
+| arm | success | tool_calls | tool_errors | avg_iters | avg_ms |
+|---|---|---|---|---|---|
+| virtual_bash | 12/12 | 19 | 0 | 2.6 | 2607 |
+| lua | 9/12 | 46 | 27 | 4.6 | 7218 |
+
+Per-slice the thesis holds **and** the debt is now measured, not hypothesized:
+
+- **Structured tasks favor Lua.** On `math` and `json_sum` Lua used *fewer* tool
+  calls (1 vs 2) and was faster — it computes and returns a structured value in
+  one shot where bash needs a compute step plus a write step.
+- **The piccolo stdlib gap is a real blocker.** `transform` (sort lines) failed
+  3/3 on Lua with exactly 7 tool errors / 10 iterations each: the model reaches
+  for `table.sort`/`table.insert`/`string.format`, which piccolo 0.3.3 does not
+  define (its `table` lib exposes only `pack`/`unpack`). bash did it in one
+  `sort`. `grep_count` showed the same cause at lower severity.
+- **Conclusion.** The engine/VFS design is sound, but shimming the missing
+  stdlib (`table.sort/insert/remove/concat`, `string.format/find/match/gsub`) is
+  an **evidence-backed P0** for Phase 2 — without it Lua loses on exactly the
+  text/data munging bash is used for today, regardless of its structured-data
+  edge. Re-run the harness after the shims land.

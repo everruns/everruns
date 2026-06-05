@@ -17,6 +17,13 @@ path = "src/bin/reencrypt_secrets.rs"
 name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
+[features]
+# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Off by default; `lua` compiles the native-Rust piccolo engine into core,
+# `lua-mlua` the reference engine. Still also gated at runtime by FEATURE_LUA.
+lua = ["everruns-core/lua"]
+lua-mlua = ["everruns-core/lua-mlua"]
+
 [dependencies]
 axum.workspace = true
 axum-extra.workspace = true
