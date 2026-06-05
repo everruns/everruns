@@ -86,6 +86,9 @@ export interface ResourceStats {
   total_output_tokens: number;
   total_cache_read_tokens: number;
   total_cache_creation_tokens: number;
+  total_actual_cost_usd: number;
+  total_estimated_cost_usd: number;
+  total_cost_usd: number;
   first_session_at?: string | null;
   last_session_at?: string | null;
   last_execution_at?: string | null;

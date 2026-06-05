@@ -72,6 +72,18 @@ pub struct ResourceStatsResponse {
     /// Cumulative cache-write tokens across all sessions (charged when first writing a cache entry).
     #[schema(example = 412_005u64)]
     pub total_cache_creation_tokens: u64,
+    /// Cumulative provider-reported actual cost in USD across all sessions
+    /// (e.g. OpenRouter's `usage.cost`). Excludes generations with no reported cost.
+    #[schema(example = 31.07)]
+    pub total_actual_cost_usd: f64,
+    /// Cumulative price-table estimated cost in USD across all sessions.
+    /// Excludes generations with no profile cost data.
+    #[schema(example = 40.55)]
+    pub total_estimated_cost_usd: f64,
+    /// Cumulative best-effort cost in USD across all sessions: actual provider
+    /// cost where reported, otherwise the price-table estimate. Actual takes priority.
+    #[schema(example = 42.18)]
+    pub total_cost_usd: f64,
     /// Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist.
     #[schema(example = "2026-01-04T11:23:00Z")]
     pub first_session_at: Option<DateTime<Utc>>,
@@ -102,6 +114,9 @@ impl From<crate::storage::SessionAggregateStatsRow> for ResourceStatsResponse {
             total_output_tokens: row.total_output_tokens.max(0) as u64,
             total_cache_read_tokens: row.total_cache_read_tokens.max(0) as u64,
             total_cache_creation_tokens: row.total_cache_creation_tokens.max(0) as u64,
+            total_actual_cost_usd: row.total_actual_cost_usd.max(0.0),
+            total_estimated_cost_usd: row.total_estimated_cost_usd.max(0.0),
+            total_cost_usd: row.total_cost_usd.max(0.0),
             first_session_at: row.first_session_at,
             last_session_at: row.last_session_at,
             last_execution_at: row.last_execution_at,

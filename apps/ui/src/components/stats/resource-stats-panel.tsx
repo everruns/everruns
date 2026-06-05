@@ -1,10 +1,10 @@
 "use client";
 
-import { BarChart3, Clock, Play, Zap } from "lucide-react";
+import { BarChart3, Clock, DollarSign, Play, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ResourceStats } from "@/lib/api/types";
-import { formatCompactNumber, formatDate, formatTokens } from "@/lib/formatting";
+import { formatCompactNumber, formatCostUsd, formatDate, formatTokens } from "@/lib/formatting";
 
 interface ResourceStatsPanelProps {
   stats: ResourceStats | undefined;
@@ -58,8 +58,8 @@ function StatCard({
 export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPanelProps) {
   if (isLoading) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, index) => (
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, index) => (
           <Skeleton key={index} className="h-28 w-full" />
         ))}
       </div>
@@ -88,7 +88,7 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           title="Sessions"
           value={formatCompactNumber(stats.session_count)}
@@ -116,6 +116,14 @@ export function ResourceStatsPanel({ stats, isLoading, error }: ResourceStatsPan
             stats.total_output_tokens,
           )} output`}
           icon={Zap}
+        />
+        <StatCard
+          title="Cost"
+          value={formatCostUsd(stats.total_cost_usd)}
+          detail={`${formatCostUsd(stats.total_actual_cost_usd)} actual / ${formatCostUsd(
+            stats.total_estimated_cost_usd,
+          )} est.`}
+          icon={DollarSign}
         />
       </div>
 

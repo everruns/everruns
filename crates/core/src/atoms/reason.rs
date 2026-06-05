@@ -1918,18 +1918,33 @@ impl ReasonAtom {
             .as_ref()
             .and_then(|meta| meta.response_id.clone());
 
-        // 15. Convert completion metadata to TokenUsage
+        // 15. Convert completion metadata to TokenUsage.
+        //
+        // Cost is tracked as two independent values: the provider's authoritative
+        // inline cost when present (e.g. OpenRouter's usage.cost), and a price-table
+        // estimate from the model profile computed whenever profile cost data
+        // exists. Keeping both lets downstream consumers prefer the actual charge
+        // while still reconciling estimate-vs-actual drift.
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
-                (Some(input), Some(output)) => Some(
-                    TokenUsage::with_cache(
+                (Some(input), Some(output)) => {
+                    let actual_cost_usd = meta.provider_cost_usd;
+                    let estimated_cost_usd = crate::llm_model_profiles::estimate_cost_usd(
+                        &model_with_provider.provider_type,
+                        &runtime_agent.model,
                         input,
                         output,
-                        meta.cache_read_tokens,
-                        meta.cache_creation_tokens,
+                    );
+                    Some(
+                        TokenUsage::with_cache(
+                            input,
+                            output,
+                            meta.cache_read_tokens,
+                            meta.cache_creation_tokens,
+                        )
+                        .with_cost(actual_cost_usd, estimated_cost_usd),
                     )
-                    .with_cost_usd(meta.provider_cost_usd),
-                ),
+                }
                 _ => None,
             }
         });

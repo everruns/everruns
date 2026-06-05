@@ -2024,7 +2024,8 @@ impl StorageBackend {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
-        cost_usd: Option<f64>,
+        actual_cost_usd: Option<f64>,
+        estimated_cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
@@ -2042,13 +2043,15 @@ impl StorageBackend {
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
-            cost_usd,
+            actual_cost_usd,
+            estimated_cost_usd,
             duration_ms,
             finish_reason,
             created_at
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_session_usage(
         &self,
         session_id: Uuid,
@@ -2056,6 +2059,9 @@ impl StorageBackend {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         dispatch!(
             self,
@@ -2064,10 +2070,14 @@ impl StorageBackend {
             input_tokens,
             output_tokens,
             cache_read_tokens,
-            cache_creation_tokens
+            cache_creation_tokens,
+            actual_cost_usd,
+            estimated_cost_usd,
+            cost_usd
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_agent_usage(
         &self,
         agent_id: Uuid,
@@ -2075,6 +2085,9 @@ impl StorageBackend {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         dispatch!(
             self,
@@ -2083,7 +2096,10 @@ impl StorageBackend {
             input_tokens,
             output_tokens,
             cache_read_tokens,
-            cache_creation_tokens
+            cache_creation_tokens,
+            actual_cost_usd,
+            estimated_cost_usd,
+            cost_usd
         )
     }
 

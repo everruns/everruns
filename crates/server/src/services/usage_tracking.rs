@@ -52,8 +52,16 @@ impl EventListener for UsageTrackingListener {
         let output_tokens = usage.output_tokens as i64;
         let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
         let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
-        // Authoritative provider-reported cost (e.g. OpenRouter usage.cost), if any.
-        let cost_usd = usage.cost_usd;
+        // Per-generation cost is tracked as two independent figures: the
+        // provider's actual cost (e.g. OpenRouter usage.cost) and a price-table
+        // estimate. Either may be absent.
+        let actual_cost_usd = usage.actual_cost_usd;
+        let estimated_cost_usd = usage.estimated_cost_usd;
+        // Denormalized totals treat an absent figure as zero. The best-effort
+        // total prefers the actual cost and falls back to the estimate.
+        let actual_cost_amount = actual_cost_usd.unwrap_or(0.0);
+        let estimated_cost_amount = estimated_cost_usd.unwrap_or(0.0);
+        let effective_cost_amount = usage.effective_cost_usd().unwrap_or(0.0);
 
         // Get session to determine org_id (unscoped lookup - internal system use)
         let session = match self.db.get_session_unscoped(event.session_id).await {
@@ -85,7 +93,8 @@ impl EventListener for UsageTrackingListener {
                 output_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
-                cost_usd,
+                actual_cost_usd,
+                estimated_cost_usd,
                 data.metadata.duration_ms.map(|d| d as i32),
                 data.metadata
                     .finish_reasons
@@ -108,6 +117,9 @@ impl EventListener for UsageTrackingListener {
                 output_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
+                actual_cost_amount,
+                estimated_cost_amount,
+                effective_cost_amount,
             )
             .await
         {
@@ -124,6 +136,9 @@ impl EventListener for UsageTrackingListener {
                     output_tokens,
                     cache_read_tokens,
                     cache_creation_tokens,
+                    actual_cost_amount,
+                    estimated_cost_amount,
+                    effective_cost_amount,
                 )
                 .await
         {

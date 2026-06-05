@@ -109,12 +109,22 @@ CREATE TABLE llm_generations (
     output_tokens BIGINT NOT NULL DEFAULT 0,
     cache_read_tokens BIGINT NOT NULL DEFAULT 0,
     cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
-    cost_usd DOUBLE PRECISION,  -- Authoritative provider cost (e.g. OpenRouter usage.cost); NULL when not reported
+    actual_cost_usd DOUBLE PRECISION,     -- Provider-reported cost (e.g. OpenRouter usage.cost); NULL when not reported
+    estimated_cost_usd DOUBLE PRECISION,  -- Price-table estimate from the model profile; NULL when no profile cost data
     duration_ms INTEGER,
     finish_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL
 );
 ```
+
+Cost is tracked as two independent figures per generation: `actual_cost_usd`, the
+provider's authoritative inline cost when reported (OpenRouter's `usage.cost`),
+and `estimated_cost_usd`, the price-table estimate computed whenever the model
+profile has cost data. Both are computed when the `llm.generation` event's
+`TokenUsage` is built. Keeping them separate avoids information loss: consumers
+prefer the actual charge while still being able to reconcile estimate-vs-actual
+drift. The budget debit uses the actual cost when present and otherwise falls back
+to its own profile-based estimate.
 
 ### Denormalized Totals
 
@@ -126,6 +136,9 @@ total_input_tokens BIGINT DEFAULT 0
 total_output_tokens BIGINT DEFAULT 0
 total_cache_read_tokens BIGINT DEFAULT 0
 total_cache_creation_tokens BIGINT DEFAULT 0
+total_actual_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0     -- sum of actual_cost_usd
+total_estimated_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0  -- sum of estimated_cost_usd
+total_cost_usd DOUBLE PRECISION NOT NULL DEFAULT 0            -- best-effort: actual where present, else estimated
 
 -- On agents table (same columns)
 ```
@@ -270,10 +283,10 @@ Display usage statistics card in configuration section:
 ## Future Considerations
 
 1. **Daily aggregations**: Pre-computed daily usage for dashboard
-2. **Cost estimation**: Map tokens to estimated costs per provider/model. When a
-   provider reports an authoritative per-request cost inline (e.g. OpenRouter's
-   `usage.cost`), it is captured on `llm_generations.cost_usd` and preferred over
-   the token-based estimate; denormalized cost totals on sessions/agents are a
-   follow-up.
+2. **Cost accounting**: Implemented. Every generation records `actual_cost_usd`
+   (provider-reported, e.g. OpenRouter's `usage.cost`) and `estimated_cost_usd`
+   (price-table estimate) independently, and sessions/agents maintain denormalized
+   `total_actual_cost_usd`, `total_estimated_cost_usd`, and a best-effort
+   `total_cost_usd` (actual where present, else estimated).
 3. **Usage limits**: Configurable limits per agent/session
 4. **Usage alerts**: Notifications when approaching limits
