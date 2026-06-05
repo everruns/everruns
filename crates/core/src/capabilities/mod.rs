@@ -1806,11 +1806,14 @@ pub async fn collect_capabilities_with_configs(
             // Model-adaptive dispatch: a capability may delegate its contributions
             // to a different underlying capability based on the agent's model
             // (e.g. `auto_tool_search` picks hosted vs client-side tool search).
-            // Collect from the resolved capability; for the common non-delegating
-            // case `effective` is just `capability`. The tool_search special case
-            // below therefore keys on `effective.id()` rather than the configured
-            // `cap_id`, so a resolved `auto_tool_search` is treated as whichever
-            // mechanism it became.
+            // Every contribution below is collected from `effective` (system prompt,
+            // tools, hooks, tool definitions, mounts, MCP servers, skills, message
+            // filters); for the common non-delegating case `effective` is just
+            // `capability`. The tool_search special case below therefore keys on
+            // `effective.id()` rather than the configured `cap_id`, so a resolved
+            // `auto_tool_search` is treated as whichever mechanism it became.
+            // Attribution stays on the configured `cap_id`/`capability` so tools
+            // surface under the capability the user actually configured.
             let effective: &dyn Capability =
                 match capability.resolve_for_model(ctx.model.as_deref()) {
                     Some(inner) => inner,
@@ -1889,22 +1892,22 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect mount points
-            mounts.extend(capability.mounts());
+            mounts.extend(effective.mounts());
 
             mcp_servers = merge_scoped_mcp_servers(
                 &mcp_servers,
-                &capability.mcp_servers_with_config(&cap_config.config),
+                &effective.mcp_servers_with_config(&cap_config.config),
             );
 
             // Normalize capability-contributed skills into mount points under
             // `/.agents/skills/{name}/`. Discovery/activation stays with the
             // built-in `skills` capability — see specs/skills-registry.md.
-            for skill in capability.contribute_skills() {
+            for skill in effective.contribute_skills() {
                 mounts.push(skill.to_mount(cap_id));
             }
 
             // Collect message filter provider
-            if let Some(provider) = capability.message_filter_provider() {
+            if let Some(provider) = effective.message_filter_provider() {
                 message_filter_providers.push((provider, cap_config.config.clone()));
             }
 

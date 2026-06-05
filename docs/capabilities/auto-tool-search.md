@@ -14,7 +14,7 @@ sidebar:
 
 Enables deferred tool loading and automatically picks the best mechanism for the agent's model. On agents with many tools, full parameter schemas are not sent upfront — only names and descriptions — and schemas are loaded on demand. This reduces prompt token usage for agents with 15+ tools, regardless of provider.
 
-This is the recommended default for harnesses that may run on different models. It is what the [Generic](/capabilities/) harness uses.
+This is the recommended default for harnesses that may run on different models. It is what the [Generic](/built-ins/harnesses/generic/) harness uses.
 
 ## How It Works
 
