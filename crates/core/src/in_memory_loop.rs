@@ -456,9 +456,13 @@ impl InMemoryAgenticLoopBuilder {
         // Build tool registry - include tools from capabilities
         let mut tool_builder = ToolRegistryBuilder::new();
 
-        // Add tools from capabilities first
+        // Add tools from capabilities first. Resolve against None (no model known
+        // yet) so model-adaptive capabilities contribute the model-agnostic variant.
         for capability in &self.capabilities {
-            for tool in capability.tools() {
+            let effective: &dyn crate::Capability = capability
+                .resolve_for_model(None)
+                .unwrap_or_else(|| capability.as_ref());
+            for tool in effective.tools() {
                 tool_builder = tool_builder.tool_boxed(tool);
             }
         }

@@ -1342,7 +1342,12 @@ pub fn collect_message_filters_only(
             if capability.status() != CapabilityStatus::Available {
                 continue;
             }
-            if let Some(provider) = capability.message_filter_provider() {
+            // Resolve against None: no model is known at message-filter collection
+            // time, so fall back to the model-agnostic variant if present.
+            let effective: &dyn Capability = capability
+                .resolve_for_model(None)
+                .unwrap_or_else(|| capability.as_ref());
+            if let Some(provider) = effective.message_filter_provider() {
                 message_filter_providers.push((provider, cap_config.config.clone()));
             }
         }
@@ -1368,7 +1373,11 @@ pub fn collect_model_view_providers(
             if capability.status() != CapabilityStatus::Available {
                 continue;
             }
-            if let Some(provider) = capability.model_view_provider() {
+            // Resolve against None: no model is known at this collection point.
+            let effective: &dyn Capability = capability
+                .resolve_for_model(None)
+                .unwrap_or_else(|| capability.as_ref());
+            if let Some(provider) = effective.model_view_provider() {
                 model_view_providers.push((provider, cap_config.config.clone()));
             }
         }
