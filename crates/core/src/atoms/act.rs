@@ -1589,10 +1589,10 @@ mod tests {
 
             impl Drop for DropSignal {
                 fn drop(&mut self) {
-                    if let Ok(mut guard) = self.tx.lock() {
-                        if let Some(tx) = guard.take() {
-                            let _ = tx.send(());
-                        }
+                    if let Ok(mut guard) = self.tx.lock()
+                        && let Some(tx) = guard.take()
+                    {
+                        let _ = tx.send(());
                     }
                 }
             }
