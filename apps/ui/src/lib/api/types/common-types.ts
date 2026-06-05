@@ -120,11 +120,16 @@ export interface TokenUsage {
   /** Tokens written to cache (Anthropic-specific) */
   cache_creation_tokens?: number;
   /**
-   * Authoritative cost of this generation in USD, when the provider reports it
-   * inline (e.g. OpenRouter's `usage.cost`). Absent for providers that do not
-   * return a cost.
+   * Actual cost of this generation in USD, as reported by the provider inline
+   * (e.g. OpenRouter's `usage.cost`). Absent for providers that do not report one.
    */
-  cost_usd?: number;
+  actual_cost_usd?: number;
+  /**
+   * Estimated cost of this generation in USD, derived from the model's price-table
+   * profile. Absent when there is no profile cost data for the model. Tracked
+   * independently of `actual_cost_usd` so estimate-vs-actual drift can be reconciled.
+   */
+  estimated_cost_usd?: number;
 }
 
 export interface ContextReportSection {

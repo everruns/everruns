@@ -701,7 +701,7 @@ impl EventListener for BudgetService {
             data.metadata.provider.as_deref(),
             input_tokens,
             output_tokens,
-            usage.cost_usd,
+            usage.actual_cost_usd,
             data.metadata.finish_reasons.as_deref(),
         )
         .await;

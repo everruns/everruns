@@ -48,6 +48,9 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            total_actual_cost_usd: 0.0,
+            total_estimated_cost_usd: 0.0,
+            total_cost_usd: 0.0,
             parent_session_id: None,
             subagent_name: None,
             subagent_task: None,
@@ -249,6 +252,9 @@ impl InMemoryDatabase {
             stats.total_output_tokens += session.total_output_tokens;
             stats.total_cache_read_tokens += session.total_cache_read_tokens;
             stats.total_cache_creation_tokens += session.total_cache_creation_tokens;
+            stats.total_actual_cost_usd += session.total_actual_cost_usd;
+            stats.total_estimated_cost_usd += session.total_estimated_cost_usd;
+            stats.total_cost_usd += session.total_cost_usd;
             stats.first_session_at = Some(
                 stats
                     .first_session_at

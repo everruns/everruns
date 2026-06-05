@@ -22,7 +22,7 @@ impl Database {
             INSERT INTO sessions (org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'started')
             RETURNING id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,
         )
@@ -81,7 +81,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -113,7 +113,7 @@ impl Database {
                 subagent_status = $6
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,
         )
@@ -134,7 +134,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE id = $1
@@ -196,7 +196,7 @@ impl Database {
         let offset_idx = param_idx + 1;
         let select_sql = format!(
             r#"SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions {where_clause}
             ORDER BY created_at DESC
@@ -248,7 +248,7 @@ impl Database {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE parent_session_id = $1
@@ -313,7 +313,7 @@ impl Database {
             WITH matching_sessions AS (
                 SELECT id, status, created_at, updated_at, started_at, finished_at,
                        total_input_tokens, total_output_tokens,
-                       total_cache_read_tokens, total_cache_creation_tokens
+                       total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM sessions
                 WHERE org_id = $1
                   AND ($2::uuid IS NULL OR agent_id = $2)
@@ -337,6 +337,9 @@ impl Database {
                 COALESCE(SUM(total_output_tokens), 0)::bigint AS total_output_tokens,
                 COALESCE(SUM(total_cache_read_tokens), 0)::bigint AS total_cache_read_tokens,
                 COALESCE(SUM(total_cache_creation_tokens), 0)::bigint AS total_cache_creation_tokens,
+                COALESCE(SUM(total_actual_cost_usd), 0)::double precision AS total_actual_cost_usd,
+                COALESCE(SUM(total_estimated_cost_usd), 0)::double precision AS total_estimated_cost_usd,
+                COALESCE(SUM(total_cost_usd), 0)::double precision AS total_cost_usd,
                 MIN(created_at) AS first_session_at,
                 MAX(created_at) AS last_session_at,
                 (SELECT last_execution_at FROM turn_stats) AS last_execution_at
@@ -362,7 +365,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
@@ -388,7 +391,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND tags @> $3
@@ -415,7 +418,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
@@ -443,7 +446,7 @@ impl Database {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4
@@ -467,7 +470,7 @@ impl Database {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT s.id, s.org_id, s.app_id, s.harness_id, s.agent_id, s.agent_version_id, s.agent_config_hash, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
-                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.parent_session_id, s.subagent_name, s.subagent_task, s.subagent_status,
+                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.total_cost_usd, s.parent_session_id, s.subagent_name, s.subagent_task, s.subagent_status,
                    s.blueprint_id, s.blueprint_config
             FROM sessions s
             JOIN apps a ON a.id = s.app_id AND a.org_id = s.org_id
@@ -530,7 +533,7 @@ impl Database {
                 agent_config_hash = COALESCE($17, agent_config_hash)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,
         )

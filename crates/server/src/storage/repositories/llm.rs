@@ -479,7 +479,8 @@ impl Database {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
-        cost_usd: Option<f64>,
+        actual_cost_usd: Option<f64>,
+        estimated_cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
@@ -489,8 +490,8 @@ impl Database {
             INSERT INTO llm_generations (
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-                cost_usd, duration_ms, finish_reason, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                actual_cost_usd, estimated_cost_usd, duration_ms, finish_reason, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
             RETURNING id
             "#,
         )
@@ -504,7 +505,8 @@ impl Database {
         .bind(output_tokens)
         .bind(cache_read_tokens)
         .bind(cache_creation_tokens)
-        .bind(cost_usd)
+        .bind(actual_cost_usd)
+        .bind(estimated_cost_usd)
         .bind(duration_ms)
         .bind(&finish_reason)
         .bind(created_at)
@@ -536,6 +538,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_session_usage(
         &self,
         session_id: Uuid,
@@ -543,6 +546,9 @@ impl Database {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         let row: (i64, uuid::Uuid, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
             r#"
@@ -552,6 +558,9 @@ impl Database {
                 total_output_tokens = total_output_tokens + $3,
                 total_cache_read_tokens = total_cache_read_tokens + $4,
                 total_cache_creation_tokens = total_cache_creation_tokens + $5,
+                total_actual_cost_usd = total_actual_cost_usd + $6,
+                total_estimated_cost_usd = total_estimated_cost_usd + $7,
+                total_cost_usd = total_cost_usd + $8,
                 updated_at = NOW()
             WHERE id = $1
             RETURNING org_id, id, updated_at
@@ -562,6 +571,9 @@ impl Database {
         .bind(output_tokens)
         .bind(cache_read_tokens)
         .bind(cache_creation_tokens)
+        .bind(actual_cost_usd)
+        .bind(estimated_cost_usd)
+        .bind(cost_usd)
         .fetch_one(&self.pool)
         .await?;
 
@@ -591,6 +603,7 @@ impl Database {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_agent_usage(
         &self,
         agent_id: Uuid,
@@ -598,6 +611,9 @@ impl Database {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         sqlx::query(
             r#"
@@ -606,7 +622,10 @@ impl Database {
                 total_input_tokens = total_input_tokens + $2,
                 total_output_tokens = total_output_tokens + $3,
                 total_cache_read_tokens = total_cache_read_tokens + $4,
-                total_cache_creation_tokens = total_cache_creation_tokens + $5
+                total_cache_creation_tokens = total_cache_creation_tokens + $5,
+                total_actual_cost_usd = total_actual_cost_usd + $6,
+                total_estimated_cost_usd = total_estimated_cost_usd + $7,
+                total_cost_usd = total_cost_usd + $8
             WHERE id = $1
             "#,
         )
@@ -615,6 +634,9 @@ impl Database {
         .bind(output_tokens)
         .bind(cache_read_tokens)
         .bind(cache_creation_tokens)
+        .bind(actual_cost_usd)
+        .bind(estimated_cost_usd)
+        .bind(cost_usd)
         .execute(&self.pool)
         .await?;
 

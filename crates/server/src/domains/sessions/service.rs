@@ -1599,22 +1599,30 @@ impl SessionService {
         org_public_id: &str,
         fallback_harness: Option<HarnessId>,
     ) -> Session {
-        // Convert database usage columns to TokenUsage
+        // Convert database usage columns to TokenUsage. Actual and estimated cost
+        // totals are tracked separately; the aggregate carries each so consumers
+        // can prefer actual and reconcile drift.
         let usage = if row.total_input_tokens > 0 || row.total_output_tokens > 0 {
-            Some(TokenUsage::with_cache(
-                row.total_input_tokens as u32,
-                row.total_output_tokens as u32,
-                if row.total_cache_read_tokens > 0 {
-                    Some(row.total_cache_read_tokens as u32)
-                } else {
-                    None
-                },
-                if row.total_cache_creation_tokens > 0 {
-                    Some(row.total_cache_creation_tokens as u32)
-                } else {
-                    None
-                },
-            ))
+            Some(
+                TokenUsage::with_cache(
+                    row.total_input_tokens as u32,
+                    row.total_output_tokens as u32,
+                    if row.total_cache_read_tokens > 0 {
+                        Some(row.total_cache_read_tokens as u32)
+                    } else {
+                        None
+                    },
+                    if row.total_cache_creation_tokens > 0 {
+                        Some(row.total_cache_creation_tokens as u32)
+                    } else {
+                        None
+                    },
+                )
+                .with_cost(
+                    (row.total_actual_cost_usd > 0.0).then_some(row.total_actual_cost_usd),
+                    (row.total_estimated_cost_usd > 0.0).then_some(row.total_estimated_cost_usd),
+                ),
+            )
         } else {
             None
         };

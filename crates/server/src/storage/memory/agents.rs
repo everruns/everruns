@@ -44,6 +44,9 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            total_actual_cost_usd: 0.0,
+            total_estimated_cost_usd: 0.0,
+            total_cost_usd: 0.0,
         };
         self.agents.write().insert(id, row.clone());
         Ok(row)
@@ -119,6 +122,9 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            total_actual_cost_usd: 0.0,
+            total_estimated_cost_usd: 0.0,
+            total_cost_usd: 0.0,
         };
         agents.insert(id, row.clone());
         Ok(Some(row))
@@ -353,6 +359,9 @@ impl InMemoryDatabase {
                 total_output_tokens: 0,
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
+                total_actual_cost_usd: 0.0,
+                total_estimated_cost_usd: 0.0,
+                total_cost_usd: 0.0,
             };
             agents.insert(id, row.clone());
             Ok((row, true))
@@ -417,6 +426,9 @@ impl InMemoryDatabase {
                 total_output_tokens: 0,
                 total_cache_read_tokens: 0,
                 total_cache_creation_tokens: 0,
+                total_actual_cost_usd: 0.0,
+                total_estimated_cost_usd: 0.0,
+                total_cost_usd: 0.0,
             };
             agents.insert(id, row.clone());
             Ok((row, true))

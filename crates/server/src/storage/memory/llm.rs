@@ -576,7 +576,8 @@ impl InMemoryDatabase {
         _output_tokens: i64,
         _cache_read_tokens: i64,
         _cache_creation_tokens: i64,
-        _cost_usd: Option<f64>,
+        _actual_cost_usd: Option<f64>,
+        _estimated_cost_usd: Option<f64>,
         _duration_ms: Option<i32>,
         _finish_reason: Option<String>,
         _created_at: chrono::DateTime<chrono::Utc>,
@@ -586,6 +587,7 @@ impl InMemoryDatabase {
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_session_usage(
         &self,
         session_id: Uuid,
@@ -593,6 +595,9 @@ impl InMemoryDatabase {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         let mut sessions = self.sessions.write();
         if let Some(session) = sessions.get_mut(&session_id) {
@@ -600,12 +605,16 @@ impl InMemoryDatabase {
             session.total_output_tokens += output_tokens;
             session.total_cache_read_tokens += cache_read_tokens;
             session.total_cache_creation_tokens += cache_creation_tokens;
+            session.total_actual_cost_usd += actual_cost_usd;
+            session.total_estimated_cost_usd += estimated_cost_usd;
+            session.total_cost_usd += cost_usd;
             // Update updated_at on every update (mimics DB trigger)
             session.updated_at = Self::now();
         }
         Ok(())
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn increment_agent_usage(
         &self,
         agent_id: Uuid,
@@ -613,6 +622,9 @@ impl InMemoryDatabase {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        actual_cost_usd: f64,
+        estimated_cost_usd: f64,
+        cost_usd: f64,
     ) -> Result<()> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&agent_id) {
@@ -620,6 +632,9 @@ impl InMemoryDatabase {
             agent.total_output_tokens += output_tokens;
             agent.total_cache_read_tokens += cache_read_tokens;
             agent.total_cache_creation_tokens += cache_creation_tokens;
+            agent.total_actual_cost_usd += actual_cost_usd;
+            agent.total_estimated_cost_usd += estimated_cost_usd;
+            agent.total_cost_usd += cost_usd;
         }
         Ok(())
     }

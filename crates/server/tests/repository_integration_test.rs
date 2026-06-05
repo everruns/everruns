@@ -1869,9 +1869,9 @@ async fn test_session_usage_tracking() {
         .await
         .expect("Failed to create session");
 
-    // Increment session usage
+    // Increment session usage (actual, estimated, best-effort cost)
     backend
-        .increment_session_usage(session.id.into(), 100, 50, 0, 0)
+        .increment_session_usage(session.id.into(), 100, 50, 0, 0, 0.012, 0.010, 0.012)
         .await
         .expect("Failed to increment session usage");
 
@@ -1886,7 +1886,7 @@ async fn test_session_usage_tracking() {
 
     // Increment again
     backend
-        .increment_session_usage(session.id.into(), 200, 100, 50, 10)
+        .increment_session_usage(session.id.into(), 200, 100, 50, 10, 0.024, 0.020, 0.024)
         .await
         .expect("Failed to increment session usage");
 
@@ -1899,6 +1899,9 @@ async fn test_session_usage_tracking() {
     assert_eq!(updated.total_output_tokens, 150);
     assert_eq!(updated.total_cache_read_tokens, 50);
     assert_eq!(updated.total_cache_creation_tokens, 10);
+    assert!((updated.total_actual_cost_usd - 0.036).abs() < 1e-9);
+    assert!((updated.total_estimated_cost_usd - 0.030).abs() < 1e-9);
+    assert!((updated.total_cost_usd - 0.036).abs() < 1e-9);
 
     // Cleanup
     backend

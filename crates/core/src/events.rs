@@ -531,13 +531,18 @@ pub struct TokenUsage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_creation_tokens: Option<u32>,
 
-    /// Authoritative cost of this generation in USD, as reported by the
-    /// provider (e.g. OpenRouter's `usage.cost`). `None` for providers that do
-    /// not return a cost; callers fall back to a price-table estimate. This is
-    /// the real, post-routing charge and accounts for provider routing, BYOK
-    /// upstream pricing, and cache discounts.
+    /// Actual cost of this generation in USD, as reported by the provider inline
+    /// (e.g. OpenRouter's `usage.cost`, which reflects real post-routing/BYOK/cache
+    /// pricing). `None` for providers that do not return a cost.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cost_usd: Option<f64>,
+    pub actual_cost_usd: Option<f64>,
+
+    /// Estimated cost of this generation in USD, derived from the model's static
+    /// price-table profile. Computed whenever a profile with cost data exists,
+    /// independently of `actual_cost_usd`, so estimate-vs-actual drift can be
+    /// reconciled. `None` when there is no profile cost data for the model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
 }
 
 impl TokenUsage {
@@ -548,7 +553,8 @@ impl TokenUsage {
             output_tokens,
             cache_read_tokens: None,
             cache_creation_tokens: None,
-            cost_usd: None,
+            actual_cost_usd: None,
+            estimated_cost_usd: None,
         }
     }
 
@@ -564,14 +570,29 @@ impl TokenUsage {
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
-            cost_usd: None,
+            actual_cost_usd: None,
+            estimated_cost_usd: None,
         }
     }
 
-    /// Set the provider-reported cost in USD, returning `self` for chaining.
-    pub fn with_cost_usd(mut self, cost_usd: Option<f64>) -> Self {
-        self.cost_usd = cost_usd;
+    /// Set the actual (provider-reported) and estimated (price-table) USD costs,
+    /// returning `self` for chaining. The two are tracked independently so an
+    /// authoritative charge stays distinguishable from an estimate.
+    pub fn with_cost(
+        mut self,
+        actual_cost_usd: Option<f64>,
+        estimated_cost_usd: Option<f64>,
+    ) -> Self {
+        self.actual_cost_usd = actual_cost_usd;
+        self.estimated_cost_usd = estimated_cost_usd;
         self
+    }
+
+    /// Best-effort cost of this generation in USD: the actual provider-reported
+    /// cost when present, otherwise the price-table estimate. `None` when neither
+    /// is available. Actual takes priority.
+    pub fn effective_cost_usd(&self) -> Option<f64> {
+        self.actual_cost_usd.or(self.estimated_cost_usd)
     }
 
     /// Get total tokens (input + output)
@@ -589,8 +610,11 @@ impl TokenUsage {
         if let Some(cache) = other.cache_creation_tokens {
             *self.cache_creation_tokens.get_or_insert(0) += cache;
         }
-        if let Some(cost) = other.cost_usd {
-            *self.cost_usd.get_or_insert(0.0) += cost;
+        if let Some(cost) = other.actual_cost_usd {
+            *self.actual_cost_usd.get_or_insert(0.0) += cost;
+        }
+        if let Some(cost) = other.estimated_cost_usd {
+            *self.estimated_cost_usd.get_or_insert(0.0) += cost;
         }
     }
 }
@@ -2934,7 +2958,8 @@ mod tests {
                 output_tokens: 5,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
-                cost_usd: None,
+                actual_cost_usd: None,
+                estimated_cost_usd: None,
             }),
             Some(100),
             Some(25), // time_to_first_token_ms
@@ -2969,7 +2994,8 @@ mod tests {
                 output_tokens: 3,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
-                cost_usd: None,
+                actual_cost_usd: None,
+                estimated_cost_usd: None,
             }),
             Some(50),
             Some(25), // time_to_first_token_ms
@@ -3337,7 +3363,8 @@ mod tests {
                 output_tokens: 5,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
-                cost_usd: None,
+                actual_cost_usd: None,
+                estimated_cost_usd: None,
             }),
             Some(500), // duration_ms
             Some(120), // time_to_first_token_ms

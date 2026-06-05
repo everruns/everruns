@@ -303,18 +303,27 @@ function MetadataSection({ metadata }: { metadata: LlmGenerationMetadata }) {
 
 function UsageDisplay({ usage }: { usage: TokenUsage }) {
   const total = usage.input_tokens + usage.output_tokens;
+  // Best-effort cost: prefer the provider's actual cost, fall back to the
+  // price-table estimate. Mark estimate-only values as "est.".
+  const isEstimated = usage.actual_cost_usd === undefined;
+  const effectiveCostUsd = usage.actual_cost_usd ?? usage.estimated_cost_usd;
 
   return (
     <div className="mt-3 p-3 bg-muted/50">
       <div className="flex items-center gap-2 mb-2">
         <Zap className="w-4 h-4 text-yellow-500" />
         <span className="text-sm font-medium">Token Usage</span>
-        {usage.cost_usd !== undefined && (
-          <Badge variant="outline" className="ml-auto">
-            {formatCostUsd(usage.cost_usd)}
+        {effectiveCostUsd !== undefined && (
+          <Badge
+            variant="outline"
+            className="ml-auto"
+            title={isEstimated ? "Price-table estimate" : "Provider-reported cost"}
+          >
+            {formatCostUsd(effectiveCostUsd)}
+            {isEstimated ? " est." : ""}
           </Badge>
         )}
-        <Badge variant="outline" className={usage.cost_usd !== undefined ? "" : "ml-auto"}>
+        <Badge variant="outline" className={effectiveCostUsd !== undefined ? "" : "ml-auto"}>
           {formatTokens(total)} total
         </Badge>
       </div>

@@ -184,6 +184,26 @@ pub fn get_model_profile(
     }
 }
 
+/// Estimate the USD cost of a generation from the model's static price-table
+/// profile. Returns `None` when there is no profile or no cost data for the
+/// model — callers then have no estimate to record and fall back accordingly.
+///
+/// This is the price-table fallback used when a provider does not report an
+/// authoritative cost inline (e.g. OpenRouter's `usage.cost`). Cost figures in
+/// profiles are per million tokens. Cache tokens are not discounted here,
+/// matching existing budget metering behavior.
+pub fn estimate_cost_usd(
+    provider_type: &LlmProviderType,
+    model_id: &str,
+    input_tokens: u32,
+    output_tokens: u32,
+) -> Option<f64> {
+    let cost = get_model_profile(provider_type, model_id)?.cost?;
+    let input_cost = (input_tokens as f64 / 1_000_000.0) * cost.input;
+    let output_cost = (output_tokens as f64 / 1_000_000.0) * cost.output;
+    Some(input_cost + output_cost)
+}
+
 fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
     // Normalize model ID by extracting base name
     let base_id = normalize_model_id(model_id);
@@ -3757,5 +3777,19 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing profile for {id}"));
             assert_eq!(profile.name, name, "wrong profile for {id}");
         }
+    }
+
+    #[test]
+    fn test_estimate_cost_usd_known_model() {
+        // gpt-4o profile: input $2.50/M, output $10.00/M.
+        let est = estimate_cost_usd(&LlmProviderType::Openai, "gpt-4o", 1_000_000, 500_000)
+            .expect("known model should yield an estimate");
+        // 1M input * 2.50 + 0.5M output * 10.00 = 2.50 + 5.00 = 7.50
+        assert!((est - 7.50).abs() < 1e-9, "got {est}");
+    }
+
+    #[test]
+    fn test_estimate_cost_usd_unknown_model_is_none() {
+        assert!(estimate_cost_usd(&LlmProviderType::Openai, "no-such-model", 100, 50).is_none());
     }
 }

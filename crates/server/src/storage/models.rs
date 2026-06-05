@@ -365,6 +365,16 @@ pub struct AgentRow {
     /// Cumulative cache creation tokens across all sessions
     #[sqlx(default)]
     pub total_cache_creation_tokens: i64,
+    /// Cumulative provider-reported actual cost in USD across all sessions
+    #[sqlx(default)]
+    pub total_actual_cost_usd: f64,
+    /// Cumulative price-table estimated cost in USD across all sessions
+    #[sqlx(default)]
+    pub total_estimated_cost_usd: f64,
+    /// Cumulative best-effort cost in USD across all sessions (actual where
+    /// present, else estimated)
+    #[sqlx(default)]
+    pub total_cost_usd: f64,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -606,6 +616,16 @@ pub struct SessionRow {
     /// Cumulative cache creation tokens for all LLM calls in this session
     #[sqlx(default)]
     pub total_cache_creation_tokens: i64,
+    /// Cumulative provider-reported actual cost in USD for this session
+    #[sqlx(default)]
+    pub total_actual_cost_usd: f64,
+    /// Cumulative price-table estimated cost in USD for this session
+    #[sqlx(default)]
+    pub total_estimated_cost_usd: f64,
+    /// Cumulative best-effort cost in USD for this session (actual where present,
+    /// else estimated)
+    #[sqlx(default)]
+    pub total_cost_usd: f64,
     // -- Subagent fields --
     #[sqlx(default)]
     pub parent_session_id: Option<SessionId>,
@@ -635,6 +655,9 @@ pub struct SessionAggregateStatsRow {
     pub total_output_tokens: i64,
     pub total_cache_read_tokens: i64,
     pub total_cache_creation_tokens: i64,
+    pub total_actual_cost_usd: f64,
+    pub total_estimated_cost_usd: f64,
+    pub total_cost_usd: f64,
     pub first_session_at: Option<DateTime<Utc>>,
     pub last_session_at: Option<DateTime<Utc>>,
     pub last_execution_at: Option<DateTime<Utc>>,
