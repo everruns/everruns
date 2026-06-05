@@ -18,7 +18,7 @@ import {
   ToggleRight,
   Trash2,
 } from "lucide-react";
-import { ProviderIcon } from "@/components/providers/provider-icon";
+import { ModelIcon } from "@/components/models/model-icon";
 import { EditModelDialog } from "@/components/models/edit-model-dialog";
 import { formatTokens } from "@/lib/formatting";
 import type { LlmModelWithProvider, LlmProvider, UpdateLlmModelRequest } from "@/lib/api/types";
@@ -81,8 +81,8 @@ export function ModelRow({
     <div className="border overflow-hidden">
       <div className="flex items-center justify-between p-3">
         <div className="flex items-center gap-3">
-          <ProviderIcon
-            providerType={model.provider_type}
+          <ModelIcon
+            model={model}
             size="sm"
             showBackground={false}
             className="text-muted-foreground"

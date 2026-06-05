@@ -1,7 +1,7 @@
 "use client";
 
 import { Star } from "lucide-react";
-import { ProviderIcon } from "@/components/providers/provider-icon";
+import { ModelIcon } from "@/components/models/model-icon";
 import {
   Select,
   SelectContent,
@@ -80,11 +80,7 @@ export function ModelPicker({
             if (!selectedModel) return placeholder;
             return (
               <div className="flex items-center gap-2">
-                <ProviderIcon
-                  providerType={selectedModel.provider_type}
-                  size="sm"
-                  showBackground={false}
-                />
+                <ModelIcon model={selectedModel} size="sm" showBackground={false} />
                 <span>
                   {selectedModel.display_name} ({selectedModel.provider_name})
                 </span>
@@ -132,7 +128,7 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
   return (
     <SelectItem value={model.id}>
       <div className="flex items-center gap-2 w-full">
-        <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
+        <ModelIcon model={model} size="sm" showBackground={false} />
         <span className="flex-1">
           {model.display_name} ({model.provider_name})
         </span>
