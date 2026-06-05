@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tracing::error;
 
 use crate::background::{
@@ -26,9 +26,43 @@ use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
 use crate::traits::ToolContext;
+use crate::typed_id::SessionId;
+use tokio::sync::Semaphore;
 
 use crate::error::Result;
 use crate::traits::ToolExecutor;
+
+/// Maximum active immediate background runs allowed for a single session.
+///
+/// This mirrors the scheduled monitor cap so model-visible background execution
+/// cannot be used to queue unbounded active worker jobs for one session.
+pub const MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION: usize = 5;
+
+/// Maximum active immediate background runs allowed in this worker process.
+///
+/// The per-session semaphore limits tenant/session abuse; this process-wide
+/// semaphore keeps concurrent sessions from exhausting worker-local resources.
+const MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER: usize = 64;
+static ACTIVE_BACKGROUND_RUNS_PER_WORKER: Semaphore =
+    Semaphore::const_new(MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER);
+
+/// Per-session semaphores that enforce `MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION`.
+///
+/// Using a semaphore rather than a DB count makes the check atomic: concurrent
+/// `spawn_background` calls for the same session cannot both slip through the
+/// guard (check-then-act race) because `try_acquire` is inherently atomic.
+static SESSION_BACKGROUND_PERMITS: OnceLock<std::sync::Mutex<HashMap<SessionId, Arc<Semaphore>>>> =
+    OnceLock::new();
+
+fn session_background_semaphore(session_id: SessionId) -> Arc<Semaphore> {
+    SESSION_BACKGROUND_PERMITS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .entry(session_id)
+        .or_insert_with(|| Arc::new(Semaphore::new(MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION)))
+        .clone()
+}
 
 // ============================================================================
 // Tool Execution Result - Error Handling Contract
@@ -1091,6 +1125,26 @@ impl Tool for SpawnBackgroundTool {
             );
         }
 
+        let background_run_permit = match ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire() {
+            Ok(permit) => permit,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Worker is already running the maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER} active background runs. Try again after an existing run finishes."
+                ));
+            }
+        };
+
+        let session_run_permit = match session_background_semaphore(context.session_id)
+            .try_acquire_owned()
+        {
+            Ok(permit) => permit,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION} active background runs per session. Wait for an existing run to finish before starting another."
+                ));
+            }
+        };
+
         let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
         let artifact_dir = format!("/.background/{run_id}");
         let log_path = format!("{artifact_dir}/output.log");
@@ -1135,6 +1189,8 @@ impl Tool for SpawnBackgroundTool {
         let tool_name_for_task = tool_name.to_string();
 
         tokio::spawn(async move {
+            let _background_run_permit = background_run_permit;
+            let _session_run_permit = session_run_permit;
             let _ = sink.status("Starting").await;
             let outcome = match tool_for_task.as_background_executable() {
                 Some(background_tool) => {
@@ -1540,7 +1596,10 @@ mod tests {
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
     use async_trait::async_trait;
-    use std::sync::Mutex;
+    use std::sync::{
+        Arc as StdArc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[derive(Default)]
     struct TestBackgroundTool;
@@ -1724,6 +1783,66 @@ mod tests {
         }
     }
 
+    struct BlockingBackgroundTool {
+        release: StdArc<AtomicBool>,
+    }
+
+    #[async_trait]
+    impl BackgroundExecutableTool for BlockingBackgroundTool {
+        async fn execute_background(
+            &self,
+            _arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            sink.status("Blocking until released")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            while !self.release.load(Ordering::SeqCst) {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            Ok(BackgroundOutcome {
+                summary: "released".to_string(),
+                result: json!({"ok": true}),
+                raw_output: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl Tool for BlockingBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background_blocking"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background Blocking")
+        }
+
+        fn description(&self) -> &str {
+            "background test tool that waits for test release"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {}
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
     #[derive(Default)]
     struct TestSessionResourceRegistry {
         entries: Mutex<HashMap<String, SessionResourceEntry>>,
@@ -1777,10 +1896,23 @@ mod tests {
 
         async fn list(
             &self,
-            _session_id: SessionId,
-            _filter: Option<&SessionResourceFilter>,
+            session_id: SessionId,
+            filter: Option<&SessionResourceFilter>,
         ) -> crate::Result<Vec<SessionResourceEntry>> {
-            Ok(self.entries.lock().unwrap().values().cloned().collect())
+            Ok(self
+                .entries
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|entry| entry.session_id == session_id)
+                .filter(|entry| {
+                    filter.is_none_or(|filter| {
+                        filter.kind.as_ref().is_none_or(|kind| &entry.kind == kind)
+                            && filter.status.is_none_or(|status| entry.status == status)
+                    })
+                })
+                .cloned()
+                .collect())
         }
 
         async fn deregister(
@@ -2739,6 +2871,99 @@ mod tests {
                 .expect("valid json");
         assert_eq!(result_json["status"], "failed");
         assert_eq!(result_json["error"], "boom");
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_rejects_when_session_active_run_limit_reached() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let release = StdArc::new(AtomicBool::new(false));
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(BlockingBackgroundTool {
+                release: release.clone(),
+            })
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store, storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry.clone());
+
+        let mut run_ids = Vec::new();
+        for _ in 0..MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+            let result = SpawnBackgroundTool
+                .execute_with_context(
+                    json!({
+                        "tool": "test_background_blocking",
+                        "args": {}
+                    }),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(value) = result else {
+                panic!("background run below the session limit should start");
+            };
+            run_ids.push(value["run_id"].as_str().unwrap().to_string());
+        }
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let active_runs = resource_registry
+                    .list(
+                        session_id,
+                        Some(&SessionResourceFilter {
+                            kind: Some("background_run".to_string()),
+                            status: Some(SessionResourceStatus::Active),
+                        }),
+                    )
+                    .await
+                    .unwrap();
+                if active_runs.len() == MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("background runs should become active");
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background_blocking",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            release.store(true, Ordering::SeqCst);
+            panic!("spawn_background should reject once the session limit is reached");
+        };
+        assert!(message.contains("active background runs per session"));
+
+        release.store(true, Ordering::SeqCst);
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            for run_id in run_ids {
+                loop {
+                    let entry = resource_registry
+                        .get(session_id, &run_id)
+                        .await
+                        .unwrap()
+                        .expect("resource exists");
+                    if entry.status == SessionResourceStatus::Completed {
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+                }
+            }
+        })
+        .await
+        .expect("blocking background runs should complete after release");
     }
 
     #[tokio::test]
