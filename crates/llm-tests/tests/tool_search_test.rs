@@ -17,9 +17,9 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
-    CurrentTimeCapability, FileSystemCapability, GenericToolSearchCapability,
-    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability, TestMathCapability,
-    TestWeatherCapability,
+    AutoToolSearchCapability, CurrentTimeCapability, FileSystemCapability,
+    GenericToolSearchCapability, OpenAiToolSearchCapability, SessionCapability,
+    StatelessTodoListCapability, TestMathCapability, TestWeatherCapability,
 };
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 
@@ -96,6 +96,75 @@ async fn test_gpt54_tool_search_low_threshold() {
     assert!(
         result.tool_calls_count > 0,
         "Model should call add tool even with deferred schemas"
+    );
+}
+
+/// Tests the model-adaptive `auto_tool_search` capability end-to-end on GPT-5.4.
+///
+/// On a native model, `auto_tool_search` must resolve (at capability-collection
+/// time, via `Capability::resolve_for_model`) to the hosted OpenAI mechanism —
+/// not the client-side fallback. This exercises the real hosted round-trip
+/// (deferred load → server-side search → tool call) through `auto_tool_search`,
+/// confirming the dispatch picks hosted when the reason path knows the model.
+///
+/// Note: the hosted path adds no client-side `tool_search` tool, so this works
+/// with the in-memory loop's executor registry (which is built from
+/// `capability.tools()`); the deferred underlying tools come from the other
+/// capabilities and execute normally. If dispatch wrongly fell back to the
+/// generic mechanism here, the model would emit a `tool_search` call that the
+/// executor cannot satisfy and the turn would fail — so a passing turn is
+/// positive evidence the hosted path was selected.
+#[tokio::test]
+async fn test_gpt54_auto_tool_search_resolves_to_hosted() {
+    if OPENAI_GPT54.model().is_none() {
+        eprintln!("Skipping: {} not set", OPENAI_GPT54.label());
+        return;
+    }
+
+    // GPT-5.4 occasionally answers "what time is it" from priors without calling
+    // a tool, so retry a few times and require that at least one turn drives a
+    // real hosted round-trip. The hosted-vs-client-side resolution itself is
+    // deterministic (a pure function of the model) and covered by unit/collection
+    // tests; this guards only the live model's tool-calling, not the dispatch.
+    const MAX_ATTEMPTS: usize = 5;
+    let mut made_tool_call = false;
+
+    for attempt in 1..=MAX_ATTEMPTS {
+        let model = OPENAI_GPT54.model().expect("checked above");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("Auto Tool Search Agent")
+            .system_prompt(
+                "You are a helpful assistant. When asked about time, use the get_current_time tool.",
+            )
+            .model(model)
+            .driver_registry(all_providers_registry())
+            // Multiple capabilities to exceed the 15-tool threshold (16 total).
+            .capability(CurrentTimeCapability) // 1 tool
+            .capability(TestMathCapability) // 4 tools
+            .capability(TestWeatherCapability) // 2 tools
+            .capability(FileSystemCapability) // 6 tools
+            .capability(SessionCapability) // 2 tools
+            .capability(StatelessTodoListCapability) // 1 tool
+            // Model-adaptive: on GPT-5.4 this must resolve to the hosted mechanism.
+            .capability(AutoToolSearchCapability::new())
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap();
+
+        let result = runner.run_turn("What time is it right now?").await.unwrap();
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+        if result.tool_calls_count > 0 {
+            made_tool_call = true;
+            break;
+        }
+        eprintln!("attempt {attempt}/{MAX_ATTEMPTS}: model answered without a tool call; retrying");
+    }
+
+    assert!(
+        made_tool_call,
+        "auto_tool_search → hosted deferred loading should drive a get_current_time \
+         call within {MAX_ATTEMPTS} attempts"
     );
 }
 
