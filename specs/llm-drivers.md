@@ -281,6 +281,23 @@ The OpenAI crate provides two driver implementations:
 
 Both drivers share the same base URL handling and can work with OpenAI-compatible endpoints.
 
+### Model Discovery and Capability Profiles
+
+`list_models` runs only for hosts known to expose a usable `/models` endpoint
+(`api.openai.com`, Azure OpenAI, and `openrouter.ai`); other custom base URLs
+(self-hosted proxies) return `None` and are not synced.
+
+OpenAI's `/models` response is bare (`id`, `created`, `owned_by`) and yields no
+profile. OpenRouter returns richer metadata — notably a `supported_parameters`
+array — which the driver parses into an `LlmModelProfile`: `reasoning` (or the
+legacy `reasoning_effort` alias) maps to `profile.reasoning` plus a low/medium/high
+`reasoning_effort` config, and `tools`/`response_format`/modalities map to the
+corresponding capability flags. This matters because most OpenRouter models
+(e.g. NVIDIA Nemotron) have no hardcoded profile; without discovery the UI cannot
+tell they support reasoning and hides the effort selector. The discovered profile
+is persisted via the model-sync pipeline and surfaces on existing rows on the next
+sync. Cost is left to hardcoded profiles.
+
 ### Stateful Continuation Invariant
 
 When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input` — that double-counts context and inflates prompt-cache keys.

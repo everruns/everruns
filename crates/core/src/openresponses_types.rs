@@ -993,6 +993,24 @@ pub enum StreamingEvent {
         text: String,
     },
 
+    // Plaintext reasoning deltas as emitted by OpenAI-compatible gateways
+    // (e.g. OpenRouter) for open reasoning models like NVIDIA Nemotron. These
+    // carry the model's chain-of-thought directly (no encrypted artifact), so
+    // they map to streaming thinking. Fields beyond `delta` are optional to stay
+    // tolerant of gateway-to-gateway shape differences.
+    #[serde(rename = "response.reasoning_text.delta")]
+    ReasoningTextDelta {
+        #[serde(default)]
+        sequence_number: u32,
+        #[serde(default)]
+        item_id: String,
+        #[serde(default)]
+        output_index: u32,
+        #[serde(default)]
+        content_index: u32,
+        delta: String,
+    },
+
     // Reasoning summary events
     #[serde(rename = "response.reasoning_summary_part.added")]
     ReasoningSummaryPartAdded {
@@ -1221,6 +1239,17 @@ mod tests {
                 assert_eq!(call_id, "call_123");
             }
             other => panic!("expected function_call, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_reasoning_text_delta_deserialization() {
+        // Shape emitted by OpenRouter for open reasoning models (e.g. Nemotron).
+        let json = r#"{"type":"response.reasoning_text.delta","output_index":0,"item_id":"rs_tmp_5jrlmgo85gg","content_index":0,"delta":"User asks","sequence_number":3}"#;
+        let event: StreamingEvent = serde_json::from_str(json).unwrap();
+        match event {
+            StreamingEvent::ReasoningTextDelta { delta, .. } => assert_eq!(delta, "User asks"),
+            _ => panic!("Wrong event type"),
         }
     }
 

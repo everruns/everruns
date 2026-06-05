@@ -23,7 +23,7 @@ use everruns_core::llm_driver_registry::{
 use everruns_core::openai_protocol::is_azure_openai_api_url;
 use everruns_core::{CompactRequest, CompactResponse};
 
-use crate::types::OpenAiModelsResponse;
+use crate::types::{OpenAiModelsResponse, OpenRouterModelsResponse};
 
 const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
 
@@ -144,7 +144,7 @@ impl LlmDriver for OpenAILlmDriver {
         }
 
         let models_url = models_url_for_api_url(self.api_url());
-        list_openai_models(self.inner.client(), self.inner.api_key(), &models_url).await
+        list_models_for_url(self.inner.client(), self.inner.api_key(), &models_url).await
     }
 
     fn supports_compact(&self) -> bool {
@@ -253,7 +253,7 @@ impl LlmDriver for OpenAICompletionsLlmDriver {
         }
 
         let models_url = models_url_for_api_url(self.api_url());
-        list_openai_models(self.inner.client(), self.inner.api_key(), &models_url).await
+        list_models_for_url(self.inner.client(), self.inner.api_key(), &models_url).await
     }
 }
 
@@ -270,6 +270,70 @@ impl std::fmt::Debug for OpenAICompletionsLlmDriver {
 // ============================================================================
 // Shared Utilities
 // ============================================================================
+
+/// Fetch and filter models for a `/models` URL, dispatching on the provider host.
+///
+/// OpenRouter returns much richer metadata than OpenAI (a `supported_parameters`
+/// array), so we parse it separately to derive capability profiles — notably
+/// `reasoning` support, which gates the UI's effort selector.
+async fn list_models_for_url(
+    client: &reqwest::Client,
+    api_key: &str,
+    models_url: &str,
+) -> Result<Option<Vec<DiscoveredModel>>> {
+    if is_openrouter_api_url(models_url) {
+        list_openrouter_models(client, api_key, models_url).await
+    } else {
+        list_openai_models(client, api_key, models_url).await
+    }
+}
+
+/// Fetch and filter OpenRouter models, building capability profiles from the
+/// `supported_parameters` metadata OpenRouter advertises.
+async fn list_openrouter_models(
+    client: &reqwest::Client,
+    api_key: &str,
+    models_url: &str,
+) -> Result<Option<Vec<DiscoveredModel>>> {
+    let response = apply_models_auth(client.get(models_url), models_url, api_key)
+        .send()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(AgentLoopError::llm(format!(
+            "Models API returned {}: {}",
+            status, body
+        )));
+    }
+
+    let models_response: OpenRouterModelsResponse = response
+        .json()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
+
+    let discovered: Vec<DiscoveredModel> = models_response
+        .data
+        .into_iter()
+        .filter(|m| m.is_chat_model())
+        .map(|m| {
+            let profile = m.to_discovered_profile();
+            DiscoveredModel {
+                created_at: m
+                    .created
+                    .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
+                display_name: m.name.clone(),
+                owned_by: m.id.split('/').next().map(str::to_owned),
+                model_id: m.id,
+                discovered_profile: Some(profile),
+            }
+        })
+        .collect();
+
+    Ok(Some(discovered))
+}
 
 /// Fetch and filter OpenAI models (shared between both drivers)
 async fn list_openai_models(
@@ -342,14 +406,24 @@ fn models_url_for_api_url(api_url: &str) -> String {
 }
 
 fn supports_model_listing(api_url: &str) -> bool {
-    is_openai_api_url(api_url) || is_azure_openai_api_url(api_url)
+    is_openai_api_url(api_url) || is_azure_openai_api_url(api_url) || is_openrouter_api_url(api_url)
 }
 
 fn is_openai_api_url(api_url: &str) -> bool {
+    url_host_eq(api_url, "api.openai.com")
+}
+
+/// OpenRouter exposes an OpenAI-compatible `/models` endpoint with richer
+/// metadata; recognize its host so discovery (and capability profiling) runs.
+fn is_openrouter_api_url(api_url: &str) -> bool {
+    url_host_eq(api_url, "openrouter.ai")
+}
+
+fn url_host_eq(api_url: &str, host: &str) -> bool {
     Url::parse(api_url)
         .ok()
         .and_then(|url| url.host_str().map(str::to_owned))
-        .is_some_and(|host| host.eq_ignore_ascii_case("api.openai.com"))
+        .is_some_and(|h| h.eq_ignore_ascii_case(host))
 }
 
 fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> RequestBuilder {
@@ -410,7 +484,9 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_openai_api_url, supports_model_listing};
+    use super::{
+        is_openai_api_url, is_openrouter_api_url, models_url_for_api_url, supports_model_listing,
+    };
 
     #[test]
     fn supports_model_listing_for_openai_host_with_port() {
@@ -422,5 +498,26 @@ mod tests {
     #[test]
     fn rejects_non_openai_hosts_for_model_listing() {
         assert!(!is_openai_api_url("https://example.com/v1/responses"));
+    }
+
+    #[test]
+    fn supports_model_listing_for_openrouter() {
+        // OpenRouter is reached via the Open Responses driver with a custom base
+        // URL; discovery must run so capability profiles (reasoning) are derived.
+        assert!(is_openrouter_api_url(
+            "https://openrouter.ai/api/v1/responses"
+        ));
+        assert!(supports_model_listing(
+            "https://openrouter.ai/api/v1/responses"
+        ));
+        assert!(!is_openrouter_api_url("https://example.com/v1/responses"));
+    }
+
+    #[test]
+    fn openrouter_models_url_is_derived_from_responses_url() {
+        assert_eq!(
+            models_url_for_api_url("https://openrouter.ai/api/v1/responses"),
+            "https://openrouter.ai/api/v1/models"
+        );
     }
 }
