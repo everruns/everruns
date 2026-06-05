@@ -26,6 +26,7 @@ use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, Result};
@@ -643,8 +644,37 @@ fn finalize_input_for_request(
     if previous_response_id.is_some() {
         compute_delta_input_items(input_items)
     } else {
-        input_items
+        drop_locally_orphaned_function_call_outputs(input_items)
     }
+}
+
+fn drop_locally_orphaned_function_call_outputs(
+    input_items: Vec<ResponsesInputItem>,
+) -> Vec<ResponsesInputItem> {
+    let visible_call_ids: HashSet<String> = input_items
+        .iter()
+        .filter_map(|item| match item {
+            ResponsesInputItem::FunctionCall { call_id, .. } => Some(call_id.clone()),
+            _ => None,
+        })
+        .collect();
+
+    if visible_call_ids.is_empty() {
+        return input_items
+            .into_iter()
+            .filter(|item| !matches!(item, ResponsesInputItem::FunctionCallOutput { .. }))
+            .collect();
+    }
+
+    input_items
+        .into_iter()
+        .filter(|item| match item {
+            ResponsesInputItem::FunctionCallOutput { call_id, .. } => {
+                visible_call_ids.contains(call_id.as_str())
+            }
+            _ => true,
+        })
+        .collect()
 }
 
 /// Whether the endpoint at `api_url` persists responses server-side and honors
@@ -2614,6 +2644,53 @@ mod tests {
             original_len,
             "stateless mode keeps the full transcript so the model has context"
         );
+    }
+
+    #[test]
+    fn finalize_input_drops_locally_orphaned_tool_output_without_previous_response_id() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("fresh".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_trimmed".to_string(),
+                output: "result".to_string(),
+            },
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 1);
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+    }
+
+    #[test]
+    fn finalize_input_keeps_tool_output_with_previous_response_id_even_without_local_call() {
+        let items = vec![
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_server_side".to_string(),
+                output: "stateful result".to_string(),
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow-up".to_string()),
+                phase: None,
+            },
+        ];
+
+        let out = finalize_input_for_request(items, &Some("resp_prev_42".to_string()));
+
+        assert_eq!(out.len(), 2);
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_server_side");
     }
 
     #[test]

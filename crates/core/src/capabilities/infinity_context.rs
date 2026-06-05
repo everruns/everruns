@@ -126,13 +126,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
             serde_json::from_value(config.clone()).unwrap_or_default();
         let existing_notice_count = take_existing_excluded_notice(messages);
         let trimmed_count = trim_messages_to_token_budget(messages, &config);
-        // EVE-519: drop tool-result messages whose matching tool-call was trimmed away.
-        // OpenAI Responses API rejects payloads with a function_call_output whose
-        // function_call is absent from both the request and the server-side chain.
-        let orphaned_count = drop_orphaned_tool_results(messages);
-        let total_excluded_count = existing_notice_count
-            .saturating_add(trimmed_count)
-            .saturating_add(orphaned_count);
+        let total_excluded_count = existing_notice_count.saturating_add(trimmed_count);
         if total_excluded_count > 0 {
             messages.insert(
                 0,
@@ -238,36 +232,6 @@ fn parse_excluded_notice_count(message: &Message) -> Option<usize> {
         return None;
     }
     count.parse().ok()
-}
-
-/// Drop ToolResult messages whose tool_call_id has no matching ToolCall in the visible window.
-///
-/// History trimming can leave a tool-result message in the context window after its
-/// corresponding assistant tool-call message has been trimmed away. Sending such an
-/// orphaned tool result to OpenAI Responses API causes a 400 "No tool call found" error.
-fn drop_orphaned_tool_results(messages: &mut Vec<Message>) -> usize {
-    use std::collections::HashSet;
-
-    if !messages.iter().any(|m| m.role == MessageRole::ToolResult) {
-        return 0;
-    }
-
-    let visible_call_ids: HashSet<String> = messages
-        .iter()
-        .flat_map(|m| m.tool_calls())
-        .map(|tc| tc.id.clone())
-        .collect();
-
-    let before = messages.len();
-    messages.retain(|m| {
-        if m.role == MessageRole::ToolResult {
-            return m
-                .tool_call_id()
-                .is_none_or(|id| visible_call_ids.contains(id));
-        }
-        true
-    });
-    before - messages.len()
 }
 
 fn trim_messages_to_token_budget(
@@ -978,13 +942,15 @@ mod tests {
     }
 
     #[test]
-    fn trim_must_not_keep_orphaned_tool_result() {
+    fn trim_preserves_locally_unmatched_tool_result_for_stateful_responses() {
         use crate::tool_types::ToolCall;
 
         let provider = InfinityContextFilterProvider;
         // min_recent_messages=3 keeps the last 3 messages. With a 1-token budget the
-        // two older messages are dropped, but one of the kept messages is a tool result
-        // whose matching tool call was dropped — an orphan that causes OpenAI 400s.
+        // two older messages are dropped, including the assistant tool call. The
+        // OpenAI Responses path may still have that call in previous_response_id
+        // state, so InfinityContext must not drop the tool output before provider
+        // serialization decides whether stateful continuation is active.
         let mut messages = vec![
             Message::user("old question"),
             Message::assistant_with_tools(
@@ -1007,8 +973,8 @@ mod tests {
         );
 
         assert!(
-            !messages.iter().any(|m| m.role == MessageRole::ToolResult),
-            "orphaned tool result must be dropped when its tool call is not in the visible window"
+            messages.iter().any(|m| m.role == MessageRole::ToolResult),
+            "locally unmatched tool result must be preserved until provider serialization"
         );
     }
 

@@ -227,6 +227,42 @@ impl OpenAIProtocolLlmDriver {
     }
 }
 
+/// Drop Tool-role messages whose tool_call_id has no matching assistant tool call in the
+/// visible window. Chat Completions rejects payloads where a `tool`-role message references
+/// a call that is absent from the conversation.
+fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
+    use std::collections::HashSet;
+
+    let visible_call_ids: HashSet<&str> = messages
+        .iter()
+        .filter(|m| m.role == LlmMessageRole::Assistant)
+        .flat_map(|m| m.tool_calls.iter().flatten())
+        .map(|tc| tc.id.as_str())
+        .collect();
+
+    if visible_call_ids.is_empty() {
+        return messages
+            .iter()
+            .filter(|m| m.role != LlmMessageRole::Tool)
+            .cloned()
+            .collect();
+    }
+
+    messages
+        .iter()
+        .filter(|m| {
+            if m.role == LlmMessageRole::Tool {
+                return m
+                    .tool_call_id
+                    .as_deref()
+                    .is_none_or(|id| visible_call_ids.contains(id));
+            }
+            true
+        })
+        .cloned()
+        .collect()
+}
+
 #[async_trait]
 impl LlmDriver for OpenAIProtocolLlmDriver {
     async fn chat_completion_stream(
@@ -237,6 +273,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         // Note: OTel instrumentation is handled via event listeners.
         // ReasonAtom emits llm.generation events, and OtelEventListener
         // creates gen-ai spans from those events.
+        let messages = drop_orphaned_tool_messages(&messages);
         let openai_messages: Vec<OpenAiMessage> =
             messages.iter().map(Self::convert_message).collect();
 
@@ -1401,5 +1438,59 @@ mod tests {
         }];
         let finalized = finalize_tool_calls(calls);
         assert_eq!(finalized[0].arguments, json!({"path": "src/main.rs"}));
+    }
+
+    #[test]
+    fn drop_orphaned_tool_messages_removes_unmatched_tool_results() {
+        use crate::llm_driver_registry::LlmMessageContent;
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "hello"),
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("result".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_trimmed".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+        let filtered = drop_orphaned_tool_messages(&messages);
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].role, LlmMessageRole::User);
+    }
+
+    #[test]
+    fn drop_orphaned_tool_messages_keeps_matched_tool_results() {
+        use crate::llm_driver_registry::LlmMessageContent;
+        use crate::tool_types::ToolCall;
+
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: json!({}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("file content".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+        let filtered = drop_orphaned_tool_messages(&messages);
+        assert_eq!(filtered.len(), 2);
     }
 }
