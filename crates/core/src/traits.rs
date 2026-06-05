@@ -14,7 +14,7 @@ use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -952,6 +952,11 @@ pub struct ToolContext {
     /// `spawn_background` that need to inspect or delegate to sibling tools.
     pub tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
 
+    /// Optional allowlist of tools visible to the model for this turn.
+    /// Registry-introspecting tools must filter through this before returning
+    /// sibling tool metadata, because the execution registry can be a superset.
+    pub visible_tool_names: Option<Arc<HashSet<String>>>,
+
     /// Optional memory store backend for persistent cross-session memory.
     pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
 
@@ -1000,6 +1005,7 @@ impl ToolContext {
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
+            visible_tool_names: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -1034,6 +1040,7 @@ impl ToolContext {
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
+            visible_tool_names: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -1071,6 +1078,7 @@ impl ToolContext {
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
+            visible_tool_names: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -1109,6 +1117,7 @@ impl ToolContext {
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
+            visible_tool_names: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -1185,6 +1194,7 @@ impl ToolContext {
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
+            visible_tool_names: None,
             memory_store: None,
             org_id: None,
             network_access: None,
@@ -1263,6 +1273,12 @@ impl ToolContext {
     /// Set the active built-in tool registry on this context.
     pub fn with_tool_registry(mut self, registry: Arc<crate::tools::ToolRegistry>) -> Self {
         self.tool_registry = Some(registry);
+        self
+    }
+
+    /// Set the tool names visible to the model in this turn.
+    pub fn with_visible_tool_names(mut self, names: Arc<HashSet<String>>) -> Self {
+        self.visible_tool_names = Some(names);
         self
     }
 

@@ -317,7 +317,17 @@ impl Tool for ToolSearchTool {
             );
         };
 
-        let defs = registry.tool_definitions();
+        let Some(visible_tool_names) = &context.visible_tool_names else {
+            return ToolExecutionResult::tool_error(
+                "Visible tool allowlist not available in this context. tool_search requires turn-scoped tool definitions.",
+            );
+        };
+
+        let defs: Vec<_> = registry
+            .tool_definitions()
+            .into_iter()
+            .filter(|d| visible_tool_names.contains(d.name()))
+            .collect();
         let matches = Self::search(&defs, query);
 
         if matches.is_empty() {
@@ -558,6 +568,11 @@ mod tests {
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
+        ctx.visible_tool_names = Some(Arc::new(
+            ["read_file".to_string(), TOOL_SEARCH_TOOL_NAME.to_string()]
+                .into_iter()
+                .collect(),
+        ));
 
         let result = ToolSearchTool
             .execute_with_context(json!({ "query": "file" }), &ctx)
@@ -570,5 +585,65 @@ mod tests {
         let read = tools.iter().find(|t| t["name"] == "read_file").unwrap();
         // Full schema is returned (not the deferred stub).
         assert!(read["parameters"]["properties"]["path"].is_object());
+    }
+
+    struct HiddenTool;
+    #[async_trait]
+    impl Tool for HiddenTool {
+        fn name(&self) -> &str {
+            "write_file"
+        }
+        fn description(&self) -> &str {
+            "Write contents to a file"
+        }
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            })
+        }
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(json!({}))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_filters_registry_to_visible_tools() {
+        use crate::tools::ToolRegistry;
+
+        let mut registry = ToolRegistry::new();
+        registry.register(MiniTool);
+        registry.register(HiddenTool);
+        registry.register(ToolSearchTool);
+
+        let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
+        ctx.tool_registry = Some(Arc::new(registry));
+        ctx.visible_tool_names = Some(Arc::new(
+            ["read_file".to_string(), TOOL_SEARCH_TOOL_NAME.to_string()]
+                .into_iter()
+                .collect(),
+        ));
+
+        let result = ToolSearchTool
+            .execute_with_context(json!({ "query": "file" }), &ctx)
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools.iter().any(|t| t["name"] == "read_file"));
+        assert!(tools.iter().all(|t| t["name"] != "write_file"));
+
+        let result = ToolSearchTool
+            .execute_with_context(json!({ "query": "missing" }), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let available = value["available_tools"].as_array().unwrap();
+        assert!(available.iter().any(|name| name == "read_file"));
+        assert!(available.iter().all(|name| name != "write_file"));
     }
 }

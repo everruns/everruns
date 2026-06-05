@@ -29,6 +29,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -663,6 +664,13 @@ where
         // Track act phase timing for Braintrust observability
         let act_start = Instant::now();
 
+        let visible_tool_names = Arc::new(
+            tool_definitions
+                .iter()
+                .map(|def| def.name().to_string())
+                .collect::<HashSet<_>>(),
+        );
+
         // Build tool name to definition map
         let tool_map: std::collections::HashMap<&str, &ToolDefinition> = tool_definitions
             .iter()
@@ -743,6 +751,7 @@ where
                     &act_span_id,
                     locale.as_deref(),
                     network_access.as_ref(),
+                    visible_tool_names.clone(),
                 )
             })
             .await;
@@ -885,6 +894,7 @@ where
         act_span_id: &str,
         locale: Option<&str>,
         network_access: Option<&crate::network_access::NetworkAccessList>,
+        visible_tool_names: Arc<HashSet<String>>,
     ) -> ToolCallResult {
         tracing::debug!(
             session_id = %context.session_id,
@@ -1085,6 +1095,7 @@ where
         if let Some(ref registry) = self.tool_registry {
             tool_context.tool_registry = Some(registry.clone());
         }
+        tool_context.visible_tool_names = Some(visible_tool_names.clone());
         if let Some(ref store) = self.memory_store {
             tool_context.memory_store = Some(store.clone());
         }
