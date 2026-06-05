@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+- feat(capabilities): model-adaptive `auto_tool_search` capability that uses OpenAI's hosted tool_search on supported models and the generic client-side fallback everywhere else; now the default in the `generic` harness
+
 ## [0.8.38] - 2026-06-05
 
 ### Highlights
@@ -24,7 +26,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(llm): gate tool_search off on gpt-5.5 family (EVE-521) ([#2049](https://github.com/everruns/everruns/pull/2049)) by [@chaliy](https://github.com/chaliy)
 - feat(capabilities): add pre_tool_use_hooks seam for tool gating ([#2048](https://github.com/everruns/everruns/pull/2048)) by [@chaliy](https://github.com/chaliy)
 - refactor(payments): move Parallel paid capability out of core ([#2047](https://github.com/everruns/everruns/pull/2047)) by [@chaliy](https://github.com/chaliy)
-
 ## [0.8.37] - 2026-06-03
 
 ### Highlights

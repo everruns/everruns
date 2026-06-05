@@ -601,6 +601,7 @@ mod tests {
             session_id: test_session_id(),
             locale: None,
             file_store: Some(store.clone()),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -618,6 +619,7 @@ mod tests {
             session_id: test_session_id(),
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         assert!(cap.system_prompt_contribution(&ctx).await.is_none());
@@ -639,6 +641,7 @@ mod tests {
             session_id: test_session_id(),
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         assert!(cap.system_prompt_contribution(&ctx).await.is_none());
@@ -693,6 +696,7 @@ mod tests {
             session_id: test_session_id(),
             locale: None,
             file_store: Some(store.clone()),
+            model: None,
         };
 
         let result = cap

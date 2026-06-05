@@ -2000,8 +2000,8 @@ async fn test_get_generic_harness() {
         "Should have infinity context"
     );
     assert!(
-        cap_ids.contains(&"openai_tool_search"),
-        "Should have OpenAI tool search"
+        cap_ids.contains(&"auto_tool_search"),
+        "Should have auto tool search"
     );
     assert!(cap_ids.contains(&"budgeting"), "Should have budgeting");
     assert!(

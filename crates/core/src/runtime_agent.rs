@@ -416,11 +416,23 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.tools = deduped;
         }
 
-        // When hosted tool_search is configured (set by the openai_tool_search
-        // capability), client-side deferral hooks must not run — otherwise they
-        // strip schemas the hosted index needs. Evaluated before the
-        // model-support clearing below, so configuring openai_tool_search wins
-        // over the generic tool_search capability regardless of model support.
+        // Resolve tool_search (deferred tool loading). The mechanism is already
+        // chosen at capability-collection time (see `Capability::resolve_for_model`
+        // and `auto_tool_search`): a hosted `ToolSearchConfig` means the hosted
+        // (native) mechanism; client-side deferral arrives as `DeferSchemaHook`
+        // plus a `tool_search` tool. This step only reconciles a hosted config
+        // with the model — collection may have set one (via a direct
+        // `openai_tool_search` capability) that the model can't honor.
+        let model_supports_native =
+            get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
+                .is_some_and(|p| p.tool_search);
+
+        // Hosted (native) deferral hides schemas server-side, so client-side
+        // opt-out hooks (DeferSchemaHook) must be skipped while a hosted config
+        // is present — even on an unsupported model, where the hosted config is
+        // disabled below (full schemas, no client-side fallback). This is what
+        // makes a hand-configured `openai_tool_search` win over a separately
+        // configured `tool_search`.
         let native_tool_search = self.runtime_agent.tool_search.is_some();
         for hook in &self.tool_definition_hooks {
             if native_tool_search && !hook.applies_with_native_tool_search() {
@@ -430,17 +442,16 @@ impl RuntimeAgentBuilder {
                 hook.transform(std::mem::take(&mut self.runtime_agent.tools));
         }
 
-        if self.runtime_agent.tool_search.is_some() {
-            let model_supports =
-                get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
-                    .is_some_and(|p| p.tool_search);
-            if !model_supports {
-                tracing::debug!(
-                    model = %self.runtime_agent.model,
-                    "tool_search capability configured but model does not support it; disabling"
-                );
-                self.runtime_agent.tool_search = None;
-            }
+        // Clear a hosted config the model can't honor (a direct `openai_tool_search`
+        // on an unsupported model): it simply sends full schemas. `auto_tool_search`
+        // never reaches here on an unsupported model — it resolves to the generic
+        // client-side mechanism at collection time and sets no hosted config.
+        if self.runtime_agent.tool_search.is_some() && !model_supports_native {
+            tracing::debug!(
+                model = %self.runtime_agent.model,
+                "hosted tool_search not supported by model; disabling (full schemas)"
+            );
+            self.runtime_agent.tool_search = None;
         }
 
         self.runtime_agent
@@ -1064,6 +1075,11 @@ mod tests {
             "custom threshold from capability must be preserved"
         );
     }
+
+    // Note: `auto_tool_search`'s hosted-vs-client-side selection now happens at
+    // capability-collection time (see `Capability::resolve_for_model` and the
+    // collection tests in `capabilities::mod`), not in `build()`. `build()` only
+    // reconciles a hosted config with the model, covered by the tests above.
 
     #[test]
     fn test_build_preserves_prompt_cache_for_supported_provider() {

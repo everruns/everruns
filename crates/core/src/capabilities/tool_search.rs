@@ -133,7 +133,7 @@ fn deferred_stub_schema() -> Value {
     })
 }
 
-struct DeferSchemaHook {
+pub(crate) struct DeferSchemaHook {
     threshold: usize,
 }
 

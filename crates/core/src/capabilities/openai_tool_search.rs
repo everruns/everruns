@@ -51,6 +51,19 @@ impl OpenAiToolSearchCapability {
     }
 }
 
+/// Whether `model` natively supports hosted tool_search (OpenAI GPT-5.4+).
+///
+/// This is the single source of truth for the native-vs-client-side decision,
+/// consulted by `auto_tool_search`'s runtime dispatch (at capability-collection
+/// time) and by `RuntimeAgentBuilder::build` (when disabling a hosted config the
+/// model can't honor). Native tool_search is an OpenAI hosted feature, so the
+/// lookup is against the OpenAI provider profile regardless of how the model is
+/// otherwise routed.
+pub fn model_supports_native_tool_search(model: &str) -> bool {
+    crate::llm_model_profiles::get_model_profile(&crate::llm_models::LlmProviderType::Openai, model)
+        .is_some_and(|profile| profile.tool_search)
+}
+
 impl Default for OpenAiToolSearchCapability {
     fn default() -> Self {
         Self::new()

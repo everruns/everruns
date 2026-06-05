@@ -47,12 +47,24 @@ Model sees name + description upfront, parameters loaded only when needed. For n
 
 Model emits `tool_search_call` → client responds with `tool_search_output` containing matched tools. Multi-turn handshake.
 
-## Two Implementations
+## Three Capabilities
 
-There are two capabilities, chosen by provider:
+There are three capabilities, two mechanisms:
 
 - **`openai_tool_search`** — uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on `LlmModelProfile.tool_search`; cleared for unsupported models in `RuntimeAgentBuilder::build()`. Hosted mode only. See `crates/core/src/capabilities/openai_tool_search.rs`.
 - **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Anthropic, Gemini, OpenAI Completions, ...). See `crates/core/src/capabilities/tool_search.rs` and below.
+- **`auto_tool_search`** — model-adaptive: picks the hosted mechanism on models that support it and the generic client-side mechanism everywhere else. This is the right default for a multi-provider harness (it is what the `generic` harness uses). See `crates/core/src/capabilities/auto_tool_search.rs`.
+
+### Auto resolution
+
+`auto_tool_search` is a runtime dispatcher, not a third mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability` and a `GenericToolSearchCapability` and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability — collecting *its* contributions in place of the dispatcher's:
+
+- **Model supports native tool_search** (`model_supports_native_tool_search`, OpenAI GPT-5.4+): resolves to `openai_tool_search`. Collection sets the hosted `ToolSearchConfig` (keyed on the resolved `effective.id()`); no client-side tool or hook is contributed.
+- **Model lacks native support, or model is unknown:** resolves to the generic `tool_search`. Collection contributes its `DeferSchemaHook` + `tool_search` tool + system-prompt note and sets no hosted config.
+
+Because the mechanism is chosen during collection, `RuntimeAgentBuilder::build()` does no `auto`-specific pruning. There is no `auto` flag on `ToolSearchConfig`: a hosted config present after collection always means "use hosted deferral" (build only clears it if a *directly* configured `openai_tool_search` lands on a model that can't honor it — see below).
+
+The executor (act) path collects without a model and so resolves to the generic mechanism. This registers the `tool_search` tool in the worker registry as a harmless superset: on native models the reason path never shows that tool to the model, so it is never called.
 
 ### Generic (client-side) tool_search
 
@@ -64,7 +76,7 @@ Implemented entirely in core, with no driver or agent-loop changes:
 
 Because the underlying tools stay registered and executable, tool calls and results are unchanged — only how schemas reach the model differs. The search reads schemas from the worker-side registry, so it covers built-in tools and MCP tools. Two interactions matter:
 
-- **Mutually exclusive with hosted `openai_tool_search`.** `DeferSchemaHook` opts out of running when native hosted tool_search is configured (`ToolDefinitionHook::applies_with_native_tool_search()` → `false`), so the two never both strip schemas. `RuntimeAgentBuilder::build()` enforces this before the model-support check, so configuring `openai_tool_search` wins regardless of model.
+- **Mutually exclusive with hosted deferral.** `DeferSchemaHook` opts out of running while a hosted config is present (`ToolDefinitionHook::applies_with_native_tool_search()` → `false`), so the two never both strip schemas. In `RuntimeAgentBuilder::build()`, the presence of a hosted `ToolSearchConfig` makes the hook skip — even on an unsupported model, where the hosted config is then disabled (full schemas, no client-side fallback). So hand-configuring `openai_tool_search` alongside `tool_search` makes the hosted config win regardless of model. This case does not arise with `auto_tool_search`, which resolves to exactly one mechanism at collection time (see "Auto resolution" above) and never sets a hosted config on a non-native model.
 - **MCP tools keep full schemas.** MCP tool definitions become registry proxies in the act path; the hook does not strip them (else the proxy, and thus `tool_search` results, would only carry the stub). MCP tools are therefore searchable and executable but not themselves deferred under the generic capability. Deferring them would require plumbing full MCP schemas to the act path separately (follow-up).
 
 ## Design: Capability-Driven Tool Search
