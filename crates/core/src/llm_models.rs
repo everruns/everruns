@@ -410,6 +410,9 @@ pub struct LlmModelProfile {
     /// token usage for large tool sets. Currently supported by GPT-5.4 and newer.
     #[serde(default)]
     pub tool_search: bool,
+    /// Provider-advertised request parameters supported by this model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_parameters: Vec<String>,
     /// Whether the model supports native execution phases ("commentary" / "final_answer").
     /// When true, the driver sends the `phase` field on assistant messages in the wire format.
     /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.

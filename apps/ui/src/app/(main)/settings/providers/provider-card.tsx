@@ -32,8 +32,8 @@ export function ProviderCard({
   modelCounts: ProviderModelCounts;
   modelsLoading: boolean;
 }) {
-  // Only show sync button for providers without custom base URL (standard providers)
-  const canSync = !provider.base_url && provider.api_key_set;
+  const canSync =
+    provider.api_key_set && (!provider.base_url || isOpenRouterUrl(provider.base_url));
   const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
 
   return (
@@ -124,6 +124,15 @@ export function ProviderCard({
       </CardContent>
     </Card>
   );
+}
+
+function isOpenRouterUrl(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl).hostname.toLowerCase();
+    return host === "openrouter.ai";
+  } catch {
+    return false;
+  }
 }
 
 export function ProviderCardSkeleton() {

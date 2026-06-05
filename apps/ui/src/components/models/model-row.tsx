@@ -296,8 +296,23 @@ export function ModelRow({
               {profile.modalities && <div>Input: {profile.modalities.input.join(", ")}</div>}
             </div>
           </div>
+          {profile.supported_parameters && profile.supported_parameters.length > 0 && (
+            <div className="border-t pt-3 mt-3">
+              <div className="font-medium text-muted-foreground mb-2 flex items-center gap-1 text-sm">
+                <Wrench className="h-3.5 w-3.5" />
+                Supported Parameters
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {profile.supported_parameters.map((parameter) => (
+                  <Badge key={parameter} variant="outline" className="text-xs font-normal">
+                    {parameter}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="text-xs text-muted-foreground border-t pt-2 mt-2">
-            Profile data from{" "}
+            Profile data from provider discovery and{" "}
             <a
               href="https://models.dev"
               target="_blank"

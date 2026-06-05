@@ -171,6 +171,12 @@ export interface LlmModelProfile {
   modalities?: LlmModelModalities;
   /** Reasoning effort configuration (for reasoning models) */
   reasoning_effort?: ReasoningEffortConfig;
+  /** Provider-advertised request parameters supported by this model */
+  supported_parameters?: string[];
+  /** Whether the model supports tool_search (deferred tool loading) */
+  tool_search?: boolean;
+  /** Whether the model supports native execution phases */
+  supports_phases?: boolean;
 }
 
 export interface CreateLlmProviderRequest {

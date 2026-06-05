@@ -21352,6 +21352,13 @@
             "type": "boolean",
             "description": "Whether the model supports structured output (JSON mode)"
           },
+          "supported_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Provider-advertised request parameters supported by this model."
+          },
           "supports_phases": {
             "type": "boolean",
             "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."

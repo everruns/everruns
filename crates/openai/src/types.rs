@@ -274,9 +274,15 @@ pub struct OpenRouterModelsResponse {
 pub struct OpenRouterModelInfo {
     /// Fully qualified model id (e.g. `nvidia/nemotron-3-super-120b-a12b`).
     pub id: String,
+    /// Canonical model slug, when OpenRouter aliases the public id.
+    #[serde(default)]
+    pub canonical_slug: Option<String>,
     /// Human-readable display name (e.g. "NVIDIA: Nemotron 3 Super").
     #[serde(default)]
     pub name: Option<String>,
+    /// Human-readable model description.
+    #[serde(default)]
+    pub description: Option<String>,
     /// Unix timestamp of when the model was added.
     #[serde(default)]
     pub created: Option<i64>,
@@ -286,6 +292,9 @@ pub struct OpenRouterModelInfo {
     /// Modality metadata (input/output modalities).
     #[serde(default)]
     pub architecture: Option<OpenRouterArchitecture>,
+    /// Per-token pricing reported by OpenRouter.
+    #[serde(default)]
+    pub pricing: Option<OpenRouterPricing>,
     /// Top-provider limits (max completion tokens, effective context).
     #[serde(default)]
     pub top_provider: Option<OpenRouterTopProvider>,
@@ -293,6 +302,9 @@ pub struct OpenRouterModelInfo {
     /// (or `reasoning_effort`) is what tells us reasoning is supported.
     #[serde(default)]
     pub supported_parameters: Vec<String>,
+    /// Provider-reported knowledge cutoff, when available.
+    #[serde(default)]
+    pub knowledge_cutoff: Option<String>,
 }
 
 /// Modality metadata from OpenRouter's `architecture` object.
@@ -302,6 +314,19 @@ pub struct OpenRouterArchitecture {
     pub input_modalities: Vec<String>,
     #[serde(default)]
     pub output_modalities: Vec<String>,
+}
+
+/// Per-token pricing reported by OpenRouter's `pricing` object.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenRouterPricing {
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub completion: Option<String>,
+    #[serde(default)]
+    pub input_cache_read: Option<String>,
+    #[serde(default)]
+    pub cache_read: Option<String>,
 }
 
 /// Per-request limits reported by the routed upstream provider.
@@ -336,9 +361,6 @@ impl OpenRouterModelInfo {
     }
 
     /// Build an [`LlmModelProfile`] from OpenRouter's advertised metadata.
-    ///
-    /// Cost is intentionally left `None`: pricing is available but the hardcoded
-    /// profiles own cost data, and merging is keyed on the hardcoded entry.
     pub fn to_discovered_profile(&self) -> everruns_core::llm_models::LlmModelProfile {
         use everruns_core::llm_models::*;
 
@@ -401,25 +423,48 @@ impl OpenRouterModelInfo {
 
         LlmModelProfile {
             name: self.name.clone().unwrap_or_else(|| self.id.clone()),
-            family: self.id.clone(),
-            description: None,
+            family: self
+                .canonical_slug
+                .clone()
+                .unwrap_or_else(|| self.id.clone()),
+            description: self.description.clone(),
             release_date: None,
             last_updated: None,
             attachment: image_input || pdf_input,
             reasoning,
             temperature: self.supports("temperature"),
-            knowledge: None,
+            knowledge: self.knowledge_cutoff.clone(),
             tool_call: self.supports("tools") || self.supports("tool_choice"),
             structured_output: self.supports("structured_outputs")
                 || self.supports("response_format"),
             open_weights: false,
-            cost: None,
+            cost: self.pricing.as_ref().and_then(OpenRouterPricing::to_cost),
             limits,
             modalities,
             reasoning_effort,
             tool_search: false,
+            supported_parameters: self.supported_parameters.clone(),
             supports_phases: false,
         }
+    }
+}
+
+impl OpenRouterPricing {
+    fn to_cost(&self) -> Option<everruns_core::llm_models::LlmModelCost> {
+        let input = openrouter_price_per_million(self.prompt.as_deref()?)?;
+        let output = openrouter_price_per_million(self.completion.as_deref()?)?;
+        let cache_read = self
+            .input_cache_read
+            .as_deref()
+            .or(self.cache_read.as_deref())
+            .and_then(openrouter_price_per_million);
+
+        Some(everruns_core::llm_models::LlmModelCost {
+            input,
+            output,
+            cache_read,
+            cost_tiers: Vec::new(),
+        })
     }
 }
 
@@ -430,6 +475,10 @@ impl OpenRouterModelInfo {
 /// clamps into range instead. Negative inputs clamp to `0`.
 fn clamp_i64_to_i32(value: i64) -> i32 {
     value.clamp(0, i32::MAX as i64) as i32
+}
+
+fn openrouter_price_per_million(value: &str) -> Option<f64> {
+    value.parse::<f64>().ok().map(|price| price * 1_000_000.0)
 }
 
 /// Standard low/medium/high effort config for OpenRouter reasoning models.
@@ -466,18 +515,26 @@ mod openrouter_tests {
     // OpenRouter's /api/v1/models response.
     const NEMOTRON_JSON: &str = r#"{
         "id": "nvidia/nemotron-3-super-120b-a12b",
+        "canonical_slug": "nvidia/nemotron-3-super-120b-a12b",
         "name": "NVIDIA: Nemotron 3 Super",
+        "description": "A reasoning-capable chat model.",
         "created": 1773245239,
         "context_length": 1000000,
         "architecture": {
             "input_modalities": ["text"],
             "output_modalities": ["text"]
         },
+        "pricing": {
+            "prompt": "0.00000010",
+            "completion": "0.00000040",
+            "input_cache_read": "0.00000002"
+        },
         "top_provider": { "context_length": 262144, "max_completion_tokens": null },
         "supported_parameters": [
             "include_reasoning", "max_tokens", "reasoning", "response_format",
             "structured_outputs", "temperature", "tool_choice", "tools", "top_p"
-        ]
+        ],
+        "knowledge_cutoff": "2025-01"
     }"#;
 
     fn parse(json: &str) -> OpenRouterModelInfo {
@@ -512,6 +569,35 @@ mod openrouter_tests {
         assert!(profile.temperature);
         assert_eq!(profile.name, "NVIDIA: Nemotron 3 Super");
         assert_eq!(profile.family, "nvidia/nemotron-3-super-120b-a12b");
+        assert_eq!(
+            profile.description.as_deref(),
+            Some("A reasoning-capable chat model.")
+        );
+        assert_eq!(profile.release_date, None);
+        assert_eq!(profile.knowledge.as_deref(), Some("2025-01"));
+        let supported: Vec<_> = profile
+            .supported_parameters
+            .iter()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            supported,
+            vec![
+                "include_reasoning",
+                "max_tokens",
+                "reasoning",
+                "response_format",
+                "structured_outputs",
+                "temperature",
+                "tool_choice",
+                "tools",
+                "top_p"
+            ]
+        );
+        let cost = profile.cost.expect("cost");
+        assert!((cost.input - 0.1).abs() < 1e-9);
+        assert!((cost.output - 0.4).abs() < 1e-9);
+        assert!((cost.cache_read.expect("cache read") - 0.02).abs() < 1e-9);
         // Prefer the routed provider's effective context window.
         let limits = profile.limits.expect("limits");
         assert_eq!(limits.context, 262144);

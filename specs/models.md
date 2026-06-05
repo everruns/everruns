@@ -259,11 +259,11 @@ Profiles matched by provider_type + model_id with version normalization (e.g., "
 
 ### Model Discovery
 
-Automatic discovery of available models from provider APIs (OpenAI, Anthropic).
+Automatic discovery of available models from provider APIs (OpenAI, OpenRouter via the OpenAI-compatible driver, Anthropic).
 
 - **Background Sync** — Every 24 hours (configurable via `MODEL_SYNC_INTERVAL_HOURS`, 0 to disable)
 - **Manual Sync** — `POST /v1/llm-providers/:id/sync-models`
-- Only providers with standard base URLs synced (custom URLs skipped)
+- Only providers with standard base URLs or driver-recognized model-listing URLs synced (for example OpenRouter's OpenAI-compatible endpoint); unsupported custom URLs are skipped
 - New models added as `discovered`; existing models have `last_seen_at` updated
 
 ### UserConnection

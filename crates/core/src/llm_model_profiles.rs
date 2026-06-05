@@ -423,6 +423,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_realtime()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -457,6 +458,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -491,6 +493,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -525,6 +528,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -559,6 +563,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -593,6 +598,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -627,6 +633,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -661,6 +668,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -695,6 +703,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -729,6 +738,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -764,6 +774,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -798,6 +809,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -832,6 +844,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -868,6 +881,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -902,6 +916,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -936,6 +951,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -970,6 +986,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1004,6 +1021,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1039,6 +1057,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1073,6 +1092,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1107,6 +1127,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1142,6 +1163,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1177,6 +1199,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1211,6 +1234,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1245,6 +1269,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1280,6 +1305,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1319,6 +1345,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1353,6 +1380,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1395,6 +1423,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1429,6 +1458,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1463,6 +1493,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1502,6 +1533,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1537,6 +1569,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1571,6 +1604,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1605,6 +1639,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1640,6 +1675,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1674,6 +1710,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1708,6 +1745,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1763,6 +1801,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 }),
                 reasoning_effort: None,
                 tool_search: false,
+                supported_parameters: Vec::new(),
                 supports_phases: false,
             })
         }
@@ -1800,6 +1839,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1830,6 +1870,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1866,6 +1907,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1902,6 +1944,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1943,6 +1986,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1989,6 +2033,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2024,6 +2069,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2059,6 +2105,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2093,6 +2140,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2128,6 +2176,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2162,6 +2211,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2196,6 +2246,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2231,6 +2282,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2266,6 +2318,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2300,6 +2353,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2335,6 +2389,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2370,6 +2425,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2404,6 +2460,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2438,6 +2495,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2472,6 +2530,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2506,6 +2565,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2562,6 +2622,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2601,6 +2662,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2640,6 +2702,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2679,6 +2742,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2718,6 +2782,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2757,6 +2822,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2799,6 +2865,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()), // Same as GPT-5.2
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
         _ => None,
