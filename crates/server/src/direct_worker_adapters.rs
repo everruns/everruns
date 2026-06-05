@@ -954,6 +954,37 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let content_bytes = SessionFile::decode_content(content, encoding)
             .map_err(|e| store_error(format!("Invalid content encoding: {}", e)))?;
 
+        let existing = self
+            .db
+            .get_session_file(session_id, path)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to check existing file: {}", e);
+                store_error("Failed to write file")
+            })?;
+        let Some(existing) = existing else {
+            return Ok(None);
+        };
+        if existing.is_directory || existing.is_readonly {
+            return Ok(None);
+        }
+        if existing.content.as_deref().unwrap_or_default() != expected_bytes.as_slice() {
+            return Ok(None);
+        }
+
+        {
+            use crate::domains::session_files::limits::check_write_quota;
+            check_write_quota(
+                &self.db,
+                session_id,
+                content_bytes.len() as i64,
+                existing.size_bytes,
+                &self.quota,
+            )
+            .await
+            .map_err(|e| store_error(e.to_string()))?;
+        }
+
         let row = self
             .db
             .update_session_file_if_content_matches(
