@@ -18,8 +18,8 @@ use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
     AutoToolSearchCapability, CurrentTimeCapability, FileSystemCapability,
-    GenericToolSearchCapability, OpenAiToolSearchCapability, SessionCapability,
-    StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability,
+    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability,
+    TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability, ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
@@ -222,7 +222,7 @@ async fn test_anthropic_generic_tool_search() {
         .capability(SessionCapability) // 2 tools
         .capability(StatelessTodoListCapability) // 1 tool
         // Generic, provider-agnostic deferred loading (works on Anthropic).
-        .capability(GenericToolSearchCapability::new())
+        .capability(ToolSearchCapability::new())
         .max_iterations(6)
         .build()
         .await
@@ -253,7 +253,7 @@ async fn test_anthropic_generic_tool_search_low_threshold() {
         .capability(TestMathCapability)
         .capability(CurrentTimeCapability)
         // Low threshold: deferral activates even with few tools (6 > 3).
-        .capability(GenericToolSearchCapability::with_threshold(3))
+        .capability(ToolSearchCapability::with_threshold(3))
         .max_iterations(6)
         .build()
         .await

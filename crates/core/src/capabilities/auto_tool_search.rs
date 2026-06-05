@@ -10,7 +10,7 @@
 //     `tool_search` tool loads them back on demand.
 //
 // Unlike picking one of those capabilities by hand, this one chooses at runtime.
-// It OWNS an `OpenAiToolSearchCapability` and a `GenericToolSearchCapability` and
+// It OWNS an `OpenAiToolSearchCapability` and a `ToolSearchCapability` and
 // implements `Capability::resolve_for_model`: capability collection knows the
 // agent's model (via `SystemPromptContext::model`) and delegates to whichever
 // inner capability fits. Only that one capability's contributions are collected —
@@ -21,7 +21,7 @@
 // work well across providers.
 
 use super::openai_tool_search::{OpenAiToolSearchCapability, model_supports_native_tool_search};
-use super::tool_search::GenericToolSearchCapability;
+use super::tool_search::ToolSearchCapability;
 use super::{Capability, CapabilityStatus};
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
@@ -36,7 +36,7 @@ pub const AUTO_TOOL_SEARCH_CAPABILITY_ID: &str = "auto_tool_search";
 /// deferral activates) is shared by both and forwarded at construction.
 pub struct AutoToolSearchCapability {
     openai: OpenAiToolSearchCapability,
-    generic: GenericToolSearchCapability,
+    generic: ToolSearchCapability,
 }
 
 impl AutoToolSearchCapability {
@@ -47,7 +47,7 @@ impl AutoToolSearchCapability {
     pub fn with_threshold(threshold: usize) -> Self {
         Self {
             openai: OpenAiToolSearchCapability::with_threshold(threshold),
-            generic: GenericToolSearchCapability::with_threshold(threshold),
+            generic: ToolSearchCapability::with_threshold(threshold),
         }
     }
 }

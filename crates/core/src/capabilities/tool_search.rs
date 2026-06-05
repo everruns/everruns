@@ -57,11 +57,11 @@ keep their full schemas and do not need to be searched for.";
 /// Adding this capability enables client-side deferred tool loading for any
 /// model. `threshold` controls the minimum number of tools before schemas are
 /// deferred (default: [`DEFAULT_TOOL_SEARCH_THRESHOLD`]).
-pub struct GenericToolSearchCapability {
+pub struct ToolSearchCapability {
     threshold: usize,
 }
 
-impl GenericToolSearchCapability {
+impl ToolSearchCapability {
     pub fn new() -> Self {
         Self {
             threshold: DEFAULT_TOOL_SEARCH_THRESHOLD,
@@ -73,13 +73,13 @@ impl GenericToolSearchCapability {
     }
 }
 
-impl Default for GenericToolSearchCapability {
+impl Default for ToolSearchCapability {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Capability for GenericToolSearchCapability {
+impl Capability for ToolSearchCapability {
     fn id(&self) -> &str {
         TOOL_SEARCH_CAPABILITY_ID
     }
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_capability_metadata() {
-        let cap = GenericToolSearchCapability::new();
+        let cap = ToolSearchCapability::new();
         assert_eq!(cap.id(), TOOL_SEARCH_CAPABILITY_ID);
         assert_eq!(cap.name(), "Tool Search");
         assert_eq!(cap.category(), Some("Optimization"));

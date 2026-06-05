@@ -57,7 +57,7 @@ There are three capabilities, two mechanisms:
 
 ### Auto resolution
 
-`auto_tool_search` is a runtime dispatcher, not a third mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability` and a `GenericToolSearchCapability` and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability — collecting *its* contributions in place of the dispatcher's:
+`auto_tool_search` is a runtime dispatcher, not a third mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability` and a `ToolSearchCapability` and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability — collecting *its* contributions in place of the dispatcher's:
 
 - **Model supports native tool_search** (`model_supports_native_tool_search`, OpenAI GPT-5.4+): resolves to `openai_tool_search`. Collection sets the hosted `ToolSearchConfig` (keyed on the resolved `effective.id()`); no client-side tool or hook is contributed.
 - **Model lacks native support, or model is unknown:** resolves to the generic `tool_search`. Collection contributes its `DeferSchemaHook` + `tool_search` tool + system-prompt note and sets no hosted config.

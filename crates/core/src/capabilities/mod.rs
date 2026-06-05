@@ -261,7 +261,7 @@ pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCap
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
 pub use tool_search::{
-    GenericToolSearchCapability, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchTool,
+    TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
 };
 pub use user_hooks::UserHooksCapability;
 pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
@@ -948,7 +948,7 @@ impl CapabilityRegistry {
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
         // Generic, provider-agnostic tool_search (client-side deferred loading)
-        registry.register(GenericToolSearchCapability::new());
+        registry.register(ToolSearchCapability::new());
         // Model-adaptive tool_search (hosted on capable models, generic elsewhere)
         registry.register(AutoToolSearchCapability::new());
         registry.register(PromptCachingCapability::new());
