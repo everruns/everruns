@@ -30,7 +30,10 @@
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Instant;
 
 use super::act_hooks::{self, PostActHook};
@@ -55,6 +58,35 @@ use crate::traits::{
 };
 use crate::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
+
+/// A Tokio task handle that aborts its task if the parent future is dropped
+/// before the task completes. Tokio detaches a bare [`tokio::task::JoinHandle`]
+/// on drop, but tool execution must not outlive Act cancellation.
+struct AbortOnDropJoinHandle<T> {
+    handle: tokio::task::JoinHandle<T>,
+}
+
+impl<T> AbortOnDropJoinHandle<T> {
+    fn new(handle: tokio::task::JoinHandle<T>) -> Self {
+        Self { handle }
+    }
+}
+
+impl<T> Future for AbortOnDropJoinHandle<T> {
+    type Output = std::result::Result<T, tokio::task::JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(&mut self.handle).poll(cx)
+    }
+}
+
+impl<T> Drop for AbortOnDropJoinHandle<T> {
+    fn drop(&mut self) {
+        if !self.handle.is_finished() {
+            self.handle.abort();
+        }
+    }
+}
 
 // ============================================================================
 // Input and Output Types
@@ -1167,9 +1199,9 @@ where
             let call = execution_tool_call.clone();
             let def = tool_def.clone();
             let ctx = tool_context.clone();
-            match tokio::spawn(
-                async move { executor.execute_with_context(&call, &def, &ctx).await },
-            )
+            match AbortOnDropJoinHandle::new(tokio::spawn(async move {
+                executor.execute_with_context(&call, &def, &ctx).await
+            }))
             .await
             {
                 Ok(result) => result,
@@ -1519,6 +1551,59 @@ mod tests {
         }
     }
 
+    struct CancellationProbeTool {
+        started: Arc<tokio::sync::Notify>,
+        dropped_tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    }
+
+    impl CancellationProbeTool {
+        fn new(
+            started: Arc<tokio::sync::Notify>,
+            dropped_tx: tokio::sync::oneshot::Sender<()>,
+        ) -> Self {
+            Self {
+                started,
+                dropped_tx: Arc::new(std::sync::Mutex::new(Some(dropped_tx))),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::tools::Tool for CancellationProbeTool {
+        fn name(&self) -> &str {
+            "cancellation_probe"
+        }
+
+        fn description(&self) -> &str {
+            "waits until cancelled"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            struct DropSignal {
+                tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+            }
+
+            impl Drop for DropSignal {
+                fn drop(&mut self) {
+                    if let Some(tx) = self.tx.lock().unwrap().take() {
+                        let _ = tx.send(());
+                    }
+                }
+            }
+
+            let _drop_signal = DropSignal {
+                tx: self.dropped_tx.clone(),
+            };
+            self.started.notify_one();
+            std::future::pending::<()>().await;
+            unreachable!("pending cancellation probe should only finish by cancellation")
+        }
+    }
+
     /// Build a server-side tool definition carrying scheduling hints.
     fn recording_tool_def(name: &str, class: Option<&str>, cpu_bound: bool) -> ToolDefinition {
         let mut hints = crate::tool_types::ToolHints::default();
@@ -1706,6 +1791,44 @@ mod tests {
             "independent tool should run concurrently with the class group (global_max={})",
             obs.global_max
         );
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_aborts_cpu_bound_tool_task_on_cancellation() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+
+        let mut executor = ToolRegistry::new();
+        executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "cancellation_probe".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![recording_tool_def("cancellation_probe", None, true)],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let act_task = tokio::spawn(async move { atom.execute(input).await });
+        started.notified().await;
+        act_task.abort();
+        assert!(act_task.await.unwrap_err().is_cancelled());
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("cpu-bound tool task should be aborted when ActAtom is cancelled")
+            .expect("drop signal should be sent by cancelled tool future");
     }
 
     /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
