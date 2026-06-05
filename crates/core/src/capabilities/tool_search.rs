@@ -168,12 +168,16 @@ impl ToolDefinitionHook for DeferSchemaHook {
 fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
     match tool {
         ToolDefinition::Builtin(mut b) => {
-            b.full_parameters = Some(b.parameters.clone());
+            if b.full_parameters.is_none() {
+                b.full_parameters = Some(b.parameters.clone());
+            }
             b.parameters = deferred_stub_schema();
             ToolDefinition::Builtin(b)
         }
         ToolDefinition::ClientSide(mut c) => {
-            c.full_parameters = Some(c.parameters.clone());
+            if c.full_parameters.is_none() {
+                c.full_parameters = Some(c.parameters.clone());
+            }
             c.parameters = deferred_stub_schema();
             ToolDefinition::ClientSide(c)
         }
