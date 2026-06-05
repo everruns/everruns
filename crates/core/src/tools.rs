@@ -14,20 +14,19 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use tracing::error;
 
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
-use crate::session_resource::{
-    RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
-};
+use crate::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
 use crate::traits::ToolContext;
+use crate::typed_id::SessionId;
 use tokio::sync::Semaphore;
 
 use crate::error::Result;
@@ -41,11 +40,29 @@ pub const MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION: usize = 5;
 
 /// Maximum active immediate background runs allowed in this worker process.
 ///
-/// The per-session registry check limits tenant/session abuse; this process-wide
+/// The per-session semaphore limits tenant/session abuse; this process-wide
 /// semaphore keeps concurrent sessions from exhausting worker-local resources.
 const MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER: usize = 64;
 static ACTIVE_BACKGROUND_RUNS_PER_WORKER: Semaphore =
     Semaphore::const_new(MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER);
+
+/// Per-session semaphores that enforce `MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION`.
+///
+/// Using a semaphore rather than a DB count makes the check atomic: concurrent
+/// `spawn_background` calls for the same session cannot both slip through the
+/// guard (check-then-act race) because `try_acquire` is inherently atomic.
+static SESSION_BACKGROUND_PERMITS: OnceLock<std::sync::Mutex<HashMap<SessionId, Arc<Semaphore>>>> =
+    OnceLock::new();
+
+fn session_background_semaphore(session_id: SessionId) -> Arc<Semaphore> {
+    SESSION_BACKGROUND_PERMITS
+        .get_or_init(Default::default)
+        .lock()
+        .unwrap()
+        .entry(session_id)
+        .or_insert_with(|| Arc::new(Semaphore::new(MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION)))
+        .clone()
+}
 
 // ============================================================================
 // Tool Execution Result - Error Handling Contract
@@ -1108,28 +1125,22 @@ impl Tool for SpawnBackgroundTool {
             );
         }
 
-        let active_run_filter = SessionResourceFilter {
-            kind: Some("background_run".to_string()),
-            status: Some(SessionResourceStatus::Active),
-        };
-        let active_run_count = match resource_registry
-            .list(context.session_id, Some(&active_run_filter))
-            .await
-        {
-            Ok(entries) => entries.len(),
-            Err(err) => return ToolExecutionResult::internal_error(err),
-        };
-        if active_run_count >= MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
-            return ToolExecutionResult::tool_error(format!(
-                "Maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION} active background runs per session. Wait for an existing run to finish before starting another."
-            ));
-        }
-
         let background_run_permit = match ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire() {
             Ok(permit) => permit,
             Err(_) => {
                 return ToolExecutionResult::tool_error(format!(
                     "Worker is already running the maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER} active background runs. Try again after an existing run finishes."
+                ));
+            }
+        };
+
+        let session_run_permit = match session_background_semaphore(context.session_id)
+            .try_acquire_owned()
+        {
+            Ok(permit) => permit,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION} active background runs per session. Wait for an existing run to finish before starting another."
                 ));
             }
         };
@@ -1179,6 +1190,7 @@ impl Tool for SpawnBackgroundTool {
 
         tokio::spawn(async move {
             let _background_run_permit = background_run_permit;
+            let _session_run_permit = session_run_permit;
             let _ = sink.status("Starting").await;
             let outcome = match tool_for_task.as_background_executable() {
                 Some(background_tool) => {
