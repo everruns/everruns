@@ -58,6 +58,20 @@ Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 - `list`
 - `get <id>`
 - `delete <id>` (soft archive)
+- `search <query>` — full-text search over agents
+- `stats <id>` — usage statistics (session/execution counts, token totals)
+- `copy <id>` — duplicate an agent into a new agent
+- `export <id> [--output <file>]` — export the agent definition (defaults to stdout)
+- `import-example <name>` — create an agent from a built-in example
+
+Version management under `agents versions`:
+
+- `versions list <id>`
+- `versions create <id> [--summary <s>] [--change-kind <manual|patch|minor|major|import|rollback|fork>]` — snapshot the current config
+- `versions set-default <id> <version_id>` — make a version the active default
+- `versions diff <id> <from> <to>` — diff two versions
+- `versions fork <id> <version_id> --name <n> [--display-name <d>] [--description <d>]` — fork a version into a new agent
+- `versions rollback <id> <version_id> [--save-version] [--summary <s>]` — roll back to a version
 
 #### Initial Files Hidden Path Policy
 
@@ -87,6 +101,28 @@ Session management.
 - `list`
 - `get <id>`
 - `watch <id>` — stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
+- `export <id> [--output <file>]` — export session messages as JSONL
+- `search <query>` — full-text search over sessions
+- `delete <id>` — delete a session
+- `cancel <id>` — cancel a running session
+- `pin <id>` / `unpin <id>` — pin/unpin a session
+- `resume <id>` — resume a paused session (re-activates exhausted budgets)
+- `secrets <id> --secret KEY=VALUE` — set encrypted session-scoped secrets (repeatable)
+- `budgets <id>` — list budgets attached to a session
+- `budget-check <id>` — check whether a session is within budget
+
+### `everruns budgets`
+
+Spend-budget management (org/agent/session caps in a currency). Wraps the SDK `budgets()` client.
+
+- `create --subject-type <t> --subject-id <id> [--currency <c>] --limit <n> [--soft-limit <n>]`
+- `list [--subject-type <t>] [--subject-id <id>]`
+- `get <id>`
+- `update <id> [--limit <n>] [--soft-limit <n> | --clear-soft-limit] [--status <s>]`
+- `delete <id>` — soft delete
+- `top-up <id> --amount <n> [--description <d>]`
+- `ledger <id> [--limit <n>] [--offset <n>]`
+- `check <id>`
 
 ### `everruns chat`
 
@@ -105,7 +141,7 @@ List platform capabilities.
 
 ### `everruns files`
 
-Session filesystem operations — sync, push, pull, list. See [Files](#files) section below.
+Session filesystem operations — sync, push, pull, list, plus one-shot ops (cat, write, rm, mkdir, mv, cp, grep, stat). See [Files](#files) section below.
 
 ---
 
@@ -201,6 +237,23 @@ everruns files ls --session <session_id> [path]
   --recursive, -r   List recursively
   --long, -l        Show size, dates
 ```
+
+#### One-shot file operations
+
+These commands are backed directly by the SDK's typed `session_files()` client (not `RemoteClient`):
+
+```
+everruns files cat   --session <id> <path> [--output <file>]   # print/save a file's content
+everruns files write --session <id> <path> [--from <file>] [--readonly]  # upload from file or stdin
+everruns files rm    --session <id> <path> [--recursive]
+everruns files mkdir --session <id> <path>
+everruns files mv    --session <id> <src> <dest>
+everruns files cp    --session <id> <src> <dest>
+everruns files grep  --session <id> <pattern> [--path <glob>]   # prints path:line:text
+everruns files stat  --session <id> <path>
+```
+
+`sync`/`push`/`pull` still use `RemoteClient` (raw reqwest) because they rely on the server's per-entry `content_hash` for change detection, which the SDK's `FileInfo`/`SessionFile` models do not expose.
 
 ### Sync State
 

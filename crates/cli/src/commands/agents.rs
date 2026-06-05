@@ -24,7 +24,10 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use everruns_sdk::{CreateAgentRequest, Everruns};
+use everruns_sdk::{
+    AgentVersionChangeKind, CreateAgentRequest, CreateAgentVersionRequest, Everruns,
+    ForkAgentVersionRequest, RollbackAgentVersionRequest,
+};
 use serde::Deserialize;
 use std::path::Path;
 
@@ -118,6 +121,128 @@ pub enum AgentsCommand {
     Delete {
         /// Agent ID (e.g. agt_xxx)
         agent_id: String,
+    },
+
+    /// Search agents by query
+    Search {
+        /// Search query
+        query: String,
+    },
+
+    /// Show usage statistics for an agent
+    Stats {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+    },
+
+    /// Copy an agent into a new agent
+    Copy {
+        /// Agent ID to copy (e.g. agt_xxx)
+        agent_id: String,
+    },
+
+    /// Export an agent definition (Markdown with frontmatter)
+    Export {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Output file path (defaults to stdout)
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+
+    /// Create an agent from a built-in example
+    ImportExample {
+        /// Example name (e.g. coding)
+        example: String,
+    },
+
+    /// Manage agent versions
+    Versions {
+        #[command(subcommand)]
+        command: AgentVersionsCommand,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum AgentVersionsCommand {
+    /// List versions for an agent
+    List {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+    },
+
+    /// Save the current agent configuration as a new version
+    Create {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Summary of the change
+        #[arg(long)]
+        summary: Option<String>,
+
+        /// Change kind (manual, patch, minor, major, import, rollback, fork)
+        #[arg(long = "change-kind")]
+        change_kind: Option<String>,
+    },
+
+    /// Set an agent's default (active) version
+    SetDefault {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Version ID (e.g. agv_xxx)
+        version_id: String,
+    },
+
+    /// Diff two agent versions
+    Diff {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Source version ID
+        from: String,
+
+        /// Target version ID
+        to: String,
+    },
+
+    /// Fork a version into a new agent
+    Fork {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Version ID to fork from
+        version_id: String,
+
+        /// Name for the new agent
+        #[arg(long)]
+        name: String,
+
+        /// Display name for the new agent
+        #[arg(long = "display-name")]
+        display_name: Option<String>,
+
+        /// Description for the new agent
+        #[arg(long)]
+        description: Option<String>,
+    },
+
+    /// Roll an agent back to a previous version
+    Rollback {
+        /// Agent ID (e.g. agt_xxx)
+        agent_id: String,
+
+        /// Version ID to roll back to
+        version_id: String,
+
+        /// Save the current config as a version before rolling back
+        #[arg(long = "save-version")]
+        save_version: bool,
+
+        /// Summary for the rollback
+        #[arg(long)]
+        summary: Option<String>,
     },
 }
 
@@ -253,6 +378,17 @@ pub async fn run(
         AgentsCommand::List => list(client, output).await,
         AgentsCommand::Get { agent_id } => get(client, output, agent_id).await,
         AgentsCommand::Delete { agent_id } => delete(client, output, quiet, agent_id).await,
+        AgentsCommand::Search { query } => search(client, output, query).await,
+        AgentsCommand::Stats { agent_id } => stats(client, output, agent_id).await,
+        AgentsCommand::Copy { agent_id } => copy(client, output, quiet, agent_id).await,
+        AgentsCommand::Export {
+            agent_id,
+            output: file_path,
+        } => export(client, quiet, agent_id, file_path).await,
+        AgentsCommand::ImportExample { example } => {
+            import_example(client, output, quiet, example).await
+        }
+        AgentsCommand::Versions { command } => versions(command, client, output, quiet).await,
     }
 }
 
@@ -1164,9 +1300,320 @@ async fn delete(
     Ok(())
 }
 
+async fn search(client: &Everruns, output: OutputFormat, query: String) -> Result<()> {
+    let response = client
+        .agents()
+        .search(&query)
+        .await
+        .context("Failed to search agents")?;
+
+    if output.is_text() {
+        if response.data.is_empty() {
+            println!("No agents found");
+            return Ok(());
+        }
+        print_table_header(&[("ID", 36), ("NAME", 20), ("STATUS", 8)]);
+        for agent in &response.data {
+            let status = format!("{:?}", agent.status).to_lowercase();
+            print_table_row(&[(&agent.id, 36), (&agent.name, 20), (&status, 8)]);
+        }
+    } else {
+        output.print_value(&serde_json::json!({ "data": response.data }));
+    }
+
+    Ok(())
+}
+
+async fn stats(client: &Everruns, output: OutputFormat, agent_id: String) -> Result<()> {
+    let stats = client
+        .agents()
+        .stats(&agent_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
+
+    if output.is_text() {
+        print_field("Sessions", &stats.session_count.to_string());
+        print_field("Active sessions", &stats.active_session_count.to_string());
+        print_field("Executions", &stats.execution_count.to_string());
+        print_field("Input tokens", &stats.total_input_tokens.to_string());
+        print_field("Output tokens", &stats.total_output_tokens.to_string());
+        if let Some(last) = &stats.last_session_at {
+            print_field("Last session", last);
+        }
+    } else {
+        output.print_value(&stats);
+    }
+
+    Ok(())
+}
+
+async fn copy(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    agent_id: String,
+) -> Result<()> {
+    let agent = client
+        .agents()
+        .copy(&agent_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
+
+    if output.is_text() {
+        if quiet {
+            println!("{}", agent.id);
+        } else {
+            println!("Copied agent: {}", agent.id);
+            print_field("Name", &agent.name);
+        }
+    } else {
+        output.print_value(&agent);
+    }
+
+    Ok(())
+}
+
+async fn export(
+    client: &Everruns,
+    quiet: bool,
+    agent_id: String,
+    file_path: Option<String>,
+) -> Result<()> {
+    let content = client
+        .agents()
+        .export(&agent_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Agent not found: {} ({})", agent_id, e))?;
+
+    if let Some(path) = file_path {
+        std::fs::write(&path, &content).with_context(|| format!("Failed to write {}", path))?;
+        if !quiet {
+            eprintln!("Exported agent {} to {}", agent_id, path);
+        }
+    } else {
+        print!("{}", content);
+    }
+
+    Ok(())
+}
+
+async fn import_example(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    example: String,
+) -> Result<()> {
+    let agent = client
+        .agents()
+        .import_example(&example)
+        .await
+        .with_context(|| format!("Failed to import example '{}'", example))?;
+
+    if output.is_text() {
+        if quiet {
+            println!("{}", agent.id);
+        } else {
+            println!("Created agent from example '{}': {}", example, agent.id);
+            print_field("Name", &agent.name);
+        }
+    } else {
+        output.print_value(&agent);
+    }
+
+    Ok(())
+}
+
+async fn versions(
+    command: AgentVersionsCommand,
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+) -> Result<()> {
+    match command {
+        AgentVersionsCommand::List { agent_id } => {
+            let versions = client
+                .agents()
+                .list_versions(&agent_id)
+                .await
+                .with_context(|| format!("Failed to list versions for {}", agent_id))?;
+            if output.is_text() {
+                if versions.is_empty() {
+                    println!("No versions found");
+                    return Ok(());
+                }
+                print_table_header(&[("VERSION ID", 36), ("VERSION", 12), ("KIND", 10)]);
+                for v in &versions {
+                    let kind = format!("{:?}", v.change_kind).to_lowercase();
+                    print_table_row(&[(&v.id, 36), (&v.version, 12), (&kind, 10)]);
+                }
+            } else {
+                output.print_value(&serde_json::json!({ "data": versions }));
+            }
+            Ok(())
+        }
+        AgentVersionsCommand::Create {
+            agent_id,
+            summary,
+            change_kind,
+        } => {
+            let mut req = CreateAgentVersionRequest::new();
+            if let Some(s) = summary {
+                req = req.summary(s);
+            }
+            if let Some(kind) = change_kind {
+                req = req.change_kind(parse_change_kind(&kind)?);
+            }
+            let version = client
+                .agents()
+                .create_version(&agent_id, req)
+                .await
+                .with_context(|| format!("Failed to create version for {}", agent_id))?;
+            if output.is_text() {
+                if quiet {
+                    println!("{}", version.id);
+                } else {
+                    println!("Created version: {} ({})", version.id, version.version);
+                }
+            } else {
+                output.print_value(&version);
+            }
+            Ok(())
+        }
+        AgentVersionsCommand::SetDefault {
+            agent_id,
+            version_id,
+        } => {
+            let agent = client
+                .agents()
+                .set_default_version(&agent_id, &version_id)
+                .await
+                .with_context(|| format!("Failed to set default version for {}", agent_id))?;
+            if output.is_text() {
+                if !quiet {
+                    println!("Default version set to {} for {}", version_id, agent.id);
+                }
+            } else {
+                output.print_value(&agent);
+            }
+            Ok(())
+        }
+        AgentVersionsCommand::Diff { agent_id, from, to } => {
+            let diff = client
+                .agents()
+                .diff_versions(&agent_id, &from, &to)
+                .await
+                .with_context(|| format!("Failed to diff versions for {}", agent_id))?;
+            // The diff payload is structured JSON; print it as-is for all formats.
+            match output {
+                OutputFormat::Text => {
+                    println!("{}", serde_json::to_string_pretty(&diff.authored_diff)?);
+                }
+                _ => output.print_value(&diff),
+            }
+            Ok(())
+        }
+        AgentVersionsCommand::Fork {
+            agent_id,
+            version_id,
+            name,
+            display_name,
+            description,
+        } => {
+            let mut req = ForkAgentVersionRequest::new(name);
+            if let Some(dn) = display_name {
+                req = req.display_name(dn);
+            }
+            if let Some(d) = description {
+                req = req.description(d);
+            }
+            let agent = client
+                .agents()
+                .fork_version(&agent_id, &version_id, req)
+                .await
+                .with_context(|| {
+                    format!("Failed to fork version {} of {}", version_id, agent_id)
+                })?;
+            if output.is_text() {
+                if quiet {
+                    println!("{}", agent.id);
+                } else {
+                    println!("Forked into agent: {}", agent.id);
+                    print_field("Name", &agent.name);
+                }
+            } else {
+                output.print_value(&agent);
+            }
+            Ok(())
+        }
+        AgentVersionsCommand::Rollback {
+            agent_id,
+            version_id,
+            save_version,
+            summary,
+        } => {
+            let mut req = RollbackAgentVersionRequest::new();
+            if save_version {
+                req = req.save_version(true);
+            }
+            if let Some(s) = summary {
+                req = req.summary(s);
+            }
+            let agent = client
+                .agents()
+                .rollback_version(&agent_id, &version_id, req)
+                .await
+                .with_context(|| {
+                    format!("Failed to roll back {} to version {}", agent_id, version_id)
+                })?;
+            if output.is_text() {
+                if !quiet {
+                    println!("Rolled back {} to version {}", agent.id, version_id);
+                }
+            } else {
+                output.print_value(&agent);
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Parse a `--change-kind` flag value into the SDK enum.
+fn parse_change_kind(raw: &str) -> Result<AgentVersionChangeKind> {
+    match raw.to_lowercase().as_str() {
+        "manual" => Ok(AgentVersionChangeKind::Manual),
+        "patch" => Ok(AgentVersionChangeKind::Patch),
+        "minor" => Ok(AgentVersionChangeKind::Minor),
+        "major" => Ok(AgentVersionChangeKind::Major),
+        "import" => Ok(AgentVersionChangeKind::Import),
+        "rollback" => Ok(AgentVersionChangeKind::Rollback),
+        "fork" => Ok(AgentVersionChangeKind::Fork),
+        other => anyhow::bail!(
+            "Invalid change kind '{}' (expected manual|patch|minor|major|import|rollback|fork)",
+            other
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_change_kind_valid() {
+        assert!(matches!(
+            parse_change_kind("minor").unwrap(),
+            AgentVersionChangeKind::Minor
+        ));
+        assert!(matches!(
+            parse_change_kind("FORK").unwrap(),
+            AgentVersionChangeKind::Fork
+        ));
+    }
+
+    #[test]
+    fn test_parse_change_kind_invalid() {
+        assert!(parse_change_kind("bogus").is_err());
+    }
 
     #[test]
     fn test_imported_agent_deserialize() {

@@ -74,6 +74,12 @@ pub enum Commands {
         command: commands::connections::ConnectionsCommand,
     },
 
+    /// Manage spend budgets
+    Budgets {
+        #[command(subcommand)]
+        command: commands::budgets::BudgetsCommand,
+    },
+
     /// Manage capabilities
     Capabilities {
         /// Filter by status
@@ -201,6 +207,9 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
+        Commands::Budgets { command } => {
+            commands::budgets::run(command, &client, output_format, cli.quiet).await
+        }
         Commands::Capabilities { status, command } => {
             let status = match &command {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
@@ -223,6 +232,7 @@ async fn main() -> anyhow::Result<()> {
         Commands::Files { command } => {
             commands::files::run(
                 command,
+                &client,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
@@ -903,5 +913,173 @@ mod tests {
     fn connections_set_requires_provider() {
         let result = Cli::try_parse_from(["everruns", "connections", "set"]);
         assert!(result.is_err(), "provider arg is required");
+    }
+
+    #[test]
+    fn test_cli_parse_budgets_create() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "budgets",
+            "create",
+            "--subject-type",
+            "agent",
+            "--subject-id",
+            "agt_1",
+            "--limit",
+            "10",
+            "--soft-limit",
+            "8",
+        ])
+        .unwrap();
+        if let Commands::Budgets {
+            command:
+                commands::budgets::BudgetsCommand::Create {
+                    subject_type,
+                    subject_id,
+                    limit,
+                    soft_limit,
+                    ..
+                },
+        } = cli.command
+        {
+            assert_eq!(subject_type, "agent");
+            assert_eq!(subject_id, "agt_1");
+            assert_eq!(limit, 10.0);
+            assert_eq!(soft_limit, Some(8.0));
+        } else {
+            panic!("Expected Budgets Create command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_budgets_top_up() {
+        let cli = Cli::try_parse_from(["everruns", "budgets", "top-up", "bdg_1", "--amount", "5"])
+            .unwrap();
+        if let Commands::Budgets {
+            command:
+                commands::budgets::BudgetsCommand::TopUp {
+                    budget_id, amount, ..
+                },
+        } = cli.command
+        {
+            assert_eq!(budget_id, "bdg_1");
+            assert_eq!(amount, 5.0);
+        } else {
+            panic!("Expected Budgets TopUp command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_delete_and_pin() {
+        let cli = Cli::try_parse_from(["everruns", "sessions", "delete", "ses_1"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Sessions {
+                command: commands::sessions::SessionsCommand::Delete { .. }
+            }
+        ));
+
+        let cli = Cli::try_parse_from(["everruns", "sessions", "pin", "ses_1"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Sessions {
+                command: commands::sessions::SessionsCommand::Pin { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_sessions_secrets() {
+        let cli = Cli::try_parse_from([
+            "everruns", "sessions", "secrets", "ses_1", "--secret", "K=v",
+        ])
+        .unwrap();
+        if let Commands::Sessions {
+            command: commands::sessions::SessionsCommand::Secrets { session, secrets },
+        } = cli.command
+        {
+            assert_eq!(session, "ses_1");
+            assert_eq!(secrets, vec!["K=v".to_string()]);
+        } else {
+            panic!("Expected Sessions Secrets command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_agents_versions_list() {
+        let cli = Cli::try_parse_from(["everruns", "agents", "versions", "list", "agt_1"]).unwrap();
+        if let Commands::Agents {
+            command:
+                commands::agents::AgentsCommand::Versions {
+                    command: commands::agents::AgentVersionsCommand::List { agent_id },
+                },
+        } = cli.command
+        {
+            assert_eq!(agent_id, "agt_1");
+        } else {
+            panic!("Expected Agents Versions List command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_agents_search_and_stats() {
+        let cli = Cli::try_parse_from(["everruns", "agents", "search", "coder"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Agents {
+                command: commands::agents::AgentsCommand::Search { .. }
+            }
+        ));
+
+        let cli = Cli::try_parse_from(["everruns", "agents", "stats", "agt_1"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Agents {
+                command: commands::agents::AgentsCommand::Stats { .. }
+            }
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_files_grep_and_mv() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "files",
+            "grep",
+            "--session",
+            "ses_1",
+            "TODO",
+            "--path",
+            "*.rs",
+        ])
+        .unwrap();
+        if let Commands::Files {
+            command:
+                commands::files::FilesCommand::Grep {
+                    session,
+                    pattern,
+                    path,
+                },
+        } = cli.command
+        {
+            assert_eq!(session, "ses_1");
+            assert_eq!(pattern, "TODO");
+            assert_eq!(path, Some("*.rs".to_string()));
+        } else {
+            panic!("Expected Files Grep command");
+        }
+
+        let cli =
+            Cli::try_parse_from(["everruns", "files", "mv", "--session", "ses_1", "/a", "/b"])
+                .unwrap();
+        if let Commands::Files {
+            command: commands::files::FilesCommand::Mv { src, dest, .. },
+        } = cli.command
+        {
+            assert_eq!(src, "/a");
+            assert_eq!(dest, "/b");
+        } else {
+            panic!("Expected Files Mv command");
+        }
     }
 }

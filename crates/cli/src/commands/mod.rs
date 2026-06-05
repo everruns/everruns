@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod budgets;
 pub mod capabilities;
 pub mod chat;
 pub mod connections;

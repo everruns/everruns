@@ -111,6 +111,64 @@ pub enum SessionsCommand {
         #[arg(long, short)]
         output: Option<String>,
     },
+
+    /// Search sessions by query
+    Search {
+        /// Search query
+        query: String,
+    },
+
+    /// Delete a session
+    Delete {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Cancel a running session
+    Cancel {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Pin a session
+    Pin {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Unpin a session
+    Unpin {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Resume a paused session (re-activates exhausted budgets)
+    Resume {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Set encrypted session-scoped secrets
+    Secrets {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+
+        /// Secret (repeatable, format: KEY=VALUE)
+        #[arg(long = "secret", value_name = "KEY=VALUE", required = true)]
+        secrets: Vec<String>,
+    },
+
+    /// List budgets attached to a session
+    Budgets {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
+
+    /// Check whether a session is within budget
+    BudgetCheck {
+        /// Session ID (e.g. ses_xxx)
+        session: String,
+    },
 }
 
 pub async fn run(
@@ -176,6 +234,17 @@ pub async fn run(
             session,
             output: file_path,
         } => export(client, output, quiet, session, file_path).await,
+        SessionsCommand::Search { query } => search(client, output, query).await,
+        SessionsCommand::Delete { session } => delete(client, output, quiet, session).await,
+        SessionsCommand::Cancel { session } => cancel(client, output, quiet, session).await,
+        SessionsCommand::Pin { session } => pin(client, output, quiet, session).await,
+        SessionsCommand::Unpin { session } => unpin(client, output, quiet, session).await,
+        SessionsCommand::Resume { session } => resume(client, output, quiet, session).await,
+        SessionsCommand::Secrets { session, secrets } => {
+            set_secrets(client, output, quiet, session, secrets).await
+        }
+        SessionsCommand::Budgets { session } => budgets(client, output, session).await,
+        SessionsCommand::BudgetCheck { session } => budget_check(client, output, session).await,
     }
 }
 
@@ -689,6 +758,209 @@ async fn get(client: &Everruns, output: OutputFormat, session_id: String) -> Res
     }
 
     Ok(())
+}
+
+async fn search(client: &Everruns, output: OutputFormat, query: String) -> Result<()> {
+    let response = client
+        .sessions()
+        .search(&query)
+        .await
+        .context("Failed to search sessions")?;
+
+    if output.is_text() {
+        if response.data.is_empty() {
+            println!("No sessions found");
+            return Ok(());
+        }
+        print_table_header(&[("ID", 36), ("TITLE", 25), ("STATUS", 10), ("CREATED", 20)]);
+        for session in &response.data {
+            let title = session.title.as_deref().unwrap_or("-");
+            let status = format!("{:?}", session.status).to_lowercase();
+            print_table_row(&[
+                (&session.id, 36),
+                (title, 25),
+                (&status, 10),
+                (&session.created_at, 20),
+            ]);
+        }
+    } else {
+        output.print_value(&serde_json::json!({ "data": response.data }));
+    }
+
+    Ok(())
+}
+
+async fn delete(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+) -> Result<()> {
+    client
+        .sessions()
+        .delete(&session_id)
+        .await
+        .map_err(|e| anyhow::anyhow!("Session not found: {} ({})", session_id, e))?;
+    emit_session_action(output, quiet, &session_id, "deleted", "Deleted session");
+    Ok(())
+}
+
+async fn cancel(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+) -> Result<()> {
+    client
+        .sessions()
+        .cancel(&session_id)
+        .await
+        .with_context(|| format!("Failed to cancel session {}", session_id))?;
+    emit_session_action(output, quiet, &session_id, "cancelled", "Cancelled session");
+    Ok(())
+}
+
+async fn pin(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+) -> Result<()> {
+    client
+        .sessions()
+        .pin(&session_id)
+        .await
+        .with_context(|| format!("Failed to pin session {}", session_id))?;
+    emit_session_action(output, quiet, &session_id, "pinned", "Pinned session");
+    Ok(())
+}
+
+async fn unpin(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+) -> Result<()> {
+    client
+        .sessions()
+        .unpin(&session_id)
+        .await
+        .with_context(|| format!("Failed to unpin session {}", session_id))?;
+    emit_session_action(output, quiet, &session_id, "unpinned", "Unpinned session");
+    Ok(())
+}
+
+async fn resume(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+) -> Result<()> {
+    let resp = client
+        .sessions()
+        .resume(&session_id)
+        .await
+        .with_context(|| format!("Failed to resume session {}", session_id))?;
+    if output.is_text() {
+        if !quiet {
+            println!(
+                "Resumed session: {} ({} budget(s) re-activated)",
+                resp.session_id, resp.resumed_budgets
+            );
+        }
+    } else {
+        output.print_value(&resp);
+    }
+    Ok(())
+}
+
+async fn set_secrets(
+    client: &Everruns,
+    output: OutputFormat,
+    quiet: bool,
+    session_id: String,
+    raw_secrets: Vec<String>,
+) -> Result<()> {
+    let secrets = parse_secrets(&raw_secrets)?;
+    let count = secrets.len();
+    client
+        .sessions()
+        .set_secrets(&session_id, &secrets)
+        .await
+        .with_context(|| format!("Failed to set secrets for session {}", session_id))?;
+    if output.is_text() {
+        if !quiet {
+            println!("Set {} secret(s) for session {}", count, session_id);
+        }
+    } else {
+        output.print_value(&serde_json::json!({
+            "session_id": session_id,
+            "secrets_set": count,
+        }));
+    }
+    Ok(())
+}
+
+async fn budgets(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
+    let budgets = client
+        .sessions()
+        .budgets(&session_id)
+        .await
+        .with_context(|| format!("Failed to fetch budgets for session {}", session_id))?;
+    if output.is_text() {
+        if budgets.is_empty() {
+            println!("No budgets attached to session");
+            return Ok(());
+        }
+        print_table_header(&[("ID", 28), ("LIMIT", 14), ("BALANCE", 14), ("STATUS", 10)]);
+        for b in &budgets {
+            let limit = format!("{:.4} {}", b.limit, b.currency);
+            let balance = format!("{:.4} {}", b.balance, b.currency);
+            let status = format!("{:?}", b.status).to_lowercase();
+            print_table_row(&[(&b.id, 28), (&limit, 14), (&balance, 14), (&status, 10)]);
+        }
+    } else {
+        output.print_value(&serde_json::json!({ "data": budgets }));
+    }
+    Ok(())
+}
+
+async fn budget_check(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {
+    let result = client
+        .sessions()
+        .budget_check(&session_id)
+        .await
+        .with_context(|| format!("Failed to check budget for session {}", session_id))?;
+    if output.is_text() {
+        print_field("Action", &result.action);
+        if let Some(msg) = &result.message {
+            print_field("Message", msg);
+        }
+        if let Some(balance) = result.balance {
+            let currency = result.currency.as_deref().unwrap_or("");
+            print_field("Balance", &format!("{:.4} {}", balance, currency));
+        }
+    } else {
+        output.print_value(&result);
+    }
+    Ok(())
+}
+
+/// Emit a uniform success message for a simple session state transition.
+fn emit_session_action(
+    output: OutputFormat,
+    quiet: bool,
+    session_id: &str,
+    status: &str,
+    text_verb: &str,
+) {
+    if output.is_text() {
+        if !quiet {
+            println!("{}: {}", text_verb, session_id);
+        }
+    } else {
+        output.print_value(&serde_json::json!({ "id": session_id, "status": status }));
+    }
 }
 
 async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> Result<()> {

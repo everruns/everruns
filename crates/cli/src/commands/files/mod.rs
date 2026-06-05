@@ -1,12 +1,17 @@
 // File sync CLI commands
 //
-// TODO(sdk): Replace RemoteClient (raw reqwest) with SDK session_files() methods.
-// SDK v0.1.5 ships session filesystem support (https://github.com/everruns/sdk/issues/60 resolved).
-// Migration is tracked separately — involves adapting to SDK's FileInfo/SessionFile types.
+// One-shot operations (cat/write/rm/mkdir/mv/cp/grep/stat) are backed by the
+// SDK's typed `session_files()` client — see `ops.rs`.
+//
+// The bidirectional `sync`/`push`/`pull` paths still use `RemoteClient` (raw
+// reqwest) because they rely on the server's per-entry `content_hash` for
+// change detection, which the SDK's `FileInfo`/`SessionFile` models (v0.1.9) do
+// not expose. Migrate `RemoteClient` once the SDK surfaces `content_hash`.
 //
 // Design Decision: All file operations grouped under `everruns files` subcommand.
 
 pub mod ls;
+pub mod ops;
 pub mod pull;
 pub mod push;
 pub mod remote;
@@ -17,6 +22,7 @@ pub mod sync_engine;
 use crate::output::OutputFormat;
 use anyhow::Result;
 use clap::Subcommand;
+use everruns_sdk::Everruns;
 
 #[derive(Subcommand)]
 pub enum FilesCommand {
@@ -115,10 +121,118 @@ pub enum FilesCommand {
         #[arg(long, short)]
         long: bool,
     },
+
+    /// Print a session file's content
+    Cat {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Remote file path
+        path: String,
+
+        /// Write to a local file instead of stdout
+        #[arg(long, short)]
+        output: Option<String>,
+    },
+
+    /// Write a session file from a local file or stdin
+    Write {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Remote file path
+        path: String,
+
+        /// Local file to upload (defaults to stdin)
+        #[arg(long)]
+        from: Option<String>,
+
+        /// Mark the file read-only
+        #[arg(long)]
+        readonly: bool,
+    },
+
+    /// Remove a session file or directory
+    Rm {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Remote path
+        path: String,
+
+        /// Remove directories recursively
+        #[arg(long, short)]
+        recursive: bool,
+    },
+
+    /// Create a directory in the session workspace
+    Mkdir {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Remote directory path
+        path: String,
+    },
+
+    /// Move (rename) a session file
+    Mv {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Source path
+        src: String,
+
+        /// Destination path
+        dest: String,
+    },
+
+    /// Copy a session file
+    Cp {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Source path
+        src: String,
+
+        /// Destination path
+        dest: String,
+    },
+
+    /// Search session file contents
+    Grep {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Search pattern
+        pattern: String,
+
+        /// Restrict to a path glob (e.g. "*.rs")
+        #[arg(long)]
+        path: Option<String>,
+    },
+
+    /// Show metadata for a session file or directory
+    Stat {
+        /// Session ID (e.g. ses_xxx)
+        #[arg(long, short)]
+        session: String,
+
+        /// Remote path
+        path: String,
+    },
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     command: FilesCommand,
+    client: &Everruns,
     api_url: &str,
     api_key: &str,
     org_id: Option<&str>,
@@ -187,5 +301,47 @@ pub async fn run(
             )
             .await
         }
+        FilesCommand::Cat {
+            session,
+            path,
+            output: out_file,
+        } => ops::cat(client, &session, &path, out_file.as_deref()).await,
+        FilesCommand::Write {
+            session,
+            path,
+            from,
+            readonly,
+        } => {
+            ops::write(
+                client,
+                output,
+                quiet,
+                &session,
+                &path,
+                from.as_deref(),
+                readonly,
+            )
+            .await
+        }
+        FilesCommand::Rm {
+            session,
+            path,
+            recursive,
+        } => ops::rm(client, output, quiet, &session, &path, recursive).await,
+        FilesCommand::Mkdir { session, path } => {
+            ops::mkdir(client, output, quiet, &session, &path).await
+        }
+        FilesCommand::Mv { session, src, dest } => {
+            ops::mv(client, output, quiet, &session, &src, &dest).await
+        }
+        FilesCommand::Cp { session, src, dest } => {
+            ops::cp(client, output, quiet, &session, &src, &dest).await
+        }
+        FilesCommand::Grep {
+            session,
+            pattern,
+            path,
+        } => ops::grep(client, output, &session, &pattern, path.as_deref()).await,
+        FilesCommand::Stat { session, path } => ops::stat(client, output, &session, &path).await,
     }
 }
