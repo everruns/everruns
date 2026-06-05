@@ -13,6 +13,19 @@ export type LlmProviderType =
 
 export type LlmProviderStatus = "active" | "disabled";
 
+/** Vendor/brand of a model, derived from the backend model registry. */
+export type ModelVendor =
+  | "openai"
+  | "anthropic"
+  | "google"
+  | "nvidia"
+  | "qwen"
+  | "microsoft"
+  | "minimax"
+  | "moonshot"
+  | "xai"
+  | "llmsim";
+
 export interface LlmProvider {
   id: string;
   name: string;
@@ -46,6 +59,8 @@ export interface LlmModelWithProvider extends LlmModel {
   healthy: boolean;
   /** Readonly profile with model capabilities (not persisted to database) */
   profile?: LlmModelProfile;
+  /** Vendor/brand from the model registry; drives branding. Not persisted. */
+  model_vendor?: ModelVendor;
 }
 
 // ============================================

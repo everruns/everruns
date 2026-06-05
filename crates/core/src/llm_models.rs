@@ -219,6 +219,10 @@ pub struct LlmModelWithProvider {
     /// Readonly profile with model capabilities (limits, pricing, modalities). Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<LlmModelProfile>,
+    /// Vendor/brand of the model, derived from the model registry. Drives UI
+    /// branding (icons). `None` when the model id is not in the registry. Not persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_vendor: Option<ModelVendor>,
 }
 
 // ============================================
@@ -329,6 +333,25 @@ pub struct ReasoningEffortConfig {
     pub values: Vec<ReasoningEffortValue>,
     /// Default reasoning effort for this model
     pub default: ReasoningEffort,
+}
+
+/// Vendor / brand that authored a model. Independent of the provider type
+/// that serves it (the same model may be offered by several providers or
+/// gateways). Primarily drives UI iconography.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ModelVendor {
+    OpenAi,
+    Anthropic,
+    Google,
+    Nvidia,
+    Qwen,
+    Microsoft,
+    MiniMax,
+    Moonshot,
+    XAi,
+    LlmSim,
 }
 
 /// LLM Model Profile describing model capabilities

@@ -387,6 +387,10 @@ impl LlmModelService {
         // checks; keep the derivation in one place.
         let healthy = row.provider_status == "active" && row.provider_api_key_set;
 
+        // Vendor/brand tag from the model registry (drives UI branding),
+        // independent of the configured provider type.
+        let model_vendor = everruns_core::get_model_vendor(&provider_type, &row.model_id);
+
         LlmModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
@@ -402,6 +406,7 @@ impl LlmModelService {
             provider_type,
             healthy,
             profile,
+            model_vendor,
         }
     }
 
