@@ -44,6 +44,19 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_session_file_info(
+        &self,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<SessionFileInfoRow>> {
+        Ok(self
+            .session_files
+            .read()
+            .values()
+            .find(|f| f.session_id == session_id && f.path == path)
+            .map(Self::file_to_info))
+    }
+
     pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
         Ok(self.session_files.read().get(&id).cloned())
     }
