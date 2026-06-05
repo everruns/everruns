@@ -155,14 +155,37 @@ follow-up; enumerated here for review:
 
 ## Phased roadmap
 
-- **Phase 1** *(this skeleton)* — capability + `lua` tool, `fs.*` + `json.*`,
-  sandbox limits as data, engine seam, path-translation + metadata tests.
-  Feature-flagged, admin-gated, dev grades only.
-- **Phase 2** — wire the `mlua` engine end to end, streaming `print`, background
-  execution parity, more data modules (csv/yaml/base64), bash-vs-lua eval harness.
-- **Phase 3** — `http.*` behind the egress allow-list.
-- **Phase 4** — user libraries (controlled loader) + code mode (tools as Lua
-  functions, per-tool policy enforced inside the script).
+- **Phase 1 — DONE.** Capability + `lua` tool, `fs.*` + `json.*`, sandbox limits,
+  engine seam, **native-Rust piccolo engine** with the async VFS bridge, full
+  e2e tests. Feature-flagged (`FEATURE_LUA` + `lua` cargo feature), admin-gated.
+- **Phase 2 — PARTIAL.** `tonumber` shim; `print` capture+stream; TM-LUA in the
+  threat model. **Open:** the `string.*` stdlib gap (format/find/match/gmatch/
+  gsub/rep), `os.*` subset, background-execution parity (`BackgroundExecutableTool`).
+- **Phase 3 — PARTIAL.** `base64` module done. **Open:** `csv`/`yaml` modules;
+  the bash-vs-lua eval harness (see Evaluation below).
+- **Phase 4 — DESIGNED, deferred to dedicated security-reviewed PRs.** Each item
+  expands the trust boundary and must clear `specs/threat-model.md` on its own:
+
+  - **`http.*` (target 5).** `http.get/post(url, opts)` routed through
+    `ToolContext::egress_service` and gated by `ToolContext::network_access`
+    (the merged harness∩agent∩session allow-list). No raw sockets. New threats:
+    SSRF to internal metadata endpoints, data exfiltration — this is the single
+    biggest surface and the reason bash omits network entirely. Must extend
+    TM-LUA-005 from "no network" to an allow-listed, audited egress.
+  - **User libraries (target 6).** A controlled `require(path)`-style loader that
+    reads a **text** Lua file from `/workspace`, compiles and runs it, and returns
+    its exports. Text-only loading does not exceed the inline script's trust level
+    (still no bytecode → TM-LUA-006 holds), but the loader must cap module count
+    and recursion depth and resolve paths through `LuaVfs`.
+  - **Code mode (target 7).** Register the agent's available tools as Lua
+    functions (`tools.<name>(args) -> result`) dispatched over the same channel
+    bridge as `fs.*`, so one script orchestrates many tool calls per turn. Gates:
+    honor each tool's `ToolPolicy` (approval-gated tools cannot be silently
+    called from a script), exclude other High-risk execution tools by default
+    (no `lua` calling `virtual_bash`/agent-spawn unless explicitly allow-listed),
+    bound total nested tool calls, and surface each call as a normal
+    `tool.started`/`tool.completed` event for audit. This is the flagship
+    "replace bash" capability and needs the most careful review.
 
 ## Migration (supersede `virtual_bash`)
 
@@ -182,4 +205,37 @@ follow-up; enumerated here for review:
 | Quoting / escaping footguns | None | Many |
 | Model fluency | Good | Excellent (larger prior) |
 | Compact shell idioms | Weaker | `grep | sed | awk` |
+| Stdlib completeness | Partial (piccolo gap, see above) | Full bashkit builtins |
 | Status | Experimental | Shipped |
+
+### Agent ergonomics (how well the model drives each)
+
+A separate axis from raw capability: which engine the model emits *correct,
+recoverable* calls in. Bash wins zero-shot fluency for throwaway text munging
+(huge training prior, compact pipelines). Lua wins reliability for stateful,
+structured, multi-step, or tool-orchestrating work: no shell-quoting footguns in
+JSON tool args, the host API surface exactly matches reality (no "command not
+found" dead ends), errors carry line numbers (tighter self-correction), and
+return values come back as structured JSON. Net: complementary today; Lua is the
+better substrate for code-mode (Phase 4), which is the workload that justifies
+superseding bash.
+
+### Evaluation harness
+
+Lives in a dedicated **`evals/`** tree (or a `crates/agent-evals` crate over
+`everruns-runtime`) — **not** `test_cases/`, which is for manual UI testing.
+
+- **A/B design.** Identical agent/model/prompt-scaffolding; swap only the
+  execution capability (`virtual_bash` ↔ `lua`). N runs per task for variance.
+- **Corpus, sliced by target** (logic/math, VFS munging, JSON/CSV transforms,
+  multi-file edits, grep-and-summarize, report generation, code-mode). Each task
+  = seeded workspace + goal + a deterministic Rust grader (LLM-judge, blinded to
+  arm, for open-ended tasks).
+- **Metrics** (most already emitted via `tool.started`/`tool.completed`, token
+  usage, durations): task success; tool-call validity rate (malformed/`not
+  found`/syntax); self-correction rate; round-trips; token cost + bytes returned;
+  latency; sandbox incidents.
+- **Decision gates** (wire to Migration above): parity on the munging slice
+  before defaulting agents to Lua; a material win on structured/code-mode slices;
+  no regression in sandbox incidents. The piccolo stdlib gap is expected to show
+  up here and must be weighed.
