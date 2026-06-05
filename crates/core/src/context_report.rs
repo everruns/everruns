@@ -542,6 +542,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: Default::default(),
+            full_parameters: None,
         });
         let subagent = ToolDefinition::Builtin(BuiltinTool {
             name: "spawn_subagent".into(),
@@ -552,6 +553,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: Default::default(),
+            full_parameters: None,
         });
 
         assert_eq!(classify_tool(&mcp), "mcp");
@@ -569,6 +571,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: Default::default(),
+            full_parameters: None,
         });
 
         assert_eq!(classify_tool(&skill), "skills");

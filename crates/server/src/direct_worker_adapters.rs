@@ -1848,6 +1848,7 @@ impl DirectWorkerAdapters {
                         deferrable: DeferrablePolicy::default(),
                         hints: everruns_core::tool_types::ToolHints::default()
                             .with_open_world(true),
+                        full_parameters: None,
                     })
                     .with_capability_attribution(cap_id.clone(), Some(server_name.clone())),
                 );

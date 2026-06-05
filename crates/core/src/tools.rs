@@ -486,6 +486,7 @@ pub trait Tool: Send + Sync {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: self.hints(),
+            full_parameters: None,
         })
     }
 }

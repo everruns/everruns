@@ -871,6 +871,7 @@ mod tests {
             category: None,
             deferrable: crate::tool_types::DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         });
 
         let result = executor.execute(&tool_call, &tool_def).await.unwrap();

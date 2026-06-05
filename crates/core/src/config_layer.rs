@@ -438,6 +438,7 @@ mod tests {
                 category: None,
                 deferrable: Default::default(),
                 hints: crate::tool_types::ToolHints::default(),
+                full_parameters: None,
             })
         };
 

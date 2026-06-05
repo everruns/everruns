@@ -516,6 +516,7 @@ mod pre_tool_use_tests {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: ToolHints::default(),
+            full_parameters: None,
         })
     }
 
@@ -729,6 +730,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: ToolHints::default(),
+            full_parameters: None,
         })
     }
 

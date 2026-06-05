@@ -3600,6 +3600,7 @@ mod tests {
             category: category.map(|s| s.to_string()),
             deferrable,
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         })
     }
 
