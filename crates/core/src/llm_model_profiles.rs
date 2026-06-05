@@ -315,15 +315,24 @@ fn resolve_descriptor(
     provider_type: &LlmProviderType,
     model_id: &str,
 ) -> Option<&'static ModelDescriptor> {
-    let id = model_id.to_ascii_lowercase();
+    // Match without allocating: compare bytes case-insensitively. Ids are ASCII.
+    let id = model_id.as_bytes();
     let mut best: Option<(usize, &'static ModelDescriptor)> = None;
     for descriptor in REGISTRY {
         if !descriptor.surfaces.contains(provider_type) {
             continue;
         }
         for alias in descriptor.ids {
-            let alias = alias.to_ascii_lowercase();
-            let id_matches = id == alias || id.starts_with(&format!("{alias}-"));
+            let alias = alias.as_bytes();
+            // Exact (case-insensitive) match, or an `"<alias>-"` prefix (which
+            // covers dated and `-latest` suffixes).
+            let id_matches = if id.len() == alias.len() {
+                id.eq_ignore_ascii_case(alias)
+            } else {
+                id.len() > alias.len()
+                    && id[alias.len()] == b'-'
+                    && id[..alias.len()].eq_ignore_ascii_case(alias)
+            };
             if id_matches && best.is_none_or(|(len, _)| alias.len() > len) {
                 best = Some((alias.len(), descriptor));
             }
@@ -341,9 +350,12 @@ pub fn get_model_profile(
 ) -> Option<LlmModelProfile> {
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
-    // Native execution phases and tool_search exist only on the OpenAI Responses
-    // surface; do not advertise them when the model is reached via another
-    // provider type (Azure, Chat Completions, gateways).
+    // Native execution phases and tool_search are advertised only for the
+    // `openai` (Open Responses) provider type — that is the only surface whose
+    // driver implements them. Every other provider type (Azure, Chat
+    // Completions) gets them masked off, regardless of which model it serves.
+    // A gateway that exposes a Responses-compatible endpoint is configured as
+    // `openai`, so it is intentionally treated as Responses-capable here.
     if !matches!(provider_type, LlmProviderType::Openai) {
         profile.supports_phases = false;
         profile.tool_search = false;
