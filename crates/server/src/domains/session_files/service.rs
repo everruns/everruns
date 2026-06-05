@@ -580,14 +580,14 @@ impl SessionFileService {
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)?;
         let content = SessionFile::decode_content(content, encoding)?;
 
-        let existing = self.db.get_session_file(session_id, &path).await?;
+        // Fetch metadata only (no content) to avoid transferring large blobs
+        // just to check flags. Content equality is enforced atomically in SQL by
+        // update_session_file_if_content_matches below.
+        let existing = self.db.get_session_file_info(session_id, &path).await?;
         let Some(existing) = existing else {
             return Ok(None);
         };
         if existing.is_directory || existing.is_readonly {
-            return Ok(None);
-        }
-        if existing.content.as_deref().unwrap_or_default() != expected_bytes.as_slice() {
             return Ok(None);
         }
 

@@ -54,6 +54,27 @@ impl Database {
         Ok(row)
     }
 
+    /// Get file metadata (no content) — for lightweight pre-checks before atomic updates.
+    pub async fn get_session_file_info(
+        &self,
+        session_id: Uuid,
+        path: &str,
+    ) -> Result<Option<SessionFileInfoRow>> {
+        let row = sqlx::query_as::<_, SessionFileInfoRow>(
+            r#"
+            SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM session_files
+            WHERE session_id = $1 AND path = $2
+            "#,
+        )
+        .bind(session_id)
+        .bind(path)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Get a file by ID
     pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
         let row = sqlx::query_as::<_, SessionFileRow>(
