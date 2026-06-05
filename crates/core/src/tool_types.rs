@@ -95,6 +95,12 @@ pub struct BuiltinTool {
     /// Semantic hints describing the tool's behavioral properties
     #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
     pub hints: ToolHints,
+    /// Original full parameter schema saved by `DeferSchemaHook` before stripping.
+    /// Never serialized; used only within the worker process so `tool_search` can
+    /// return the real schema even after the hook has replaced `parameters` with
+    /// the deferred stub.
+    #[serde(skip)]
+    pub full_parameters: Option<serde_json::Value>,
 }
 
 /// Client-side tool - executed by the client, not the server
@@ -120,6 +126,12 @@ pub struct ClientSideTool {
     /// Semantic hints describing the tool's behavioral properties
     #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
     pub hints: ToolHints,
+    /// Original full parameter schema saved by `DeferSchemaHook` before stripping.
+    /// Never serialized; used only within the worker process so `tool_search` can
+    /// return the real schema even after the hook has replaced `parameters` with
+    /// the deferred stub.
+    #[serde(skip)]
+    pub full_parameters: Option<serde_json::Value>,
 }
 
 impl ToolDefinition {
@@ -152,6 +164,18 @@ impl ToolDefinition {
         match self {
             ToolDefinition::Builtin(b) => &b.parameters,
             ToolDefinition::ClientSide(c) => &c.parameters,
+        }
+    }
+
+    /// Get the full (pre-deferral) parameter schema, falling back to `parameters()`.
+    ///
+    /// When `DeferSchemaHook` strips a tool's schema it saves the original in
+    /// `full_parameters`. Callers that need the real schema (e.g. `tool_search`)
+    /// should use this method so deferred tools still return useful results.
+    pub fn full_parameters(&self) -> &serde_json::Value {
+        match self {
+            ToolDefinition::Builtin(b) => b.full_parameters.as_ref().unwrap_or(&b.parameters),
+            ToolDefinition::ClientSide(c) => c.full_parameters.as_ref().unwrap_or(&c.parameters),
         }
     }
 
@@ -570,6 +594,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default().with_readonly(true),
+            full_parameters: None,
         });
         assert_eq!(reader.concurrency_class(), None);
         assert!(!reader.is_cpu_bound());
@@ -586,6 +611,7 @@ mod tests {
             hints: ToolHints::default()
                 .with_concurrency_class("session_workspace")
                 .with_cpu_bound(true),
+            full_parameters: None,
         });
         assert_eq!(bash.concurrency_class(), Some("session_workspace"));
         assert!(bash.is_cpu_bound());
@@ -683,6 +709,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
 
         assert_eq!(tool.name(), "test_tool");
@@ -703,6 +730,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         assert_eq!(builtin.display_name(), Some("Get Weather"));
 
@@ -714,6 +742,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         assert_eq!(client.display_name(), Some("Deploy"));
     }
@@ -729,6 +758,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         };
         let json = serde_json::to_string(&tool).unwrap();
         assert!(!json.contains("display_name"));
@@ -742,6 +772,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         };
         let json = serde_json::to_string(&tool_with).unwrap();
         assert!(json.contains("\"display_name\":\"Test\""));
@@ -814,6 +845,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
 
         let json = serde_json::to_string(&tool).unwrap();
@@ -840,6 +872,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
 
         assert_eq!(tool.name(), "deploy_app");
@@ -859,6 +892,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         assert_eq!(tool.policy(), &ToolPolicy::ClientSide);
     }
@@ -891,6 +925,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
                 hints: ToolHints::default(),
+                full_parameters: None,
             }),
             ToolDefinition::ClientSide(ClientSideTool {
                 name: "client_tool".to_string(),
@@ -900,6 +935,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
                 hints: ToolHints::default(),
+                full_parameters: None,
             }),
         ];
 
@@ -955,6 +991,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         };
         let json = serde_json::to_string(&tool).unwrap();
         assert!(!json.contains("hints"), "empty hints should be skipped");
@@ -973,6 +1010,7 @@ mod tests {
             hints: ToolHints::default()
                 .with_readonly(true)
                 .with_idempotent(true),
+            full_parameters: None,
         };
         let json = serde_json::to_string(&tool).unwrap();
         assert!(json.contains("\"hints\""));
@@ -1025,6 +1063,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         })
         .with_hints(ToolHints::default().with_readonly(true));
 
@@ -1049,6 +1088,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: ToolHints::default(),
+            full_parameters: None,
         })
         .with_human_intent_argument();
 

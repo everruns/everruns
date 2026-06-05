@@ -1561,6 +1561,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
                 hints: ToolHints::default(),
+                full_parameters: None,
             })
         };
         let tools = vec![make_tool("first"), make_tool("second"), make_tool("third")];

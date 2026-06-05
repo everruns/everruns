@@ -640,6 +640,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         let mut result = crate::tool_types::ToolResult {
             tool_call_id: "call_first".into(),
@@ -677,6 +678,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         let mut result_2 = crate::tool_types::ToolResult {
             tool_call_id: "call_second".into(),
@@ -773,6 +775,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: ToolHints::default(),
+            full_parameters: None,
         });
         let ctx = crate::traits::ToolContext::new(SessionId::from(Uuid::nil()));
 

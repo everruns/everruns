@@ -104,6 +104,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: Default::default(),
+            full_parameters: None,
         });
 
         let transformed = hook.transform(vec![tool]);

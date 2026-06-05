@@ -4130,6 +4130,7 @@ mod contract_tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         })];
 
         let data = ActStartedData::with_definitions(&tool_calls, &tool_defs);
@@ -4190,6 +4191,7 @@ mod contract_tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         });
 
         let summary = ToolDefinitionSummary::from(&def);

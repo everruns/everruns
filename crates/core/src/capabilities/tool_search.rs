@@ -25,7 +25,6 @@
 // model. No driver or agent-loop changes are required.
 
 use super::{Capability, CapabilityStatus, ToolDefinitionHook};
-use crate::mcp_server::is_mcp_tool;
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -147,15 +146,8 @@ impl ToolDefinitionHook for DeferSchemaHook {
         tools
             .into_iter()
             .map(|tool| {
-                // Keep full schemas for: the search tool itself, tools that opt
-                // out, and MCP tools. MCP tools are executed via registry proxies
-                // built from these definitions in the act path; stripping them
-                // here would leave the proxy (and therefore tool_search results)
-                // with only the stub schema. Deferring MCP tools would require
-                // plumbing their full schemas to the act path separately.
                 if tool.name() == TOOL_SEARCH_TOOL_NAME
                     || matches!(tool.deferrable(), DeferrablePolicy::Never)
-                    || is_mcp_tool(tool.name())
                 {
                     return tool;
                 }
@@ -171,14 +163,21 @@ impl ToolDefinitionHook for DeferSchemaHook {
 }
 
 /// Replace a tool's parameter schema with the deferred stub, keeping name,
-/// description, policy, category, and hints intact.
+/// description, policy, category, and hints intact. The original schema is
+/// saved in `full_parameters` so `tool_search` can return it on demand.
 fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
     match tool {
         ToolDefinition::Builtin(mut b) => {
+            if b.full_parameters.is_none() {
+                b.full_parameters = Some(b.parameters.clone());
+            }
             b.parameters = deferred_stub_schema();
             ToolDefinition::Builtin(b)
         }
         ToolDefinition::ClientSide(mut c) => {
+            if c.full_parameters.is_none() {
+                c.full_parameters = Some(c.parameters.clone());
+            }
             c.parameters = deferred_stub_schema();
             ToolDefinition::ClientSide(c)
         }
@@ -232,7 +231,7 @@ impl ToolSearchTool {
                 json!({
                     "name": d.name(),
                     "description": d.description(),
-                    "parameters": d.parameters(),
+                    "parameters": d.full_parameters(),
                 })
             })
             .collect()
@@ -287,6 +286,7 @@ impl Tool for ToolSearchTool {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: self.hints(),
+            full_parameters: None,
         })
     }
 
@@ -363,6 +363,7 @@ mod tests {
             category: None,
             deferrable,
             hints: ToolHints::default(),
+            full_parameters: None,
         })
     }
 
@@ -446,10 +447,9 @@ mod tests {
     }
 
     #[test]
-    fn test_hook_preserves_mcp_tools() {
-        // MCP tools must keep full schemas: they become registry proxies in the
-        // act path, and stripping them would leave tool_search unable to return
-        // their parameters.
+    fn test_hook_defers_mcp_tools_and_saves_full_schema() {
+        // MCP tools are now deferred like regular tools. The full schema is saved
+        // in full_parameters so tool_search can return it on demand.
         let hook = DeferSchemaHook { threshold: 3 };
         let mut tools = many_tools(3);
         tools.push(builtin(
@@ -461,13 +461,38 @@ mod tests {
         let out = hook.transform(tools);
 
         let mcp = out.iter().find(|t| t.name() == "mcp_docs__search").unwrap();
+        // Stub is sent to the model (parameters stripped).
         assert!(
-            mcp.parameters().get("properties").is_some(),
-            "MCP tool keeps full schema"
+            mcp.parameters().get("properties").is_none(),
+            "MCP tool schema is deferred"
         );
-        // Non-MCP deferrable tools are still stripped.
-        let deferred = out.iter().find(|t| t.name() == "tool_0").unwrap();
-        assert!(deferred.parameters().get("properties").is_none());
+        // Full schema is preserved for tool_search to return.
+        assert!(
+            mcp.full_parameters().get("properties").is_some(),
+            "MCP tool full schema is accessible via full_parameters()"
+        );
+    }
+
+    #[test]
+    fn test_search_returns_full_schema_for_deferred_tools() {
+        // After DeferSchemaHook strips parameters, tool_search must still return
+        // the full schema (stored in full_parameters).
+        let hook = DeferSchemaHook { threshold: 1 };
+        let tools = vec![builtin(
+            "read_file",
+            "Read a file",
+            DeferrablePolicy::Automatic,
+        )];
+        let deferred = hook.transform(tools);
+
+        let results = ToolSearchTool::search(&deferred, "read file");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["name"], "read_file");
+        // full_parameters() is used, so real schema is returned — not the stub.
+        assert!(
+            results[0]["parameters"].get("properties").is_some(),
+            "tool_search must return the full schema, not the deferred stub"
+        );
     }
 
     #[test]

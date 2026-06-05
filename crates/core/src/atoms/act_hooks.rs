@@ -578,6 +578,7 @@ mod tests {
             category: None,
             deferrable: crate::tool_types::DeferrablePolicy::Never,
             hints: Default::default(),
+            full_parameters: None,
         })
     }
 

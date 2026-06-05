@@ -1111,6 +1111,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: everruns_core::tool_types::ToolHints::default(),
+            full_parameters: None,
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools);
@@ -1140,6 +1141,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: everruns_core::tool_types::ToolHints::default(),
+            full_parameters: None,
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
@@ -1194,6 +1196,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: everruns_core::tool_types::ToolHints::default(),
+            full_parameters: None,
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
@@ -1244,6 +1247,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: everruns_core::tool_types::ToolHints::default(),
+            full_parameters: None,
         })];
 
         let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();

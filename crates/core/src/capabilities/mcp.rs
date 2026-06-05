@@ -113,6 +113,7 @@ impl McpCapability {
             category: self.category().map(|s| s.to_string()),
             deferrable: DeferrablePolicy::default(),
             hints,
+            full_parameters: None,
         })
         .with_capability_attribution(self.capability_id(), Some(self.server_name.clone()))
     }

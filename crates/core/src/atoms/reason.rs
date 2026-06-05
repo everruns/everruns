@@ -2237,6 +2237,7 @@ mod tests {
             category: None,
             deferrable: crate::tool_types::DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         })
         .with_capability_attribution("cap:demo", Some("Demo Capability"));
 
