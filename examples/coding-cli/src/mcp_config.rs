@@ -18,7 +18,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use everruns_core::{McpServerTransportType, ScopedMcpServers};
+use everruns_core::ScopedMcpServers;
 use serde::Deserialize;
 
 /// File name read from the workspace root.
@@ -50,7 +50,7 @@ pub fn load_mcp_servers(workspace_root: &Path) -> Result<ScopedMcpServers> {
     // the configured command during turn-context loading, before the CLI can
     // ask for approval, so only non-executing transports are accepted here.
     config.mcp_servers.retain(|name, server| {
-        if server.transport_type == McpServerTransportType::Stdio {
+        if server.transport_type.is_local() {
             tracing::warn!(
                 server = %name,
                 file = %path.display(),
@@ -67,6 +67,8 @@ pub fn load_mcp_servers(workspace_root: &Path) -> Result<ScopedMcpServers> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::McpServerTransportType;
+
     fn write(dir: &Path, contents: &str) {
         std::fs::write(dir.join(MCP_CONFIG_FILE), contents).unwrap();
     }
