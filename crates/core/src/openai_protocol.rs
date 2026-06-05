@@ -1443,7 +1443,6 @@ mod tests {
     #[test]
     fn drop_orphaned_tool_messages_removes_unmatched_tool_results() {
         use crate::llm_driver_registry::LlmMessageContent;
-        use crate::tool_types::ToolCall;
 
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "hello"),
@@ -1452,6 +1451,9 @@ mod tests {
                 content: LlmMessageContent::Text("result".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_trimmed".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
@@ -1474,12 +1476,18 @@ mod tests {
                     arguments: json!({}),
                 }]),
                 tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
             },
             LlmMessage {
                 role: LlmMessageRole::Tool,
                 content: LlmMessageContent::Text("file content".to_string()),
                 tool_calls: None,
                 tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
             },
         ];
         let filtered = drop_orphaned_tool_messages(&messages);
