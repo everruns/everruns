@@ -52,6 +52,8 @@ impl EventListener for UsageTrackingListener {
         let output_tokens = usage.output_tokens as i64;
         let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
         let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
+        // Authoritative provider-reported cost (e.g. OpenRouter usage.cost), if any.
+        let cost_usd = usage.cost_usd;
 
         // Get session to determine org_id (unscoped lookup - internal system use)
         let session = match self.db.get_session_unscoped(event.session_id).await {
@@ -83,6 +85,7 @@ impl EventListener for UsageTrackingListener {
                 output_tokens,
                 cache_read_tokens,
                 cache_creation_tokens,
+                cost_usd,
                 data.metadata.duration_ms.map(|d| d as i32),
                 data.metadata
                     .finish_reasons

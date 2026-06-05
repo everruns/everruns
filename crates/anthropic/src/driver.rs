@@ -780,6 +780,7 @@ impl LlmDriver for AnthropicLlmDriver {
                                     completion_tokens: Some(out_tokens),
                                     cache_read_tokens: cache_read,
                                     cache_creation_tokens: cache_creation,
+                                    provider_cost_usd: None,
                                     model: Some(model),
                                     finish_reason: Some("stop".to_string()),
                                     retry_metadata: retry_metadata_for_done

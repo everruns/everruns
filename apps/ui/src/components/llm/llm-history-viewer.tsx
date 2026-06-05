@@ -19,7 +19,7 @@ import {
   FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatTokens, formatDuration } from "@/lib/formatting";
+import { formatTokens, formatDuration, formatCostUsd } from "@/lib/formatting";
 import type {
   Message,
   ContentPart,
@@ -309,7 +309,12 @@ function UsageDisplay({ usage }: { usage: TokenUsage }) {
       <div className="flex items-center gap-2 mb-2">
         <Zap className="w-4 h-4 text-yellow-500" />
         <span className="text-sm font-medium">Token Usage</span>
-        <Badge variant="outline" className="ml-auto">
+        {usage.cost_usd !== undefined && (
+          <Badge variant="outline" className="ml-auto">
+            {formatCostUsd(usage.cost_usd)}
+          </Badge>
+        )}
+        <Badge variant="outline" className={usage.cost_usd !== undefined ? "" : "ml-auto"}>
           {formatTokens(total)} total
         </Badge>
       </div>

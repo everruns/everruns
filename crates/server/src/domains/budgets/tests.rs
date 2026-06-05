@@ -180,7 +180,15 @@ fn test_rule_stop_message_includes_currency() {
 #[test]
 fn test_compute_debit_tokens_currency() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("tokens", 1500, 1000, 500, Some("gpt-4o"), Some("openai"));
+    let debit = svc.compute_debit(
+        "tokens",
+        1500,
+        1000,
+        500,
+        Some("gpt-4o"),
+        Some("openai"),
+        None,
+    );
     assert_eq!(debit, 1500.0);
 }
 
@@ -194,9 +202,60 @@ fn test_compute_debit_usd_with_known_model() {
         500_000,
         Some("gpt-4o"),
         Some("openai"),
+        None,
     );
     assert!(debit > 0.0, "Debit should be positive for known model");
     assert!(debit < 100.0, "Debit should be reasonable for 1.5M tokens");
+}
+
+#[test]
+fn test_compute_debit_usd_prefers_provider_cost() {
+    let (svc, _) = make_service();
+    // A provider-reported cost wins over the price-table estimate, even for a
+    // known model — it is the authoritative charge (e.g. OpenRouter usage.cost).
+    let debit = svc.compute_debit(
+        "usd",
+        1_500_000,
+        1_000_000,
+        500_000,
+        Some("gpt-4o"),
+        Some("openai"),
+        Some(0.0123),
+    );
+    assert_eq!(debit, 0.0123);
+}
+
+#[test]
+fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
+    let (svc, _) = make_service();
+    // Without a profile we would fall back to raw token count; the provider's
+    // cost rescues USD metering for the long tail of models.
+    let debit = svc.compute_debit(
+        "usd",
+        1500,
+        1000,
+        500,
+        Some("some/exotic-model"),
+        Some("openai"),
+        Some(0.0042),
+    );
+    assert_eq!(debit, 0.0042);
+}
+
+#[test]
+fn test_compute_debit_usd_zero_provider_cost_falls_back() {
+    let (svc, _) = make_service();
+    // A zero/absent cost must not short-circuit metering; fall back as before.
+    let debit = svc.compute_debit(
+        "usd",
+        1500,
+        1000,
+        500,
+        Some("unknown-model"),
+        Some("openai"),
+        Some(0.0),
+    );
+    assert_eq!(debit, 1500.0);
 }
 
 #[test]
@@ -209,6 +268,7 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
         500,
         Some("unknown-model"),
         Some("openai"),
+        None,
     );
     assert_eq!(debit, 1500.0);
 }
@@ -216,21 +276,21 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
 #[test]
 fn test_compute_debit_credits_currency() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("credits", 5000, 3000, 2000, None, None);
+    let debit = svc.compute_debit("credits", 5000, 3000, 2000, None, None, None);
     assert_eq!(debit, 5.0);
 }
 
 #[test]
 fn test_compute_debit_custom_currency_uses_token_count() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, None, None);
+    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, None, None, None);
     assert_eq!(debit, 2000.0);
 }
 
 #[test]
 fn test_compute_debit_zero_tokens() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("tokens", 0, 0, 0, None, None);
+    let debit = svc.compute_debit("tokens", 0, 0, 0, None, None, None);
     assert_eq!(debit, 0.0);
 }
 

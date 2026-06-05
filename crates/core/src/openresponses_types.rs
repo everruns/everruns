@@ -670,6 +670,10 @@ pub struct Usage {
     pub input_tokens_details: Option<InputTokensDetails>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_tokens_details: Option<OutputTokensDetails>,
+    /// Authoritative per-request cost in USD credits, returned by
+    /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<f64>,
 }
 
 /// Input token breakdown.
@@ -1175,5 +1179,24 @@ mod tests {
         let json = serde_json::to_value(&tool).unwrap();
         assert_eq!(json["type"], "function");
         assert_eq!(json["name"], "get_weather");
+    }
+
+    #[test]
+    fn test_usage_parses_openrouter_cost() {
+        // OpenAI-compatible gateways (OpenRouter) include `cost` in USD credits.
+        let usage: Usage = serde_json::from_str(
+            r#"{"input_tokens": 194, "output_tokens": 2, "total_tokens": 196, "cost": 0.00095}"#,
+        )
+        .unwrap();
+        assert_eq!(usage.cost, Some(0.00095));
+    }
+
+    #[test]
+    fn test_usage_without_cost_is_none() {
+        // Direct OpenAI omits `cost`; deserialization must default to None.
+        let usage: Usage =
+            serde_json::from_str(r#"{"input_tokens": 10, "output_tokens": 5, "total_tokens": 15}"#)
+                .unwrap();
+        assert_eq!(usage.cost, None);
     }
 }

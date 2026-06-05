@@ -384,6 +384,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
         let total_tokens = Arc::new(Mutex::new(0u32));
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let cache_read_tokens = Arc::new(Mutex::new(Option::<u32>::None));
+        // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
+        // per-request cost in `usage.cost`; direct OpenAI leaves it absent.
+        let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
@@ -403,6 +406,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                     let total_tokens = Arc::clone(&total_tokens);
                     let prompt_tokens = Arc::clone(&prompt_tokens);
                     let cache_read_tokens = Arc::clone(&cache_read_tokens);
+                    let provider_cost_usd = Arc::clone(&provider_cost_usd);
                     let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
                     let finish_reason = Arc::clone(&finish_reason);
                     let retry_metadata_for_done = shared_retry_metadata.clone();
@@ -422,6 +426,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
+                            let cost = *provider_cost_usd.lock().unwrap();
                             let mut reason = finish_reason.lock().unwrap().clone();
 
                             let mut events = Vec::new();
@@ -449,6 +454,7 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                     completion_tokens: Some(output_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,
+                                    provider_cost_usd: cost,
                                     model: Some(model),
                                     finish_reason: reason.or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
@@ -476,6 +482,11 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                         && details.cached_tokens.is_some()
                                     {
                                         *cache_read_tokens.lock().unwrap() = details.cached_tokens;
+                                    }
+                                    // Authoritative cost from OpenAI-compatible gateways
+                                    // (e.g. OpenRouter `usage.cost`, in USD credits).
+                                    if usage.cost.is_some() {
+                                        *provider_cost_usd.lock().unwrap() = usage.cost;
                                     }
                                 }
 
@@ -712,6 +723,10 @@ struct OpenAiUsage {
     /// Detailed breakdown of prompt tokens (includes cached tokens)
     #[serde(default)]
     prompt_tokens_details: Option<OpenAiPromptTokensDetails>,
+    /// Authoritative per-request cost in USD credits, returned by
+    /// OpenAI-compatible gateways such as OpenRouter. Absent for direct OpenAI.
+    #[serde(default)]
+    cost: Option<f64>,
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -984,6 +999,38 @@ mod tests {
             usage.prompt_tokens_details.unwrap().cached_tokens,
             Some(100)
         );
+    }
+
+    #[test]
+    fn test_usage_chunk_with_openrouter_cost() {
+        // OpenAI-compatible gateways like OpenRouter add `usage.cost` (USD credits).
+        let usage_chunk = r#"{
+            "id": "gen-123",
+            "choices": [],
+            "usage": {
+                "prompt_tokens": 194,
+                "completion_tokens": 2,
+                "total_tokens": 196,
+                "cost": 0.00095
+            }
+        }"#;
+
+        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
+        let usage = chunk.usage.unwrap();
+        assert_eq!(usage.cost, Some(0.00095));
+    }
+
+    #[test]
+    fn test_usage_chunk_without_cost_defaults_none() {
+        // Direct OpenAI omits `cost`; it must deserialize to None, not error.
+        let usage_chunk = r#"{
+            "id": "chatcmpl-123",
+            "choices": [],
+            "usage": { "prompt_tokens": 10, "completion_tokens": 5 }
+        }"#;
+
+        let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
+        assert_eq!(chunk.usage.unwrap().cost, None);
     }
 
     #[test]

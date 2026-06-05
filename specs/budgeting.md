@@ -102,16 +102,18 @@ BudgetService.on_event() (EventListener)
   ▼
 INSERT usage_journal row
   kind=llm_generation
-  measures={input_tokens, output_tokens, total_tokens}
+  measures={input_tokens, output_tokens, total_tokens, provider_cost_usd}
   │
   ▼
 Look up session → find active budgets in hierarchy
   (session → agent → user → org)
   │
   ▼ (for each matching budget)
-compute_debit(currency, tokens, model, provider)
+compute_debit(currency, tokens, model, provider, provider_cost_usd)
   │  "tokens" → raw count
-  │  "usd"    → tokens * LlmModelProfile cost-per-token
+  │  "usd"    → provider_cost_usd when the provider reports it
+  │            (e.g. OpenRouter usage.cost), else
+  │            tokens * LlmModelProfile cost-per-token, else raw count
   │  "credits" → tokens / 1000
   │
   ▼

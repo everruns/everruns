@@ -672,6 +672,7 @@ impl LlmDriver for LlmSimDriver {
                 completion_tokens: Some(completion_tokens),
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
+                provider_cost_usd: None,
                 model: Some(model_name_done),
                 finish_reason: Some("stop".to_string()),
                 retry_metadata: None,

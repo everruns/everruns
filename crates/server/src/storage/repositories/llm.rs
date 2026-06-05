@@ -479,6 +479,7 @@ impl Database {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
@@ -488,8 +489,8 @@ impl Database {
             INSERT INTO llm_generations (
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-                duration_ms, finish_reason, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                cost_usd, duration_ms, finish_reason, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id
             "#,
         )
@@ -503,6 +504,7 @@ impl Database {
         .bind(output_tokens)
         .bind(cache_read_tokens)
         .bind(cache_creation_tokens)
+        .bind(cost_usd)
         .bind(duration_ms)
         .bind(&finish_reason)
         .bind(created_at)
