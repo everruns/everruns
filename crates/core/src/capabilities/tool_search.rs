@@ -114,6 +114,19 @@ impl Capability for ToolSearchCapability {
             threshold: self.threshold,
         })]
     }
+
+    fn tool_definition_hooks_with_config(
+        &self,
+        config: &Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        let threshold = config
+            .get("threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(self.threshold);
+
+        vec![Arc::new(DeferSchemaHook { threshold })]
+    }
 }
 
 // ============================================================================
