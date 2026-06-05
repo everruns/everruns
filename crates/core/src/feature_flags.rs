@@ -207,6 +207,10 @@ pub struct InternalFeatureFlags {
     /// through `PaymentAuthority`. Disabled by default on all envs, including dev,
     /// because spend is irreversible. Enable via `FEATURE_MACHINE_PAYMENTS=true`.
     pub machine_payments: bool,
+    /// Experimental sandboxed Lua execution capability (`specs/lua-execution.md`).
+    /// Disabled by default; requires the `lua` cargo feature to be compiled in to
+    /// actually run scripts. Enable via `FEATURE_LUA=true`.
+    pub lua: bool,
 }
 
 impl InternalFeatureFlags {
@@ -219,6 +223,7 @@ impl InternalFeatureFlags {
             container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
             session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
             machine_payments: standard_flag("FEATURE_MACHINE_PAYMENTS", false),
+            lua: standard_flag("FEATURE_LUA", false),
         }
     }
 
@@ -229,6 +234,7 @@ impl InternalFeatureFlags {
             "container_sandbox" => self.container_sandbox,
             "session_sandbox" => self.session_sandbox,
             "machine_payments" => self.machine_payments,
+            "lua" => self.lua,
             _ => false,
         }
     }
@@ -519,11 +525,13 @@ mod tests {
             container_sandbox: true,
             session_sandbox: true,
             machine_payments: true,
+            lua: true,
         };
         assert!(flags.is_enabled("docker_capability"));
         assert!(flags.is_enabled("container_sandbox"));
         assert!(flags.is_enabled("session_sandbox"));
         assert!(flags.is_enabled("machine_payments"));
+        assert!(flags.is_enabled("lua"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
