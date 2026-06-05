@@ -9,8 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-- feat(capabilities): generic provider-agnostic `tool_search` capability for client-side deferred tool loading on any model (Anthropic, Gemini, ...)
-- feat(mcp): MCP server tools are now first-class `ToolRegistry` tools across all hosts (runtime + durable worker) via `McpProxyTool`/`McpToolInvoker`, so `tool_search`, `openai_tool_search`, and `spawn_background` work transparently with MCP tools; the per-host `CompositeToolExecutor` routing was removed
+## [0.8.38] - 2026-06-05
+
+### Highlights
+
+- **Generic `tool_search` capability** - Provider-agnostic deferred tool loading now works on any model (Anthropic, Gemini, and others); MCP server tools are first-class `ToolRegistry` tools across all hosts via `McpProxyTool`/`McpToolInvoker`, so `tool_search`, `openai_tool_search`, and `spawn_background` work transparently with MCP tools ([#2050](https://github.com/everruns/everruns/pull/2050)).
+- **Pre-tool-use hook seam** - New `pre_tool_use_hooks` capability seam enables fine-grained tool gating before execution ([#2048](https://github.com/everruns/everruns/pull/2048)).
+
+### What's Changed
+
+- fix(core): emit tool calls when finish chunk carries empty content (EVE-522) ([#2052](https://github.com/everruns/everruns/pull/2052)) by [@chaliy](https://github.com/chaliy)
+- fix(core): replay full transcript on stateless Responses gateways ([#2051](https://github.com/everruns/everruns/pull/2051)) by [@chaliy](https://github.com/chaliy)
+- feat: generic tool_search + first-class MCP tools across all hosts ([#2050](https://github.com/everruns/everruns/pull/2050)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): gate tool_search off on gpt-5.5 family (EVE-521) ([#2049](https://github.com/everruns/everruns/pull/2049)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add pre_tool_use_hooks seam for tool gating ([#2048](https://github.com/everruns/everruns/pull/2048)) by [@chaliy](https://github.com/chaliy)
+- refactor(payments): move Parallel paid capability out of core ([#2047](https://github.com/everruns/everruns/pull/2047)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.8.37] - 2026-06-03
 
