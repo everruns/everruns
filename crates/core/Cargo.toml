@@ -72,10 +72,9 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 # Virtual bash interpreter
 bashkit = { version = "0.8.0", features = ["jq"] }
 
-# Sandboxed Lua interpreters (experimental `lua` capability, see specs/lua-execution.md).
-# Both optional + behind cargo features so the default build pulls in no interpreter.
-# Primary engine: native-Rust piccolo (no C/FFI, fuel-bounded). Reference: mlua.
-piccolo = { version = "0.3", optional = true }
+# Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
+# 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
+# build does not compile the C sources. See specs/lua-execution.md.
 mlua = { version = "0.10", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
@@ -123,12 +122,9 @@ include_dir = { version = "0.7", optional = true }
 [features]
 default = ["llm-tests"]
 embedded-platform-docs = ["dep:include_dir"]
-# Experimental sandboxed Lua execution capability. Off by default. The engine is
-# chosen by feature: `lua` enables the native-Rust piccolo engine (primary);
-# `lua-mlua` enables the mlua reference engine (vendored Lua 5.4). See
-# specs/lua-execution.md.
-lua = ["dep:piccolo"]
-lua-mlua = ["dep:mlua"]
+# Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
+# Off by default; enabling compiles the C sources. See specs/lua-execution.md.
+lua = ["dep:mlua"]
 openapi = ["utoipa"]
 sqlx = ["dep:sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]

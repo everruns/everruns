@@ -935,33 +935,35 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 ## 15A. Lua Sandbox (TM-LUA)
 
 Experimental sandboxed Lua execution capability (`crates/core/src/capabilities/lua.rs`,
-`specs/lua-execution.md`). High risk, admin-gated (same gates as `virtual_bash`),
-behind the `FEATURE_LUA` flag; scripts run only when the `lua` cargo feature
-(native-Rust piccolo engine) or `lua-mlua` (reference engine) is compiled in. One
-fresh VM per invocation, never shared across sessions/tenants.
+`specs/lua-execution.md`). Engine: **mlua** (vendored Lua 5.4, never LuaJIT),
+behind the `lua` cargo feature. High risk, admin-gated (same gates as
+`virtual_bash`), and runtime-gated by `FEATURE_LUA`. One fresh VM per invocation,
+never shared across sessions/tenants. All hardening is on by default — no
+configuration knobs.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-LUA-001 | Arbitrary code execution | High | Admin-gated assignment (High risk tier); piccolo `core()` loads only base/coroutine/math/string/table — no io/os/package | MITIGATED |
-| TM-LUA-002 | CPU exhaustion | High | Fuel budget per executor step + wall-clock deadline checked between steps; outer tokio timeout backstop | MITIGATED |
-| TM-LUA-003 | Memory exhaustion | High | `Lua::total_memory()` checked between steps against a 32 MiB cap | MITIGATED |
-| TM-LUA-004 | Filesystem escape / cross-tenant access | High | All paths route through `LuaVfs` → session-scoped `SessionFileSystem`; `/workspace`-rooted, traversal/outside-workspace rejected; no `io` library | MITIGATED |
-| TM-LUA-005 | Network egress / exfiltration | High | No network host functions in Phase 1; HTTP (Phase 3) will require the egress allow-list (`ToolContext::network_access`) | MITIGATED (no network) |
-| TM-LUA-006 | Dynamic code / bytecode loading | Medium | piccolo defines no `load`/`loadstring`/`dofile`/`loadfile`/`require`; mlua engine scrubs them | MITIGATED |
-| TM-LUA-007 | Native escape (FFI) | High | Pure-Rust piccolo has no FFI; mlua engine uses Lua 5.4 (never LuaJIT) | MITIGATED |
+| TM-LUA-001 | Arbitrary code execution | High | Admin-gated assignment (High risk tier); only string/table/math/os/utf8 libs loaded; dangerous globals scrubbed | MITIGATED |
+| TM-LUA-002 | CPU / wall-clock exhaustion | High | Instruction-count hook (every 100k ops) enforces an instruction budget + wall-clock deadline; outer tokio timeout backstop. The VM runs on a dedicated blocking thread, so a pathological *synchronous* op (e.g. catastrophic Lua pattern in C, which the hook cannot interrupt) occupies one blocking-pool thread instead of stalling a shared runtime worker. **Residual:** such an op is not force-killable in-process — robust fix is out-of-process execution. | MITIGATED (best-effort for synchronous C ops) |
+| TM-LUA-003 | Memory exhaustion | High | `Lua::set_memory_limit` hard 32 MiB cap (over-budget alloc → Lua error). Host-side reads bounded by `SessionFileSystem` quotas (TM-FS-008). | MITIGATED |
+| TM-LUA-004 | Filesystem escape / cross-tenant access | High | All paths route through `LuaVfs` → session-scoped `SessionFileSystem`; `/workspace`-rooted, traversal/outside-workspace rejected; `io` library not loaded | MITIGATED |
+| TM-LUA-005 | Network egress / exfiltration | High | No network host functions and no socket library; no way to open a connection. HTTP (Phase 4) will require the egress allow-list (`ToolContext::network_access`). | MITIGATED (no network) |
+| TM-LUA-006 | Dynamic code / bytecode loading | Medium | `load`/`loadstring`/`dofile`/`loadfile`/`require`/`package` scrubbed to nil; `string.dump` removed; no untrusted-bytecode path | MITIGATED |
+| TM-LUA-007 | Native escape (FFI / C modules) | High | Lua 5.4, never LuaJIT (no FFI); `package`/`require` scrubbed so `package.loadlib` cannot `dlopen` a shared object; `debug` library not loaded | MITIGATED |
 | TM-LUA-008 | Output-channel abuse | Medium | Captured `print` output capped (64 KiB) in-engine; tool result further shaped via `tool_output_sanitizer` | MITIGATED |
 
 ### Lua Isolation Summary
 
 | Property | Status |
 |----------|--------|
-| Real filesystem access | Blocked (LuaVfs → session store only) |
-| Real process execution | Blocked (no os/io) |
-| Network access | Blocked (no host functions) |
-| Dynamic code loading | Blocked (no load/require) |
-| Native/FFI escape | Blocked (pure-Rust piccolo) |
-| CPU exhaustion | Bounded (fuel + deadline) |
-| Memory exhaustion | Bounded (total_memory cap) |
+| Real filesystem access | Blocked (LuaVfs → session store only; no `io`) |
+| Real process execution | Blocked (`os.execute`/`os.exit` scrubbed) |
+| Environment variables | Blocked (`os.getenv` scrubbed) |
+| Network / sockets | Blocked (no host functions, no socket lib) |
+| Dynamic code / bytecode | Blocked (`load`/`require`/`string.dump` scrubbed) |
+| Native / FFI / C modules | Blocked (no LuaJIT, no `package.loadlib`, no `debug`) |
+| Memory exhaustion | Bounded (`set_memory_limit` 32 MiB) |
+| CPU / wall-clock | Bounded for Lua code (hook + deadline); synchronous C ops contained to a blocking thread, best-effort timeout |
 | Cross-tenant state | Blocked (fresh VM per invocation) |
 
 ## 16. Denial of Service (TM-DOS)

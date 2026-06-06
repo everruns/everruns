@@ -51,57 +51,44 @@ Mirrors `virtual_bash` so the proven scaffolding is reused:
   `SessionFileSystemAdapter`: absolute, forward-slash, `/workspace` stripped,
   traversal/outside-workspace rejected). This is what makes tenant isolation
   free — every path resolves through the already session-scoped store.
-- **Engine seam** — `LuaLimits` (data) + `engine::run(...)`. The engine lives
-  behind a cargo feature; with it off, `engine::run` returns a "not compiled"
-  error so the default workspace build pulls in no interpreter. The capability,
-  tool, VFS, host-API surface, and tests are engine-agnostic, so the chosen
-  engine (`piccolo`, primary) and the reference engine (`mlua`, `lua-mlua`
-  feature) are interchangeable behind this one module.
+- **Engine** — `LuaLimits` (data) + `engine::run(...)`, behind the `lua` cargo
+  feature; with it off, `engine::run` returns a "not compiled" error so the
+  default workspace build pulls in no interpreter.
 
 ### Runtime choice
 
-**Decision: native-Rust `piccolo`.** No C/FFI surface to audit, fuel-based
-*true preemptive* CPU bounding, and sandbox-by-construction (the dangerous
-libraries simply do not exist — there is nothing to scrub). Trade-offs accepted:
-pre-1.0 maturity, a partial stdlib, and a manual async bridge for the VFS host
-calls (piccolo has no `create_async_function` equivalent).
+**Decision: `mlua` (vendored Lua 5.4, never LuaJIT) is the sole engine.** It is
+actively maintained, ships the complete Lua 5.4 stdlib, and exposes the
+memory/instruction controls the sandbox needs. `piccolo` (pure-Rust) was
+prototyped behind the same seam for its no-C appeal, but rejected: effectively
+unmaintained (no release since 2024-06) and a thin stdlib that would force us to
+reimplement ~19 functions plus a Lua-pattern engine on a dead base — and the eval
+below measured it failing tasks mlua passes. The pure-Rust safety win is moot
+when the dependency gets no security fixes. The engine seam was kept minimal (one
+`engine::run` + a not-compiled stub); there is no longer a second engine.
 
-`mlua` (Lua 5.4, vendored) is retained only as a **reference engine** behind the
-`lua-mlua` cargo feature — it proved the engine seam end to end and is a fallback
-if the piccolo spike (below) shows it cannot run the scripts models actually
-write. **Never LuaJIT** under any engine (FFI = instant escape).
-
-**Spike gate (done).** Two unknowns were validated empirically:
-1. **Async host-call bridge — PASS.** piccolo is synchronous, so the VM runs on
-   a `spawn_blocking` thread and each `fs.*` callback marshals its request to the
-   tokio runtime over an `mpsc` channel and `blocking_recv`s the reply. The async
-   `SessionFileSystem` round-trips cleanly; fs/json round-trip tests pass.
-2. **Stdlib/language coverage — PARTIAL (tracked debt).** piccolo 0.3.3 ships a
-   thin stdlib. Confirmed missing and relevant to model-authored scripts:
-   `tonumber` (base); `string.format`, `string.find`, `string.match`,
-   `string.gmatch`, `string.gsub`, `string.rep` (string lib); no `os` library.
-   `tonumber` is shimmed as a host function; the broader `string.*` gap is open
-   Phase 2 work. This is real "replace-bash" debt: until these are shimmed (or
-   piccolo gains them), some model-written Lua will fail where bash would not —
-   the bash-vs-lua eval (Phase 3) must weight this. If the gap proves too costly,
-   the `lua-mlua` engine (full Lua 5.4 stdlib) remains a seam-level fallback.
+The mlua trade-off vs piccolo is that the sandbox is **in-process native code**,
+not memory-isolated like wasm/process boundaries. That is accepted for an
+admin-gated experimental capability; see TM-LUA in `specs/threat-model.md` for
+the residual and the out-of-process path if hostile-CPU isolation is needed.
 
 ## Sandbox model (multitenant safety)
 
 One **fresh VM per invocation**, never shared across sessions or tenants. No VM
-state outlives a single tool call. Enforced at construction:
+state outlives a single tool call. All controls are on by default — **no
+configuration knobs**. Because mlua loads the full stdlib, the dangerous surface
+is **scrubbed** rather than absent:
 
 | Control | Mechanism |
 |---|---|
-| Stdlib whitelist | Load only `string`, `table`, `math`, `utf8`, and a safe `os` subset (`os.time`, `os.date`, `os.clock`). |
-| No ambient I/O | `io`, `package`/`require`, `debug`, `os.execute/getenv/exit/remove/rename/tmpname` scrubbed to `nil`. |
-| No dynamic code | `load`, `loadstring`, `dofile`, `loadfile` removed (bytecode loading is a classic escape vector). |
-| No FFI | Lua 5.4, not LuaJIT. |
-| Memory cap | `Lua::set_memory_limit` (default 32 MiB). |
-| CPU / wall-clock | Instruction-count hook checks a deadline + max-instruction budget and aborts; outer `tokio::time::timeout` as backstop. |
-| Egress | No network in Phase 1 (parallels TM-BASH-003). HTTP arrives in Phase 3 behind the egress allow-list. |
-| Output size | Reuse `tool_output_sanitizer` + `ExecToolResultPayload` (16 KiB window, 64 KiB hard cap). |
-| Runtime starvation | `cpu_bound` hint → ActAtom offloads to a dedicated task; instruction hook keeps a tight loop from pinning a worker thread. |
+| Stdlib loaded | Only `string`, `table`, `math`, `os`, `utf8` (`io`/`package`/`debug` never loaded). |
+| Scrub dangerous globals | `io`, `package`, `require`, `load`, `loadstring`, `dofile`, `loadfile`, `collectgarbage` → `nil`; `os.execute/getenv/exit/remove/rename/tmpname/setlocale` → `nil`; `string.dump` → `nil`. Safe `os.time/date/clock` kept. |
+| No native escape | Lua 5.4 (no FFI); `package`/`require` scrubbed so `package.loadlib` cannot `dlopen`; `debug` not loaded. |
+| Memory cap | `Lua::set_memory_limit` (32 MiB); over-budget alloc → Lua error. Host-side reads bounded by `SessionFileSystem` quotas. |
+| CPU / wall-clock | Instruction-count hook (every 100k ops) enforces an instruction budget + wall-clock deadline; outer `tokio::time::timeout` backstop. |
+| Runtime containment | The VM runs on a `spawn_blocking` thread; `fs.*` calls marshal to the runtime over a channel. A pathological *synchronous* op (e.g. catastrophic Lua pattern in C, which the hook cannot interrupt) occupies one blocking-pool thread instead of stalling a runtime worker. Residual: not force-killable in-process (out-of-process is the robust fix). |
+| Egress | No network host functions and no socket library. HTTP (Phase 4) will be gated by the egress allow-list. |
+| Output size | `print` capture capped at 64 KiB in-engine; result further shaped via `tool_output_sanitizer` / `ExecToolResultPayload`. |
 
 The only way out of the VM is the injected host tables, all of which route
 through session-scoped stores.
@@ -124,14 +111,14 @@ fs.grep(pattern[, path]) -> { {path, line_number, line}, ... }  -- indexed grep_
 json.decode(s)           -> value
 json.encode(value)       -> string
 base64.encode(s) / base64.decode(s)
-tonumber(s)              -- shimmed (piccolo base lacks it)
 
 print(...)               -- captured, streamed as tool.output.delta, returned as stdout
 return value             -- serialized back to the model (json-encodable)
 ```
 
-Not yet available on the piccolo engine (Phase 2 stdlib work): `string.format`,
-`string.find`/`match`/`gmatch`/`gsub`/`rep`, `os.*`, `csv`/`yaml` modules.
+The full Lua 5.4 stdlib (`string.*` incl. `format`/`find`/`match`/`gsub`,
+`table.*` incl. `sort`, `math.*`, `os.time`/`os.date`) is available — no shims
+needed. Open host modules (future): `csv`/`yaml`.
 
 ## Threat model (TM-LUA-\*)
 

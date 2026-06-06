@@ -193,10 +193,47 @@ async fn run_one(task: &Task, capability: &str, model: &ModelWithProvider, seed:
     m
 }
 
+/// Print the fully assembled system prompt each arm sends to the model (harness
+/// + agent + the execution capability's own contribution). No model call.
+async fn dump_prompts(model: &ModelWithProvider) -> anyhow::Result<()> {
+    for capability in ["virtual_bash", "lua"] {
+        let harness_id = HarnessId::from_seed(1);
+        let agent_id = AgentId::from_seed(1);
+        let session_id = SessionId::from_seed(1);
+        let harness = HarnessBuilder::new("eval", HARNESS_PROMPT)
+            .id(harness_id)
+            .capability(capability)
+            .build();
+        let agent = AgentBuilder::new("eval-agent", AGENT_PROMPT)
+            .id(agent_id)
+            .max_iterations(10)
+            .build();
+        let session = SessionBuilder::new(harness_id)
+            .id(session_id)
+            .agent(agent_id)
+            .build();
+        let runtime = InProcessRuntimeBuilder::new()
+            .platform_definition(platform())
+            .default_model(model.clone())
+            .harness(harness)
+            .agent(agent)
+            .session(session)
+            .build()
+            .await?;
+        let ctx = runtime.load_context(session_id).await?;
+        let tools: Vec<_> = ctx.runtime_agent.tools.iter().map(|t| t.name()).collect();
+        println!("\n========================================================");
+        println!("ARM: {capability}  | tools: {tools:?}");
+        println!("========== ASSEMBLED SYSTEM PROMPT ==========");
+        println!("{}", ctx.runtime_agent.system_prompt);
+        println!("========== END ==========");
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .map_err(|_| anyhow::anyhow!("set ANTHROPIC_API_KEY (Doppler) to run real-model evals"))?;
+    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_else(|_| "dump-only".to_string());
     let model_name =
         std::env::var("EVAL_MODEL").unwrap_or_else(|_| "claude-haiku-4-5-20251001".to_string());
     let runs: u64 = std::env::var("EVAL_RUNS")
@@ -210,6 +247,14 @@ async fn main() -> anyhow::Result<()> {
         api_key: Some(api_key),
         base_url: None,
     };
+
+    // `--dump-prompts` prints the assembled prompts and exits (no model call).
+    if std::env::args().any(|a| a == "--dump-prompts") {
+        return dump_prompts(&model).await;
+    }
+    if std::env::var("ANTHROPIC_API_KEY").is_err() {
+        anyhow::bail!("set ANTHROPIC_API_KEY (Doppler) to run real-model evals");
+    }
 
     let arms = ["virtual_bash", "lua"];
     let tasks = tasks();
