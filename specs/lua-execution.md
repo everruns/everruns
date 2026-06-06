@@ -87,7 +87,8 @@ is **scrubbed** rather than absent:
 | Memory cap | `Lua::set_memory_limit` (32 MiB); over-budget alloc → Lua error. Host-side reads bounded by `SessionFileSystem` quotas. |
 | CPU / wall-clock | Instruction-count hook (every 100k ops) enforces an instruction budget + wall-clock deadline; outer `tokio::time::timeout` backstop. |
 | Runtime containment | The VM runs on a `spawn_blocking` thread; `fs.*` calls marshal to the runtime over a channel. A pathological *synchronous* op (e.g. catastrophic Lua pattern in C, which the hook cannot interrupt) occupies one blocking-pool thread instead of stalling a runtime worker. Residual: not force-killable in-process (out-of-process is the robust fix). |
-| Egress | No network host functions and no socket library. HTTP (Phase 4) will be gated by the egress allow-list. |
+| Egress | No raw sockets. `http.*` is fail-closed: routed only through the host `EgressService` and requires a non-empty allow-list that permits the URL, else it is not defined. |
+| Code mode | `tools.<name>` exposes only Auto/non-destructive/non-execution sibling tools; child context drops the registry (no recursion). |
 | Output size | `print` capture capped at 64 KiB in-engine; result further shaped via `tool_output_sanitizer` / `ExecToolResultPayload`. |
 
 The only way out of the VM is the injected host tables, all of which route
@@ -112,6 +113,11 @@ json.decode(s)           -> value
 json.encode(value)       -> string
 base64.encode(s) / base64.decode(s)
 
+-- when enabled by the environment (else the global is nil):
+http.get(url)            -> { status, body }   -- allow-listed hosts only
+http.post(url, body)     -> { status, body }
+tools.<name>(args_table) -> result             -- call a sibling tool (code mode)
+
 print(...)               -- captured, streamed as tool.output.delta, returned as stdout
 return value             -- serialized back to the model (json-encodable)
 ```
@@ -122,23 +128,12 @@ needed. Open host modules (future): `csv`/`yaml`.
 
 ## Threat model (TM-LUA-\*)
 
-Parallels TM-BASH. Full integration into `specs/threat-model.md` is a Phase 1
-follow-up; enumerated here for review:
-
-- **TM-LUA-001 Arbitrary code execution.** Mitigated by the stdlib whitelist,
-  global scrubbing, and High risk-level (admin-gated assignment).
-- **TM-LUA-002 CPU exhaustion.** Instruction-count hook + deadline + outer
-  timeout.
-- **TM-LUA-003 Memory exhaustion.** `set_memory_limit` hard cap.
-- **TM-LUA-004 Filesystem escape / cross-tenant access.** All paths resolve
-  through `LuaVfs` → session-scoped `SessionFileSystem`; `/workspace`-rooted,
-  traversal rejected. No `io` library.
-- **TM-LUA-005 Network egress / exfiltration.** No network in Phase 1. Phase 3
-  HTTP gated by the egress allow-list (`ToolContext::network_access`).
-- **TM-LUA-006 Dynamic code / bytecode loading.** `load`/`loadstring`/`dofile`/
-  `loadfile` removed; no untrusted bytecode path.
-- **TM-LUA-007 Native escape (FFI).** Lua 5.4 only; LuaJIT forbidden.
-- **TM-LUA-008 Output-channel abuse.** Sanitizer + hard output cap.
+The authoritative table lives in `specs/threat-model.md` (§15A), covering
+TM-LUA-001..009: arbitrary code execution, CPU/time, memory, filesystem/tenant
+isolation, network egress/SSRF (fail-closed `http.*`), dynamic-code/bytecode
+loading, native/FFI escape, output-channel abuse, and code-mode tool re-entry.
+The one stated residual is TM-LUA-002: in-process timeout is best-effort against
+pathological synchronous C ops (out-of-process execution is the robust fix).
 
 ## Phased roadmap
 
@@ -153,29 +148,25 @@ follow-up; enumerated here for review:
 - **Phase 3 — PARTIAL.** `base64` module + bash-vs-lua eval harness
   (`crates/agent-evals`) done — see Evaluation results below. **Open:**
   `csv`/`yaml` modules.
-- **Phase 4 — DESIGNED, deferred to dedicated security-reviewed PRs.** Each item
-  expands the trust boundary and must clear `specs/threat-model.md` on its own:
+- **Phase 4 — IMPLEMENTED (http + code mode); user libraries deferred.**
 
-  - **`http.*` (target 5).** `http.get/post(url, opts)` routed through
-    `ToolContext::egress_service` and gated by `ToolContext::network_access`
-    (the merged harness∩agent∩session allow-list). No raw sockets. New threats:
-    SSRF to internal metadata endpoints, data exfiltration — this is the single
-    biggest surface and the reason bash omits network entirely. Must extend
-    TM-LUA-005 from "no network" to an allow-listed, audited egress.
-  - **User libraries (target 6).** A controlled `require(path)`-style loader that
-    reads a **text** Lua file from `/workspace`, compiles and runs it, and returns
-    its exports. Text-only loading does not exceed the inline script's trust level
-    (still no bytecode → TM-LUA-006 holds), but the loader must cap module count
-    and recursion depth and resolve paths through `LuaVfs`.
-  - **Code mode (target 7).** Register the agent's available tools as Lua
-    functions (`tools.<name>(args) -> result`) dispatched over the same channel
-    bridge as `fs.*`, so one script orchestrates many tool calls per turn. Gates:
-    honor each tool's `ToolPolicy` (approval-gated tools cannot be silently
-    called from a script), exclude other High-risk execution tools by default
-    (no `lua` calling `virtual_bash`/agent-spawn unless explicitly allow-listed),
-    bound total nested tool calls, and surface each call as a normal
-    `tool.started`/`tool.completed` event for audit. This is the flagship
-    "replace bash" capability and needs the most careful review.
+  - **`http.*` (target 5) — DONE.** `http.get(url)` / `http.post(url, body)`
+    routed **only** through `ToolContext::egress_service` (the host egress
+    boundary) and **fail-closed**: a request runs only if `network_access` has a
+    non-empty allow-list that permits the URL; otherwise `http.*` is not even
+    defined. No raw sockets; response bodies capped at 1 MiB. SSRF/exfil mitigated
+    by the allow-list + the central egress boundary (TM-LUA-005).
+  - **Code mode (target 7) — DONE.** The agent's sibling tools are registered as
+    `tools.<name>(args) -> result`, dispatched over the same channel bridge as
+    `fs.*`. Gated (`gated_code_mode_tools`): only `Auto`-policy, non-destructive,
+    non-`cpu_bound` tools; approval/client-side and the execution tools
+    (`lua`/`bash`) are excluded. The child `ToolContext` drops `tool_registry`, so
+    code mode cannot recurse (TM-LUA-009).
+  - **User libraries (target 6) — deferred.** A controlled `require(path)`-style
+    loader that reads a **text** Lua file from `/workspace` and returns its
+    exports. Text-only loading stays within the script's trust level (no bytecode
+    → TM-LUA-006 holds), but the loader must cap module count/recursion and
+    resolve paths through `LuaVfs`. Not yet implemented.
 
 ## Migration (supersede `virtual_bash`)
 

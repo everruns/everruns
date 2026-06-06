@@ -25,8 +25,7 @@ code-execution tool. To complete a task you MUST use that tool to read and write
 /workspace — do not answer from your head. Always write the final answer to the file the task \
 names, then stop.";
 
-const AGENT_PROMPT: &str =
-    "Use your execution tool to read inputs and write outputs under /workspace. \
+const AGENT_PROMPT: &str = "Use your execution tool to read inputs and write outputs under /workspace. \
 Keep going until the requested output file exists, then stop.";
 
 struct Task {
@@ -107,7 +106,12 @@ fn platform() -> PlatformDefinition {
     PlatformDefinition::new(caps, drivers)
 }
 
-async fn run_one(task: &Task, capability: &str, model: &ModelWithProvider, seed: u64) -> RunMetrics {
+async fn run_one(
+    task: &Task,
+    capability: &str,
+    model: &ModelWithProvider,
+    seed: u64,
+) -> RunMetrics {
     let harness_id = HarnessId::from_seed(seed as u128);
     let agent_id = AgentId::from_seed(seed as u128);
     let session_id = SessionId::from_seed(seed as u128);

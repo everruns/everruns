@@ -67,9 +67,14 @@ Host API:
 The full Lua 5.4 standard library is available (`string.*` incl. `format`/
 `find`/`match`/`gsub`, `table.*` incl. `sort`, `math.*`, `os.time`/`os.date`).
 
+When enabled by the environment (otherwise these globals are nil):
+- `http.get(url)` / `http.post(url, body)` -> `{ status, body }`, allow-listed
+  hosts only.
+- `tools.<name>(args_table)` -> result, to call other available tools.
+
 Disabled for sandboxing (do not use — nil): `io`, `os.execute`/`os.getenv`,
-`require`/`package`, `load`/`dofile`, and there is no network. Use the `fs`
-table for all file access."#;
+`require`/`package`, `load`/`dofile`. Use `fs` for files; raw sockets are not
+available (use `http` when present)."#;
 
 // ============================================================================
 // Capability
@@ -222,7 +227,9 @@ impl Tool for LuaTool {
         let file_store = match &context.file_store {
             Some(store) => store.clone(),
             None => {
-                return ToolExecutionResult::tool_error("File system not available in this context");
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
             }
         };
 
@@ -233,6 +240,19 @@ impl Tool for LuaTool {
             timeout: Duration::from_millis(timeout_ms),
             max_output_bytes: MAX_OUTPUT_BYTES,
         };
+
+        // Code mode (`tools.<name>`): expose only Auto, non-destructive,
+        // non-execution sibling tools. Excludes approval/client-side tools and
+        // the execution tools themselves (no `lua`/`bash` re-entry).
+        let allowed_tools = gated_code_mode_tools(context);
+
+        // HTTP (`http.*`) is fail-closed: needs a host egress service AND a
+        // non-empty network allow-list (the per-URL check happens at call time).
+        let http_enabled = context.egress_service.is_some()
+            && context
+                .network_access
+                .as_ref()
+                .is_some_and(|a| !a.allowed.is_empty());
 
         // Stream captured `print` output as tool.output.delta events.
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
@@ -248,7 +268,15 @@ impl Tool for LuaTool {
         // engine::run enforces its own deadline; the outer timeout is a backstop.
         let outcome = tokio::time::timeout(
             limits.timeout + Duration::from_secs(2),
-            engine::run(&script, vfs, &limits, tx),
+            engine::run(
+                &script,
+                vfs,
+                context.clone(),
+                allowed_tools,
+                http_enabled,
+                &limits,
+                tx,
+            ),
         )
         .await;
 
@@ -294,6 +322,36 @@ impl Tool for LuaTool {
             raw_output,
         )
     }
+}
+
+/// Sibling tools exposed to Lua "code mode" via the `tools` table.
+///
+/// Conservative gate (TM-LUA-009): `Auto` policy only (never approval- or
+/// client-side tools), non-destructive, non-execution, and never the execution
+/// tools themselves (`lua`/`bash` are excluded so code mode cannot re-enter a
+/// shell or itself). Returns an empty list when no tool registry is present.
+fn gated_code_mode_tools(context: &ToolContext) -> Vec<String> {
+    use crate::tool_types::ToolPolicy;
+    let Some(reg) = context.tool_registry.as_ref() else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for name in reg.tool_names() {
+        if name == "lua" || name == "bash" {
+            continue;
+        }
+        let Some(tool) = reg.get(name) else { continue };
+        if tool.policy() != ToolPolicy::Auto {
+            continue;
+        }
+        let hints = tool.hints();
+        if hints.destructive == Some(true) || hints.cpu_bound == Some(true) {
+            continue;
+        }
+        out.push(name.to_string());
+    }
+    out.sort();
+    out
 }
 
 // ============================================================================
@@ -427,7 +485,10 @@ impl LuaVfs {
 
     pub async fn exists(&self, path: &str) -> Result<bool, String> {
         let sp = Self::map_path(path)?;
-        if matches!(self.store.read_file(self.session_id, &sp).await, Ok(Some(_))) {
+        if matches!(
+            self.store.read_file(self.session_id, &sp).await,
+            Ok(Some(_))
+        ) {
             return Ok(true);
         }
         Ok(self
@@ -518,14 +579,18 @@ impl LuaVfs {
 
 #[cfg(not(feature = "lua"))]
 mod engine {
-    use super::{LuaLimits, LuaOutcome, LuaVfs};
+    use super::{LuaLimits, LuaOutcome, LuaVfs, ToolContext};
     use std::sync::Arc;
 
     /// Stub used when the `lua` feature is off (default). Keeps the default
     /// build from compiling the vendored Lua C sources.
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn run(
         _script: &str,
         _vfs: Arc<LuaVfs>,
+        _ctx: ToolContext,
+        _allowed_tools: Vec<String>,
+        _http_enabled: bool,
         _limits: &LuaLimits,
         _output: tokio::sync::mpsc::UnboundedSender<String>,
     ) -> LuaOutcome {
@@ -538,18 +603,24 @@ mod engine {
 // The engine: mlua (vendored Lua 5.4, never LuaJIT). mlua loads the full stdlib,
 // so the sandbox works by *scrubbing* the dangerous surface
 // (io/os.execute/package/require/load/dofile/string.dump) rather than by
-// omission. Hardening (TM-LUA-001..008), all on by default, no configuration:
+// omission. Hardening (TM-LUA-001..009), all on by default, no configuration:
 // - memory: `set_memory_limit` hard cap;
 // - CPU/time: instruction-count hook + wall-clock deadline;
-// - isolation: the VM runs on a dedicated blocking thread and `fs.*` calls are
-//   marshaled to the async runtime over a channel. A pathological *synchronous*
-//   op (e.g. catastrophic Lua pattern in C, which the instruction hook cannot
-//   interrupt) therefore occupies one blocking-pool thread instead of stalling
-//   a shared runtime worker — multitenant containment. Residual: such an op is
-//   not force-killable in-process; the robust fix is out-of-process execution.
+// - isolation: the VM runs on a dedicated blocking thread; `fs.*`, `http.*`, and
+//   `tools.*` calls are marshaled to the async runtime over a channel. A
+//   pathological *synchronous* op (e.g. catastrophic Lua pattern in C, which the
+//   instruction hook cannot interrupt) therefore occupies one blocking-pool
+//   thread instead of stalling a shared runtime worker — multitenant
+//   containment. Residual: such an op is not force-killable in-process; the
+//   robust fix is out-of-process execution.
+// - egress: `http.*` is fail-closed — it requires both a host `EgressService`
+//   and a non-empty network allow-list that permits the URL (TM-LUA-005).
+// - code mode: `tools.<name>(args)` re-enters only Auto, non-destructive,
+//   non-execution tools; the child context has no tool_registry, so code mode
+//   cannot recurse (TM-LUA-009).
 #[cfg(feature = "lua")]
 mod engine {
-    use super::{LuaLimits, LuaOutcome, LuaVfs, VfsEntry, VfsGrepHit};
+    use super::{LuaLimits, LuaOutcome, LuaVfs, ToolContext, VfsEntry, VfsGrepHit};
     use mlua::{
         HookTriggers, Lua, LuaOptions, LuaSerdeExt, StdLib, Value as LuaValue, Variadic, VmState,
     };
@@ -560,10 +631,12 @@ mod engine {
 
     /// Granularity of the interrupt hook (Lua instructions between checks).
     const HOOK_EVERY: u32 = 100_000;
+    /// Cap on an HTTP response body handed back to Lua.
+    const HTTP_BODY_CAP: usize = 1024 * 1024;
 
-    // ---- VFS bridge: requests marshaled blocking-thread -> async runtime ----
+    // ---- Host-call bridge: blocking VM thread -> async runtime ----
 
-    enum VfsOp {
+    enum Op {
         Read(String),
         Write(String, String),
         Append(String, String),
@@ -573,62 +646,155 @@ mod engine {
         Remove(String, bool),
         Mkdir(String),
         Grep(String, Option<String>),
+        Http {
+            method: &'static str,
+            url: String,
+            body: Option<String>,
+        },
+        Tool {
+            name: String,
+            args: serde_json::Value,
+        },
     }
 
-    enum VfsReply {
+    enum Reply {
         Str(String),
         Bool(bool),
         Unit,
         Stat(Option<VfsEntry>),
         List(Vec<VfsEntry>),
         Grep(Vec<VfsGrepHit>),
+        Http { status: u16, body: String },
+        Json(serde_json::Value),
     }
 
-    struct VfsRequest {
-        op: VfsOp,
-        reply: oneshot::Sender<Result<VfsReply, String>>,
+    struct Request {
+        op: Op,
+        reply: oneshot::Sender<Result<Reply, String>>,
     }
 
-    async fn dispatch(vfs: &LuaVfs, op: VfsOp) -> Result<VfsReply, String> {
+    async fn dispatch(vfs: &LuaVfs, ctx: &ToolContext, op: Op) -> Result<Reply, String> {
         match op {
-            VfsOp::Read(p) => vfs.read(&p).await.map(VfsReply::Str),
-            VfsOp::Write(p, c) => vfs.write(&p, &c).await.map(|_| VfsReply::Unit),
-            VfsOp::Append(p, c) => vfs.append(&p, &c).await.map(|_| VfsReply::Unit),
-            VfsOp::Exists(p) => vfs.exists(&p).await.map(VfsReply::Bool),
-            VfsOp::Stat(p) => vfs.stat(&p).await.map(VfsReply::Stat),
-            VfsOp::List(p) => vfs.list(&p).await.map(VfsReply::List),
-            VfsOp::Remove(p, r) => vfs.remove(&p, r).await.map(VfsReply::Bool),
-            VfsOp::Mkdir(p) => vfs.mkdir(&p).await.map(|_| VfsReply::Unit),
-            VfsOp::Grep(pat, scope) => vfs.grep(&pat, scope.as_deref()).await.map(VfsReply::Grep),
+            Op::Read(p) => vfs.read(&p).await.map(Reply::Str),
+            Op::Write(p, c) => vfs.write(&p, &c).await.map(|_| Reply::Unit),
+            Op::Append(p, c) => vfs.append(&p, &c).await.map(|_| Reply::Unit),
+            Op::Exists(p) => vfs.exists(&p).await.map(Reply::Bool),
+            Op::Stat(p) => vfs.stat(&p).await.map(Reply::Stat),
+            Op::List(p) => vfs.list(&p).await.map(Reply::List),
+            Op::Remove(p, r) => vfs.remove(&p, r).await.map(Reply::Bool),
+            Op::Mkdir(p) => vfs.mkdir(&p).await.map(|_| Reply::Unit),
+            Op::Grep(pat, scope) => vfs.grep(&pat, scope.as_deref()).await.map(Reply::Grep),
+            Op::Http { method, url, body } => do_http(ctx, method, url, body).await,
+            Op::Tool { name, args } => do_tool(ctx, &name, args).await.map(Reply::Json),
         }
     }
 
-    /// Synchronous VFS call from inside a Lua host function (blocking thread).
-    fn vfs_call(tx: &mpsc::UnboundedSender<VfsRequest>, op: VfsOp) -> Result<VfsReply, String> {
-        let (reply_tx, reply_rx) = oneshot::channel();
-        tx.send(VfsRequest { op, reply: reply_tx })
-            .map_err(|_| "vfs channel closed".to_string())?;
-        reply_rx
-            .blocking_recv()
-            .map_err(|_| "vfs reply dropped".to_string())?
+    /// HTTP via the host egress boundary. Fail-closed: requires both an
+    /// `EgressService` and an allow-list that explicitly permits the URL.
+    async fn do_http(
+        ctx: &ToolContext,
+        method: &'static str,
+        url: String,
+        body: Option<String>,
+    ) -> Result<Reply, String> {
+        use crate::egress::{EgressRequest, EgressRequestKind};
+        let acl = ctx.network_access.as_ref();
+        let permitted = acl
+            .map(|a| !a.allowed.is_empty() && a.is_url_allowed(&url))
+            .unwrap_or(false);
+        if !permitted {
+            return Err(format!(
+                "network egress denied: {url} is not in the allow-list"
+            ));
+        }
+        let egress = ctx
+            .egress_service
+            .as_ref()
+            .ok_or_else(|| "network egress unavailable in this environment".to_string())?;
+        let mut req =
+            EgressRequest::new(method, &url, EgressRequestKind::Capability).timeout_ms(15_000);
+        if let Some(a) = acl {
+            req = req.network_access(Some(a.clone()));
+        }
+        if let Some(b) = body {
+            req = req
+                .header("content-type", "application/json")
+                .body(b.into_bytes());
+        }
+        let resp = egress.send(req).await.map_err(|e| e.to_string())?;
+        let slice = if resp.body.len() > HTTP_BODY_CAP {
+            &resp.body[..HTTP_BODY_CAP]
+        } else {
+            &resp.body[..]
+        };
+        Ok(Reply::Http {
+            status: resp.status,
+            body: String::from_utf8_lossy(slice).into_owned(),
+        })
     }
 
+    /// Code mode: re-enter another tool. The child context drops `tool_registry`
+    /// so a code-mode tool cannot itself open code mode (no recursion).
+    async fn do_tool(
+        ctx: &ToolContext,
+        name: &str,
+        args: serde_json::Value,
+    ) -> Result<serde_json::Value, String> {
+        use crate::tools::ToolExecutionResult as R;
+        let reg = ctx
+            .tool_registry
+            .as_ref()
+            .ok_or_else(|| "tools unavailable in this environment".to_string())?;
+        let tool = reg
+            .get(name)
+            .ok_or_else(|| format!("unknown tool: {name}"))?;
+        let mut child = ctx.clone();
+        child.tool_registry = None;
+        child.tool_call_id = Some(format!("lua:{name}"));
+        match tool.execute_with_context(args, &child).await {
+            R::Success(v) => Ok(v),
+            R::SuccessWithImages { result, .. } => Ok(result),
+            R::ToolError(e) => Err(e),
+            R::InternalError(_) => Err("tool internal error".to_string()),
+            R::ConnectionRequired { provider } => {
+                Err(format!("tool requires a connection: {provider}"))
+            }
+        }
+    }
+
+    /// Synchronous host call from inside a Lua function (blocking thread).
+    fn call(tx: &mpsc::UnboundedSender<Request>, op: Op) -> Result<Reply, String> {
+        let (reply_tx, reply_rx) = oneshot::channel();
+        tx.send(Request {
+            op,
+            reply: reply_tx,
+        })
+        .map_err(|_| "host channel closed".to_string())?;
+        reply_rx
+            .blocking_recv()
+            .map_err(|_| "host reply dropped".to_string())?
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn run(
         script: &str,
         vfs: Arc<LuaVfs>,
+        ctx: ToolContext,
+        allowed_tools: Vec<String>,
+        http_enabled: bool,
         limits: &LuaLimits,
         output: mpsc::UnboundedSender<String>,
     ) -> LuaOutcome {
-        let (req_tx, mut req_rx) = mpsc::unbounded_channel::<VfsRequest>();
+        let (req_tx, mut req_rx) = mpsc::unbounded_channel::<Request>();
         let script = script.to_string();
         let limits = limits.clone();
 
-        let join = tokio::task::spawn_blocking(move || run_blocking(script, limits, req_tx, output));
+        let join = tokio::task::spawn_blocking(move || {
+            run_blocking(script, limits, req_tx, output, allowed_tools, http_enabled)
+        });
 
-        // Service VFS requests on the runtime until the blocking task drops the
-        // sender (which happens when the Lua VM and its host functions are gone).
         while let Some(request) = req_rx.recv().await {
-            let result = dispatch(&vfs, request.op).await;
+            let result = dispatch(&vfs, &ctx, request.op).await;
             let _ = request.reply.send(result);
         }
 
@@ -641,24 +807,23 @@ mod engine {
     fn run_blocking(
         script: String,
         limits: LuaLimits,
-        req_tx: mpsc::UnboundedSender<VfsRequest>,
+        req_tx: mpsc::UnboundedSender<Request>,
         output: mpsc::UnboundedSender<String>,
+        allowed_tools: Vec<String>,
+        http_enabled: bool,
     ) -> LuaOutcome {
-        // Load only the libs we want; io/package/debug are never loaded.
         let libs = StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::OS | StdLib::UTF8;
         let lua = match Lua::new_with(libs, LuaOptions::default()) {
             Ok(l) => l,
             Err(e) => return LuaOutcome::engine_error(format!("lua init failed: {e}")),
         };
 
-        // Hard memory cap (TM-LUA-003).
         let _ = lua.set_memory_limit(limits.memory_bytes);
 
         if let Err(e) = scrub_globals(&lua) {
             return LuaOutcome::engine_error(e);
         }
 
-        // Deadline + instruction budget interrupt (TM-LUA-002).
         let deadline = Instant::now() + limits.timeout;
         let budget = limits.max_instructions;
         let counted = Arc::new(AtomicU64::new(0));
@@ -688,8 +853,16 @@ mod engine {
         if let Err(e) = install_base64(&lua) {
             return LuaOutcome::engine_error(format!("install base64: {e}"));
         }
-        if let Err(e) = install_fs(&lua, req_tx) {
+        if let Err(e) = install_fs(&lua, req_tx.clone()) {
             return LuaOutcome::engine_error(format!("install fs: {e}"));
+        }
+        if http_enabled && let Err(e) = install_http(&lua, req_tx.clone()) {
+            return LuaOutcome::engine_error(format!("install http: {e}"));
+        }
+        if !allowed_tools.is_empty()
+            && let Err(e) = install_tools(&lua, req_tx, allowed_tools)
+        {
+            return LuaOutcome::engine_error(format!("install tools: {e}"));
         }
 
         let result: mlua::Result<LuaValue> = lua.load(&script).set_name("agent_script").eval();
@@ -716,24 +889,38 @@ mod engine {
     }
 
     /// Remove dangerous globals exposed by the loaded libraries
-    /// (TM-LUA-001/006/007). No io/os.execute/package/require/load/dofile, and
-    /// `string.dump` (bytecode production) is removed defensively.
+    /// (TM-LUA-001/006/007).
     fn scrub_globals(lua: &Lua) -> Result<(), String> {
         let g = lua.globals();
         for name in [
-            "io", "package", "require", "dofile", "loadfile", "load", "loadstring", "collectgarbage",
+            "io",
+            "package",
+            "require",
+            "dofile",
+            "loadfile",
+            "load",
+            "loadstring",
+            "collectgarbage",
         ] {
             g.set(name, LuaValue::Nil).map_err(|e| e.to_string())?;
         }
         if let Ok(os) = g.get::<mlua::Table>("os") {
             for name in [
-                "execute", "getenv", "exit", "remove", "rename", "tmpname", "setlocale",
+                "execute",
+                "getenv",
+                "exit",
+                "remove",
+                "rename",
+                "tmpname",
+                "setlocale",
             ] {
                 os.set(name, LuaValue::Nil).map_err(|e| e.to_string())?;
             }
         }
         if let Ok(string) = g.get::<mlua::Table>("string") {
-            string.set("dump", LuaValue::Nil).map_err(|e| e.to_string())?;
+            string
+                .set("dump", LuaValue::Nil)
+                .map_err(|e| e.to_string())?;
         }
         Ok(())
     }
@@ -811,15 +998,101 @@ mod engine {
         Ok(())
     }
 
-    fn install_fs(lua: &Lua, tx: mpsc::UnboundedSender<VfsRequest>) -> mlua::Result<()> {
+    fn install_http(lua: &Lua, tx: mpsc::UnboundedSender<Request>) -> mlua::Result<()> {
+        let http = lua.create_table()?;
+
+        let t = tx.clone();
+        http.set(
+            "get",
+            lua.create_function(move |lua, url: String| {
+                let reply = call(
+                    &t,
+                    Op::Http {
+                        method: "GET",
+                        url,
+                        body: None,
+                    },
+                )
+                .map_err(mlua::Error::runtime)?;
+                http_reply_to_table(lua, reply)
+            })?,
+        )?;
+
+        let t = tx.clone();
+        http.set(
+            "post",
+            lua.create_function(move |lua, (url, body): (String, Option<String>)| {
+                let reply = call(
+                    &t,
+                    Op::Http {
+                        method: "POST",
+                        url,
+                        body,
+                    },
+                )
+                .map_err(mlua::Error::runtime)?;
+                http_reply_to_table(lua, reply)
+            })?,
+        )?;
+
+        lua.globals().set("http", http)?;
+        Ok(())
+    }
+
+    fn http_reply_to_table(lua: &Lua, reply: Reply) -> mlua::Result<mlua::Table> {
+        let Reply::Http { status, body } = reply else {
+            return Err(mlua::Error::runtime("http: unexpected reply"));
+        };
+        let t = lua.create_table()?;
+        t.set("status", status)?;
+        t.set("body", body)?;
+        Ok(t)
+    }
+
+    fn install_tools(
+        lua: &Lua,
+        tx: mpsc::UnboundedSender<Request>,
+        names: Vec<String>,
+    ) -> mlua::Result<()> {
+        let tools = lua.create_table()?;
+        for name in names {
+            let t = tx.clone();
+            let n = name.clone();
+            tools.set(
+                name,
+                lua.create_function(move |lua, args: LuaValue| {
+                    let json: serde_json::Value = match args {
+                        LuaValue::Nil => serde_json::json!({}),
+                        other => lua.from_value(other)?,
+                    };
+                    let reply = call(
+                        &t,
+                        Op::Tool {
+                            name: n.clone(),
+                            args: json,
+                        },
+                    )
+                    .map_err(mlua::Error::runtime)?;
+                    let Reply::Json(v) = reply else {
+                        return Err(mlua::Error::runtime("tool: unexpected reply"));
+                    };
+                    lua.to_value(&v)
+                })?,
+            )?;
+        }
+        lua.globals().set("tools", tools)?;
+        Ok(())
+    }
+
+    fn install_fs(lua: &Lua, tx: mpsc::UnboundedSender<Request>) -> mlua::Result<()> {
         let fs = lua.create_table()?;
 
         let t = tx.clone();
         fs.set(
             "read",
             lua.create_function(move |lua, path: String| {
-                match vfs_call(&t, VfsOp::Read(path)).map_err(mlua::Error::runtime)? {
-                    VfsReply::Str(s) => lua.create_string(s),
+                match call(&t, Op::Read(path)).map_err(mlua::Error::runtime)? {
+                    Reply::Str(s) => lua.create_string(s),
                     _ => Err(mlua::Error::runtime("vfs: unexpected reply")),
                 }
             })?,
@@ -829,7 +1102,7 @@ mod engine {
         fs.set(
             "write",
             lua.create_function(move |_lua, (path, content): (String, String)| {
-                vfs_call(&t, VfsOp::Write(path, content)).map_err(mlua::Error::runtime)?;
+                call(&t, Op::Write(path, content)).map_err(mlua::Error::runtime)?;
                 Ok(())
             })?,
         )?;
@@ -838,7 +1111,7 @@ mod engine {
         fs.set(
             "append",
             lua.create_function(move |_lua, (path, content): (String, String)| {
-                vfs_call(&t, VfsOp::Append(path, content)).map_err(mlua::Error::runtime)?;
+                call(&t, Op::Append(path, content)).map_err(mlua::Error::runtime)?;
                 Ok(())
             })?,
         )?;
@@ -847,8 +1120,8 @@ mod engine {
         fs.set(
             "exists",
             lua.create_function(move |_lua, path: String| {
-                let reply = vfs_call(&t, VfsOp::Exists(path)).map_err(mlua::Error::runtime)?;
-                Ok(matches!(reply, VfsReply::Bool(true)))
+                let reply = call(&t, Op::Exists(path)).map_err(mlua::Error::runtime)?;
+                Ok(matches!(reply, Reply::Bool(true)))
             })?,
         )?;
 
@@ -856,11 +1129,9 @@ mod engine {
         fs.set(
             "stat",
             lua.create_function(move |lua, path: String| {
-                match vfs_call(&t, VfsOp::Stat(path)).map_err(mlua::Error::runtime)? {
-                    VfsReply::Stat(Some(entry)) => {
-                        Ok(LuaValue::Table(entry_to_table(lua, &entry)?))
-                    }
-                    VfsReply::Stat(None) => Ok(LuaValue::Nil),
+                match call(&t, Op::Stat(path)).map_err(mlua::Error::runtime)? {
+                    Reply::Stat(Some(entry)) => Ok(LuaValue::Table(entry_to_table(lua, &entry)?)),
+                    Reply::Stat(None) => Ok(LuaValue::Nil),
                     _ => Err(mlua::Error::runtime("vfs: unexpected reply")),
                 }
             })?,
@@ -870,8 +1141,8 @@ mod engine {
         fs.set(
             "list",
             lua.create_function(move |lua, path: String| {
-                let VfsReply::List(entries) =
-                    vfs_call(&t, VfsOp::List(path)).map_err(mlua::Error::runtime)?
+                let Reply::List(entries) =
+                    call(&t, Op::List(path)).map_err(mlua::Error::runtime)?
                 else {
                     return Err(mlua::Error::runtime("vfs: unexpected reply"));
                 };
@@ -887,9 +1158,9 @@ mod engine {
         fs.set(
             "remove",
             lua.create_function(move |_lua, (path, recursive): (String, Option<bool>)| {
-                let reply = vfs_call(&t, VfsOp::Remove(path, recursive.unwrap_or(false)))
+                let reply = call(&t, Op::Remove(path, recursive.unwrap_or(false)))
                     .map_err(mlua::Error::runtime)?;
-                Ok(matches!(reply, VfsReply::Bool(true)))
+                Ok(matches!(reply, Reply::Bool(true)))
             })?,
         )?;
 
@@ -897,7 +1168,7 @@ mod engine {
         fs.set(
             "mkdir",
             lua.create_function(move |_lua, path: String| {
-                vfs_call(&t, VfsOp::Mkdir(path)).map_err(mlua::Error::runtime)?;
+                call(&t, Op::Mkdir(path)).map_err(mlua::Error::runtime)?;
                 Ok(())
             })?,
         )?;
@@ -906,8 +1177,8 @@ mod engine {
         fs.set(
             "grep",
             lua.create_function(move |lua, (pattern, path): (String, Option<String>)| {
-                let VfsReply::Grep(hits) = vfs_call(&t, VfsOp::Grep(pattern, path))
-                    .map_err(mlua::Error::runtime)?
+                let Reply::Grep(hits) =
+                    call(&t, Op::Grep(pattern, path)).map_err(mlua::Error::runtime)?
                 else {
                     return Err(mlua::Error::runtime("vfs: unexpected reply"));
                 };
@@ -1005,14 +1276,18 @@ mod tests {
     #[tokio::test]
     async fn execute_without_context_errors() {
         let result = LuaTool.execute(json!({"script": "return 1"})).await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context")));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("requires context"))
+        );
     }
 
     #[tokio::test]
     async fn execute_missing_script_errors() {
         let ctx = ToolContext::new(SessionId::new());
         let result = LuaTool.execute_with_context(json!({}), &ctx).await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("Missing required parameter")));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("Missing required parameter"))
+        );
     }
 
     #[tokio::test]
@@ -1021,7 +1296,9 @@ mod tests {
         let result = LuaTool
             .execute_with_context(json!({"script": "return 1"}), &ctx)
             .await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("not available")));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("not available"))
+        );
     }
 
     // When the engine is not compiled in (default build), the tool surfaces a
@@ -1034,7 +1311,9 @@ mod tests {
         let result = LuaTool
             .execute_with_context(json!({"script": "return 1"}), &ctx)
             .await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("not compiled")));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("not compiled"))
+        );
     }
 
     /// Minimal file store: enough to populate `ToolContext::file_store` so the
@@ -1233,18 +1512,169 @@ mod tests {
             assert_eq!(v["result"], json!("hello"));
         }
 
+        // ---- Phase 4: http (egress) + code mode (tools) ----
+
+        #[tokio::test]
+        async fn http_and_tools_disabled_by_default() {
+            // No egress service, no allow-list, no tool registry → both nil.
+            let v = run(
+                "return { http = http == nil, tools = tools == nil }",
+                Arc::new(EmptyFileStore),
+            )
+            .await;
+            assert_eq!(v["result"]["http"], json!(true));
+            assert_eq!(v["result"]["tools"], json!(true));
+        }
+
+        #[tokio::test]
+        async fn http_get_through_egress_allowlist() {
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.file_store = Some(Arc::new(EmptyFileStore));
+            ctx.egress_service = Some(Arc::new(MockEgress));
+            ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+                "example.com",
+            ]));
+            let v = match LuaTool
+                .execute_with_context(
+                    json!({ "script": r#"local r = http.get("https://example.com/x"); return { s = r.status, b = r.body }"# }),
+                    &ctx,
+                )
+                .await
+            {
+                ToolExecutionResult::Success(v) => v,
+                other => panic!("expected success, got {other:?}"),
+            };
+            assert_eq!(v["result"]["s"], json!(200));
+            assert_eq!(v["result"]["b"], json!("pong"));
+        }
+
+        #[tokio::test]
+        async fn http_denied_when_not_in_allowlist() {
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.file_store = Some(Arc::new(EmptyFileStore));
+            ctx.egress_service = Some(Arc::new(MockEgress));
+            ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+                "allowed.com",
+            ]));
+            let result = LuaTool
+                .execute_with_context(
+                    json!({ "script": r#"return http.get("https://evil.com/x").status"# }),
+                    &ctx,
+                )
+                .await;
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("egress denied"))
+            );
+        }
+
+        #[tokio::test]
+        async fn code_mode_calls_a_sibling_tool() {
+            let mut registry = crate::tools::ToolRegistry::new();
+            registry.register(EchoTool);
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.file_store = Some(Arc::new(EmptyFileStore));
+            ctx.tool_registry = Some(Arc::new(registry));
+            let v = match LuaTool
+                .execute_with_context(
+                    json!({ "script": r#"return tools.echo({ n = 5 }).n"# }),
+                    &ctx,
+                )
+                .await
+            {
+                ToolExecutionResult::Success(v) => v,
+                other => panic!("expected success, got {other:?}"),
+            };
+            assert_eq!(v["result"], json!(5));
+        }
+
+        #[tokio::test]
+        async fn code_mode_excludes_execution_tools() {
+            // The `lua` tool itself must never be exposed via code mode.
+            let mut registry = crate::tools::ToolRegistry::new();
+            registry.register(EchoTool);
+            registry.register(LuaTool);
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.file_store = Some(Arc::new(EmptyFileStore));
+            ctx.tool_registry = Some(Arc::new(registry));
+            let v = run_with_ctx(
+                "return { lua = tools.lua == nil, echo = tools.echo ~= nil }",
+                &ctx,
+            )
+            .await;
+            assert_eq!(
+                v["result"]["lua"],
+                json!(true),
+                "lua tool must not be exposed"
+            );
+            assert_eq!(v["result"]["echo"], json!(true));
+        }
+
+        async fn run_with_ctx(script: &str, ctx: &ToolContext) -> Value {
+            match LuaTool
+                .execute_with_context(json!({ "script": script }), ctx)
+                .await
+            {
+                ToolExecutionResult::Success(v) => v,
+                other => panic!("expected success, got {other:?}"),
+            }
+        }
+
+        /// Echoes its JSON argument back as the result.
+        struct EchoTool;
+
+        #[async_trait]
+        impl Tool for EchoTool {
+            fn name(&self) -> &str {
+                "echo"
+            }
+            fn description(&self) -> &str {
+                "Echo the argument."
+            }
+            fn parameters_schema(&self) -> Value {
+                json!({ "type": "object" })
+            }
+            async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+                ToolExecutionResult::success(arguments)
+            }
+        }
+
+        /// Minimal egress service that returns a canned 200 response.
+        struct MockEgress;
+
+        #[async_trait]
+        impl crate::egress::EgressService for MockEgress {
+            async fn send(
+                &self,
+                _request: crate::egress::EgressRequest,
+            ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+                Ok(crate::egress::EgressResponse {
+                    status: 200,
+                    headers: std::collections::BTreeMap::new(),
+                    body: b"pong".to_vec(),
+                })
+            }
+
+            async fn send_stream(
+                &self,
+                _request: crate::egress::EgressRequest,
+            ) -> crate::egress::EgressResult<crate::egress::EgressStreamResponse> {
+                Err(crate::egress::EgressError::Transport(
+                    "streaming not supported in mock".to_string(),
+                ))
+            }
+        }
+
         #[tokio::test]
         async fn fs_rejects_paths_outside_workspace() {
             // Reaching outside /workspace raises a Lua error -> tool_error.
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
             let result = LuaTool
-                .execute_with_context(
-                    json!({ "script": "return fs.read('/etc/passwd')" }),
-                    &ctx,
-                )
+                .execute_with_context(json!({ "script": "return fs.read('/etc/passwd')" }), &ctx)
                 .await;
-            assert!(matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("workspace")));
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("workspace"))
+            );
         }
 
         #[tokio::test]
