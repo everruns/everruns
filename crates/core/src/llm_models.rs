@@ -219,6 +219,10 @@ pub struct LlmModelWithProvider {
     /// Readonly profile with model capabilities (limits, pricing, modalities). Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<LlmModelProfile>,
+    /// Vendor/brand of the model, derived from the model registry. Drives UI
+    /// branding (icons). `None` when the model id is not in the registry. Not persisted.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_vendor: Option<ModelVendor>,
 }
 
 // ============================================
@@ -331,6 +335,25 @@ pub struct ReasoningEffortConfig {
     pub default: ReasoningEffort,
 }
 
+/// Vendor / brand that authored a model. Independent of the provider type
+/// that serves it (the same model may be offered by several providers or
+/// gateways). Primarily drives UI iconography.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum ModelVendor {
+    OpenAi,
+    Anthropic,
+    Google,
+    Nvidia,
+    Qwen,
+    Microsoft,
+    MiniMax,
+    Moonshot,
+    XAi,
+    LlmSim,
+}
+
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (<https://models.dev/api.json>)
 ///
@@ -387,6 +410,9 @@ pub struct LlmModelProfile {
     /// token usage for large tool sets. Currently supported by GPT-5.4 and newer.
     #[serde(default)]
     pub tool_search: bool,
+    /// Provider-advertised request parameters supported by this model.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub supported_parameters: Vec<String>,
     /// Whether the model supports native execution phases ("commentary" / "final_answer").
     /// When true, the driver sends the `phase` field on assistant messages in the wire format.
     /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.

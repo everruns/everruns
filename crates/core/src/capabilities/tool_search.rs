@@ -9,10 +9,11 @@
 // How it works:
 //   1. A `tool_definition_hook` (`DeferSchemaHook`) runs at runtime-agent build
 //      time. When the agent carries at least `threshold` tools, it replaces the
-//      parameter schema of every deferrable tool with a minimal stub. Only the
-//      name + description survive, so the model still sees that the tool exists
-//      but pays no token cost for its parameters. Tools marked
-//      `DeferrablePolicy::Never` (e.g. high-frequency tools) keep full schemas.
+//      parameter schema of every deferrable tool with a minimal disclosure stub.
+//      The model still sees that the tool exists, but the stub points it back
+//      to `tool_search` for the full schema instead of exposing parameters
+//      upfront. Tools marked `DeferrablePolicy::Never` (e.g. high-frequency
+//      tools) keep full schemas.
 //   2. A real `tool_search` tool is added to the registry. When the model calls
 //      it, the tool inspects its sibling tools via `ToolContext::tool_registry`
 //      (the same mechanism `spawn_background` uses) and returns the full
@@ -25,7 +26,6 @@
 // model. No driver or agent-loop changes are required.
 
 use super::{Capability, CapabilityStatus, ToolDefinitionHook};
-use crate::mcp_server::is_mcp_tool;
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -115,6 +115,19 @@ impl Capability for ToolSearchCapability {
             threshold: self.threshold,
         })]
     }
+
+    fn tool_definition_hooks_with_config(
+        &self,
+        config: &Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        let threshold = config
+            .get("threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(self.threshold);
+
+        vec![Arc::new(DeferSchemaHook { threshold })]
+    }
 }
 
 // ============================================================================
@@ -126,10 +139,13 @@ impl Capability for ToolSearchCapability {
 /// An open object so the provider still accepts the tool definition; the
 /// description nudges the model toward `tool_search` if it somehow tries to
 /// call the tool before loading the schema.
-fn deferred_stub_schema() -> Value {
+fn deferred_stub_schema(tool_name: &str) -> Value {
     json!({
         "type": "object",
-        "description": "Parameters hidden to save context. Call tool_search to load the full schema before using this tool.",
+        "description": format!(
+            "Parameter schema hidden to save context. Call tool_search with query \"{tool_name}\" to load the full schema before using this tool."
+        ),
+        "additionalProperties": true,
     })
 }
 
@@ -147,15 +163,8 @@ impl ToolDefinitionHook for DeferSchemaHook {
         tools
             .into_iter()
             .map(|tool| {
-                // Keep full schemas for: the search tool itself, tools that opt
-                // out, and MCP tools. MCP tools are executed via registry proxies
-                // built from these definitions in the act path; stripping them
-                // here would leave the proxy (and therefore tool_search results)
-                // with only the stub schema. Deferring MCP tools would require
-                // plumbing their full schemas to the act path separately.
                 if tool.name() == TOOL_SEARCH_TOOL_NAME
                     || matches!(tool.deferrable(), DeferrablePolicy::Never)
-                    || is_mcp_tool(tool.name())
                 {
                     return tool;
                 }
@@ -170,16 +179,23 @@ impl ToolDefinitionHook for DeferSchemaHook {
     }
 }
 
-/// Replace a tool's parameter schema with the deferred stub, keeping name,
-/// description, policy, category, and hints intact.
+/// Replace a tool's parameter schema with the deferred disclosure stub, keeping
+/// name, description, policy, category, and hints intact. The original schema is
+/// saved in `full_parameters` so `tool_search` can return it on demand.
 fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
     match tool {
         ToolDefinition::Builtin(mut b) => {
-            b.parameters = deferred_stub_schema();
+            if b.full_parameters.is_none() {
+                b.full_parameters = Some(b.parameters.clone());
+            }
+            b.parameters = deferred_stub_schema(&b.name);
             ToolDefinition::Builtin(b)
         }
         ToolDefinition::ClientSide(mut c) => {
-            c.parameters = deferred_stub_schema();
+            if c.full_parameters.is_none() {
+                c.full_parameters = Some(c.parameters.clone());
+            }
+            c.parameters = deferred_stub_schema(&c.name);
             ToolDefinition::ClientSide(c)
         }
     }
@@ -232,7 +248,7 @@ impl ToolSearchTool {
                 json!({
                     "name": d.name(),
                     "description": d.description(),
-                    "parameters": d.parameters(),
+                    "parameters": d.full_parameters(),
                 })
             })
             .collect()
@@ -287,6 +303,7 @@ impl Tool for ToolSearchTool {
             category: None,
             deferrable: DeferrablePolicy::Never,
             hints: self.hints(),
+            full_parameters: None,
         })
     }
 
@@ -317,7 +334,17 @@ impl Tool for ToolSearchTool {
             );
         };
 
-        let defs = registry.tool_definitions();
+        let Some(visible_tool_names) = &context.visible_tool_names else {
+            return ToolExecutionResult::tool_error(
+                "Visible tool allowlist not available in this context. tool_search requires turn-scoped tool definitions.",
+            );
+        };
+
+        let defs: Vec<_> = registry
+            .tool_definitions()
+            .into_iter()
+            .filter(|d| visible_tool_names.contains(d.name()))
+            .collect();
         let matches = Self::search(&defs, query);
 
         if matches.is_empty() {
@@ -363,6 +390,7 @@ mod tests {
             category: None,
             deferrable,
             hints: ToolHints::default(),
+            full_parameters: None,
         })
     }
 
@@ -412,9 +440,22 @@ mod tests {
         let hook = DeferSchemaHook { threshold: 15 };
         let out = hook.transform(many_tools(20));
         for t in &out {
-            // Stub schema: no real properties, carries the deferral hint.
+            // Stub schema: no real properties, carries a progressive-disclosure hint.
             assert!(t.parameters().get("properties").is_none());
-            assert!(t.parameters().get("description").is_some());
+            assert_eq!(t.parameters()["additionalProperties"], json!(true));
+            let description = t.parameters()["description"].as_str().unwrap();
+            assert!(
+                description.contains("tool_search"),
+                "deferred stub should point the model to tool_search"
+            );
+            assert!(
+                description.contains(t.name()),
+                "deferred stub should include the search query that reveals this schema"
+            );
+            assert!(
+                t.full_parameters().get("properties").is_some(),
+                "full schema should remain available for progressive disclosure"
+            );
         }
     }
 
@@ -446,10 +487,9 @@ mod tests {
     }
 
     #[test]
-    fn test_hook_preserves_mcp_tools() {
-        // MCP tools must keep full schemas: they become registry proxies in the
-        // act path, and stripping them would leave tool_search unable to return
-        // their parameters.
+    fn test_hook_defers_mcp_tools_and_saves_full_schema() {
+        // MCP tools are now deferred like regular tools. The full schema is saved
+        // in full_parameters so tool_search can return it on demand.
         let hook = DeferSchemaHook { threshold: 3 };
         let mut tools = many_tools(3);
         tools.push(builtin(
@@ -461,13 +501,38 @@ mod tests {
         let out = hook.transform(tools);
 
         let mcp = out.iter().find(|t| t.name() == "mcp_docs__search").unwrap();
+        // Stub is sent to the model (parameters stripped).
         assert!(
-            mcp.parameters().get("properties").is_some(),
-            "MCP tool keeps full schema"
+            mcp.parameters().get("properties").is_none(),
+            "MCP tool schema is deferred"
         );
-        // Non-MCP deferrable tools are still stripped.
-        let deferred = out.iter().find(|t| t.name() == "tool_0").unwrap();
-        assert!(deferred.parameters().get("properties").is_none());
+        // Full schema is preserved for tool_search to return.
+        assert!(
+            mcp.full_parameters().get("properties").is_some(),
+            "MCP tool full schema is accessible via full_parameters()"
+        );
+    }
+
+    #[test]
+    fn test_search_returns_full_schema_for_deferred_tools() {
+        // After DeferSchemaHook strips parameters, tool_search must still return
+        // the full schema (stored in full_parameters).
+        let hook = DeferSchemaHook { threshold: 1 };
+        let tools = vec![builtin(
+            "read_file",
+            "Read a file",
+            DeferrablePolicy::Automatic,
+        )];
+        let deferred = hook.transform(tools);
+
+        let results = ToolSearchTool::search(&deferred, "read file");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["name"], "read_file");
+        // full_parameters() is used, so real schema is returned — not the stub.
+        assert!(
+            results[0]["parameters"].get("properties").is_some(),
+            "tool_search must return the full schema, not the deferred stub"
+        );
     }
 
     #[test]
@@ -558,6 +623,11 @@ mod tests {
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
+        ctx.visible_tool_names = Some(Arc::new(
+            ["read_file".to_string(), TOOL_SEARCH_TOOL_NAME.to_string()]
+                .into_iter()
+                .collect(),
+        ));
 
         let result = ToolSearchTool
             .execute_with_context(json!({ "query": "file" }), &ctx)
@@ -570,5 +640,65 @@ mod tests {
         let read = tools.iter().find(|t| t["name"] == "read_file").unwrap();
         // Full schema is returned (not the deferred stub).
         assert!(read["parameters"]["properties"]["path"].is_object());
+    }
+
+    struct HiddenTool;
+    #[async_trait]
+    impl Tool for HiddenTool {
+        fn name(&self) -> &str {
+            "write_file"
+        }
+        fn description(&self) -> &str {
+            "Write contents to a file"
+        }
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            })
+        }
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::success(json!({}))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_filters_registry_to_visible_tools() {
+        use crate::tools::ToolRegistry;
+
+        let mut registry = ToolRegistry::new();
+        registry.register(MiniTool);
+        registry.register(HiddenTool);
+        registry.register(ToolSearchTool);
+
+        let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
+        ctx.tool_registry = Some(Arc::new(registry));
+        ctx.visible_tool_names = Some(Arc::new(
+            ["read_file".to_string(), TOOL_SEARCH_TOOL_NAME.to_string()]
+                .into_iter()
+                .collect(),
+        ));
+
+        let result = ToolSearchTool
+            .execute_with_context(json!({ "query": "file" }), &ctx)
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let tools = value["tools"].as_array().unwrap();
+        assert!(tools.iter().any(|t| t["name"] == "read_file"));
+        assert!(tools.iter().all(|t| t["name"] != "write_file"));
+
+        let result = ToolSearchTool
+            .execute_with_context(json!({ "query": "missing" }), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let available = value["available_tools"].as_array().unwrap();
+        assert!(available.iter().any(|name| name == "read_file"));
+        assert!(available.iter().all(|name| name != "write_file"));
     }
 }

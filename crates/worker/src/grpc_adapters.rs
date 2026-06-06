@@ -2114,6 +2114,7 @@ fn proto_mcp_tool_def_to_tool_definition(
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints,
+        full_parameters: None,
     })
 }
 

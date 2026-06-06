@@ -387,11 +387,11 @@ pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use llm_model_profiles::get_model_profile;
+pub use llm_model_profiles::{get_model_profile, get_model_vendor};
 pub use llm_models::{
     CostTier, LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile,
     LlmModelSource, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
-    ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{

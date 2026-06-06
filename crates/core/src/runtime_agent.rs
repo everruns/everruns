@@ -758,6 +758,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         });
 
         let agent = Agent {
@@ -818,6 +819,7 @@ mod tests {
             category: None,
             deferrable: DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
+            full_parameters: None,
         });
 
         let agent = Agent {
@@ -998,6 +1000,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: Default::default(),
+            full_parameters: None,
         });
 
         // Native tool_search configured → opt-out hook is skipped (tools kept).
@@ -1116,6 +1119,7 @@ mod tests {
                 category: None,
                 deferrable: Default::default(),
                 hints: crate::tool_types::ToolHints::default(),
+                full_parameters: None,
             })
         };
 

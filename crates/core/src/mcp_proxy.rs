@@ -175,6 +175,7 @@ mod tests {
             category: Some("MCP Servers".to_string()),
             deferrable: DeferrablePolicy::Automatic,
             hints: ToolHints::default().with_open_world(true),
+            full_parameters: None,
         })
     }
 
@@ -216,6 +217,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::Automatic,
                 hints: ToolHints::default(),
+                full_parameters: None,
             }),
         ];
         let invoker = Arc::new(RecordingInvoker {

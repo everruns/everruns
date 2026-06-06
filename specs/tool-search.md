@@ -70,14 +70,14 @@ The executor (act) path collects without a model and so resolves to the generic 
 
 Implemented entirely in core, with no driver or agent-loop changes:
 
-1. A `ToolDefinitionHook` (`DeferSchemaHook`) runs in `RuntimeAgentBuilder::build()`. When the agent carries `>= threshold` tools, it replaces each deferrable tool's parameter schema with a small stub (name + description survive). `DeferrablePolicy::Never` tools and the `tool_search` tool keep full schemas.
+1. A `ToolDefinitionHook` (`DeferSchemaHook`) runs in `RuntimeAgentBuilder::build()`. When the agent carries `>= threshold` tools, it replaces each deferrable tool's parameter schema with a small progressive-disclosure stub (name + description survive, and the stub description tells the model which `tool_search` query reveals the full schema). `DeferrablePolicy::Never` tools and the `tool_search` tool keep full schemas.
 2. A real `tool_search` tool is registered. On call it reads sibling tool schemas from `ToolContext::tool_registry` (the same mechanism `spawn_background` uses) and returns the full schemas of tools matching the query.
 3. A system-prompt note tells the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
 
 Because the underlying tools stay registered and executable, tool calls and results are unchanged — only how schemas reach the model differs. The search reads schemas from the worker-side registry, so it covers built-in tools and MCP tools. Two interactions matter:
 
 - **Mutually exclusive with hosted deferral.** `DeferSchemaHook` opts out of running while a hosted config is present (`ToolDefinitionHook::applies_with_native_tool_search()` → `false`), so the two never both strip schemas. In `RuntimeAgentBuilder::build()`, the presence of a hosted `ToolSearchConfig` makes the hook skip — even on an unsupported model, where the hosted config is then disabled (full schemas, no client-side fallback). So hand-configuring `openai_tool_search` alongside `tool_search` makes the hosted config win regardless of model. This case does not arise with `auto_tool_search`, which resolves to exactly one mechanism at collection time (see "Auto resolution" above) and never sets a hosted config on a non-native model.
-- **MCP tools keep full schemas.** MCP tool definitions become registry proxies in the act path; the hook does not strip them (else the proxy, and thus `tool_search` results, would only carry the stub). MCP tools are therefore searchable and executable but not themselves deferred under the generic capability. Deferring them would require plumbing full MCP schemas to the act path separately (follow-up).
+- **MCP tools are deferred and searchable.** MCP tool definitions become registry proxies in the act path. `DeferSchemaHook` now strips their schemas like any other deferrable tool, saving the original in `full_parameters` on the definition. When `build_mcp_proxy_tools` builds the proxy it clones the (stripped) `BuiltinTool`, which carries `full_parameters`. When `tool_search` calls `registry.tool_definitions()`, `McpProxyTool::to_definition()` returns this cloned definition, and `d.full_parameters()` returns the real schema.
 
 ## Design: Capability-Driven Tool Search
 

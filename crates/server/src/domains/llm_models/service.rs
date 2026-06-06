@@ -366,8 +366,7 @@ impl LlmModelService {
             row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
 
         // Look up hardcoded profile, then try discovered profile from provider_metadata.
-        // Hardcoded profiles take precedence (they have cost data), but discovered
-        // profiles fill gaps for models without hardcoded entries.
+        // Hardcoded profiles take precedence; discovered provider catalog data fills gaps.
         let hardcoded = get_model_profile(&provider_type, &row.model_id);
         let profile = if hardcoded.is_some() {
             // Merge: hardcoded base with discovered limits/capabilities as fallback
@@ -387,6 +386,10 @@ impl LlmModelService {
         // checks; keep the derivation in one place.
         let healthy = row.provider_status == "active" && row.provider_api_key_set;
 
+        // Vendor/brand tag from the model registry (drives UI branding),
+        // independent of the configured provider type.
+        let model_vendor = everruns_core::get_model_vendor(&provider_type, &row.model_id);
+
         LlmModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
@@ -402,6 +405,7 @@ impl LlmModelService {
             provider_type,
             healthy,
             profile,
+            model_vendor,
         }
     }
 
@@ -425,16 +429,21 @@ impl LlmModelService {
             attachment: hardcoded.attachment,
             reasoning: hardcoded.reasoning,
             temperature: hardcoded.temperature,
-            knowledge: hardcoded.knowledge, // Not available from API
+            knowledge: hardcoded.knowledge.or(discovered.knowledge),
             tool_call: hardcoded.tool_call,
             structured_output: hardcoded.structured_output,
             open_weights: hardcoded.open_weights,
-            cost: hardcoded.cost, // Never from API
+            cost: hardcoded.cost.or(discovered.cost),
             // Limits: hardcoded values are authoritative; use discovered values only as fallback
             limits: hardcoded.limits.or(discovered.limits),
             modalities: hardcoded.modalities.or(discovered.modalities),
             reasoning_effort: hardcoded.reasoning_effort.or(discovered.reasoning_effort),
             tool_search: hardcoded.tool_search,
+            supported_parameters: if hardcoded.supported_parameters.is_empty() {
+                discovered.supported_parameters
+            } else {
+                hardcoded.supported_parameters
+            },
             supports_phases: hardcoded.supports_phases,
         }
     }
@@ -590,6 +599,7 @@ mod tests {
             modalities: None,
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }
     }
@@ -610,14 +620,21 @@ mod tests {
         let discovered = LlmModelProfile {
             name: "Discovered Name".into(),
             family: "discovered-family".into(),
-            cost: None,
+            knowledge: Some("2025-01-01".into()),
+            cost: Some(everruns_core::LlmModelCost {
+                input: 0.5,
+                output: 1.0,
+                cache_read: Some(0.1),
+                cost_tiers: vec![],
+            }),
             ..base_profile()
         };
 
         let merged = LlmModelService::merge_profiles(hardcoded, discovered);
         assert_eq!(merged.name, "Hardcoded Name");
         assert_eq!(merged.family, "hardcoded-family");
-        assert!(merged.cost.is_some());
+        assert_eq!(merged.knowledge.as_deref(), Some("2025-01-01"));
+        assert_eq!(merged.cost.unwrap().input, 5.0);
     }
 
     #[test]
@@ -635,12 +652,26 @@ mod tests {
                 output: 64_000,
                 max_media: None,
             }),
+            knowledge: Some("2025-02-01".into()),
+            cost: Some(everruns_core::LlmModelCost {
+                input: 0.5,
+                output: 1.0,
+                cache_read: Some(0.1),
+                cost_tiers: vec![],
+            }),
+            supported_parameters: vec!["tools".into(), "temperature".into()],
             ..base_profile()
         };
 
         let merged = LlmModelService::merge_profiles(hardcoded, discovered);
         assert!(merged.limits.is_some());
         assert_eq!(merged.limits.unwrap().context, 200_000);
+        assert_eq!(merged.knowledge.as_deref(), Some("2025-02-01"));
+        assert_eq!(merged.cost.unwrap().output, 1.0);
+        assert_eq!(
+            merged.supported_parameters,
+            vec!["tools".to_string(), "temperature".to_string()]
+        );
     }
 
     #[test]

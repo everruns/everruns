@@ -255,6 +255,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 hints: ToolHints::default()
                     .with_readonly(true)
                     .with_idempotent(true),
+                full_parameters: None,
             }),
             ToolDefinition::Builtin(BuiltinTool {
                 name: "activate_skill".to_string(),
@@ -283,6 +284,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                 hints: ToolHints::default()
                     .with_readonly(true)
                     .with_idempotent(true),
+                full_parameters: None,
             }),
         ]
     }

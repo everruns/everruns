@@ -580,6 +580,20 @@ impl SessionFileService {
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)?;
         let content = SessionFile::decode_content(content, encoding)?;
 
+        // Fetch metadata only (no content) to avoid transferring large blobs
+        // just to check flags. Content equality is enforced atomically in SQL by
+        // update_session_file_if_content_matches below.
+        let existing = self.db.get_session_file_info(session_id, &path).await?;
+        let Some(existing) = existing else {
+            return Ok(None);
+        };
+        if existing.is_directory || existing.is_readonly {
+            return Ok(None);
+        }
+
+        self.check_write_quota(session_id, content.len() as i64, existing.size_bytes)
+            .await?;
+
         let row = self
             .db
             .update_session_file_if_content_matches(
@@ -708,13 +722,16 @@ impl SessionFileService {
 
         // Check source exists and is not a directory
         let source = self.db.get_session_file(session_id, &src_path).await?;
-        match source {
+        let source_size = match source {
             None => return Err(anyhow!("Source not found: {}", src_path)),
             Some(ref s) if s.is_directory => {
                 return Err(anyhow!("Cannot copy directories: {}", src_path));
             }
-            _ => {}
-        }
+            Some(ref s) => s.size_bytes,
+        };
+
+        // Copying creates another stored file, so it must consume session quota.
+        self.check_write_quota(session_id, source_size, 0).await?;
 
         // Check destination doesn't exist
         if self.db.session_file_exists(session_id, &dst_path).await? {
@@ -2063,6 +2080,123 @@ mod tests {
         assert!(
             err.to_string().contains("per-file limit"),
             "Expected per-file limit error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn copy_file_enforces_session_total_limit() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+            per_file_bytes: 15,
+            per_session_bytes: 20,
+        });
+
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/a.txt".to_string(),
+                content: Some("x".repeat(15)),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let err = svc
+            .copy_file(
+                sid,
+                CopyFileInput {
+                    src_path: "/a.txt".to_string(),
+                    dst_path: "/b.txt".to_string(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("quota exceeded"),
+            "Expected quota exceeded error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_file_if_content_matches_enforces_per_file_limit() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+            per_file_bytes: 10,
+            per_session_bytes: 500 * 1024 * 1024,
+        });
+
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/f.txt".to_string(),
+                content: Some("hello".to_string()),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let err = svc
+            .update_file_if_content_matches(sid, "/f.txt", "hello", "text", &"x".repeat(11), "text")
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("per-file limit"),
+            "Expected per-file limit error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn update_file_if_content_matches_enforces_session_total_limit() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+            per_file_bytes: 15,
+            per_session_bytes: 20,
+        });
+
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/a.txt".to_string(),
+                content: Some("x".repeat(10)),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/b.txt".to_string(),
+                content: Some("y".repeat(5)),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let err = svc
+            .update_file_if_content_matches(
+                sid,
+                "/b.txt",
+                &"y".repeat(5),
+                "text",
+                &"z".repeat(15),
+                "text",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("quota exceeded"),
+            "Expected quota exceeded error, got: {err}"
         );
     }
 }

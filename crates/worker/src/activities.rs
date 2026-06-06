@@ -245,6 +245,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
                 hints: everruns_core::tool_types::ToolHints::default(),
+                full_parameters: None,
             })],
             locale: None,
             blueprint_id: None,

@@ -46,6 +46,7 @@ async fn test_tool_registry_as_executor() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     // Execute via ToolExecutor trait
@@ -74,6 +75,7 @@ async fn test_get_current_time_tool() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     let result = registry.execute(&tool_call, &tool_def).await.unwrap();
@@ -106,6 +108,7 @@ async fn test_tool_error_handling() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     // Execute and verify error is packaged as {"error": "..."} in result field
@@ -140,6 +143,7 @@ async fn test_internal_error_is_hidden() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     // Execute and verify internal error is hidden (packaged as {"error": "..."} with generic message)
@@ -175,6 +179,7 @@ async fn test_tool_not_found_error() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     // Should return error for tool not found
@@ -243,6 +248,7 @@ async fn test_custom_tool_execution() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     // Execute multiple times
@@ -285,6 +291,7 @@ async fn test_multiple_tools_in_registry() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     let time_result = registry.execute(&time_call, &time_def).await.unwrap();
@@ -307,6 +314,7 @@ async fn test_multiple_tools_in_registry() {
         category: None,
         deferrable: DeferrablePolicy::default(),
         hints: ToolHints::default(),
+        full_parameters: None,
     });
 
     let echo_result = registry.execute(&echo_call, &echo_def).await.unwrap();

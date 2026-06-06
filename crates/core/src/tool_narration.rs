@@ -1065,6 +1065,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: ToolHints::default().with_narration_noun("agent"),
+            full_parameters: None,
         });
 
         assert_eq!(
@@ -1100,6 +1101,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: ToolHints::default().with_narration_noun("agent"),
+            full_parameters: None,
         });
 
         assert_eq!(
@@ -1127,6 +1129,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: ToolHints::default().with_narration_noun("agent"),
+            full_parameters: None,
         });
 
         // No operation arg → falls back to generic
@@ -1155,6 +1158,7 @@ mod tests {
             category: None,
             deferrable: Default::default(),
             hints: ToolHints::default().with_narration_noun("agent"),
+            full_parameters: None,
         });
 
         // Ukrainian doesn't use operation_narration yet — stays in Ukrainian

@@ -634,6 +634,17 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns tool definition hooks adapted to per-capability config.
+    ///
+    /// Default delegates to `tool_definition_hooks()`. Capabilities whose
+    /// schema transforms depend on config override this method.
+    fn tool_definition_hooks_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        self.tool_definition_hooks()
+    }
+
     /// Returns tool call hooks provided by this capability.
     ///
     /// These hooks run after the model has produced a tool call. They can read
@@ -1856,9 +1867,10 @@ pub async fn collect_capabilities_with_configs(
                 system_prompt_parts.push(contribution);
             }
 
-            // Collect tools (config-aware: capabilities can adapt based on per-agent config)
+            // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
             tools.extend(effective.tools_with_config(&cap_config.config));
-            tool_definition_hooks.extend(effective.tool_definition_hooks());
+            tool_definition_hooks
+                .extend(effective.tool_definition_hooks_with_config(&cap_config.config));
             tool_call_hooks.extend(effective.tool_call_hooks());
             // Output guardrails are NOT collected here — see CollectedCapabilities
             // for rationale. ReasonAtom re-derives them at stream-arming time.
@@ -4144,10 +4156,16 @@ mod tests {
     async fn test_collect_capabilities_auto_tool_search_resolves_to_generic_off_native() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let configs = vec![AgentCapabilityConfig {
-            capability_ref: CapabilityId::new("auto_tool_search"),
-            config: serde_json::json!({"threshold": 7}),
-        }];
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("auto_tool_search"),
+                config: serde_json::json!({"threshold": 2}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("test_math"),
+                config: serde_json::json!({}),
+            },
+        ];
 
         // No native support → resolves to the generic client-side mechanism: no
         // hosted config, but the tool_search tool + DeferSchemaHook are collected.
@@ -4168,6 +4186,19 @@ mod tests {
         assert!(
             !collected.tool_definition_hooks.is_empty(),
             "auto_tool_search must contribute a client-side deferral hook"
+        );
+
+        let mut transformed = collected.tool_definitions.clone();
+        for hook in &collected.tool_definition_hooks {
+            transformed = hook.transform(transformed);
+        }
+        let add_tool = transformed
+            .iter()
+            .find(|tool| tool.name() == "add")
+            .expect("test_math contributes add");
+        assert!(
+            add_tool.parameters().get("properties").is_none(),
+            "generic auto_tool_search must honor the configured threshold"
         );
     }
 

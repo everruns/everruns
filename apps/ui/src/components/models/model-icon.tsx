@@ -1,15 +1,16 @@
-import type { LlmModelWithProvider } from "@/lib/api/types";
+import type { LlmModelWithProvider, ModelVendor } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { cn } from "@/lib/utils";
 
 // Per-model vendor icons.
 //
 // Provider icons are keyed by provider *type*, but many notable models are
-// served over the generic OpenAI-compatible Completions API (NVIDIA Nemotron,
-// Qwen, MiniMax, Kimi, Grok, Microsoft MAI, ...). For those the provider icon
-// alone would render an OpenAI mark, so we additionally key an icon off the
-// model itself (profile family + wire id) and fall back to the provider icon
-// when no vendor is recognized.
+// served over OpenAI-compatible gateways (NVIDIA Nemotron, Qwen, MiniMax, Kimi,
+// Grok, Microsoft MAI, ...) where the provider type alone would render an
+// OpenAI mark. The backend model registry tags each model with a vendor
+// (`model_vendor`); we map that tag to a brand icon and fall back to the
+// provider-type icon for first-party vendors (OpenAI, Anthropic, Google) and
+// unknown models.
 
 function NvidiaIcon({ size }: { size: number }) {
   return (
@@ -103,31 +104,17 @@ interface VendorIcon {
   Component: React.ComponentType<{ size: number }>;
 }
 
-// Recognize a vendor from the model's family / wire id. Substrings are checked
-// against the lowercased "<family> <model_id>" so both `qwen3.7-max` and an
-// OpenRouter-style `qwen/qwen3.7-max` resolve.
-function vendorForModel(model: ModelLike): VendorIcon | null {
-  const key = `${model.profile?.family ?? ""} ${model.model_id}`.toLowerCase();
-  if (key.includes("nemotron") || key.includes("nvidia")) {
-    return { label: "NVIDIA", Component: NvidiaIcon };
-  }
-  if (key.includes("qwen")) {
-    return { label: "Qwen", Component: QwenIcon };
-  }
-  if (key.includes("minimax")) {
-    return { label: "MiniMax", Component: MiniMaxIcon };
-  }
-  if (key.includes("kimi") || key.includes("moonshot")) {
-    return { label: "Moonshot", Component: MoonshotIcon };
-  }
-  if (key.includes("grok") || key.includes("x-ai") || key.includes("xai")) {
-    return { label: "xAI", Component: XaiIcon };
-  }
-  if (key.includes("mai-1") || key.includes("microsoft")) {
-    return { label: "Microsoft", Component: MicrosoftIcon };
-  }
-  return null;
-}
+// Brand icons for vendors that lack a dedicated provider-type icon. First-party
+// vendors (openai, anthropic, google, llmsim) intentionally fall through to the
+// provider icon, which already renders their brand.
+const VENDOR_ICONS: Partial<Record<ModelVendor, VendorIcon>> = {
+  nvidia: { label: "NVIDIA", Component: NvidiaIcon },
+  qwen: { label: "Qwen", Component: QwenIcon },
+  microsoft: { label: "Microsoft", Component: MicrosoftIcon },
+  minimax: { label: "MiniMax", Component: MiniMaxIcon },
+  moonshot: { label: "Moonshot", Component: MoonshotIcon },
+  xai: { label: "xAI", Component: XaiIcon },
+};
 
 const sizeMap = {
   sm: { icon: 16, container: "p-1.5" },
@@ -135,8 +122,8 @@ const sizeMap = {
   lg: { icon: 24, container: "p-2.5" },
 };
 
-type ModelLike = Pick<LlmModelWithProvider, "provider_type" | "model_id"> & {
-  profile?: { family?: string } | null;
+type ModelLike = Pick<LlmModelWithProvider, "provider_type"> & {
+  model_vendor?: ModelVendor | null;
 };
 
 interface ModelIconProps {
@@ -147,9 +134,9 @@ interface ModelIconProps {
 }
 
 /**
- * Icon for a specific model. Prefers a per-vendor brand icon derived from the
- * model family/id (for OpenAI-compatible third-party models), falling back to
- * the provider-type icon (OpenAI, Anthropic, Gemini, ...).
+ * Icon for a specific model. Prefers a per-vendor brand icon from the model's
+ * registry `model_vendor` tag, falling back to the provider-type icon (OpenAI,
+ * Anthropic, Gemini, ...).
  */
 export function ModelIcon({
   model,
@@ -157,7 +144,7 @@ export function ModelIcon({
   className,
   showBackground = true,
 }: ModelIconProps) {
-  const vendor = vendorForModel(model);
+  const vendor = model.model_vendor ? VENDOR_ICONS[model.model_vendor] : undefined;
   if (!vendor) {
     return (
       <ProviderIcon

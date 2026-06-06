@@ -16,7 +16,7 @@
 
 use crate::llm_models::{
     CostTier, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType,
-    Modality, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    Modality, ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -163,25 +163,204 @@ fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
     }
 }
 
-/// Get a model profile by matching provider_type and model_id
-/// Returns None if no matching profile is found
+/// Flat registry of known models. Lookup is provider-agnostic: a model is
+/// resolved by id across this whole list, then filtered by the `surfaces`
+/// predicate. `vendor` is a branding tag; the profile payload lives in
+/// `profile_data`, keyed by the canonical id (`ids[0]`).
+struct ModelDescriptor {
+    /// Accepted wire ids. `ids[0]` is the canonical id used to fetch the
+    /// profile payload; the rest are aliases (e.g. vendor-prefixed gateway
+    /// ids). Matched case-insensitively, by exact match or `"<id>-"` prefix
+    /// (which covers dated and `-latest` suffixes).
+    ids: &'static [&'static str],
+    vendor: ModelVendor,
+    /// Provider types (API surfaces) this model is offered under.
+    surfaces: &'static [LlmProviderType],
+}
+
+const fn md(
+    ids: &'static [&'static str],
+    vendor: ModelVendor,
+    surfaces: &'static [LlmProviderType],
+) -> ModelDescriptor {
+    ModelDescriptor {
+        ids,
+        vendor,
+        surfaces,
+    }
+}
+
+// OpenAI's own models are served by the Responses API, Azure, and the generic
+// Chat Completions path. Third-party OpenAI-compatible models (NVIDIA, Qwen,
+// ...) are reachable via Responses-capable gateways (e.g. OpenRouter) and the
+// Chat Completions path, but never Azure.
+const OPENAI: &[LlmProviderType] = &[
+    LlmProviderType::Openai,
+    LlmProviderType::AzureOpenai,
+    LlmProviderType::OpenaiCompletions,
+];
+const OPENAI_COMPAT: &[LlmProviderType] =
+    &[LlmProviderType::Openai, LlmProviderType::OpenaiCompletions];
+const ANTHROPIC: &[LlmProviderType] = &[LlmProviderType::Anthropic];
+const GEMINI: &[LlmProviderType] = &[LlmProviderType::Gemini];
+const LLMSIM: &[LlmProviderType] = &[LlmProviderType::LlmSim];
+
+static REGISTRY: &[ModelDescriptor] = &[
+    // OpenAI
+    md(&["gpt-realtime-2"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-4o"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-4o-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["o1"], ModelVendor::OpenAi, OPENAI),
+    md(&["o1-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["o1-pro"], ModelVendor::OpenAi, OPENAI),
+    md(&["o1-preview"], ModelVendor::OpenAi, OPENAI),
+    md(&["o3"], ModelVendor::OpenAi, OPENAI),
+    md(&["o3-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["o3-pro"], ModelVendor::OpenAi, OPENAI),
+    md(&["o3-deep-research"], ModelVendor::OpenAi, OPENAI),
+    md(&["o4-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["o4-mini-deep-research"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-4.1"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-4.1-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-4.1-nano"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5-nano"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5-pro"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5-codex"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5-chat-latest"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.1"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.1-codex"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.1-codex-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.1-codex-max"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.1-chat-latest"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.2"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.2-pro"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.2-codex"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.2-chat-latest"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.3-codex"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.4"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.4-mini"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.4-nano"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.4-pro"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.5"], ModelVendor::OpenAi, OPENAI),
+    md(&["gpt-5.5-pro"], ModelVendor::OpenAi, OPENAI),
+    // Anthropic
+    md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-6"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-haiku-4-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-1"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-4"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-7-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-5-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-5-haiku"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-opus"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-sonnet"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-3-haiku"], ModelVendor::Anthropic, ANTHROPIC),
+    // Google Gemini
+    md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
+    md(&["gemini-2.5-pro"], ModelVendor::Google, GEMINI),
+    md(&["gemini-2.5-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-2.0-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-1.5-pro"], ModelVendor::Google, GEMINI),
+    md(&["gemini-1.5-flash"], ModelVendor::Google, GEMINI),
+    // Third-party, OpenAI-compatible
+    md(
+        &[
+            "nemotron-3-super-120b-a12b",
+            "nvidia/nemotron-3-super-120b-a12b",
+        ],
+        ModelVendor::Nvidia,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["qwen3.7-max", "qwen/qwen3.7-max"],
+        ModelVendor::Qwen,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["mai-1-preview", "microsoft/mai-1-preview"],
+        ModelVendor::Microsoft,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["minimax-m3", "minimax/minimax-m3"],
+        ModelVendor::MiniMax,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["kimi-k2-thinking", "moonshotai/kimi-k2-thinking"],
+        ModelVendor::Moonshot,
+        OPENAI_COMPAT,
+    ),
+    md(
+        &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],
+        ModelVendor::XAi,
+        OPENAI_COMPAT,
+    ),
+    // Test simulator
+    md(&["llmsim-default", "llmsim"], ModelVendor::LlmSim, LLMSIM),
+];
+
+/// Resolve the registry descriptor for a model id under a provider type.
+/// Matching is provider-filtered (the `surfaces` predicate) and picks the
+/// longest matching id so specific variants win over their prefixes (e.g.
+/// `gpt-4o-mini` over `gpt-4o`).
+fn resolve_descriptor(
+    provider_type: &LlmProviderType,
+    model_id: &str,
+) -> Option<&'static ModelDescriptor> {
+    // Match without allocating: compare bytes case-insensitively. Ids are ASCII.
+    let id = model_id.as_bytes();
+    let mut best: Option<(usize, &'static ModelDescriptor)> = None;
+    for descriptor in REGISTRY {
+        if !descriptor.surfaces.contains(provider_type) {
+            continue;
+        }
+        for alias in descriptor.ids {
+            let alias = alias.as_bytes();
+            // Exact (case-insensitive) match, or an `"<alias>-"` prefix (which
+            // covers dated and `-latest` suffixes).
+            let id_matches = if id.len() == alias.len() {
+                id.eq_ignore_ascii_case(alias)
+            } else {
+                id.len() > alias.len()
+                    && id[alias.len()] == b'-'
+                    && id[..alias.len()].eq_ignore_ascii_case(alias)
+            };
+            if id_matches && best.is_none_or(|(len, _)| alias.len() > len) {
+                best = Some((alias.len(), descriptor));
+            }
+        }
+    }
+    best.map(|(_, descriptor)| descriptor)
+}
+
+/// Get a model profile by matching provider_type and model_id.
+/// Returns None if the id is not in the registry or is not offered under the
+/// given provider type.
 pub fn get_model_profile(
     provider_type: &LlmProviderType,
     model_id: &str,
 ) -> Option<LlmModelProfile> {
-    match provider_type {
-        // Open Responses (`openai`) and Azure only serve genuine OpenAI models.
-        LlmProviderType::Openai | LlmProviderType::AzureOpenai => get_openai_profile(model_id),
-        // The generic Chat Completions path additionally hosts third-party,
-        // OpenAI-compatible models (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI,
-        // ...), so fall back to their profiles only here.
-        LlmProviderType::OpenaiCompletions => {
-            get_openai_profile(model_id).or_else(|| get_openai_compatible_profile(model_id))
-        }
-        LlmProviderType::Anthropic => get_anthropic_profile(model_id),
-        LlmProviderType::Gemini => get_gemini_profile(model_id),
-        LlmProviderType::LlmSim => get_llmsim_profile(model_id),
+    let descriptor = resolve_descriptor(provider_type, model_id)?;
+    let mut profile = profile_data(descriptor.ids[0])?;
+    // Native execution phases and tool_search are advertised only for the
+    // `openai` (Open Responses) provider type — that is the only surface whose
+    // driver implements them. Every other provider type (Azure, Chat
+    // Completions) gets them masked off, regardless of which model it serves.
+    // A gateway that exposes a Responses-compatible endpoint is configured as
+    // `openai`, so it is intentionally treated as Responses-capable here.
+    if !matches!(provider_type, LlmProviderType::Openai) {
+        profile.supports_phases = false;
+        profile.tool_search = false;
     }
+    Some(profile)
 }
 
 /// Estimate the USD cost of a generation from the model's static price-table
@@ -204,11 +383,25 @@ pub fn estimate_cost_usd(
     Some(input_cost + output_cost)
 }
 
-fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
-    // Normalize model ID by extracting base name
-    let base_id = normalize_model_id(model_id);
+/// Get the vendor/brand for a model id, or None if it is not in the registry
+/// (or not offered under the given provider type).
+pub fn get_model_vendor(provider_type: &LlmProviderType, model_id: &str) -> Option<ModelVendor> {
+    resolve_descriptor(provider_type, model_id).map(|descriptor| descriptor.vendor)
+}
 
-    match base_id {
+/// Profile payload keyed by canonical model id. Pure value store: provider
+/// availability and vendor tagging live in `REGISTRY`, not here. The segments
+/// are grouped by author for readability only — there is no provider dispatch.
+fn profile_data(canonical: &str) -> Option<LlmModelProfile> {
+    openai_profile_data(canonical)
+        .or_else(|| anthropic_profile_data(canonical))
+        .or_else(|| gemini_profile_data(canonical))
+        .or_else(|| third_party_profile_data(canonical))
+        .or_else(|| llmsim_profile_data(canonical))
+}
+
+fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+    match model_id {
         "gpt-realtime-2" => Some(LlmModelProfile {
             name: "GPT Realtime 2".into(),
             family: "gpt-realtime".into(),
@@ -230,6 +423,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_realtime()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -264,6 +458,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -298,6 +493,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -332,6 +528,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -366,6 +563,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -400,6 +598,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -434,6 +633,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -468,6 +668,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -502,6 +703,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -536,6 +738,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -571,6 +774,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -605,6 +809,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -639,6 +844,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -675,6 +881,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -709,6 +916,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -743,6 +951,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -777,6 +986,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -811,6 +1021,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -846,6 +1057,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -880,6 +1092,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -914,6 +1127,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -949,6 +1163,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -984,6 +1199,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1018,6 +1234,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1052,6 +1269,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1087,6 +1305,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1126,6 +1345,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1160,6 +1380,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1202,6 +1423,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1236,6 +1458,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1270,6 +1493,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1309,6 +1533,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
             tool_search: true,
+            supported_parameters: Vec::new(),
             supports_phases: true,
         }),
 
@@ -1344,6 +1569,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1378,6 +1604,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1412,6 +1639,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1447,6 +1675,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1481,6 +1710,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1515,6 +1745,7 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1522,20 +1753,19 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
-/// Profiles for non-OpenAI models exposed through the OpenAI-compatible
-/// Chat Completions API. Reached only for the `openai_completions` provider
-/// type (see `get_model_profile`) — Open Responses / Azure do not serve these
-/// models, so they must not resolve there. Sourced from models.dev unless
+/// Profile payloads for non-OpenAI models exposed through OpenAI-compatible
+/// APIs (NVIDIA NIM, Alibaba, MiniMax, Moonshot, xAI, Microsoft). Pure value
+/// store keyed by canonical id; which provider surfaces each model is offered
+/// under is decided by `REGISTRY`, not here. Sourced from models.dev unless
 /// noted otherwise.
 ///
-/// Matching is case-insensitive and each arm accepts both the bare provider id
-/// and common vendor-prefixed aliases (OpenRouter style), so the profile
-/// resolves regardless of how the user registered the model id.
+/// The id is lowercased so the cased canonical ids and aliases below resolve
+/// regardless of how the caller passed them.
 ///
 /// `structured_output` is set to `false` where the upstream models.dev entry
 /// does not assert it: absence of the field is not a claim of support, so we
 /// do not advertise a capability we cannot confirm.
-fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
+fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     match model_id.to_ascii_lowercase().as_str() {
         // NVIDIA Nemotron 3 Super — flagship Nemotron reasoning model.
         // Source: models.dev (nvidia provider).
@@ -1571,6 +1801,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
                 }),
                 reasoning_effort: None,
                 tool_search: false,
+                supported_parameters: Vec::new(),
                 supports_phases: false,
             })
         }
@@ -1608,6 +1839,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1638,6 +1870,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1674,6 +1907,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1710,6 +1944,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1751,6 +1986,7 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1758,11 +1994,8 @@ fn get_openai_compatible_profile(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
-fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
-    // Normalize model ID by extracting base name
-    let base_id = normalize_anthropic_model_id(model_id);
-
-    match base_id {
+fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+    match model_id {
         // Claude 4.8 series (newest)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 4.8 is not yet in models.dev. Same API surface as
@@ -1800,6 +2033,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1835,6 +2069,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1870,6 +2105,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1904,6 +2140,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1939,6 +2176,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -1973,6 +2211,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2007,6 +2246,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2042,6 +2282,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2077,6 +2318,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2111,6 +2353,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2146,6 +2389,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2181,6 +2425,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2215,6 +2460,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2249,6 +2495,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2283,6 +2530,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2317,6 +2565,7 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2324,35 +2573,8 @@ fn get_anthropic_profile(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
-/// Normalize Gemini model ID by extracting the base model name
-/// e.g., "gemini-2.5-pro-preview-05-06" -> "gemini-2.5-pro"
-fn normalize_gemini_model_id(model_id: &str) -> &str {
-    let patterns = [
-        "gemini-3.1-pro-preview",
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-2.0-flash",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-    ];
-
-    for pattern in patterns {
-        if model_id == pattern
-            || model_id.starts_with(&format!("{}-", pattern))
-            || model_id == format!("{}-latest", pattern)
-        {
-            return pattern;
-        }
-    }
-
-    model_id
-}
-
-/// Get Gemini model profile
-fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
-    let base_id = normalize_gemini_model_id(model_id);
-
-    match base_id {
+fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+    match model_id {
         // Gemini 3.x series (newest). Source: models.dev (google provider).
         // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
         // current flagship Pro. Pricing has a >200K-token tier. Reasoning effort
@@ -2400,6 +2622,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2439,6 +2662,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2478,6 +2702,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2517,6 +2742,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2556,6 +2782,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2595,6 +2822,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: None,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
 
@@ -2604,7 +2832,7 @@ fn get_gemini_profile(model_id: &str) -> Option<LlmModelProfile> {
 
 /// Get LlmSim model profile (simulated LLM for testing)
 /// Profile is modeled close to GPT-5.2 for realistic testing
-fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
+fn llmsim_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     match model_id {
         "llmsim-default" | "llmsim" => Some(LlmModelProfile {
             name: "LlmSim Default".into(),
@@ -2637,122 +2865,36 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()), // Same as GPT-5.2
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }),
         _ => None,
     }
 }
 
-/// Normalize OpenAI model ID to base name
-/// e.g., "gpt-4o-2024-11-20" -> "gpt-4o"
-fn normalize_model_id(model_id: &str) -> &str {
-    // Known base model patterns (order matters - more specific first)
-    let patterns = [
-        // Realtime models
-        "gpt-realtime-2",
-        // GPT-5.5 models
-        "gpt-5.5-pro",
-        "gpt-5.5",
-        // GPT-5.4 models
-        "gpt-5.4-pro",
-        "gpt-5.4-nano",
-        "gpt-5.4-mini",
-        "gpt-5.4",
-        // GPT-5.3 models
-        "gpt-5.3-codex",
-        // GPT-5.2 models
-        "gpt-5.2-chat-latest",
-        "gpt-5.2-codex",
-        "gpt-5.2-pro",
-        "gpt-5.2",
-        // GPT-5.1 models
-        "gpt-5.1-chat-latest",
-        "gpt-5.1-codex-max",
-        "gpt-5.1-codex-mini",
-        "gpt-5.1-codex",
-        "gpt-5.1",
-        // GPT-5 models
-        "gpt-5-chat-latest",
-        "gpt-5-codex",
-        "gpt-5-nano",
-        "gpt-5-mini",
-        "gpt-5-pro",
-        "gpt-5",
-        // GPT-4.1 models
-        "gpt-4.1-nano",
-        "gpt-4.1-mini",
-        "gpt-4.1",
-        // GPT-4 models
-        "gpt-4o-mini",
-        "gpt-4o",
-        // Reasoning models (o-series)
-        "o4-mini-deep-research",
-        "o4-mini",
-        "o3-deep-research",
-        "o3-pro",
-        "o3-mini",
-        "o3",
-        "o1-preview",
-        "o1-mini",
-        "o1-pro",
-        "o1",
-    ];
-
-    for pattern in patterns {
-        if model_id == pattern || model_id.starts_with(&format!("{}-", pattern)) {
-            return pattern;
-        }
-    }
-
-    model_id
-}
-
-/// Normalize Anthropic model ID to base name
-/// e.g., "claude-3-5-sonnet-20241022" -> "claude-3-5-sonnet"
-fn normalize_anthropic_model_id(model_id: &str) -> &str {
-    // Known base model patterns (order matters - more specific first)
-    let patterns = [
-        // Claude 4.8
-        "claude-opus-4-8",
-        // Claude 4.7 / 4.6
-        "claude-opus-4-7",
-        "claude-opus-4-6",
-        "claude-sonnet-4-6",
-        // Claude 4.5 series
-        "claude-opus-4-5",
-        "claude-sonnet-4-5",
-        "claude-haiku-4-5",
-        // Claude 4.1 series
-        "claude-opus-4-1",
-        // Claude 4 series
-        "claude-sonnet-4",
-        "claude-opus-4",
-        // Claude 3.7 series
-        "claude-3-7-sonnet",
-        // Claude 3.5 series
-        "claude-3-5-sonnet",
-        "claude-3-5-haiku",
-        // Claude 3 series
-        "claude-3-opus",
-        "claude-3-sonnet",
-        "claude-3-haiku",
-    ];
-
-    for pattern in patterns {
-        if model_id == pattern
-            || model_id.starts_with(&format!("{}-", pattern))
-            || model_id == format!("{}-latest", pattern)
-        {
-            return pattern;
-        }
-    }
-
-    model_id
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The per-vendor `normalize_*` functions were folded into the flat registry
+    // (longest-prefix matching in `resolve_descriptor`). These shims preserve
+    // the original normalization assertions as regression coverage: each maps a
+    // wire id to its canonical registry id under the relevant provider surface.
+    fn normalize_model_id(id: &str) -> &'static str {
+        resolve_descriptor(&LlmProviderType::Openai, id)
+            .map(|d| d.ids[0])
+            .unwrap_or("")
+    }
+    fn normalize_anthropic_model_id(id: &str) -> &'static str {
+        resolve_descriptor(&LlmProviderType::Anthropic, id)
+            .map(|d| d.ids[0])
+            .unwrap_or("")
+    }
+    fn normalize_gemini_model_id(id: &str) -> &'static str {
+        resolve_descriptor(&LlmProviderType::Gemini, id)
+            .map(|d| d.ids[0])
+            .unwrap_or("")
+    }
 
     #[test]
     fn test_get_profile_openai_gpt4o() {
@@ -3727,10 +3869,10 @@ mod tests {
     }
 
     #[test]
-    fn test_third_party_models_not_resolved_under_openai_or_azure() {
-        // The Chat-Completions-only third-party models must not appear as
-        // supported under the Open Responses (`openai`) or Azure providers,
-        // which only serve genuine OpenAI models.
+    fn test_third_party_surfaces() {
+        // Third-party, OpenAI-compatible models are reachable via the Chat
+        // Completions path AND via Responses-capable gateways (e.g. OpenRouter
+        // configured as an `openai` provider) — but never Azure OpenAI.
         for id in [
             "qwen3.7-max",
             "MiniMax-M3",
@@ -3738,17 +3880,84 @@ mod tests {
             "nemotron-3-super-120b-a12b",
         ] {
             assert!(
-                get_model_profile(&LlmProviderType::Openai, id).is_none(),
-                "{id} should not resolve under openai (Open Responses)"
+                get_model_profile(&LlmProviderType::OpenaiCompletions, id).is_some(),
+                "{id} should resolve under openai_completions"
+            );
+            assert!(
+                get_model_profile(&LlmProviderType::Openai, id).is_some(),
+                "{id} should resolve under openai (Open Responses gateway)"
             );
             assert!(
                 get_model_profile(&LlmProviderType::AzureOpenai, id).is_none(),
-                "{id} should not resolve under azure_openai"
+                "{id} must not resolve under azure_openai"
+            );
+            assert!(
+                get_model_profile(&LlmProviderType::Anthropic, id).is_none(),
+                "{id} must not resolve under anthropic"
             );
         }
+        // Native phases / tool_search are advertised only on the Responses
+        // surface, never on Chat Completions.
+        let grok_completions =
+            get_model_profile(&LlmProviderType::OpenaiCompletions, "grok-4.3").unwrap();
+        assert!(!grok_completions.supports_phases);
+        assert!(!grok_completions.tool_search);
+
         // Genuine OpenAI models still resolve under all OpenAI-family types.
         assert!(get_model_profile(&LlmProviderType::Openai, "gpt-4o").is_some());
         assert!(get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o").is_some());
+    }
+
+    #[test]
+    fn test_phases_and_tool_search_gated_to_responses_surface() {
+        // GPT-5.4 advertises phases + tool_search on the Responses surface...
+        let responses = get_model_profile(&LlmProviderType::Openai, "gpt-5.4").unwrap();
+        assert!(responses.supports_phases);
+        assert!(responses.tool_search);
+        // ...but not when reached via Chat Completions or Azure.
+        let completions =
+            get_model_profile(&LlmProviderType::OpenaiCompletions, "gpt-5.4").unwrap();
+        assert!(!completions.supports_phases);
+        assert!(!completions.tool_search);
+    }
+
+    #[test]
+    fn test_model_vendor_lookup() {
+        assert_eq!(
+            get_model_vendor(&LlmProviderType::Anthropic, "claude-opus-4-8"),
+            Some(ModelVendor::Anthropic)
+        );
+        assert_eq!(
+            get_model_vendor(
+                &LlmProviderType::OpenaiCompletions,
+                "nvidia/nemotron-3-super-120b-a12b"
+            ),
+            Some(ModelVendor::Nvidia)
+        );
+        assert_eq!(
+            get_model_vendor(&LlmProviderType::Openai, "gpt-5.4"),
+            Some(ModelVendor::OpenAi)
+        );
+        assert_eq!(get_model_vendor(&LlmProviderType::Openai, "made-up"), None);
+    }
+
+    #[test]
+    fn test_registry_canonical_ids_have_profiles() {
+        // Every canonical id in the registry must have a profile payload, and
+        // every profile must be reachable through the registry under at least
+        // one of its surfaces (no orphans on either side).
+        for descriptor in REGISTRY {
+            let canonical = descriptor.ids[0];
+            assert!(
+                profile_data(canonical).is_some(),
+                "registry id {canonical} has no profile payload"
+            );
+            let surface = &descriptor.surfaces[0];
+            assert!(
+                get_model_profile(surface, canonical).is_some(),
+                "registry id {canonical} does not resolve under its own surface"
+            );
+        }
     }
 
     #[test]

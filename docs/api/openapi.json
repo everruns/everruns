@@ -6799,6 +6799,184 @@
         ]
       }
     },
+    "/v1/orgs/{org}/feature-flags": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs/{org}/feature-flags — effective flags for the organization.",
+        "operationId": "get_org_feature_flags",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Effective feature flags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlags"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      },
+      "patch": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "PATCH /v1/orgs/{org}/feature-flags — update org opt-in (admin only).",
+        "operationId": "update_org_feature_flags",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgFeatureFlagsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated effective flags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeatureFlags"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
+    "/v1/orgs/{org}/feature-flags/settings": {
+      "get": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.",
+        "operationId": "get_org_feature_flag_settings",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Feature flag settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrgFeatureFlagsSettingsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [
@@ -15988,6 +16166,59 @@
           }
         }
       },
+      "FeatureFlags": {
+        "type": "object",
+        "description": "Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.\n\nCurrently backed by environment variables and deployment grade.\nFuture: per-org flags, per-user flags, external providers.",
+        "required": [
+          "global_chat",
+          "notifications",
+          "mcp_endpoint",
+          "evals",
+          "app_budgets",
+          "agent_versions",
+          "voice",
+          "apps.detailV2",
+          "agent_delegation"
+        ],
+        "properties": {
+          "agent_delegation": {
+            "type": "boolean",
+            "description": "Outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`).\nExperimental: auto-enabled in dev, off in prod by default.\nWhen off, these capabilities are not registered and cannot be assigned to agents."
+          },
+          "agent_versions": {
+            "type": "boolean",
+            "description": "Immutable agent versions, snapshots, forks, and app version binding.\nExperimental."
+          },
+          "app_budgets": {
+            "type": "boolean",
+            "description": "App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).\nExperimental."
+          },
+          "apps.detailV2": {
+            "type": "boolean",
+            "description": "Channels-first app detail page and full-page channel forms. Experimental."
+          },
+          "evals": {
+            "type": "boolean",
+            "description": "Evals (user-facing behavioral evals for agents). Experimental."
+          },
+          "global_chat": {
+            "type": "boolean",
+            "description": "Global chat (per-user singleton chat session). Experimental."
+          },
+          "mcp_endpoint": {
+            "type": "boolean",
+            "description": "MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental."
+          },
+          "notifications": {
+            "type": "boolean",
+            "description": "In-app notifications (bell, toasts, notification SSE). Experimental."
+          },
+          "voice": {
+            "type": "boolean",
+            "description": "Realtime voice endpoints and microphone controls. Experimental."
+          }
+        }
+      },
       "FileInfo": {
         "type": "object",
         "description": "File metadata without content",
@@ -19861,6 +20092,17 @@
                       "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
                       "example": "claude-sonnet-4-5"
                     },
+                    "model_vendor": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ModelVendor",
+                          "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                        }
+                      ]
+                    },
                     "profile": {
                       "oneOf": [
                         {
@@ -21110,6 +21352,13 @@
             "type": "boolean",
             "description": "Whether the model supports structured output (JSON mode)"
           },
+          "supported_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Provider-advertised request parameters supported by this model."
+          },
           "supports_phases": {
             "type": "boolean",
             "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."
@@ -21205,6 +21454,17 @@
             "type": "string",
             "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
             "example": "claude-sonnet-4-5"
+          },
+          "model_vendor": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelVendor",
+                "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+              }
+            ]
           },
           "profile": {
             "oneOf": [
@@ -22140,6 +22400,22 @@
           }
         }
       },
+      "ModelVendor": {
+        "type": "string",
+        "description": "Vendor / brand that authored a model. Independent of the provider type\nthat serves it (the same model may be offered by several providers or\ngateways). Primarily drives UI iconography.",
+        "enum": [
+          "openai",
+          "anthropic",
+          "google",
+          "nvidia",
+          "qwen",
+          "microsoft",
+          "minimax",
+          "moonshot",
+          "xai",
+          "llmsim"
+        ]
+      },
       "MoveFileRequest": {
         "type": "object",
         "description": "Request to move/rename a file",
@@ -22187,6 +22463,58 @@
           "blocked": [
             "169.254.169.254"
           ]
+        }
+      },
+      "OrgFeatureFlagSetting": {
+        "type": "object",
+        "required": [
+          "name",
+          "label",
+          "description",
+          "experimental",
+          "system_enabled",
+          "org_enabled",
+          "effective"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "effective": {
+            "type": "boolean",
+            "description": "Effective value (`system_enabled && org_enabled`)."
+          },
+          "experimental": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "org_enabled": {
+            "type": "boolean",
+            "description": "Whether the organization has opted in."
+          },
+          "system_enabled": {
+            "type": "boolean",
+            "description": "Whether the deployment allows this flag (env / grade)."
+          }
+        }
+      },
+      "OrgFeatureFlagsSettingsResponse": {
+        "type": "object",
+        "required": [
+          "flags"
+        ],
+        "properties": {
+          "flags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgFeatureFlagSetting"
+            }
+          }
         }
       },
       "OrganizationResponse": {
@@ -28354,6 +28682,24 @@
           }
         }
       },
+      "UpdateOrgFeatureFlagsRequest": {
+        "type": "object",
+        "required": [
+          "flags"
+        ],
+        "properties": {
+          "flags": {
+            "type": "object",
+            "description": "Map of flag name -> enabled. Omitted flags are unchanged.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "UpdateOrganizationRequest": {
         "type": "object",
         "description": "Request to update an organization",
@@ -30495,6 +30841,17 @@
                 "type": "string",
                 "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
                 "example": "claude-sonnet-4-5"
+              },
+              "model_vendor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelVendor",
+                    "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                  }
+                ]
               },
               "profile": {
                 "oneOf": [

@@ -1373,6 +1373,7 @@ impl AnthropicModelInfo {
             modalities,
             reasoning_effort,
             tool_search: false,
+            supported_parameters: Vec::new(),
             supports_phases: false,
         }
     }
@@ -1561,6 +1562,7 @@ mod tests {
                 category: None,
                 deferrable: DeferrablePolicy::default(),
                 hints: ToolHints::default(),
+                full_parameters: None,
             })
         };
         let tools = vec![make_tool("first"), make_tool("second"), make_tool("third")];
