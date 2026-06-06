@@ -973,16 +973,26 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         )
         .await?;
 
-        if let Some(message) = assembled
+        let message = assembled
             .messages
             .iter_mut()
             .find(|message| message.id == input.context.input_message_id)
-        {
-            // user_prompt_submit mutations are enforcement controls for the
-            // provider-bound prompt. Apply them to the assembled context only
-            // so persisted user history remains an audit record of the input.
-            message.content = vec![ContentPart::text(message_override)];
-        }
+            .ok_or_else(|| {
+                everruns_core::error::AgentLoopError::config(
+                    "user_prompt_submit mutation: input message not found in assembled context",
+                )
+            })?;
+
+        // user_prompt_submit mutations are enforcement controls for the
+        // provider-bound prompt. Apply them to the assembled context only
+        // so persisted user history remains an audit record of the input.
+        // Preserve non-text parts (images, files); replace only text parts.
+        message
+            .content
+            .retain(|part| !matches!(part, ContentPart::Text(_)));
+        message
+            .content
+            .insert(0, ContentPart::text(message_override));
 
         return atom.execute_with_assembled_context(input, assembled).await;
     }
