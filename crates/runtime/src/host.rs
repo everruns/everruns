@@ -12,7 +12,7 @@ use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use everruns_core::message::Message;
+use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
@@ -27,7 +27,7 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService,
-    org_public_id_from_internal, resolve_runtime_capabilities,
+    assemble_turn_context, org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -790,11 +790,16 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
 /// skipped early). Errors loading specs are logged and treated as "no hooks"
 /// so a hook-collection failure never blocks a turn that wasn't asking to be
 /// hooked.
+struct UserPromptHookResult {
+    decision: everruns_core::lifecycle_hooks::UserPromptDecision,
+    original_message: String,
+}
+
 async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
     input: &ReasonInput,
-) -> everruns_core::error::Result<Option<everruns_core::lifecycle_hooks::UserPromptDecision>> {
+) -> everruns_core::error::Result<Option<UserPromptHookResult>> {
     let (specs, dispatcher) = match collect_lifecycle_hook_specs(
         adapter,
         org_id,
@@ -838,10 +843,14 @@ async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
         org_id: org_public_id_from_internal(org_id).parse().ok(),
         agent_id: input.agent_id.map(|a| a.to_string()),
     };
-    Ok(Some(
+    let original_message = message_text.clone();
+    let decision =
         everruns_core::lifecycle_hooks::run_user_prompt_submit_hooks(&hooks, &ctx, message_text)
-            .await,
-    ))
+            .await;
+    Ok(Some(UserPromptHookResult {
+        decision,
+        original_message,
+    }))
 }
 
 pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
@@ -883,35 +892,45 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     // turn by reusing the same failure path as `dependency_blocked`: emit a
     // user-facing message + turn.failed, idle the session, and return a
     // non-success `ReasonResult` so no LLM/act work runs.
+    let mut user_prompt_message_override = None;
     if input.iteration <= 1
-        && let Some(everruns_core::lifecycle_hooks::UserPromptDecision::Block {
-            reason,
-            user_message,
-        }) = run_user_prompt_submit_for_turn(adapter, org_id, &input).await?
+        && let Some(hook_result) = run_user_prompt_submit_for_turn(adapter, org_id, &input).await?
     {
-        RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
-            .user_prompt_blocked(
-                input.context.turn_id,
-                input.context.input_message_id,
-                &reason,
-                user_message.as_deref(),
-            )
-            .await;
-        return Ok(ReasonResult {
-            success: false,
-            text: user_message.unwrap_or_else(|| reason.clone()),
-            tool_calls: vec![],
-            has_tool_calls: false,
-            tool_definitions: vec![],
-            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
-            error: Some("blocked_by_user_prompt_hook".to_string()),
-            usage: None,
-            output_message_id: None,
-            time_to_first_token_ms: None,
-            response_id: None,
-            locale: None,
-            network_access: None,
-        });
+        match hook_result.decision {
+            everruns_core::lifecycle_hooks::UserPromptDecision::Block {
+                reason,
+                user_message,
+            } => {
+                RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
+                    .user_prompt_blocked(
+                        input.context.turn_id,
+                        input.context.input_message_id,
+                        &reason,
+                        user_message.as_deref(),
+                    )
+                    .await;
+                return Ok(ReasonResult {
+                    success: false,
+                    text: user_message.unwrap_or_else(|| reason.clone()),
+                    tool_calls: vec![],
+                    has_tool_calls: false,
+                    tool_definitions: vec![],
+                    max_iterations: everruns_core::runtime_agent::default_max_iterations(),
+                    error: Some("blocked_by_user_prompt_hook".to_string()),
+                    usage: None,
+                    output_message_id: None,
+                    time_to_first_token_ms: None,
+                    response_id: None,
+                    locale: None,
+                    network_access: None,
+                });
+            }
+            everruns_core::lifecycle_hooks::UserPromptDecision::Continue { message } => {
+                if message != hook_result.original_message {
+                    user_prompt_message_override = Some(message);
+                }
+            }
+        }
     }
 
     let turn_context = adapter
@@ -933,11 +952,52 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         atom = atom.with_image_resolver(image_resolver);
     }
 
-    atom.execute(ReasonInput {
+    let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
         ..input
-    })
-    .await
+    };
+
+    if let Some(message_override) = user_prompt_message_override {
+        let mut assembled = assemble_turn_context(
+            adapter.harness_store(org_id).as_ref(),
+            adapter.agent_store(org_id).as_ref(),
+            adapter.session_store(org_id).as_ref(),
+            adapter.message_store().as_ref(),
+            adapter.provider_store(org_id).as_ref(),
+            &adapter.capability_registry(),
+            input.context.session_id,
+            input.harness_id,
+            input.agent_id,
+            &input.mcp_tool_definitions,
+            Some(adapter.file_store()),
+        )
+        .await?;
+
+        let message = assembled
+            .messages
+            .iter_mut()
+            .find(|message| message.id == input.context.input_message_id)
+            .ok_or_else(|| {
+                everruns_core::error::AgentLoopError::config(
+                    "user_prompt_submit mutation: input message not found in assembled context",
+                )
+            })?;
+
+        // user_prompt_submit mutations are enforcement controls for the
+        // provider-bound prompt. Apply them to the assembled context only
+        // so persisted user history remains an audit record of the input.
+        // Preserve non-text parts (images, files); replace only text parts.
+        message
+            .content
+            .retain(|part| !matches!(part, ContentPart::Text(_)));
+        message
+            .content
+            .insert(0, ContentPart::text(message_override));
+
+        return atom.execute_with_assembled_context(input, assembled).await;
+    }
+
+    atom.execute(input).await
 }
 
 pub async fn execute_act_activity<A: RuntimeHostAdapter>(

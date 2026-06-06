@@ -1683,6 +1683,74 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
     );
 }
 
+/// A `user_prompt_submit` hook that emits `mutate` must rewrite the prompt
+/// before the provider-bound reason call, without changing persisted history.
+#[tokio::test]
+async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
+    use everruns_core::atoms::ReasonInput;
+    use everruns_core::llmsim_driver::{LlmSimConfig, register_driver_with_config};
+    use everruns_core::user_hook_types::HookEvent;
+    use everruns_runtime::execute_reason_activity;
+
+    let mut adapter = mock_host();
+    register_driver_with_config(&mut adapter.driver_registry, LlmSimConfig::echo());
+    set_default_model(&adapter).await;
+    adapter
+        .capability_registry
+        .register(LifecycleHookCapability {
+            event: HookEvent::UserPromptSubmit,
+            command: r#"echo '{"decision":"mutate","patch":{"message":"sanitized prompt"}}'"#
+                .into(),
+        });
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let user_message = adapter
+        .message_store
+        .add(session_id, InputMessage::user("SECRET prompt"))
+        .await
+        .unwrap();
+
+    let turn_id = TurnId::from_uuid(Uuid::now_v7());
+    let result = execute_reason_activity(
+        &adapter,
+        1,
+        ReasonInput {
+            context: AtomContext::new(session_id, turn_id, user_message.id),
+            harness_id,
+            agent_id: None,
+            org_id: 1,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(result.success, "mutated turn should reach the LLM");
+    assert_eq!(result.text, "Echo: sanitized prompt");
+
+    let stored_message = adapter
+        .message_store
+        .get(session_id, user_message.id)
+        .await
+        .unwrap()
+        .expect("stored user message");
+    assert_eq!(stored_message.content_to_llm_string(), "SECRET prompt");
+}
+
 /// A `turn_end` hook fires (advisory) when a turn completes. We drive a full
 /// in-process turn and assert the hook's side effect: a sentinel file written
 /// to the session VFS by the hook command.
