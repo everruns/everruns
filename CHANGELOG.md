@@ -9,7 +9,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-- feat(capabilities): model-adaptive `auto_tool_search` capability that uses OpenAI's hosted tool_search on supported models and the generic client-side fallback everywhere else; now the default in the `generic` harness
+## [0.9.0] - 2026-06-05
+
+### Highlights
+
+- **Model-adaptive `auto_tool_search`** - Uses OpenAI's hosted `tool_search` on supported models and the generic client-side fallback everywhere else; now the default in the `generic` harness ([#2056](https://github.com/everruns/everruns/pull/2056)).
+- **Deferred MCP tool schemas** - `tool_search` now defers MCP tool schema loading for any generic MCP server, reducing context overhead on first turn (EVE-524).
+- **Per-generation cost tracking** - Actual and estimated cost captured per-generation with denormalized totals for accurate billing attribution ([#2060](https://github.com/everruns/everruns/pull/2060)).
+- **OpenRouter enhancements** - Reasoning capability discovery ([#2063](https://github.com/everruns/everruns/pull/2063)) and enriched model sync with profiles and vendor icons ([#2067](https://github.com/everruns/everruns/pull/2067)).
+- **Flat model registry** - Vendor tags and surface predicates for cleaner model resolution ([#2066](https://github.com/everruns/everruns/pull/2066)).
+
+### What's Changed
+
+- feat(capabilities): model-adaptive `auto_tool_search` dispatcher ([#2056](https://github.com/everruns/everruns/pull/2056)) by [@chaliy](https://github.com/chaliy)
+- test(llm): verify auto_tool_search hosted round-trip on GPT-5.4 ([#2058](https://github.com/everruns/everruns/pull/2058)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): align tool search capability name by [@chaliy](https://github.com/chaliy)
+- feat(models): add profiles and vendor icons for latest flagship models ([#2057](https://github.com/everruns/everruns/pull/2057)) by [@chaliy](https://github.com/chaliy)
+- feat(usage): per-generation actual/estimated cost + denormalized totals ([#2060](https://github.com/everruns/everruns/pull/2060)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): support hosted OpenAI tool search by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): use is_local() instead of hard-coded Stdio check ([#2055](https://github.com/everruns/everruns/pull/2055)) by [@chaliy](https://github.com/chaliy)
+- fix(tools): atomic per-session background run cap via in-process semaphore ([#2061](https://github.com/everruns/everruns/pull/2061)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): honor resolve_for_model in all collection paths ([#2064](https://github.com/everruns/everruns/pull/2064)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): discover OpenRouter reasoning capability ([#2063](https://github.com/everruns/everruns/pull/2063)) by [@chaliy](https://github.com/chaliy)
+- feat(tool-search): defer MCP tool schemas under generic tool_search (EVE-524) by [@chaliy](https://github.com/chaliy)
+- refactor(models): flat model registry with vendor tags and surface predicates ([#2066](https://github.com/everruns/everruns/pull/2066)) by [@chaliy](https://github.com/chaliy)
+- feat(models): enrich OpenRouter model sync ([#2067](https://github.com/everruns/everruns/pull/2067)) by [@chaliy](https://github.com/chaliy)
+- fix(core): scope tool_search registry introspection by [@chaliy](https://github.com/chaliy)
+- fix(ci): enforce msrv in aggregate gate ([#2073](https://github.com/everruns/everruns/pull/2073)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): enforce quotas on copy and CAS writes ([#2068](https://github.com/everruns/everruns/pull/2068)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve stateful OpenAI tool outputs ([#2072](https://github.com/everruns/everruns/pull/2072)) by [@chaliy](https://github.com/chaliy)
+- fix(core): abort cpu-bound tool tasks on cancellation ([#2069](https://github.com/everruns/everruns/pull/2069)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): honor auto tool search threshold ([#2071](https://github.com/everruns/everruns/pull/2071)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.8.38] - 2026-06-05
 
