@@ -9,10 +9,11 @@
 // How it works:
 //   1. A `tool_definition_hook` (`DeferSchemaHook`) runs at runtime-agent build
 //      time. When the agent carries at least `threshold` tools, it replaces the
-//      parameter schema of every deferrable tool with a minimal stub. Only the
-//      name + description survive, so the model still sees that the tool exists
-//      but pays no token cost for its parameters. Tools marked
-//      `DeferrablePolicy::Never` (e.g. high-frequency tools) keep full schemas.
+//      parameter schema of every deferrable tool with a minimal disclosure stub.
+//      The model still sees that the tool exists, but the stub points it back
+//      to `tool_search` for the full schema instead of exposing parameters
+//      upfront. Tools marked `DeferrablePolicy::Never` (e.g. high-frequency
+//      tools) keep full schemas.
 //   2. A real `tool_search` tool is added to the registry. When the model calls
 //      it, the tool inspects its sibling tools via `ToolContext::tool_registry`
 //      (the same mechanism `spawn_background` uses) and returns the full
@@ -138,10 +139,13 @@ impl Capability for ToolSearchCapability {
 /// An open object so the provider still accepts the tool definition; the
 /// description nudges the model toward `tool_search` if it somehow tries to
 /// call the tool before loading the schema.
-fn deferred_stub_schema() -> Value {
+fn deferred_stub_schema(tool_name: &str) -> Value {
     json!({
         "type": "object",
-        "description": "Parameters hidden to save context. Call tool_search to load the full schema before using this tool.",
+        "description": format!(
+            "Parameter schema hidden to save context. Call tool_search with query \"{tool_name}\" to load the full schema before using this tool."
+        ),
+        "additionalProperties": true,
     })
 }
 
@@ -175,8 +179,8 @@ impl ToolDefinitionHook for DeferSchemaHook {
     }
 }
 
-/// Replace a tool's parameter schema with the deferred stub, keeping name,
-/// description, policy, category, and hints intact. The original schema is
+/// Replace a tool's parameter schema with the deferred disclosure stub, keeping
+/// name, description, policy, category, and hints intact. The original schema is
 /// saved in `full_parameters` so `tool_search` can return it on demand.
 fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
     match tool {
@@ -184,14 +188,14 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
             if b.full_parameters.is_none() {
                 b.full_parameters = Some(b.parameters.clone());
             }
-            b.parameters = deferred_stub_schema();
+            b.parameters = deferred_stub_schema(&b.name);
             ToolDefinition::Builtin(b)
         }
         ToolDefinition::ClientSide(mut c) => {
             if c.full_parameters.is_none() {
                 c.full_parameters = Some(c.parameters.clone());
             }
-            c.parameters = deferred_stub_schema();
+            c.parameters = deferred_stub_schema(&c.name);
             ToolDefinition::ClientSide(c)
         }
     }
@@ -436,9 +440,22 @@ mod tests {
         let hook = DeferSchemaHook { threshold: 15 };
         let out = hook.transform(many_tools(20));
         for t in &out {
-            // Stub schema: no real properties, carries the deferral hint.
+            // Stub schema: no real properties, carries a progressive-disclosure hint.
             assert!(t.parameters().get("properties").is_none());
-            assert!(t.parameters().get("description").is_some());
+            assert_eq!(t.parameters()["additionalProperties"], json!(true));
+            let description = t.parameters()["description"].as_str().unwrap();
+            assert!(
+                description.contains("tool_search"),
+                "deferred stub should point the model to tool_search"
+            );
+            assert!(
+                description.contains(t.name()),
+                "deferred stub should include the search query that reveals this schema"
+            );
+            assert!(
+                t.full_parameters().get("properties").is_some(),
+                "full schema should remain available for progressive disclosure"
+            );
         }
     }
 
