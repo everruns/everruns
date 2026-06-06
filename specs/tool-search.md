@@ -70,7 +70,7 @@ The executor (act) path collects without a model and so resolves to the generic 
 
 Implemented entirely in core, with no driver or agent-loop changes:
 
-1. A `ToolDefinitionHook` (`DeferSchemaHook`) runs in `RuntimeAgentBuilder::build()`. When the agent carries `>= threshold` tools, it replaces each deferrable tool's parameter schema with a small stub (name + description survive). `DeferrablePolicy::Never` tools and the `tool_search` tool keep full schemas.
+1. A `ToolDefinitionHook` (`DeferSchemaHook`) runs in `RuntimeAgentBuilder::build()`. When the agent carries `>= threshold` tools, it replaces each deferrable tool's parameter schema with a small progressive-disclosure stub (name + description survive, and the stub description tells the model which `tool_search` query reveals the full schema). `DeferrablePolicy::Never` tools and the `tool_search` tool keep full schemas.
 2. A real `tool_search` tool is registered. On call it reads sibling tool schemas from `ToolContext::tool_registry` (the same mechanism `spawn_background` uses) and returns the full schemas of tools matching the query.
 3. A system-prompt note tells the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
 
