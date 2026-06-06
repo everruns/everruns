@@ -91,11 +91,11 @@ ordering breaks the freshness gate.
 
 Workaround until utoipa stabilises: **emit only one extension per
 operation**. Encode anything you'd want to convey as a second entry
-either as the value of a more general tag, or simply omit it when
-the value would match the default (e.g. `x-side-effect: reversible`
-is the default for non-DELETE operations and can be left off
-implicitly). Multi-entry extensions on the same operation are
-tracked as a follow-on once utoipa switches to a deterministic
+as the value of a more general tag, or omit only values that match
+the fail-closed defaults (for example, absent `x-side-effect` is
+interpreted as `irreversible` for every operation, including
+non-DELETE methods). Multi-entry extensions on the same operation
+are tracked as a follow-on once utoipa switches to a deterministic
 container.
 
 ## First-wave rollout
