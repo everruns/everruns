@@ -104,6 +104,7 @@ mod human_intent;
 mod infinity_context;
 mod knowledge_base;
 mod loop_detection;
+mod lua;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
@@ -211,6 +212,7 @@ pub use knowledge_base::{
     validate_knowledge_base_config,
 };
 pub use loop_detection::LoopDetectionCapability;
+pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs};
 pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
@@ -1021,6 +1023,13 @@ impl CapabilityRegistry {
         let internal_flags = crate::InternalFeatureFlags::from_env();
         if internal_flags.session_sandbox {
             registry.register(SessionSandboxCapability);
+        }
+
+        // Experimental sandboxed Lua execution (specs/lua-execution.md). High
+        // risk, admin-gated. Gated by FEATURE_LUA; scripts only actually run
+        // when the `lua` cargo feature is also compiled in.
+        if internal_flags.lua {
+            registry.register(LuaCapability);
         }
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())

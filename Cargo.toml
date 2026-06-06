@@ -32,6 +32,7 @@ members = [
     "integrations/e2b",
     "integrations/sprites",
     "examples/coding-cli",
+    "crates/agent-evals",
 ]
 
 exclude = [

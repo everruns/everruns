@@ -35,6 +35,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/fetchkit.md` - fetchkit library powering the `web_fetch` capability
 - `specs/toolkit-library-contract.md` - Convention for external toolkit libraries
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
+- `specs/lua-execution.md` - Experimental Lua execution capability (sandboxed VFS scripting; aims to supersede virtual_bash)
 
 ## Agents, sessions, and runtime resources
 

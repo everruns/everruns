@@ -72,6 +72,11 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 # Virtual bash interpreter
 bashkit = { version = "0.8.0", features = ["jq"] }
 
+# Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
+# 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
+# build does not compile the C sources. See specs/lua-execution.md.
+mlua = { version = "0.10", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
+
 # Tree-sitter for structural outlines (EVE-248)
 tree-sitter = { version = "0.24", optional = true }
 tree-sitter-rust = { version = "0.23", optional = true }
@@ -117,6 +122,9 @@ include_dir = { version = "0.7", optional = true }
 [features]
 default = ["llm-tests"]
 embedded-platform-docs = ["dep:include_dir"]
+# Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
+# Off by default; enabling compiles the C sources. See specs/lua-execution.md.
+lua = ["dep:mlua"]
 openapi = ["utoipa"]
 sqlx = ["dep:sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]

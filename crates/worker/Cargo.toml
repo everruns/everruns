@@ -4,6 +4,12 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
+# by FEATURE_LUA.
+lua = ["everruns-core/lua"]
+
 [dependencies]
 tokio.workspace = true
 serde.workspace = true
