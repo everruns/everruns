@@ -6,7 +6,7 @@
 //! grader checks the result. We record success, tool-call count, tool errors,
 //! loop iterations, and latency per run.
 //!
-//! Run: `ANTHROPIC_API_KEY=… cargo run -p everruns-agent-evals --bin lua-vs-bash`
+//! Run: `ANTHROPIC_API_KEY=… cargo run --manifest-path research/lua-vs-bash/Cargo.toml`
 //! Optional: `EVAL_MODEL=claude-… EVAL_RUNS=2`.
 
 use std::time::Instant;

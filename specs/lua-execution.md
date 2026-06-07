@@ -146,7 +146,7 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
   (their absence fails the sort task 3/3). Then `os.*` subset and
   background-execution parity (`BackgroundExecutableTool`).
 - **Phase 3 — PARTIAL.** `base64` module + bash-vs-lua eval harness
-  (`crates/agent-evals`) done — see Evaluation results below. **Open:**
+  (`research/lua-vs-bash`) done — see Evaluation results below. **Open:**
   `csv`/`yaml` modules.
 - **Phase 4 — IMPLEMENTED (http + code mode); user libraries deferred.**
 
@@ -203,8 +203,9 @@ superseding bash.
 
 ### Evaluation harness
 
-Lives in a dedicated **`evals/`** tree (or a `crates/agent-evals` crate over
-`everruns-runtime`) — **not** `test_cases/`, which is for manual UI testing.
+Lives in **`research/lua-vs-bash`** (a standalone crate over `everruns-runtime`,
+excluded from the workspace) — **not** `test_cases/`, which is for manual UI
+testing.
 
 - **A/B design.** Identical agent/model/prompt-scaffolding; swap only the
   execution capability (`virtual_bash` ↔ `lua`). N runs per task for variance.
@@ -221,8 +222,8 @@ Lives in a dedicated **`evals/`** tree (or a `crates/agent-evals` crate over
   no regression in sandbox incidents. The piccolo stdlib gap is expected to show
   up here and must be weighed.
 
-The harness is implemented in `crates/agent-evals` (`lua-vs-bash` bin), runs both
-arms over `everruns-runtime`, and grades against the resulting workspace.
+The harness is implemented in `research/lua-vs-bash` (`lua-vs-bash` bin), runs
+both arms over `everruns-runtime`, and grades against the resulting workspace.
 
 ### Empirical results
 
@@ -254,5 +255,5 @@ Findings:
   willing to own the stdlib. License is a non-issue (both MIT; vendored Lua is
   MIT).
 
-Re-run: `cargo run -p everruns-agent-evals --bin lua-vs-bash` (point the crate's
-`everruns-core` feature at `lua-mlua` or `lua` to pick the engine).
+Re-run: `ANTHROPIC_API_KEY=… cargo run --manifest-path research/lua-vs-bash/Cargo.toml`
+(optionally `EVAL_MODEL=…`, `EVAL_RUNS=…`).
