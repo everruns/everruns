@@ -25,7 +25,7 @@ impl BedrockCredential {
     pub fn from_api_key(api_key: &str) -> Result<Self> {
         serde_json::from_str(api_key).map_err(|e| {
             AgentLoopError::llm(format!(
-                "Bedrock credentials must be JSON {{access_key_id,secret_access_key,region}}: {e}"
+                "Bedrock credentials must be JSON {{access_key_id,secret_access_key}} (region and session_token are optional): {e}"
             ))
         })
     }

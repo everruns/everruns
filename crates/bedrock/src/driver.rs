@@ -19,6 +19,7 @@ use aws_sdk_bedrockruntime::types::{
     ToolSpecification, ToolUseBlock,
 };
 use aws_smithy_types::Document;
+use base64::prelude::*;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
@@ -109,7 +110,7 @@ impl LlmDriver for BedrockLlmDriver {
         };
 
         let inference_cfg = InferenceConfiguration::builder()
-            .set_temperature(config.temperature.map(|t| t as f32))
+            .set_temperature(config.temperature)
             .set_max_tokens(config.max_tokens.map(|t| t as i32))
             .build();
 
@@ -182,16 +183,31 @@ impl LlmDriver for BedrockLlmDriver {
                                 let mut ordered: Vec<(usize, PartialToolCall)> =
                                     pending.drain().collect();
                                 ordered.sort_by_key(|(idx, _)| *idx);
-                                let calls: Vec<ToolCall> = ordered
+                                let result: Result<Vec<ToolCall>> = ordered
                                     .into_iter()
-                                    .map(|(_, ptc)| ToolCall {
-                                        id: ptc.id,
-                                        name: ptc.name,
-                                        arguments: serde_json::from_str(&ptc.input_json)
-                                            .unwrap_or(Value::Object(serde_json::Map::new())),
+                                    .map(|(_, ptc)| {
+                                        let arguments = serde_json::from_str(&ptc.input_json)
+                                            .map_err(|e| {
+                                                AgentLoopError::llm(format!(
+                                                    "invalid Bedrock tool arguments JSON: {e}"
+                                                ))
+                                            })?;
+                                        Ok(ToolCall {
+                                            id: ptc.id,
+                                            name: ptc.name,
+                                            arguments,
+                                        })
                                     })
                                     .collect();
-                                let _ = tx.send(Ok(LlmStreamEvent::ToolCalls(calls)));
+                                match result {
+                                    Ok(calls) => {
+                                        let _ = tx.send(Ok(LlmStreamEvent::ToolCalls(calls)));
+                                    }
+                                    Err(e) => {
+                                        let _ = tx.send(Err(e));
+                                        return;
+                                    }
+                                }
                             }
                         }
                         ConverseStreamOutput::Metadata(e) => {
@@ -259,10 +275,10 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                     }
                     LlmMessageContent::Parts(parts) => {
                         for part in parts {
-                            if let LlmContentPart::Text { text } = part {
-                                if !text.is_empty() {
-                                    system_blocks.push(SystemContentBlock::Text(text.clone()));
-                                }
+                            if let LlmContentPart::Text { text } = part
+                                && !text.is_empty()
+                            {
+                                system_blocks.push(SystemContentBlock::Text(text.clone()));
                             }
                         }
                     }
@@ -281,41 +297,41 @@ fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, V
                     i += 1;
                 }
                 if !tool_blocks.is_empty() {
-                    match Message::builder()
+                    let m = Message::builder()
                         .role(ConversationRole::User)
                         .set_content(Some(tool_blocks))
                         .build()
-                    {
-                        Ok(m) => bedrock_messages.push(m),
-                        Err(e) => warn!("Failed to build tool result message: {e}"),
-                    }
+                        .map_err(|e| {
+                            AgentLoopError::llm(format!("Failed to build Bedrock message: {e}"))
+                        })?;
+                    bedrock_messages.push(m);
                 }
             }
             LlmMessageRole::User => {
                 let blocks = build_user_content(msg)?;
                 if !blocks.is_empty() {
-                    match Message::builder()
+                    let m = Message::builder()
                         .role(ConversationRole::User)
                         .set_content(Some(blocks))
                         .build()
-                    {
-                        Ok(m) => bedrock_messages.push(m),
-                        Err(e) => warn!("Failed to build user message: {e}"),
-                    }
+                        .map_err(|e| {
+                            AgentLoopError::llm(format!("Failed to build Bedrock message: {e}"))
+                        })?;
+                    bedrock_messages.push(m);
                 }
                 i += 1;
             }
             LlmMessageRole::Assistant => {
                 let blocks = build_assistant_content(msg);
                 if !blocks.is_empty() {
-                    match Message::builder()
+                    let m = Message::builder()
                         .role(ConversationRole::Assistant)
                         .set_content(Some(blocks))
                         .build()
-                    {
-                        Ok(m) => bedrock_messages.push(m),
-                        Err(e) => warn!("Failed to build assistant message: {e}"),
-                    }
+                        .map_err(|e| {
+                            AgentLoopError::llm(format!("Failed to build Bedrock message: {e}"))
+                        })?;
+                    bedrock_messages.push(m);
                 }
                 i += 1;
             }
@@ -366,10 +382,10 @@ fn build_assistant_content(msg: &LlmMessage) -> Vec<ContentBlock> {
         }
         LlmMessageContent::Parts(parts) => {
             for part in parts {
-                if let LlmContentPart::Text { text } = part {
-                    if !text.is_empty() {
-                        blocks.push(ContentBlock::Text(text.clone()));
-                    }
+                if let LlmContentPart::Text { text } = part
+                    && !text.is_empty()
+                {
+                    blocks.push(ContentBlock::Text(text.clone()));
                 }
             }
         }
@@ -396,6 +412,10 @@ fn build_assistant_content(msg: &LlmMessage) -> Vec<ContentBlock> {
 
 fn build_tool_result_block(msg: &LlmMessage) -> Option<ContentBlock> {
     let tool_call_id = msg.tool_call_id.as_deref().unwrap_or("");
+    if tool_call_id.is_empty() {
+        warn!("Tool message is missing tool_call_id; skipping tool result block");
+        return None;
+    }
     let text = msg.content.to_text();
 
     let result_content = ToolResultContentBlock::Text(text);
@@ -417,25 +437,25 @@ fn build_tool_result_block(msg: &LlmMessage) -> Option<ContentBlock> {
 fn merge_consecutive_same_role(messages: Vec<Message>) -> Vec<Message> {
     let mut result: Vec<Message> = Vec::new();
     for msg in messages {
-        if let Some(last) = result.last() {
-            if last.role == msg.role {
-                let last_idx = result.len() - 1;
-                let prev = result.swap_remove(last_idx);
-                let mut combined_content = prev.content.clone();
-                combined_content.extend(msg.content.clone());
-                match Message::builder()
-                    .role(prev.role.clone())
-                    .set_content(Some(combined_content))
-                    .build()
-                {
-                    Ok(merged) => {
-                        result.push(merged);
-                        continue;
-                    }
-                    Err(_) => {
-                        // Fall through: re-insert both
-                        result.push(prev);
-                    }
+        if let Some(last) = result.last()
+            && last.role == msg.role
+        {
+            let last_idx = result.len() - 1;
+            let prev = result.swap_remove(last_idx);
+            let mut combined_content = prev.content.clone();
+            combined_content.extend(msg.content.clone());
+            match Message::builder()
+                .role(prev.role.clone())
+                .set_content(Some(combined_content))
+                .build()
+            {
+                Ok(merged) => {
+                    result.push(merged);
+                    continue;
+                }
+                Err(_) => {
+                    // Fall through: re-insert both
+                    result.push(prev);
                 }
             }
         }
@@ -480,7 +500,7 @@ fn parse_image_url(url: &str) -> Option<ContentBlock> {
     let (mime_b64, data) = rest.split_once(',')?;
     let mime = mime_b64.split(';').next()?;
 
-    let bytes = base64_decode(data)?;
+    let bytes = BASE64_STANDARD.decode(data).ok()?;
     let format = match mime {
         "image/jpeg" | "image/jpg" => ImageFormat::Jpeg,
         "image/png" => ImageFormat::Png,
@@ -500,37 +520,6 @@ fn parse_image_url(url: &str) -> Option<ContentBlock> {
         .ok()?;
 
     Some(ContentBlock::Image(image_block))
-}
-
-fn base64_decode(s: &str) -> Option<Vec<u8>> {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut table = [255u8; 256];
-    for (i, &c) in CHARS.iter().enumerate() {
-        table[c as usize] = i as u8;
-    }
-
-    let input: Vec<u8> = s
-        .bytes()
-        .filter(|&b| b != b'\n' && b != b'\r' && b != b' ' && b != b'=')
-        .collect();
-
-    let mut out = Vec::with_capacity(input.len() * 3 / 4);
-    let mut buf = 0u32;
-    let mut bits = 0u8;
-
-    for &c in &input {
-        let val = table[c as usize];
-        if val == 255 {
-            return None; // Invalid character
-        }
-        buf = (buf << 6) | val as u32;
-        bits += 6;
-        if bits >= 8 {
-            bits -= 8;
-            out.push((buf >> bits) as u8);
-        }
-    }
-    Some(out)
 }
 
 // ============================================================================
@@ -617,14 +606,85 @@ mod tests {
     }
 
     #[test]
-    fn test_base64_decode_valid() {
-        let encoded = "SGVsbG8gV29ybGQ=";
-        let decoded = base64_decode(encoded).unwrap();
-        assert_eq!(decoded, b"Hello World");
+    fn test_merge_consecutive_same_role_combines_same_role() {
+        let make_msg = |role: ConversationRole, text: &str| {
+            Message::builder()
+                .role(role)
+                .content(ContentBlock::Text(text.to_string()))
+                .build()
+                .unwrap()
+        };
+        let messages = vec![
+            make_msg(ConversationRole::User, "hello"),
+            make_msg(ConversationRole::User, "world"),
+            make_msg(ConversationRole::Assistant, "ok"),
+        ];
+        let merged = merge_consecutive_same_role(messages);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].role, ConversationRole::User);
+        assert_eq!(merged[0].content.len(), 2);
+        assert_eq!(merged[1].role, ConversationRole::Assistant);
     }
 
     #[test]
-    fn test_base64_decode_invalid_returns_none() {
-        assert!(base64_decode("!@#$").is_none());
+    fn test_merge_consecutive_same_role_preserves_alternating() {
+        let make_msg = |role: ConversationRole, text: &str| {
+            Message::builder()
+                .role(role)
+                .content(ContentBlock::Text(text.to_string()))
+                .build()
+                .unwrap()
+        };
+        let messages = vec![
+            make_msg(ConversationRole::User, "q"),
+            make_msg(ConversationRole::Assistant, "a"),
+            make_msg(ConversationRole::User, "q2"),
+        ];
+        let merged = merge_consecutive_same_role(messages);
+        assert_eq!(merged.len(), 3);
+    }
+
+    #[test]
+    fn test_build_messages_system_extracted() {
+        use everruns_core::llm_driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::System,
+                content: LlmMessageContent::Text("be helpful".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::User,
+                content: LlmMessageContent::Text("hi".to_string()),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+        let (system_blocks, bedrock_msgs) = build_messages(&messages).unwrap();
+        assert_eq!(system_blocks.len(), 1);
+        assert_eq!(bedrock_msgs.len(), 1);
+        assert_eq!(bedrock_msgs[0].role, ConversationRole::User);
+    }
+
+    #[test]
+    fn test_build_tool_result_block_missing_id_returns_none() {
+        use everruns_core::llm_driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        let msg = LlmMessage {
+            role: LlmMessageRole::Tool,
+            content: LlmMessageContent::Text("result".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        };
+        assert!(build_tool_result_block(&msg).is_none());
     }
 }

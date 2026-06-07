@@ -14,7 +14,6 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-bedrock"
 description = "AWS Bedrock Runtime provider implementation for Everruns"
-readme = "README.md"
 
 [dependencies]
 # Core dependencies
@@ -33,6 +32,7 @@ serde_json.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
+base64.workspace = true
 everruns-core.workspace = true
 
 # AWS SDK for Bedrock Runtime
