@@ -9,7 +9,9 @@
 
 use async_trait::async_trait;
 use aws_sdk_bedrockruntime::Client;
-use aws_sdk_bedrockruntime::config::{BehaviorVersion, Builder as BedrockConfigBuilder, Credentials, Region};
+use aws_sdk_bedrockruntime::config::{
+    BehaviorVersion, Builder as BedrockConfigBuilder, Credentials, Region,
+};
 use aws_sdk_bedrockruntime::types::{
     ContentBlock, ContentBlockDelta, ContentBlockStart, ConversationRole, ConverseStreamOutput,
     ImageBlock, ImageFormat, ImageSource, InferenceConfiguration, Message, SystemContentBlock,
@@ -65,12 +67,13 @@ impl BedrockLlmDriver {
 
 /// Register the Bedrock driver with the given registry.
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::Bedrock, |api_key, _base_url| {
-        match BedrockLlmDriver::new(api_key) {
+    registry.register(
+        ProviderType::Bedrock,
+        |api_key, _base_url| match BedrockLlmDriver::new(api_key) {
             Ok(driver) => Box::new(driver) as BoxedLlmDriver,
             Err(e) => Box::new(FailDriver(e.to_string())) as BoxedLlmDriver,
-        }
-    });
+        },
+    );
 }
 
 /// Driver that immediately fails with a credential error.
@@ -149,8 +152,7 @@ impl LlmDriver for BedrockLlmDriver {
                             let idx = e.content_block_index() as usize;
                             match e.delta() {
                                 Some(ContentBlockDelta::Text(t)) => {
-                                    let _ =
-                                        tx.send(Ok(LlmStreamEvent::TextDelta(t.clone())));
+                                    let _ = tx.send(Ok(LlmStreamEvent::TextDelta(t.clone())));
                                 }
                                 Some(ContentBlockDelta::ToolUse(t)) => {
                                     if let Some(tc) = pending.get_mut(&idx) {
@@ -242,9 +244,7 @@ struct PartialToolCall {
     input_json: String,
 }
 
-fn build_messages(
-    messages: &[LlmMessage],
-) -> Result<(Vec<SystemContentBlock>, Vec<Message>)> {
+fn build_messages(messages: &[LlmMessage]) -> Result<(Vec<SystemContentBlock>, Vec<Message>)> {
     let mut system_blocks: Vec<SystemContentBlock> = Vec::new();
     let mut bedrock_messages: Vec<Message> = Vec::new();
 
@@ -556,9 +556,11 @@ fn json_to_document(value: Value) -> Document {
         }
         Value::String(s) => Document::String(s),
         Value::Array(arr) => Document::Array(arr.into_iter().map(json_to_document).collect()),
-        Value::Object(obj) => {
-            Document::Object(obj.into_iter().map(|(k, v)| (k, json_to_document(v))).collect())
-        }
+        Value::Object(obj) => Document::Object(
+            obj.into_iter()
+                .map(|(k, v)| (k, json_to_document(v)))
+                .collect(),
+        ),
     }
 }
 
@@ -596,7 +598,10 @@ mod tests {
     #[test]
     fn test_json_to_document_types() {
         assert!(matches!(json_to_document(Value::Null), Document::Null));
-        assert!(matches!(json_to_document(Value::Bool(true)), Document::Bool(true)));
+        assert!(matches!(
+            json_to_document(Value::Bool(true)),
+            Document::Bool(true)
+        ));
         assert!(matches!(
             json_to_document(serde_json::json!(42)),
             Document::Number(aws_smithy_types::Number::PosInt(42))
