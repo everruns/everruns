@@ -32,11 +32,11 @@ members = [
     "integrations/e2b",
     "integrations/sprites",
     "examples/coding-cli",
-    "crates/agent-evals",
 ]
 
 exclude = [
     "research/infinity_context",
+    "research/lua-vs-bash",
     "examples/weekend-concierge-host",
 ]
 
