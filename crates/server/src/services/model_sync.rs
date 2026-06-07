@@ -101,9 +101,9 @@ impl ModelSyncService {
             LlmProviderType::Anthropic => ProviderType::Anthropic,
             LlmProviderType::Gemini => ProviderType::Gemini,
             LlmProviderType::LlmSim => {
-                // LlmSim doesn't support model discovery
                 return Ok(SyncResult::NotSupported);
             }
+            LlmProviderType::Bedrock => ProviderType::Bedrock,
         };
 
         let config = ProviderConfig {

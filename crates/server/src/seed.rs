@@ -41,6 +41,7 @@ mod seed_ids {
     pub const ANTHROPIC_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000002);
     pub const LLMSIM_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000003);
     pub const GEMINI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000004);
+    pub const BEDROCK_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000005);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -134,6 +135,12 @@ mod seed_ids {
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
+
+    // Bedrock Models (0x700-0x7FF)
+    pub const BEDROCK_CLAUDE_HAIKU_35: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000701);
+    pub const BEDROCK_CLAUDE_SONNET_35: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000702);
 }
 
 // ============================================
@@ -1386,6 +1393,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         name: "LlmSim",
         provider_type: "llmsim",
     },
+    SeedProvider {
+        id: seed_ids::BEDROCK_PROVIDER,
+        name: "AWS Bedrock",
+        provider_type: "bedrock",
+    },
 ];
 
 fn enabled_seed_provider_ids(platform_definition: &PlatformDefinition) -> HashSet<Uuid> {
@@ -1999,6 +2011,23 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.0-flash",
         display_name: "Gemini 2.0 Flash",
+        enabled: false,
+        is_favorite: false,
+    },
+    // AWS Bedrock (ConverseStream API)
+    SeedModel {
+        id: seed_ids::BEDROCK_CLAUDE_HAIKU_35,
+        provider_id: seed_ids::BEDROCK_PROVIDER,
+        model_id: "anthropic.claude-3-5-haiku-20241022-v1:0",
+        display_name: "Claude 3.5 Haiku (Bedrock)",
+        enabled: false,
+        is_favorite: false,
+    },
+    SeedModel {
+        id: seed_ids::BEDROCK_CLAUDE_SONNET_35,
+        provider_id: seed_ids::BEDROCK_PROVIDER,
+        model_id: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+        display_name: "Claude 3.5 Sonnet v2 (Bedrock)",
         enabled: false,
         is_favorite: false,
     },

@@ -857,6 +857,8 @@ pub enum ProviderType {
     Gemini,
     /// LLM simulator for testing (uses llmsim crate)
     LlmSim,
+    /// AWS Bedrock Runtime (ConverseStream API)
+    Bedrock,
 }
 
 impl std::str::FromStr for ProviderType {
@@ -870,6 +872,7 @@ impl std::str::FromStr for ProviderType {
             "anthropic" => Ok(ProviderType::Anthropic),
             "gemini" => Ok(ProviderType::Gemini),
             "llmsim" => Ok(ProviderType::LlmSim),
+            "bedrock" => Ok(ProviderType::Bedrock),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }
@@ -884,6 +887,7 @@ impl std::fmt::Display for ProviderType {
             ProviderType::Anthropic => write!(f, "anthropic"),
             ProviderType::Gemini => write!(f, "gemini"),
             ProviderType::LlmSim => write!(f, "llmsim"),
+            ProviderType::Bedrock => write!(f, "bedrock"),
         }
     }
 }

@@ -1,0 +1,43 @@
+# AWS Bedrock Provider Implementation
+# Decision: Implements LlmDriver using the AWS Bedrock Runtime ConverseStream API.
+# Uses aws-sdk-bedrockruntime for event stream handling; credentials are carried
+# as JSON in the ProviderConfig.api_key field.
+
+[package]
+name = "everruns-bedrock"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-bedrock"
+description = "AWS Bedrock Runtime provider implementation for Everruns"
+readme = "README.md"
+
+[dependencies]
+# Core dependencies
+async-trait.workspace = true
+
+# Async runtime
+tokio.workspace = true
+futures.workspace = true
+tokio-stream.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-core.workspace = true
+
+# AWS SDK for Bedrock Runtime
+aws-sdk-bedrockruntime = "1"
+aws-smithy-types = "1"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

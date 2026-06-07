@@ -1901,6 +1901,7 @@ fn string_to_provider_type(s: &str) -> LlmProviderType {
         "anthropic" => LlmProviderType::Anthropic,
         "gemini" => LlmProviderType::Gemini,
         "llmsim" => LlmProviderType::LlmSim,
+        "bedrock" => LlmProviderType::Bedrock,
         _ => {
             tracing::warn!(provider_type = %s, "Unknown provider_type in database; falling back to llmsim");
             LlmProviderType::LlmSim

@@ -389,6 +389,7 @@ fn provider_type_from_llm(provider_type: LlmProviderType) -> Result<ProviderType
         LlmProviderType::Anthropic => ProviderType::Anthropic,
         LlmProviderType::Gemini => ProviderType::Gemini,
         LlmProviderType::LlmSim => ProviderType::LlmSim,
+        LlmProviderType::Bedrock => ProviderType::Bedrock,
     })
 }
 

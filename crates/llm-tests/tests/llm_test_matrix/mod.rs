@@ -108,6 +108,20 @@ pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
     "GEMINI_API_KEY",
 );
 
+// Bedrock: credentials are JSON in the env var, not a plain API key.
+// Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.
+pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
+    LlmProviderType::Bedrock,
+    "anthropic.claude-3-5-haiku-20241022-v1:0",
+    "AWS_BEDROCK_CREDENTIALS",
+);
+
+pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
+    LlmProviderType::Bedrock,
+    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    "AWS_BEDROCK_CREDENTIALS",
+);
+
 // ============================================================================
 // Unified driver registry
 // ============================================================================
@@ -118,5 +132,6 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_anthropic::register_driver(&mut registry);
     everruns_openai::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
+    everruns_bedrock::register_driver(&mut registry);
     registry
 }
