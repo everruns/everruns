@@ -2334,6 +2334,7 @@ dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
+ "base64 0.22.1",
  "everruns-core",
  "futures",
  "serde",
