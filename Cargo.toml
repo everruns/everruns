@@ -5,6 +5,7 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/core",
+    "crates/bedrock",
     "crates/mcp",
     "crates/llm-tests",
     "crates/runtime",

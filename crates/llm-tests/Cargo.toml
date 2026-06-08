@@ -21,6 +21,7 @@ everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
+everruns-bedrock = { path = "../bedrock" }
 
 anyhow.workspace = true
 async-trait.workspace = true

@@ -141,6 +141,7 @@ fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
         "anthropic" => Ok(LlmProviderType::Anthropic),
         "gemini" => Ok(LlmProviderType::Gemini),
         "llmsim" => Ok(LlmProviderType::LlmSim),
+        "bedrock" => Ok(LlmProviderType::Bedrock),
         _ => Err(AgentLoopError::Configuration(format!(
             "Unsupported provider_type in database: {}",
             provider_type_str

@@ -31,6 +31,8 @@ pub enum LlmProviderType {
     /// LLM simulator for testing
     #[serde(rename = "llmsim")]
     LlmSim,
+    /// AWS Bedrock Runtime (ConverseStream API)
+    Bedrock,
 }
 
 impl std::fmt::Display for LlmProviderType {
@@ -42,6 +44,7 @@ impl std::fmt::Display for LlmProviderType {
             LlmProviderType::Anthropic => write!(f, "anthropic"),
             LlmProviderType::Gemini => write!(f, "gemini"),
             LlmProviderType::LlmSim => write!(f, "llmsim"),
+            LlmProviderType::Bedrock => write!(f, "bedrock"),
         }
     }
 }
@@ -57,6 +60,7 @@ impl std::str::FromStr for LlmProviderType {
             "anthropic" => Ok(LlmProviderType::Anthropic),
             "gemini" => Ok(LlmProviderType::Gemini),
             "llmsim" => Ok(LlmProviderType::LlmSim),
+            "bedrock" => Ok(LlmProviderType::Bedrock),
             _ => Err(format!("Unknown provider type: {}", s)),
         }
     }

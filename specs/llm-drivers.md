@@ -49,7 +49,7 @@ graph TD
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
-3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `LlmSim` (testing).
+3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `LlmSim` (testing).
 
 ### Error Types (Contract)
 
@@ -263,6 +263,7 @@ sequenceDiagram
 | Chat Completions protocol | `crates/core/src/openai_protocol.rs` |
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
 | Gemini driver | `crates/gemini/src/driver.rs` |
+| Bedrock driver | `crates/bedrock/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -389,6 +390,7 @@ The `LlmDriver` trait includes `supports_compact()` and `compact()` methods. See
 | OpenAI (Completions API) | No |
 | Anthropic | No |
 | Gemini | No |
+| Bedrock | No |
 | LlmSim | No |
 
 ## Key Resolution Contract (Fail-Closed)

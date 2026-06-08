@@ -20,6 +20,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     everruns_openai::register_driver(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
+    everruns_bedrock::register_driver(&mut registry);
 
     // LlmSim. The `LLMSIM_DEMO` env var lets operators opt the in-process
     // LlmSim driver into a pre-baked scripted scenario without changing

@@ -9,7 +9,8 @@ export type LlmProviderType =
   | "azure_openai"
   | "openai_completions"
   | "anthropic"
-  | "gemini";
+  | "gemini"
+  | "bedrock";
 
 export type LlmProviderStatus = "active" | "disabled";
 

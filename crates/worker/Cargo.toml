@@ -35,6 +35,7 @@ everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
+everruns-bedrock = { path = "../bedrock" }
 everruns-internal-protocol = { path = "../internal-protocol" }
 everruns-mcp.workspace = true
 everruns-runtime = { path = "../runtime" }

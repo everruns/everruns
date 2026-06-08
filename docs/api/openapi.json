@@ -21606,7 +21606,8 @@
           "openai_completions",
           "anthropic",
           "gemini",
-          "llmsim"
+          "llmsim",
+          "bedrock"
         ],
         "example": "anthropic"
       },
