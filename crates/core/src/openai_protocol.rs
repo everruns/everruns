@@ -567,12 +567,17 @@ impl std::fmt::Debug for OpenAIProtocolLlmDriver {
 /// Check if the error indicates the model was not found.
 ///
 /// OpenAI returns 404 or 400 with `"model_not_found"` code or `"does not exist"` message.
+/// OpenAI can also return 403 with `"model_not_found"` for tier-gated models — these must
+/// be classified as model_unavailable rather than provider_misconfigured.
 /// Also handles Gemini/OpenAI-compatible endpoints with similar patterns.
 pub fn is_openai_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
     let error_lower = error_text.to_lowercase();
 
-    // OpenAI can return either 404 or 400 for nonexistent models
-    if status == reqwest::StatusCode::NOT_FOUND || status == reqwest::StatusCode::BAD_REQUEST {
+    // OpenAI can return 404, 400, or 403 (tier-gated access) for nonexistent/inaccessible models
+    if status == reqwest::StatusCode::NOT_FOUND
+        || status == reqwest::StatusCode::BAD_REQUEST
+        || status == reqwest::StatusCode::FORBIDDEN
+    {
         // OpenAI: {"error":{"code":"model_not_found","message":"The model 'x' does not exist"}}
         if error_lower.contains("model_not_found") {
             return true;
@@ -1221,6 +1226,28 @@ mod tests {
         let error = r#"{"error":{"message":"Endpoint not found"}}"#;
         assert!(!is_openai_model_not_found(
             reqwest::StatusCode::NOT_FOUND,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_403_tier_gated_model() {
+        // OpenAI returns 403 for models that exist but require a higher API tier;
+        // these must classify as model_unavailable, not provider_misconfigured.
+        let error = r#"{"error":{"code":"model_not_found","message":"The model 'gpt-5.4-mini' does not exist or you do not have access to it.","type":"invalid_request_error","param":null}}"#;
+        assert!(is_openai_model_not_found(
+            reqwest::StatusCode::FORBIDDEN,
+            error
+        ));
+    }
+
+    #[test]
+    fn test_is_openai_model_not_found_403_plain_auth_error_is_not_model_not_found() {
+        // A plain 403 without model_not_found code is a real auth error and must
+        // NOT be classified as model_unavailable.
+        let error = r#"{"error":{"message":"Invalid authentication credentials","type":"authentication_error"}}"#;
+        assert!(!is_openai_model_not_found(
+            reqwest::StatusCode::FORBIDDEN,
             error
         ));
     }
