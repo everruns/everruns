@@ -143,7 +143,7 @@ That means you can rename the harnesses freely. A platform can ship a base harne
 
 ## In-Process Runtime
 
-If you do not want PostgreSQL, the control-plane server, or the worker boundary, use the public `everruns-runtime` crate instead of embedding the full server/worker stack.
+If you do not want PostgreSQL, the control-plane server, or the worker boundary, use the public `everruns-runtime` crate instead of embedding the full server/worker stack. See the [Runtime](/features/runtime/) page for a quickstart; this section covers how it fits the embedding story.
 
 This path is for applications that want to:
 

@@ -1,0 +1,145 @@
+---
+title: Runtime
+description: Embed Everruns harnesses directly in your Rust process with the everruns-runtime crate — in-memory by default, no PostgreSQL, server, or worker required.
+sidebar:
+  label: Runtime
+---
+
+import { Tabs, TabItem } from '@astrojs/starlight/components';
+
+The `everruns-runtime` crate runs an Everruns harness **entirely inside your own Rust process**. There is no PostgreSQL, no control-plane server, and no worker boundary — just the harness, your capabilities, and your code.
+
+It is the Rust-native counterpart to the [SDKs](/features/sdk/): where the SDKs talk to a running Everruns server over HTTP, the runtime *is* the engine, linked straight into your binary.
+
+Use the runtime when you want to:
+
+- Run a harness in-process with no external services
+- Register your own capabilities, drivers, and tools
+- Provide your own backend stores (files, messages, sessions, …)
+- Inspect the assembled turn context before execution
+
+It ships **in-memory by default**, so the smallest useful host is a single `build().await?` away.
+
+## Install
+
+Requires Rust (edition 2024).
+
+```bash
+cargo add everruns-runtime
+```
+
+The crate also depends on `everruns-core` for shared types (capabilities, drivers, models):
+
+```bash
+cargo add everruns-core
+```
+
+## Quickstart
+
+Build an in-process runtime with an in-memory backend and a simulated LLM, then run a turn:
+
+```rust
+use everruns_core::{
+    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+};
+use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_runtime::InProcessRuntimeBuilder;
+
+let platform = PlatformDefinition::new(CapabilityRegistry::new(), DriverRegistry::new());
+
+let runtime = InProcessRuntimeBuilder::new()
+    .platform_definition(platform)
+    .llm_sim(LlmSimConfig::fixed("hello from everruns-runtime"))
+    .default_model(ModelWithProvider {
+        model: "llmsim-model".into(),
+        provider_type: LlmProviderType::LlmSim,
+        api_key: Some("fake-key".into()),
+        base_url: None,
+    })
+    // .capability(...)
+    // .backends(...)
+    // .harness(...)
+    // .session(...)
+    .build()
+    .await?;
+```
+
+Swap `llm_sim(...)` for a real `default_model` (OpenAI, Anthropic, OpenRouter, Ollama, …) to talk to a live provider.
+
+## Inspect the turn context
+
+`load_context(session_id)` returns the exact merged context the reason phase will use — before the first turn or after messages already exist:
+
+```rust
+let context = runtime.load_context(session_id).await?;
+println!("messages = {}", context.messages.len());
+println!("model    = {}", context.runtime_agent.model);
+println!("tools    = {}", context.runtime_agent.tools.len());
+```
+
+The context bundles the harness chain, optional agent, session, filtered message history, resolved model, and the assembled `RuntimeAgent`. With no messages yet, `context.messages` is empty and model/locale resolution falls back to merged harness, agent, session, and platform defaults.
+
+Execute-time hosts use `everruns_core::assemble_turn_context(...)` while inspection uses `everruns_core::inspect_turn_context(...)`; both share the same assembly logic, so in-process and worker-backed behavior stay aligned.
+
+## Custom backends
+
+The runtime ships in-memory defaults, but public extension traits let you supply your own stores:
+
+| Trait | Backs |
+|---|---|
+| `RuntimeHarnessStore` | Harness definitions |
+| `RuntimeAgentStore` | Agent configurations |
+| `RuntimeSessionStore` | Sessions |
+| `RuntimeMessageStore` | Message history |
+| `RuntimeFileStore` | Session files |
+| `RuntimeProviderStore` | LLM providers |
+| `EventBus` | Emitted events (extends `EventEmitter`) |
+
+Pass them through `RuntimeBackends` on the builder; any store you don't override stays in-memory:
+
+```rust
+use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
+
+let runtime = InProcessRuntimeBuilder::new()
+    .backends(
+        RuntimeBackends::in_memory()
+            .with_file_store(my_file_store)
+            .with_message_store(my_message_store)
+            .with_event_bus(my_event_bus),
+    )
+    .build()
+    .await?;
+```
+
+The default in-memory `EventBus` retains emitted events for `InProcessRuntime::events()`; production buses inherit the default `collected_events` and return an empty `Vec`.
+
+## Local MCP servers
+
+MCP server tools are first-class runtime tools. Local-process (stdio) MCP servers are gated behind the `mcp-stdio` feature, off by default so the hosted server/worker never compile stdio in:
+
+```bash
+cargo add everruns-runtime --features mcp-stdio
+```
+
+## Built with the runtime
+
+- **yolop** — a coding agent built directly on `everruns-runtime`, no server in the loop.
+- **`examples/coding-cli`** — a minimal terminal coding agent (codex/claude-code in spirit): TUI chat, real-filesystem tools on `RealDiskFileStore`, a custom `bash` tool, skills, and infinity-context trimming. The example lives at the workspace edge and depends on the public crate exactly the way an external embedder would.
+- **`examples/weekend-concierge-host`** — a root-level host app that defines its own capability, private tool data, seeded files, and an in-process turn loop.
+
+Run the in-tree examples:
+
+```bash
+cargo run -p everruns-runtime --example in_process_runtime
+cargo run -p everruns-runtime --example inspect_context
+cargo run --manifest-path examples/coding-cli/Cargo.toml
+cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml
+```
+
+## See also
+
+- [Embedding Everruns](/advanced/embedding-everruns/) — compose your own `PlatformDefinition`, server, and worker; the runtime is the in-process slice of that story.
+- [SDKs](/features/sdk/) — client libraries for talking to a running Everruns server over HTTP.
+- [Harnesses](/features/harnesses/) — the agent execution templates the runtime runs.
+- [Capabilities](/capabilities/) — the tools and behaviors you register on a harness.
+- [docs.rs/everruns-runtime](https://docs.rs/everruns-runtime) — full API reference.
