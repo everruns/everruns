@@ -452,13 +452,17 @@ Rules:
   **no** key — a key configured via UI/API is never overwritten.
 - Requires the encryption service (`SECRETS_ENCRYPTION_KEY`); if absent, the step
   is skipped with a warning.
-- Gated by `materialize_env_provider_keys_enabled`:
+- Gated by `materialize_env_provider_keys_allowed`:
   - `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` unset → defaults to `DeploymentGrade::is_dev()`
-  - `true`/`1`/`yes` → enabled (set this for a single-tenant **prod** deploy, e.g. the example)
+  - `true`/`1`/`yes` → enabled only when the deployment is dev or built-in auth
+    cannot self-provision users into `DEFAULT_ORG_ID` (for example, full auth
+    with signup disabled and no built-in OAuth providers, admin-only auth, or
+    external auth)
   - anything else → disabled
-- Multitenant deployments leave this disabled, so platform-level keys are never
-  spent on tenant execution. New orgs created at runtime (`seed_all` via the org
-  CRUD path) do **not** materialize env keys.
+- Multitenant/open-signup deployments leave this disabled, so platform-level keys
+  are never seeded into an org that untrusted users can join and spend from. New
+  orgs created at runtime (`seed_all` via the org CRUD path) do **not**
+  materialize env keys.
 
 ### Invariant
 
