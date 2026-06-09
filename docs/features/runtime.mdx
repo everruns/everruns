@@ -123,7 +123,7 @@ cargo add everruns-runtime --features mcp-stdio
 
 ## Built with the runtime
 
-- **[yolop](https://github.com/everruns/yolop)** — a minimal terminal coding agent built on `everruns-runtime` (codex/claude-code in spirit). It's the `coding-cli` example below promoted into a standalone, installable project: interactive TUI, real-filesystem tools, a `bash` tool, multi-provider LLMs (OpenAI, Anthropic, Gemini, OpenRouter, Ollama), MCP servers, resumable sessions, and Zed editor integration over ACP.
+- **[yolop](https://github.com/everruns/yolop)** — a minimal terminal coding agent built on `everruns-runtime` (codex/claude-code in spirit). It started as the `coding-cli` example below, promoted into a standalone, releasable project, and is where active development happens: interactive TUI, real-filesystem tools, a `bash` tool, multi-provider LLMs (OpenAI, Anthropic, Gemini, OpenRouter, Ollama), MCP servers (stdio + HTTP), resumable sessions, and Zed editor integration over ACP.
 
   ```bash
   brew install everruns/tap/yolop
@@ -131,7 +131,7 @@ cargo add everruns-runtime --features mcp-stdio
   cargo install yolop --locked
   ```
 
-- **`examples/coding-cli`** — the in-tree version of yolop: a single-binary coding agent with a ratatui TUI, real-filesystem tools on `RealDiskFileStore`, a custom `bash` tool, skills, and infinity-context trimming. It lives at the workspace edge and depends on the public crate exactly the way an external embedder would.
+- **`examples/coding-cli`** — the in-tree reference embedder for the public crate: a single-binary coding agent with a ratatui TUI, real-filesystem tools on `RealDiskFileStore`, a custom `bash` tool, skills, and infinity-context trimming. It lives at the workspace edge and depends on the public crate exactly the way an external embedder would.
 - **`examples/weekend-concierge-host`** — a root-level host app that defines its own capability, private tool data, seeded files, and an in-process turn loop.
 
 Run the in-tree examples:
