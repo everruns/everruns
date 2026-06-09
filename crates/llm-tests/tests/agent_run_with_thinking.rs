@@ -27,6 +27,7 @@ use everruns_core::message_retriever::InputMessage;
 // ============================================================================
 
 #[rstest]
+#[case::anthropic_fable(ANTHROPIC_FABLE)]
 #[case::anthropic_opus(ANTHROPIC_OPUS)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
@@ -48,10 +49,15 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         .await
         .unwrap();
 
+    // The prompt must be genuinely hard: on adaptive-thinking models (Claude
+    // Fable 5 / Opus 4.8+, GPT-5.x reasoning) the model decides whether to
+    // think at all, and trivial riddles deterministically skip thinking.
+    // Trailing zeros of 2024! = floor(2024/5) + floor(2024/25) + floor(2024/125)
+    // + floor(2024/625) = 404 + 80 + 16 + 3 = 503.
     let input = InputMessage {
         role: MessageRole::User,
         content: vec![ContentPart::text(
-            "A farmer has 17 chickens. All but 9 die. How many are left? Explain step by step why this is tricky.",
+            "How many trailing zeros does 2024! (factorial) have? Work it out carefully, then state the final count as a plain number.",
         )],
         controls: Some(Controls {
             model_id: None,
@@ -69,8 +75,8 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
-        result.response.contains("9"),
-        "Response should contain the answer 9, got: {}",
+        result.response.contains("503"),
+        "Response should contain the answer 503, got: {}",
         result.response
     );
 
@@ -107,6 +113,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 // ============================================================================
 
 #[rstest]
+#[case::anthropic_fable(ANTHROPIC_FABLE)]
 #[case::anthropic_opus(ANTHROPIC_OPUS)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
