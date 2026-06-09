@@ -148,7 +148,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Opus 4.7, Opus 4.6, Sonnet 4.6)
+/// (Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -246,6 +246,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.5"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-5.5-pro"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
+    md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6"], ModelVendor::Anthropic, ANTHROPIC),
@@ -1996,7 +1997,51 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
 fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     match model_id {
-        // Claude 4.8 series (newest)
+        // Claude Fable 5 (newest — top tier above Opus)
+        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
+        // docs.claude.com — Fable 5 is not yet in models.dev. Same API surface as
+        // Opus 4.8: adaptive thinking only, sampling parameters removed (temperature
+        // returns 400, hence `temperature: false`). One extra restriction vs Opus
+        // 4.8: an explicit `thinking: {type: "disabled"}` also returns 400 — the
+        // param must be omitted entirely (our driver already omits it when no
+        // reasoning effort is set). Release/knowledge dates are not published in
+        // the model card; the Models API exposes them at runtime.
+        "claude-fable-5" => Some(LlmModelProfile {
+            name: "Claude Fable 5".into(),
+            family: "claude-fable-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 10.00,
+                output: 50.00,
+                cache_read: Some(1.00),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_000_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude 4.8 series
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
         // docs.claude.com — Opus 4.8 is not yet in models.dev. Same API surface as
         // Opus 4.7: adaptive thinking only, sampling parameters removed (temperature
@@ -2038,6 +2083,9 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4.7 series
+        // Sampling parameters were removed starting with Opus 4.7: the API
+        // rejects `temperature` with "`temperature` is deprecated for this
+        // model" (verified live), hence `temperature: false`.
         "claude-opus-4-7" => Some(LlmModelProfile {
             name: "Claude Opus 4.7".into(),
             family: "claude-opus-4-7".into(),
@@ -2046,7 +2094,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             last_updated: Some("2026-04-16".into()),
             attachment: true,
             reasoning: true,
-            temperature: true,
+            temperature: false,
             knowledge: Some("2026-01-01".into()),
             tool_call: true,
             structured_output: true,
@@ -3479,7 +3527,8 @@ mod tests {
         assert_eq!(profile.family, "claude-opus-4-7");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
-        assert!(profile.temperature);
+        // Sampling parameters removed from Opus 4.7 on (API rejects `temperature`).
+        assert!(!profile.temperature);
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
@@ -3791,6 +3840,23 @@ mod tests {
     }
 
     // Newly added flagship model profiles
+
+    #[test]
+    fn test_claude_fable_5_profile() {
+        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5").unwrap();
+        assert_eq!(profile.name, "Claude Fable 5");
+        assert_eq!(profile.family, "claude-fable-5");
+        assert!(profile.reasoning);
+        // Fable 5 removed sampling parameters (temperature returns 400).
+        assert!(!profile.temperature);
+        let cost = profile.cost.as_ref().unwrap();
+        assert_eq!(cost.input, 10.00);
+        assert_eq!(cost.output, 50.00);
+        let limits = profile.limits.as_ref().unwrap();
+        assert_eq!(limits.context, 1_000_000);
+        assert_eq!(limits.output, 128_000);
+        assert!(profile.reasoning_effort.is_some());
+    }
 
     #[test]
     fn test_claude_opus_4_8_profile() {

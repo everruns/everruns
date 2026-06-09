@@ -143,6 +143,8 @@ Agents can override `max_tokens` via agent config. Cost guardrails should be con
 
 Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/llm_model_profiles.rs`.
+
 #### Stream Events
 
 When `reasoning_effort` is configured, drivers emit additional stream events:
@@ -159,7 +161,7 @@ Both providers require preserved thinking context for multi-turn conversations. 
 | `thinking_signature` | Cryptographic signature | `encrypted_content` token |
 
 Provider-specific wire format details live in the driver implementations:
-- `crates/anthropic/src/driver.rs` -- beta headers, signature capture, message ordering, budget tokens
+- `crates/anthropic/src/driver.rs` -- thinking form selection (adaptive vs budget-based), beta headers, signature capture, message ordering
 - `crates/openai/src/driver.rs` -- reasoning config, encrypted content, reasoning item format
 
 #### Reasoning Guard Logic
@@ -174,6 +176,10 @@ Reasoning parameters are validated at two levels to prevent API errors from non-
 2. **Driver level**: Both OpenAI drivers filter out `effort: "none"` before sending:
    - Responses API: omits `reasoning` object entirely
    - Chat Completions API: omits `reasoning_effort` field
+
+   The Anthropic driver additionally drops `temperature` for models whose
+   profile marks it unsupported (sampling parameters are removed from Opus 4.7
+   on; the API rejects them with a 400).
 
 The UI also prevents setting reasoning on non-thinking models (checks `profile.reasoning` and `profile.reasoning_effort`).
 

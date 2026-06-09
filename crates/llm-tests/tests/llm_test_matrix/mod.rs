@@ -72,15 +72,22 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
+pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(
+    LlmProviderType::Anthropic,
+    "claude-fable-5",
+    "ANTHROPIC_API_KEY",
+);
+
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     LlmProviderType::Anthropic,
     "claude-haiku-4-5-20251001",
     "ANTHROPIC_API_KEY",
 );
 
+// Bare alias — the API does not serve a dated id for Opus 4.7.
 pub const ANTHROPIC_OPUS: ProviderModelConfig = ProviderModelConfig::new(
     LlmProviderType::Anthropic,
-    "claude-opus-4-7-20260416",
+    "claude-opus-4-7",
     "ANTHROPIC_API_KEY",
 );
 

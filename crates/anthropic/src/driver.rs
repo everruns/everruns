@@ -385,17 +385,54 @@ impl LlmDriver for AnthropicLlmDriver {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
-        // Build thinking config from reasoning effort
-        let thinking = config
-            .reasoning_effort
-            .as_ref()
-            .and_then(|e| AnthropicThinking::from_effort(e));
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Anthropic,
+            &config.model,
+        );
+
+        // Sampling parameters are removed on Fable 5 and Opus 4.8/4.7 —
+        // sending `temperature` returns 400 ("`temperature` is deprecated for
+        // this model"). The model profile's `temperature` flag is the source
+        // of truth; drop the parameter for models that reject it.
+        let temperature = config.temperature.filter(|_| {
+            let supported = profile.as_ref().is_none_or(|p| p.temperature);
+            if !supported {
+                tracing::warn!(
+                    model = %config.model,
+                    "AnthropicDriver: dropping temperature — not supported by this model"
+                );
+            }
+            supported
+        });
+
+        // Build thinking config from reasoning effort.
+        //
+        // Recent Claude models (Fable 5, Opus 4.8/4.7, and the 4.6 family) use
+        // adaptive thinking: `thinking: {type: "adaptive"}` plus
+        // `output_config.effort`. On Fable 5 and Opus 4.8/4.7 the budget-based
+        // `thinking: {type: "enabled", budget_tokens}` form is removed and
+        // returns 400, so this split is load-bearing, not stylistic.
+        let (thinking, output_config) = match config.reasoning_effort.as_deref() {
+            Some(effort) if uses_adaptive_thinking(&config.model) => {
+                match adaptive_effort_level(effort) {
+                    Some(level) => (
+                        Some(AnthropicThinking::adaptive()),
+                        Some(AnthropicOutputConfig {
+                            effort: level.to_string(),
+                        }),
+                    ),
+                    None => (None, None),
+                }
+            }
+            Some(effort) => (AnthropicThinking::enabled_from_effort(effort), None),
+            None => (None, None),
+        };
 
         tracing::info!(
             model = %config.model,
             reasoning_effort = ?config.reasoning_effort,
-            thinking_enabled = thinking.is_some(),
-            thinking_budget = ?thinking.as_ref().map(|t| t.budget_tokens),
+            thinking = ?thinking,
+            adaptive_effort = ?output_config.as_ref().map(|c| c.effort.as_str()),
             "AnthropicDriver: building request with thinking config"
         );
 
@@ -403,40 +440,41 @@ impl LlmDriver for AnthropicLlmDriver {
         // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
         let max_tokens_from_profile = config.max_tokens.is_none();
         let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
-            everruns_core::get_model_profile(
-                &everruns_core::LlmProviderType::Anthropic,
-                &config.model,
-            )
-            .and_then(|p| {
-                p.limits.and_then(|l| {
-                    u32::try_from(l.output)
-                        .ok()
-                        .and_then(|v| if v > 0 { Some(v) } else { None })
+            profile
+                .as_ref()
+                .and_then(|p| {
+                    p.limits.as_ref().and_then(|l| {
+                        u32::try_from(l.output)
+                            .ok()
+                            .and_then(|v| if v > 0 { Some(v) } else { None })
+                    })
                 })
-            })
-            .unwrap_or(16_384)
+                .unwrap_or(16_384)
         });
-        let max_tokens = if let Some(ref thinking_config) = thinking {
+        let max_tokens = if let Some(AnthropicThinking::Enabled { budget_tokens }) = thinking {
             // max_tokens must be > thinking.budget_tokens per Anthropic requirements
             // Only increase if the caller's limit is too low for the thinking budget
-            let min_for_thinking = thinking_config.budget_tokens + 1024; // minimum headroom for response
+            let min_for_thinking = budget_tokens + 1024; // minimum headroom for response
             base_max_tokens.max(min_for_thinking)
         } else {
             base_max_tokens
         };
 
-        // Check if we need interleaved thinking beta header BEFORE moving values
-        let needs_interleaved_thinking = thinking.is_some() && tools.is_some();
+        // Budget-based thinking with tools needs the interleaved-thinking beta
+        // header; adaptive thinking interleaves automatically (no header).
+        let needs_interleaved_thinking =
+            matches!(thinking, Some(AnthropicThinking::Enabled { .. })) && tools.is_some();
 
         let mut request = AnthropicRequest {
             model: config.model.clone(),
             messages: anthropic_messages,
             max_tokens,
-            temperature: config.temperature,
+            temperature,
             system,
             stream: true,
             tools,
             thinking,
+            output_config,
         };
 
         // Retry loop for rate limit (429) and transient errors
@@ -940,6 +978,9 @@ struct AnthropicRequest {
     /// Extended thinking configuration (for Claude models that support it)
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<AnthropicThinking>,
+    /// Output configuration — carries `effort` for adaptive thinking
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_config: Option<AnthropicOutputConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -973,21 +1014,81 @@ enum AnthropicSystemBlock {
     },
 }
 
-/// Extended thinking configuration for Claude
-#[derive(Debug, Serialize)]
-struct AnthropicThinking {
-    r#type: String,
-    /// Budget tokens for thinking (varies by effort level)
-    budget_tokens: u32,
+/// Thinking configuration for Claude.
+///
+/// `Enabled` is the legacy budget-based form; `Adaptive` is required on
+/// Fable 5 and Opus 4.8/4.7 (where `budget_tokens` returns 400) and is the
+/// recommended form on the 4.6 family. "No thinking" is always expressed by
+/// omitting the field — an explicit `{type: "disabled"}` is rejected by
+/// Fable 5.
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum AnthropicThinking {
+    Enabled {
+        /// Budget tokens for thinking (varies by effort level)
+        budget_tokens: u32,
+    },
+    Adaptive {
+        /// Fable 5 and Opus 4.8/4.7 omit thinking text by default
+        /// (`display: "omitted"`); "summarized" restores it so assistant
+        /// messages keep their thinking content like on budget-based models.
+        display: &'static str,
+    },
 }
 
 impl AnthropicThinking {
-    /// Create thinking config from reasoning effort level
-    fn from_effort(effort: &str) -> Option<Self> {
-        llm_driver_helpers::thinking_budget::from_effort(effort).map(|budget| Self {
-            r#type: "enabled".to_string(),
-            budget_tokens: budget,
-        })
+    /// Create a budget-based thinking config from a reasoning effort level
+    fn enabled_from_effort(effort: &str) -> Option<Self> {
+        llm_driver_helpers::thinking_budget::from_effort(effort)
+            .map(|budget_tokens| Self::Enabled { budget_tokens })
+    }
+
+    /// Adaptive thinking with summarized (visible) thinking content
+    fn adaptive() -> Self {
+        Self::Adaptive {
+            display: "summarized",
+        }
+    }
+}
+
+/// `output_config` request field — carries the effort level that controls
+/// adaptive thinking depth.
+#[derive(Debug, Serialize)]
+struct AnthropicOutputConfig {
+    effort: String,
+}
+
+/// Claude families that use adaptive thinking. On Fable 5 and Opus 4.8/4.7
+/// budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it is
+/// deprecated and adaptive is the recommended form. Keep in sync with the
+/// adaptive-thinking profiles in `everruns_core::llm_model_profiles`.
+const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+];
+
+/// Whether a model id (optionally date-suffixed) belongs to an
+/// adaptive-thinking family.
+fn uses_adaptive_thinking(model_id: &str) -> bool {
+    let family = normalize_anthropic_id(model_id);
+    ADAPTIVE_THINKING_FAMILIES
+        .iter()
+        .any(|f| family.eq_ignore_ascii_case(f))
+}
+
+/// Map an everruns reasoning-effort level to the `output_config.effort` value
+/// used with adaptive thinking. `xhigh` is surfaced as "Max" in the model
+/// profiles and maps to the API's `max` level.
+fn adaptive_effort_level(effort: &str) -> Option<&'static str> {
+    match effort.to_ascii_lowercase().as_str() {
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" => Some("max"),
+        _ => None,
     }
 }
 
@@ -1506,6 +1607,49 @@ mod tests {
         let content = LlmMessageContent::Text(String::new());
         let blocks = AnthropicLlmDriver::convert_content(&content);
         assert!(blocks.is_empty(), "Empty text should be filtered out");
+    }
+
+    #[test]
+    fn test_uses_adaptive_thinking_by_family() {
+        // Adaptive-only / adaptive-recommended families, with and without
+        // dated suffixes.
+        assert!(uses_adaptive_thinking("claude-fable-5"));
+        assert!(uses_adaptive_thinking("claude-fable-5-20260601"));
+        assert!(uses_adaptive_thinking("claude-opus-4-8"));
+        assert!(uses_adaptive_thinking("claude-opus-4-7-20260416"));
+        assert!(uses_adaptive_thinking("claude-opus-4-6"));
+        assert!(uses_adaptive_thinking("claude-sonnet-4-6"));
+        // Budget-based families stay on extended thinking.
+        assert!(!uses_adaptive_thinking("claude-opus-4-5"));
+        assert!(!uses_adaptive_thinking("claude-sonnet-4-5"));
+        assert!(!uses_adaptive_thinking("claude-haiku-4-5-20251001"));
+    }
+
+    #[test]
+    fn test_thinking_config_serialization() {
+        // Adaptive must not carry budget_tokens (400 on Fable 5 / Opus 4.8 /
+        // 4.7); display:"summarized" opts back into visible thinking text,
+        // which those models omit by default.
+        let adaptive = serde_json::to_value(AnthropicThinking::adaptive()).unwrap();
+        assert_eq!(
+            adaptive,
+            json!({"type": "adaptive", "display": "summarized"})
+        );
+
+        let enabled = serde_json::to_value(AnthropicThinking::Enabled {
+            budget_tokens: 4096,
+        })
+        .unwrap();
+        assert_eq!(enabled, json!({"type": "enabled", "budget_tokens": 4096}));
+    }
+
+    #[test]
+    fn test_adaptive_effort_level_mapping() {
+        assert_eq!(adaptive_effort_level("low"), Some("low"));
+        assert_eq!(adaptive_effort_level("medium"), Some("medium"));
+        assert_eq!(adaptive_effort_level("HIGH"), Some("high"));
+        assert_eq!(adaptive_effort_level("xhigh"), Some("max"));
+        assert_eq!(adaptive_effort_level("unknown"), None);
     }
 
     #[test]
