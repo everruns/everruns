@@ -727,8 +727,13 @@ mod engine {
             .egress_service
             .as_ref()
             .ok_or_else(|| "network egress unavailable in this environment".to_string())?;
-        let mut req =
-            EgressRequest::new(method, &url, EgressRequestKind::Capability).timeout_ms(15_000);
+        let (validated_url, resolved_addrs) = crate::url_validation::validate_url_dns_pinned(&url)
+            .await
+            .map_err(|e| format!("network egress denied: URL failed SSRF validation: {e}"))?;
+        let pin_host = validated_url.host_str().unwrap_or("").to_string();
+        let mut req = EgressRequest::new(method, &url, EgressRequestKind::Capability)
+            .pinned_addrs(pin_host, resolved_addrs)
+            .timeout_ms(15_000);
         if let Some(a) = acl {
             req = req.network_access(Some(a.clone()));
         }
@@ -1548,11 +1553,11 @@ mod tests {
             ctx.file_store = Some(Arc::new(EmptyFileStore));
             ctx.egress_service = Some(Arc::new(MockEgress));
             ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
-                "example.com",
+                "93.184.216.34",
             ]));
             let v = match LuaTool
                 .execute_with_context(
-                    json!({ "script": r#"local r = http.get("https://example.com/x"); return { s = r.status, b = r.body }"# }),
+                    json!({ "script": r#"local r = http.get("http://93.184.216.34/x"); return { s = r.status, b = r.body }"# }),
                     &ctx,
                 )
                 .await
@@ -1562,6 +1567,26 @@ mod tests {
             };
             assert_eq!(v["result"]["s"], json!(200));
             assert_eq!(v["result"]["b"], json!("pong"));
+        }
+
+        #[tokio::test]
+        async fn http_denies_allowlisted_loopback_ip_before_egress() {
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.file_store = Some(Arc::new(EmptyFileStore));
+            ctx.egress_service = Some(Arc::new(MockEgress));
+            ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+                "127.0.0.1",
+            ]));
+            let result = LuaTool
+                .execute_with_context(
+                    json!({ "script": r#"return http.get("http://127.0.0.1/latest/meta-data").status"# }),
+                    &ctx,
+                )
+                .await;
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("SSRF validation")),
+                "expected SSRF validation error, got {result:?}"
+            );
         }
 
         #[tokio::test]
