@@ -385,6 +385,26 @@ impl LlmDriver for AnthropicLlmDriver {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
+        let profile = everruns_core::get_model_profile(
+            &everruns_core::LlmProviderType::Anthropic,
+            &config.model,
+        );
+
+        // Sampling parameters are removed on Fable 5 and Opus 4.8/4.7 —
+        // sending `temperature` returns 400 ("`temperature` is deprecated for
+        // this model"). The model profile's `temperature` flag is the source
+        // of truth; drop the parameter for models that reject it.
+        let temperature = config.temperature.filter(|_| {
+            let supported = profile.as_ref().is_none_or(|p| p.temperature);
+            if !supported {
+                tracing::warn!(
+                    model = %config.model,
+                    "AnthropicDriver: dropping temperature — not supported by this model"
+                );
+            }
+            supported
+        });
+
         // Build thinking config from reasoning effort.
         //
         // Recent Claude models (Fable 5, Opus 4.8/4.7, and the 4.6 family) use
@@ -420,18 +440,16 @@ impl LlmDriver for AnthropicLlmDriver {
         // Anthropic requires max_tokens (can't omit), so we look up the model's native limit.
         let max_tokens_from_profile = config.max_tokens.is_none();
         let base_max_tokens = config.max_tokens.unwrap_or_else(|| {
-            everruns_core::get_model_profile(
-                &everruns_core::LlmProviderType::Anthropic,
-                &config.model,
-            )
-            .and_then(|p| {
-                p.limits.and_then(|l| {
-                    u32::try_from(l.output)
-                        .ok()
-                        .and_then(|v| if v > 0 { Some(v) } else { None })
+            profile
+                .as_ref()
+                .and_then(|p| {
+                    p.limits.as_ref().and_then(|l| {
+                        u32::try_from(l.output)
+                            .ok()
+                            .and_then(|v| if v > 0 { Some(v) } else { None })
+                    })
                 })
-            })
-            .unwrap_or(16_384)
+                .unwrap_or(16_384)
         });
         let max_tokens = if let Some(AnthropicThinking::Enabled { budget_tokens }) = thinking {
             // max_tokens must be > thinking.budget_tokens per Anthropic requirements
@@ -451,7 +469,7 @@ impl LlmDriver for AnthropicLlmDriver {
             model: config.model.clone(),
             messages: anthropic_messages,
             max_tokens,
-            temperature: config.temperature,
+            temperature,
             system,
             stream: true,
             tools,

@@ -2083,6 +2083,9 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4.7 series
+        // Sampling parameters were removed starting with Opus 4.7: the API
+        // rejects `temperature` with "`temperature` is deprecated for this
+        // model" (verified live), hence `temperature: false`.
         "claude-opus-4-7" => Some(LlmModelProfile {
             name: "Claude Opus 4.7".into(),
             family: "claude-opus-4-7".into(),
@@ -2091,7 +2094,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             last_updated: Some("2026-04-16".into()),
             attachment: true,
             reasoning: true,
-            temperature: true,
+            temperature: false,
             knowledge: Some("2026-01-01".into()),
             tool_call: true,
             structured_output: true,
@@ -3524,7 +3527,8 @@ mod tests {
         assert_eq!(profile.family, "claude-opus-4-7");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
-        assert!(profile.temperature);
+        // Sampling parameters removed from Opus 4.7 on (API rejects `temperature`).
+        assert!(!profile.temperature);
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
