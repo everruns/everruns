@@ -36,7 +36,14 @@ base64.workspace = true
 everruns-core.workspace = true
 
 # AWS SDK for Bedrock Runtime
-aws-sdk-bedrockruntime = "1"
+# Default features include the legacy `rustls` connector (rustls 0.21 +
+# rustls-webpki 0.101, flagged by GHSA-82j2-j2ch-gfr8). BehaviorVersion::latest()
+# uses the modern `default-https-client` (rustls 0.23), so the legacy stack is
+# excluded.
+aws-sdk-bedrockruntime = { version = "1", default-features = false, features = [
+    "default-https-client",
+    "rt-tokio",
+] }
 aws-smithy-types = "1"
 
 [dev-dependencies]
