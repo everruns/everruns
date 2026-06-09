@@ -5,8 +5,6 @@ sidebar:
   label: Runtime
 ---
 
-import { Tabs, TabItem } from '@astrojs/starlight/components';
-
 The `everruns-runtime` crate runs an Everruns harness **entirely inside your own Rust process**. There is no PostgreSQL, no control-plane server, and no worker boundary — just the harness, your capabilities, and your code.
 
 It is the Rust-native counterpart to the [SDKs](/features/sdk/): where the SDKs talk to a running Everruns server over HTTP, the runtime *is* the engine, linked straight into your binary.
@@ -22,7 +20,7 @@ It ships **in-memory by default**, so the smallest useful host is a single `buil
 
 ## Install
 
-Requires Rust (edition 2024).
+Requires Rust 1.94+ (edition 2024).
 
 ```bash
 cargo add everruns-runtime
