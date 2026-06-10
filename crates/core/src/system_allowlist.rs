@@ -70,10 +70,17 @@ impl SystemAllowlist {
                 allowed: spec.allowed,
             });
         }
-        Ok(Self {
-            groups,
-            acl: NetworkAccessList::allow_only(patterns),
-        })
+        // Fail closed: an allowlist with no patterns must deny everything. An
+        // empty `allowed` list in `NetworkAccessList` means "no restriction"
+        // (allow all), so an empty/misconfigured allowlist would otherwise
+        // silently disable enforcement. Substitute a sentinel that can never
+        // match a real URL, mirroring `merge_network_access`'s `<none>` guard.
+        let acl = if patterns.is_empty() {
+            NetworkAccessList::allow_only(["<none>"])
+        } else {
+            NetworkAccessList::allow_only(patterns)
+        };
+        Ok(Self { groups, acl })
     }
 
     /// The curated allowlist embedded in the binary (parsed once and cached).
@@ -157,6 +164,19 @@ mod tests {
             "https://random-blog.net/post",
         ] {
             assert!(!allowlist.is_url_allowed(url), "should deny {url}");
+        }
+    }
+
+    #[test]
+    fn empty_allowlist_fails_closed() {
+        // No groups, empty groups, and groups with no patterns must all deny
+        // every URL rather than silently allowing all traffic.
+        for source in ["", "[groups.empty]\n", "[groups.empty]\nallowed = []\n"] {
+            let allowlist = SystemAllowlist::from_toml(source).expect("valid toml");
+            assert!(
+                !allowlist.is_url_allowed("https://example.com/"),
+                "empty allowlist (source: {source:?}) must deny all URLs"
+            );
         }
     }
 

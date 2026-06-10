@@ -39,7 +39,10 @@ Current groups: `package_registries`, `source_hosting`, `container_registries`,
 
 `SystemAllowlist` flattens all group patterns into a single non-empty `allowed`
 `NetworkAccessList`, so only URLs matching at least one pattern are permitted.
-See `crates/core/src/system_allowlist.rs`.
+An allowlist with no patterns (empty/misconfigured TOML) **fails closed** — it
+denies every URL rather than allowing all — via a sentinel pattern, since an
+empty `NetworkAccessList.allowed` otherwise means "no restriction". See
+`crates/core/src/system_allowlist.rs`.
 
 ## Enabling
 
@@ -50,7 +53,7 @@ EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true   # or 1
 ```
 
 `DirectEgressService::from_env()` resolves the allowlist at construction. When
-unset or falsey, egress behavior is unchanged.
+unset or falsy, egress behavior is unchanged.
 
 The env var is read by every process that builds an egress service, so it
 applies uniformly across the **control plane** and **workers**:
