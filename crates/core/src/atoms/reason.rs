@@ -69,8 +69,9 @@ use crate::{UserFacingErrorContext, user_facing_error_codes};
 ///
 /// - `Settled` row found   → replay the stored result directly.
 /// - `Interrupted` row     → replay the stored interrupted error.
-/// - `Running` (stale)     → synthesize an "interrupted" placeholder.
-/// - Row not found         → synthesize a "cancelled" placeholder.
+/// - `Running` (stale)     → synthesize an "interrupted – uncertain – do not retry" placeholder.
+/// - Row not found         → synthesize an "interrupted – not executed – safe to retry" placeholder.
+/// - Store error           → synthesize an "interrupted – status unknown – do not retry" placeholder.
 ///
 /// Emits `transcript.repaired` events via `event_emitter` for each repaired call.
 async fn repair_dangling_tool_calls(
@@ -146,8 +147,8 @@ async fn repair_dangling_tool_calls(
                             TranscriptRepairAction::Synthesize,
                         )
                     }
-                    Ok(None) | Err(_) => {
-                        // No durable record: tool was never dispatched or store is unavailable.
+                    Ok(None) => {
+                        // No durable record: tool was never dispatched before recovery.
                         (
                             Message::tool_result(
                                 &tc.id,
@@ -155,6 +156,26 @@ async fn repair_dangling_tool_calls(
                                 Some(
                                     "interrupted - tool was not executed before recovery; \
                                      safe to retry"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                    Err(e) => {
+                        // Store temporarily unavailable: we cannot know whether the tool ran.
+                        tracing::warn!(
+                            tool_call_id = %tc.id,
+                            error = %e,
+                            "transcript repair: durable store error; status unknown"
+                        );
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool execution status unknown due to \
+                                     store error; do not retry automatically"
                                         .to_string(),
                                 ),
                             ),
@@ -2728,6 +2749,238 @@ mod tests {
         assert_eq!(patched.len(), 3);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_789"));
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockInterruptedStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockInterruptedStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Interrupted {
+                    result_json: None,
+                }))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_int".to_string(),
+            name: "slow_op".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Do it"),
+            Message::assistant_with_tools("Doing...", vec![tool_call]),
+        ];
+
+        let store = MockInterruptedStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_int"));
+        // Interrupted replay uses the stored error or fallback text; must contain "interrupted"
+        let content = format!("{:?}", repair);
+        assert!(
+            content.contains("interrupted") || content.contains("not complete"),
+            "expected interrupted message, got: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_running_synthesized() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockRunningStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockRunningStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Running))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_run".to_string(),
+            name: "long_job".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Start job"),
+            Message::assistant_with_tools("Starting...", vec![tool_call]),
+        ];
+
+        let store = MockRunningStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_run"));
+        // Running stale claim must warn "uncertain; do not retry automatically"
+        let content = format!("{:?}", repair);
+        assert!(
+            content.contains("uncertain") || content.contains("do not retry"),
+            "expected uncertain/do-not-retry message, got: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_store_error_unknown() {
+        use crate::error::AgentLoopError;
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockErrorStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockErrorStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+                Err(AgentLoopError::tool("simulated store failure"))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_err".to_string(),
+            name: "risky_op".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Do risky op"),
+            Message::assistant_with_tools("On it...", vec![tool_call]),
+        ];
+
+        let store = MockErrorStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_err"));
+        // Store error must NOT say "safe to retry"
+        let content = format!("{:?}", repair);
+        assert!(
+            !content.contains("safe to retry"),
+            "store error must not say 'safe to retry', got: {content}"
+        );
+        assert!(
+            content.contains("do not retry") || content.contains("status unknown"),
+            "expected do-not-retry/status-unknown message, got: {content}"
+        );
     }
 
     #[test]
