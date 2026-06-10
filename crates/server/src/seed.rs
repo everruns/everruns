@@ -6,7 +6,7 @@
 // Decision: Upsert seed data on conflict, only when values changed (ON CONFLICT DO UPDATE ... WHERE differs)
 // Decision: Modular design allows easy addition of new seeders
 
-use crate::auth::config::{AdminConfig, AuthMode};
+use crate::auth::config::{AdminConfig, AuthConfig, AuthMode};
 use crate::org_init;
 use crate::storage::{
     EncryptionService, StorageBackend,
@@ -1481,17 +1481,45 @@ async fn seed_providers_with_platform_definition(
 /// `just start-dev` keep using `DEFAULT_*_API_KEY` without re-opening an
 /// implicit env fallback in the hot path.
 ///
-/// Gated so multitenant deployments never spend platform-level keys (EVE-512):
+/// Gated so platform-level keys are never seeded into an org that untrusted
+/// users can join and spend (EVE-512):
 /// - `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` unset  -> defaults to `grade.is_dev()`
-/// - `true`/`1`/`yes` -> enabled (set this for single-tenant prod, e.g. the
-///   example deployment)
+/// - `true`/`1`/`yes` -> enabled only when dev, or when built-in auth cannot
+///   self-provision users into `DEFAULT_ORG_ID` (e.g. full auth with signup
+///   disabled and no built-in OAuth, admin-only auth, or external auth)
 /// - anything else    -> disabled
-fn materialize_env_provider_keys_enabled(grade: DeploymentGrade) -> bool {
-    materialize_env_provider_keys_enabled_with(grade, |name| std::env::var(name).ok())
+fn materialize_env_provider_keys_allowed(grade: DeploymentGrade) -> bool {
+    let auth_config = AuthConfig::from_env();
+    materialize_env_provider_keys_allowed_with(grade, &auth_config, |name| std::env::var(name).ok())
 }
 
-/// Testable core of [`materialize_env_provider_keys_enabled`] with an injectable
-/// env lookup.
+/// Testable core of [`materialize_env_provider_keys_allowed`] with injectable
+/// env and auth config. Dev keeps its convenience default; non-dev explicit
+/// opt-in is only honored when built-in auth cannot self-provision users into
+/// `DEFAULT_ORG_ID`, because members can run sessions that spend these keys.
+fn materialize_env_provider_keys_allowed_with<F>(
+    grade: DeploymentGrade,
+    auth_config: &AuthConfig,
+    env_lookup: F,
+) -> bool
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let enabled = materialize_env_provider_keys_enabled_with(grade, env_lookup);
+    if !enabled {
+        return false;
+    }
+
+    grade.is_dev() || !built_in_default_org_self_provisioning_enabled(auth_config)
+}
+
+fn built_in_default_org_self_provisioning_enabled(auth_config: &AuthConfig) -> bool {
+    auth_config.signup_enabled() || auth_config.oauth_enabled()
+}
+
+/// Env/grade opt-in logic for env-key materialization (injectable env lookup).
+/// Does not enforce the auth self-provisioning guard; use
+/// [`materialize_env_provider_keys_allowed_with`] for the full decision.
 fn materialize_env_provider_keys_enabled_with<F>(grade: DeploymentGrade, env_lookup: F) -> bool
 where
     F: Fn(&str) -> Option<String>,
@@ -1512,8 +1540,8 @@ where
 /// counted as unchanged. Providers without a matching env var are skipped and
 /// not counted at all.
 ///
-/// Callers MUST gate this behind [`materialize_env_provider_keys_enabled`]; it
-/// must not run for multitenant deployments.
+/// Callers MUST gate this behind [`materialize_env_provider_keys_allowed`]; it
+/// must not run when built-in auth can self-provision users into `DEFAULT_ORG_ID`.
 async fn seed_default_provider_keys_from_env(
     db: &StorageBackend,
     encryption: &EncryptionService,
@@ -2286,7 +2314,7 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
 /// Spawn seeding as a background task using an explicit platform definition.
 ///
 /// When `encryption` is available and env-key materialization is enabled for
-/// this deployment grade (see [`materialize_env_provider_keys_enabled`]), the
+/// this deployment grade (see [`materialize_env_provider_keys_allowed`]), the
 /// default org's provider rows are seeded with the `DEFAULT_*_API_KEY` env
 /// values so single-tenant/dev execution can resolve them via the fail-closed
 /// DB path. Multitenant deployments leave this disabled and never spend
@@ -2324,9 +2352,9 @@ pub fn spawn_seed_task_with_platform_definition(
 
                 // Single-tenant / dev convenience: materialize DEFAULT_*_API_KEY
                 // env vars into the default org's providers. Runs after seed so
-                // the provider rows exist; gated so multitenant prod never does
-                // this (EVE-511/EVE-512).
-                if materialize_env_provider_keys_enabled(grade) {
+                // the provider rows exist; gated so untrusted users cannot join
+                // DEFAULT_ORG_ID and spend these keys (EVE-511/EVE-512).
+                if materialize_env_provider_keys_allowed(grade) {
                     match &encryption {
                         Some(encryption) => {
                             match seed_default_provider_keys_from_env(
@@ -2656,6 +2684,24 @@ mod tests {
         EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[]).unwrap()
     }
 
+    fn auth_config(mode: AuthMode, disable_signup: bool) -> AuthConfig {
+        AuthConfig {
+            mode,
+            disable_signup,
+            ..AuthConfig::default()
+        }
+    }
+
+    fn github_oauth_config() -> crate::auth::config::GitHubOAuthConfig {
+        crate::auth::config::GitHubOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "client-id".to_string(),
+                client_secret: "client-secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+        }
+    }
+
     #[test]
     fn materialize_gate_defaults_to_dev_only() {
         // Unset: enabled in dev, disabled otherwise.
@@ -2688,6 +2734,51 @@ mod tests {
         assert!(!materialize_env_provider_keys_enabled_with(
             DeploymentGrade::Dev,
             |_| Some("false".to_string())
+        ));
+    }
+
+    #[test]
+    fn materialize_guard_blocks_non_dev_builtin_self_provisioning() {
+        let open_signup = auth_config(AuthMode::Full, false);
+        assert!(!materialize_env_provider_keys_allowed_with(
+            DeploymentGrade::Prod,
+            &open_signup,
+            |_| Some("true".to_string())
+        ));
+
+        let mut oauth_open = auth_config(AuthMode::Full, true);
+        oauth_open.github = Some(github_oauth_config());
+        assert!(!materialize_env_provider_keys_allowed_with(
+            DeploymentGrade::Prod,
+            &oauth_open,
+            |_| Some("true".to_string())
+        ));
+    }
+
+    #[test]
+    fn materialize_guard_allows_non_dev_when_builtin_self_provisioning_closed() {
+        let closed_full = auth_config(AuthMode::Full, true);
+        assert!(materialize_env_provider_keys_allowed_with(
+            DeploymentGrade::Prod,
+            &closed_full,
+            |_| Some("true".to_string())
+        ));
+
+        let admin_only = auth_config(AuthMode::Admin, false);
+        assert!(materialize_env_provider_keys_allowed_with(
+            DeploymentGrade::Prod,
+            &admin_only,
+            |_| Some("true".to_string())
+        ));
+    }
+
+    #[test]
+    fn materialize_guard_preserves_dev_convenience_default() {
+        let open_signup = auth_config(AuthMode::Full, false);
+        assert!(materialize_env_provider_keys_allowed_with(
+            DeploymentGrade::Dev,
+            &open_signup,
+            |_| None
         ));
     }
 
