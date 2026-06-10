@@ -385,9 +385,17 @@ impl LlmDriver for AnthropicLlmDriver {
             Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
+        // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
+        // large-context twins of the 200K base models. Anthropic's wire `model`
+        // field only accepts the bare id; the 1M window is requested via the
+        // `context-1m` beta header (added in the retry loop below). Strip the
+        // suffix for everything that reasons about the canonical model, and
+        // keep the flag for the header.
+        let (wire_model, wants_million_context) = split_million_context(&config.model);
+
         let profile = everruns_core::get_model_profile(
             &everruns_core::LlmProviderType::Anthropic,
-            &config.model,
+            wire_model,
         );
 
         // Sampling parameters are removed on Fable 5 and Opus 4.8/4.7 —
@@ -413,7 +421,7 @@ impl LlmDriver for AnthropicLlmDriver {
         // `thinking: {type: "enabled", budget_tokens}` form is removed and
         // returns 400, so this split is load-bearing, not stylistic.
         let (thinking, output_config) = match config.reasoning_effort.as_deref() {
-            Some(effort) if uses_adaptive_thinking(&config.model) => {
+            Some(effort) if uses_adaptive_thinking(wire_model) => {
                 match adaptive_effort_level(effort) {
                     Some(level) => (
                         Some(AnthropicThinking::adaptive()),
@@ -466,7 +474,7 @@ impl LlmDriver for AnthropicLlmDriver {
             matches!(thinking, Some(AnthropicThinking::Enabled { .. })) && tools.is_some();
 
         let mut request = AnthropicRequest {
-            model: config.model.clone(),
+            model: wire_model.to_string(),
             messages: anthropic_messages,
             max_tokens,
             temperature,
@@ -491,16 +499,26 @@ impl LlmDriver for AnthropicLlmDriver {
                 .header("anthropic-version", ANTHROPIC_VERSION)
                 .header("Content-Type", "application/json");
 
-            // Add interleaved thinking beta header when thinking is enabled with tools
-            // Required for tool use with extended thinking per Anthropic docs
+            // Anthropic beta features, combined into a single comma-separated
+            // `anthropic-beta` header:
+            //  - interleaved-thinking: required for tool use with budget-based
+            //    extended thinking (adaptive thinking interleaves on its own).
+            //  - context-1m: opts the `[1m]` model ids into the 1M context
+            //    window. It is GA / silently ignored on Opus 4.6+ and Fable 5
+            //    (the only ids we attach it to), so always sending it is safe.
+            let mut beta_features: Vec<&str> = Vec::new();
             if needs_interleaved_thinking {
-                request_builder =
-                    request_builder.header("anthropic-beta", "interleaved-thinking-2025-05-14");
+                beta_features.push("interleaved-thinking-2025-05-14");
+            }
+            if wants_million_context {
+                beta_features.push("context-1m-2025-08-07");
+            }
+            if !beta_features.is_empty() {
+                let beta = beta_features.join(",");
                 if retry_metadata.attempts == 0 {
-                    tracing::info!(
-                        "AnthropicDriver: enabling interleaved thinking beta for tool use"
-                    );
+                    tracing::info!(beta = %beta, "AnthropicDriver: enabling anthropic-beta features");
                 }
+                request_builder = request_builder.header("anthropic-beta", beta);
             }
 
             let response = request_builder
@@ -1069,6 +1087,47 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-opus-4-6",
     "claude-sonnet-4-6",
 ];
+
+/// Anthropic families that support the 1M context window (Anthropic docs:
+/// context-windows / long-context pricing). Gates `[1m]` suffix handling. These
+/// coincide with `ADAPTIVE_THINKING_FAMILIES` today but are a distinct
+/// capability — kept separate so a future divergence (1M without adaptive
+/// thinking, or vice versa) cannot silently mis-gate either path.
+const MILLION_CONTEXT_FAMILIES: &[&str] = &[
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+];
+
+/// Split a `[1m]`-suffixed Anthropic model id (e.g. `claude-opus-4-8[1m]`) into
+/// the bare wire id Anthropic accepts and a flag marking the 1M-context twin.
+///
+/// The suffix is honored only when the bare id belongs to a family that
+/// actually supports the 1M window (`MILLION_CONTEXT_FAMILIES`). A
+/// manually-configured id that merely ends in `[1m]` but is not 1M-capable —
+/// e.g. `claude-3-haiku[1m]` or `claude-sonnet-4-5[1m]` — is left untouched. We
+/// must never rewrite an arbitrary configured id or send the `context-1m` beta
+/// header to a model that does not support the 1M window (it can 400 or
+/// silently truncate on models where the header was retired). Date-suffixed 1M
+/// ids (`claude-opus-4-8-20260101[1m]`) are still honored via family
+/// normalization.
+fn split_million_context(model_id: &str) -> (&str, bool) {
+    match model_id.strip_suffix("[1m]") {
+        Some(bare) if is_million_context_family(bare) => (bare, true),
+        _ => (model_id, false),
+    }
+}
+
+/// Whether a bare (optionally date-suffixed) Anthropic model id belongs to a
+/// family that supports the 1M context window.
+fn is_million_context_family(model_id: &str) -> bool {
+    let family = normalize_anthropic_id(model_id);
+    MILLION_CONTEXT_FAMILIES
+        .iter()
+        .any(|f| family.eq_ignore_ascii_case(f))
+}
 
 /// Whether a model id (optionally date-suffixed) belongs to an
 /// adaptive-thinking family.
@@ -2167,6 +2226,47 @@ mod tests {
     // ========================================================================
     // Discovered profile construction tests
     // ========================================================================
+
+    #[test]
+    fn test_split_million_context() {
+        // Registered `[1m]` twins: stripped to the wire id and flagged.
+        assert_eq!(
+            split_million_context("claude-opus-4-8[1m]"),
+            ("claude-opus-4-8", true)
+        );
+        assert_eq!(
+            split_million_context("claude-fable-5[1m]"),
+            ("claude-fable-5", true)
+        );
+        assert_eq!(
+            split_million_context("claude-opus-4-6[1m]"),
+            ("claude-opus-4-6", true)
+        );
+
+        // Date-suffixed 1M-capable id is still honored (family normalization).
+        assert_eq!(
+            split_million_context("claude-opus-4-8-20260101[1m]"),
+            ("claude-opus-4-8-20260101", true)
+        );
+
+        // Bare ids are unchanged and not flagged.
+        assert_eq!(
+            split_million_context("claude-opus-4-8"),
+            ("claude-opus-4-8", false)
+        );
+
+        // Models that merely end in `[1m]` but are NOT 1M-capable must be left
+        // untouched — never strip them or send `context-1m` (it can 400 or
+        // silently truncate, e.g. on sonnet-4-5 where the header was retired).
+        for not_1m in [
+            "claude-3-haiku[1m]",
+            "claude-3-haiku-20240307[1m]",
+            "claude-sonnet-4-5[1m]",
+            "totally-made-up[1m]",
+        ] {
+            assert_eq!(split_million_context(not_1m), (not_1m, false), "{not_1m}");
+        }
+    }
 
     #[test]
     fn test_to_discovered_profile_basic() {

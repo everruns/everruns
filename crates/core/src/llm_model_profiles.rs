@@ -254,6 +254,14 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6"], ModelVendor::Anthropic, ANTHROPIC),
+    // 1M-context twins. The gateway exposes these `[1m]` ids alongside the
+    // 200K base models (e.g. "Opus 4.8" vs "Opus 4.8 (1M)" in the picker); the
+    // driver sends the `context-1m` beta header for them. See
+    // `anthropic_1m_variant` for how their profiles are derived.
+    md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
@@ -1997,6 +2005,24 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
+/// Derive the 1M-context variant of a base Anthropic profile.
+///
+/// The gateway exposes `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) as
+/// large-context twins of the 200K base profiles. Anthropic serves the full 1M
+/// window at standard per-token rates — there is no long-context premium — so
+/// the variant keeps the base profile's cost verbatim (no `cost_tiers`) and
+/// only raises the context limit. The display name gains a "(1M)" suffix to
+/// disambiguate the two entries in the model picker; `family` is left unchanged
+/// so the pair groups together. The Anthropic driver additionally sends the
+/// `context-1m` beta header for these ids.
+fn anthropic_1m_variant(mut profile: LlmModelProfile) -> LlmModelProfile {
+    if let Some(limits) = profile.limits.as_mut() {
+        limits.context = 1_000_000;
+    }
+    profile.name = format!("{} (1M)", profile.name);
+    profile
+}
+
 fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     match model_id {
         // Claude Fable 5 (newest — top tier above Opus)
@@ -2028,7 +2054,8 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
-                context: 1_000_000,
+                // Bare id is the 200K profile; `claude-fable-5[1m]` is the 1M twin.
+                context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
@@ -2069,7 +2096,8 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
-                context: 1_000_000,
+                // Bare id is the 200K profile; `claude-opus-4-8[1m]` is the 1M twin.
+                context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
@@ -2108,7 +2136,8 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
-                context: 1_000_000,
+                // Bare id is the 200K profile; `claude-opus-4-7[1m]` is the 1M twin.
+                context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
@@ -2144,7 +2173,8 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 cost_tiers: vec![],
             }),
             limits: Some(LlmModelLimits {
-                context: 1_000_000,
+                // Bare id is the 200K profile; `claude-opus-4-6[1m]` is the 1M twin.
+                context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: Some(600),
@@ -2158,6 +2188,19 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supported_parameters: Vec::new(),
             supports_phases: false,
         }),
+
+        // 1M-context twins of the base profiles above. Same pricing and
+        // capabilities; only the context limit and display name differ.
+        "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
+        "claude-opus-4-8[1m]" => {
+            anthropic_profile_data("claude-opus-4-8").map(anthropic_1m_variant)
+        }
+        "claude-opus-4-7[1m]" => {
+            anthropic_profile_data("claude-opus-4-7").map(anthropic_1m_variant)
+        }
+        "claude-opus-4-6[1m]" => {
+            anthropic_profile_data("claude-opus-4-6").map(anthropic_1m_variant)
+        }
 
         "claude-sonnet-4-6" => Some(LlmModelProfile {
             name: "Claude Sonnet 4.6".into(),
@@ -3534,7 +3577,8 @@ mod tests {
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_000_000);
+        // Bare id is the 200K profile; the 1M window is `claude-opus-4-7[1m]`.
+        assert_eq!(limits.context, 200_000);
         assert_eq!(limits.output, 128_000);
         assert_eq!(limits.max_media, None);
 
@@ -3571,7 +3615,8 @@ mod tests {
         assert!(profile.structured_output);
 
         let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_000_000);
+        // Bare id is the 200K profile; the 1M window is `claude-opus-4-6[1m]`.
+        assert_eq!(limits.context, 200_000);
         assert_eq!(limits.output, 128_000);
         assert_eq!(limits.max_media, Some(600));
 
@@ -3855,7 +3900,9 @@ mod tests {
         assert_eq!(cost.input, 10.00);
         assert_eq!(cost.output, 50.00);
         let limits = profile.limits.as_ref().unwrap();
-        assert_eq!(limits.context, 1_000_000);
+        // Bare id is the 200K profile; the 1M window is `claude-fable-5[1m]`
+        // (see test_claude_fable_5_1m_variant).
+        assert_eq!(limits.context, 200_000);
         assert_eq!(limits.output, 128_000);
         assert!(profile.reasoning_effort.is_some());
     }
@@ -3868,8 +3915,52 @@ mod tests {
         assert!(profile.reasoning);
         // Opus 4.8 removed sampling parameters (temperature returns 400).
         assert!(!profile.temperature);
-        assert_eq!(profile.limits.as_ref().unwrap().context, 1_000_000);
+        // Bare id is the 200K profile; the 1M window is `claude-opus-4-8[1m]`.
+        assert_eq!(profile.limits.as_ref().unwrap().context, 200_000);
         assert!(profile.reasoning_effort.is_some());
+    }
+
+    #[test]
+    fn test_claude_opus_4_8_1m_variant() {
+        // `[1m]` is the large-context twin: same flat pricing, 1M context,
+        // "(1M)" display suffix, shared family for grouping.
+        let base = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8").unwrap();
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+
+        let m1 = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Opus 4.8 (1M)");
+        assert_eq!(m1.family, "claude-opus-4-8");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
+
+        // Flat standard pricing — Anthropic serves the 1M window with no
+        // long-context premium, so cost matches the 200K base exactly.
+        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
+        assert_eq!(m1_cost.input, base_cost.input);
+        assert_eq!(m1_cost.output, base_cost.output);
+        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
+        assert!(m1_cost.cost_tiers.is_empty());
+    }
+
+    #[test]
+    fn test_claude_fable_5_1m_variant() {
+        let base = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5").unwrap();
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+
+        let m1 = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Fable 5 (1M)");
+        assert_eq!(m1.family, "claude-fable-5");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
+    }
+
+    #[test]
+    fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
+        for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
+            let m1 = get_model_profile(&LlmProviderType::Anthropic, id).unwrap();
+            assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+            assert!(m1.name.ends_with("(1M)"));
+        }
     }
 
     #[test]
