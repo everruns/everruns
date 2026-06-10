@@ -49,9 +49,20 @@ Disabled by default. Controlled by a single environment variable:
 EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true   # or 1
 ```
 
-`DirectEgressService::from_env()` resolves the allowlist at construction; the
-default OSS platform (`crates/server/src/platform.rs`) wires it in. When unset
-or falsey, egress behavior is unchanged.
+`DirectEgressService::from_env()` resolves the allowlist at construction. When
+unset or falsey, egress behavior is unchanged.
+
+The env var is read by every process that builds an egress service, so it
+applies uniformly across the **control plane** and **workers**:
+
+- `crates/server/src/platform.rs` — control-plane / in-process platform.
+- `crates/worker/src/platform.rs` — distributed worker platform.
+- `crates/server/src/domains/mcp_servers/service.rs` — MCP server egress.
+
+Each must construct egress via `DirectEgressService::from_env()` (not
+`::default()`) so the toggle is honored everywhere. The list contents are *not*
+env-configurable — they are the curated embedded TOML; only the on/off toggle is
+environmental.
 
 ## Enforcement
 

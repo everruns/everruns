@@ -1368,7 +1368,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 let egress = self
                     .egress_service
                     .clone()
-                    .unwrap_or_else(|| Arc::new(everruns_core::DirectEgressService::default()));
+                    .unwrap_or_else(|| Arc::new(everruns_core::DirectEgressService::from_env()));
                 build_scoped_mcp_tool_definitions(
                     &effective,
                     Some(session.id),
