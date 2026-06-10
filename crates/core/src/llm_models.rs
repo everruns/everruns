@@ -19,6 +19,8 @@ use utoipa::ToSchema;
 pub enum LlmProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     Openai,
+    /// OpenRouter using the OpenAI-compatible Responses API
+    Openrouter,
     /// Azure OpenAI using the Azure-hosted OpenAI v1 API
     #[serde(rename = "azure_openai")]
     AzureOpenai,
@@ -39,6 +41,7 @@ impl std::fmt::Display for LlmProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             LlmProviderType::Openai => write!(f, "openai"),
+            LlmProviderType::Openrouter => write!(f, "openrouter"),
             LlmProviderType::AzureOpenai => write!(f, "azure_openai"),
             LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
             LlmProviderType::Anthropic => write!(f, "anthropic"),
@@ -55,6 +58,7 @@ impl std::str::FromStr for LlmProviderType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "openai" => Ok(LlmProviderType::Openai),
+            "openrouter" => Ok(LlmProviderType::Openrouter),
             "azure_openai" => Ok(LlmProviderType::AzureOpenai),
             "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
             "anthropic" => Ok(LlmProviderType::Anthropic),
@@ -436,6 +440,10 @@ mod tests {
             "\"openai\""
         );
         assert_eq!(
+            serde_json::to_string(&LlmProviderType::Openrouter).unwrap(),
+            "\"openrouter\""
+        );
+        assert_eq!(
             serde_json::to_string(&LlmProviderType::OpenaiCompletions).unwrap(),
             "\"openai_completions\""
         );
@@ -465,6 +473,10 @@ mod tests {
             LlmProviderType::Openai
         ));
         assert!(matches!(
+            serde_json::from_str::<LlmProviderType>("\"openrouter\"").unwrap(),
+            LlmProviderType::Openrouter
+        ));
+        assert!(matches!(
             serde_json::from_str::<LlmProviderType>("\"openai_completions\"").unwrap(),
             LlmProviderType::OpenaiCompletions
         ));
@@ -492,6 +504,10 @@ mod tests {
         assert!(matches!(
             "openai".parse::<LlmProviderType>().unwrap(),
             LlmProviderType::Openai
+        ));
+        assert!(matches!(
+            "openrouter".parse::<LlmProviderType>().unwrap(),
+            LlmProviderType::Openrouter
         ));
         assert!(matches!(
             "openai_completions".parse::<LlmProviderType>().unwrap(),
@@ -552,6 +568,7 @@ mod tests {
     fn test_llm_provider_type_display() {
         // Verify Display works correctly
         assert_eq!(LlmProviderType::Openai.to_string(), "openai");
+        assert_eq!(LlmProviderType::Openrouter.to_string(), "openrouter");
         assert_eq!(LlmProviderType::AzureOpenai.to_string(), "azure_openai");
         assert_eq!(
             LlmProviderType::OpenaiCompletions.to_string(),

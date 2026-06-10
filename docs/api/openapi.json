@@ -21602,6 +21602,7 @@
         "description": "LLM provider type",
         "enum": [
           "openai",
+          "openrouter",
           "azure_openai",
           "openai_completions",
           "anthropic",

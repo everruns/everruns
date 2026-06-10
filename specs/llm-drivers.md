@@ -274,7 +274,7 @@ sequenceDiagram
 
 ## OpenAI Driver Variants
 
-The OpenAI crate provides two driver implementations:
+The OpenAI crate provides three driver implementations:
 
 1. **OpenAILlmDriver** (`ProviderType::OpenAI`)
    - Uses Open Responses API (https://www.openresponses.org/)
@@ -286,7 +286,14 @@ The OpenAI crate provides two driver implementations:
    - For backward compatibility with legacy integrations
    - Wraps `OpenAIProtocolLlmDriver`
 
-Both drivers share the same base URL handling and can work with OpenAI-compatible endpoints.
+3. **OpenRouterLlmDriver** (`ProviderType::OpenRouter`)
+   - Uses OpenRouter's OpenAI-compatible Responses API
+   - Defaults to `https://openrouter.ai/api/v1/responses`
+   - Wraps `OpenResponsesProtocolLlmDriver` with the OpenRouter provider profile
+
+The Responses drivers share the same base URL handling and can work with
+OpenAI-compatible endpoints while keeping provider-specific request features
+gated by the resolved provider type.
 
 ### Model Discovery and Capability Profiles
 

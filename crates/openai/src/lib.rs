@@ -4,9 +4,10 @@
 //! ecosystem. It implements the [`LlmDriver`] contract from `everruns-core` and
 //! registers OpenAI providers into a [`DriverRegistry`].
 //!
-//! The crate exposes two drivers:
+//! The crate exposes three drivers:
 //!
 //! - [`OpenAILlmDriver`], the recommended Responses API driver.
+//! - [`OpenRouterLlmDriver`], the OpenRouter Responses API driver.
 //! - [`OpenAICompletionsLlmDriver`], a Chat Completions compatibility driver.
 //!
 //! # Registering the Driver
@@ -60,7 +61,9 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
+pub use driver::{
+    OpenAICompletionsLlmDriver, OpenAILlmDriver, OpenRouterLlmDriver, register_driver,
+};
 pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,

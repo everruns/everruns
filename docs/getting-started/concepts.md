@@ -167,7 +167,7 @@ System-wide configuration for LLM providers, models, and MCP servers.
 
 An LLM Provider is a configured API provider such as OpenAI or Anthropic. Providers store encrypted API keys and contain models.
 
-- Provider types: `openai`, `openai_completions`, `anthropic`
+- Provider types include `openai`, `openrouter`, `openai_completions`, `anthropic`, `gemini`, and `bedrock`
 - Each provider contains many models
 - Default providers (OpenAI, Anthropic) are seeded on startup
 

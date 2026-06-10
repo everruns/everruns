@@ -847,6 +847,8 @@ pub enum ProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     /// This is the recommended API for new projects.
     OpenAI,
+    /// OpenRouter using the OpenAI-compatible Responses API.
+    OpenRouter,
     /// Azure OpenAI using the Azure-hosted OpenAI v1 API.
     AzureOpenAI,
     /// OpenAI using Chat Completions API (for backward compatibility)
@@ -867,6 +869,7 @@ impl std::str::FromStr for ProviderType {
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "openai" => Ok(ProviderType::OpenAI),
+            "openrouter" => Ok(ProviderType::OpenRouter),
             "azure_openai" => Ok(ProviderType::AzureOpenAI),
             "openai_completions" => Ok(ProviderType::OpenAICompletions),
             "anthropic" => Ok(ProviderType::Anthropic),
@@ -882,6 +885,7 @@ impl std::fmt::Display for ProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ProviderType::OpenAI => write!(f, "openai"),
+            ProviderType::OpenRouter => write!(f, "openrouter"),
             ProviderType::AzureOpenAI => write!(f, "azure_openai"),
             ProviderType::OpenAICompletions => write!(f, "openai_completions"),
             ProviderType::Anthropic => write!(f, "anthropic"),
@@ -1128,6 +1132,10 @@ mod tests {
             ProviderType::OpenAI
         );
         assert_eq!(
+            "openrouter".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenRouter
+        );
+        assert_eq!(
             "openai_completions".parse::<ProviderType>().unwrap(),
             ProviderType::OpenAICompletions
         );
@@ -1151,6 +1159,7 @@ mod tests {
     #[test]
     fn test_provider_type_display() {
         assert_eq!(ProviderType::OpenAI.to_string(), "openai");
+        assert_eq!(ProviderType::OpenRouter.to_string(), "openrouter");
         assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
         assert_eq!(
             ProviderType::OpenAICompletions.to_string(),

@@ -20,12 +20,14 @@ use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage,
     LlmResponseStream, ProviderType,
 };
+use everruns_core::llm_models::LlmProviderType;
 use everruns_core::openai_protocol::is_azure_openai_api_url;
 use everruns_core::{CompactRequest, CompactResponse};
 
 use crate::types::{OpenAiModelsResponse, OpenRouterModelsResponse};
 
 const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
+const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
 
 // ============================================================================
 // OpenAI LLM Driver (Open Responses API)
@@ -161,6 +163,71 @@ impl std::fmt::Debug for OpenAILlmDriver {
         f.debug_struct("OpenAILlmDriver")
             .field("api_url", &self.api_url())
             .field("api", &"Open Responses")
+            .field("api_key", &"[REDACTED]")
+            .finish()
+    }
+}
+
+// ============================================================================
+// OpenRouter LLM Driver (OpenAI-compatible Responses API)
+// ============================================================================
+
+/// OpenRouter driver using its OpenAI-compatible Responses API.
+#[derive(Clone)]
+pub struct OpenRouterLlmDriver {
+    inner: OpenResponsesProtocolLlmDriver,
+}
+
+impl OpenRouterLlmDriver {
+    /// Create a new OpenRouter driver with the default Responses API endpoint.
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, OPENROUTER_RESPONSES_URL)
+                .with_provider_type(LlmProviderType::Openrouter),
+        }
+    }
+
+    /// Create a new OpenRouter driver with an explicit API URL override.
+    pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
+        let api_url = normalize_api_url(&api_url.into(), "/responses");
+        Self {
+            inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, api_url)
+                .with_provider_type(LlmProviderType::Openrouter),
+        }
+    }
+
+    /// Get the API URL.
+    pub fn api_url(&self) -> &str {
+        self.inner.api_url()
+    }
+
+    /// Get the provider type used for model profile lookup.
+    pub fn provider_type(&self) -> &LlmProviderType {
+        self.inner.provider_type()
+    }
+}
+
+#[async_trait]
+impl LlmDriver for OpenRouterLlmDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        self.inner.chat_completion_stream(messages, config).await
+    }
+
+    async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        let models_url = models_url_for_api_url(self.api_url());
+        list_models_for_url(self.inner.client(), self.inner.api_key(), &models_url).await
+    }
+}
+
+impl std::fmt::Debug for OpenRouterLlmDriver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenRouterLlmDriver")
+            .field("api_url", &self.api_url())
+            .field("api", &"OpenRouter Responses")
             .field("api_key", &"[REDACTED]")
             .finish()
     }
@@ -442,6 +509,7 @@ fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> R
 ///
 /// This registers:
 /// - `ProviderType::OpenAI` - Open Responses API (recommended)
+/// - `ProviderType::OpenRouter` - OpenRouter Responses API
 /// - `ProviderType::AzureOpenAI` - Azure OpenAI Responses API
 /// - `ProviderType::OpenAICompletions` - Chat Completions API (backward compatibility)
 ///
@@ -460,6 +528,14 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         let driver = match base_url {
             Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
             None => OpenAILlmDriver::new(api_key),
+        };
+        Box::new(driver) as BoxedLlmDriver
+    });
+
+    registry.register(ProviderType::OpenRouter, |api_key, base_url| {
+        let driver = match base_url {
+            Some(url) => OpenRouterLlmDriver::with_base_url(api_key, url),
+            None => OpenRouterLlmDriver::new(api_key),
         };
         Box::new(driver) as BoxedLlmDriver
     });

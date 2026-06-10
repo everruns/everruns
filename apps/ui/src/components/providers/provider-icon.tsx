@@ -89,6 +89,7 @@ function AwsBedrockIcon({ size }: { size: number }) {
 
 const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
+  openrouter: Server,
   azure_openai: AzureOpenAiIcon,
   openai_completions: OpenAiIcon,
   anthropic: AnthropicIcon,
@@ -98,6 +99,7 @@ const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ si
 
 const PROVIDER_LABELS: Record<LlmProviderType, string> = {
   openai: "OpenAI (Responses)",
+  openrouter: "OpenRouter",
   azure_openai: "Azure OpenAI",
   openai_completions: "OpenAI (Completions)",
   anthropic: "Anthropic",

@@ -19,6 +19,7 @@ import type { LlmProvider, LlmProviderType, CreateLlmProviderRequest } from "@/l
 
 const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI (Responses API)" },
+  { value: "openrouter", label: "OpenRouter" },
   { value: "azure_openai", label: "Azure OpenAI" },
   { value: "openai_completions", label: "OpenAI (Completions API)" },
   { value: "anthropic", label: "Anthropic" },
@@ -32,6 +33,8 @@ function getApiKeyPlaceholder(providerType: LlmProviderType): string {
     case "openai":
     case "openai_completions":
       return "sk-...";
+    case "openrouter":
+      return "sk-or-...";
     case "azure_openai":
       return "Azure OpenAI resource key";
     case "anthropic":
@@ -49,6 +52,8 @@ function getBaseUrlPlaceholder(providerType: LlmProviderType): string {
       return "https://your-resource.openai.azure.com/openai/v1";
     case "openai":
       return "https://api.openai.com/v1";
+    case "openrouter":
+      return "https://openrouter.ai/api/v1";
     case "openai_completions":
       return "https://api.openai.com/v1/chat/completions";
     case "anthropic":
