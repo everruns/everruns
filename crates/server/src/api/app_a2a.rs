@@ -19,7 +19,7 @@ use std::sync::Arc;
 use axum::{
     Extension, Json, Router,
     body::Bytes,
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, OriginalUri, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
         IntoResponse, Response,
@@ -54,8 +54,9 @@ use crate::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::storage::{EncryptionService, StorageBackend};
 
-const A2A_PROTOCOL_VERSION: &str = "0.3.0";
+const A2A_PROTOCOL_VERSION: &str = "1.0";
 const A2A_AGENT_VERSION: &str = "0.1";
+const A2A_PROTOCOL_BINDING_JSONRPC: &str = "JSONRPC";
 
 // THREAT[TM-A2A-005]: Method gating — only the listed methods reach the
 // session pipeline. Allowing arbitrary A2A methods would expose code paths we
@@ -1108,6 +1109,7 @@ fn command_error_response(
 )]
 pub async fn agent_card(
     State(state): State<AppA2aState>,
+    OriginalUri(original_uri): OriginalUri,
     Path((app_id, channel_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorResponse>)> {
@@ -1128,9 +1130,9 @@ pub async fn agent_card(
     }
     let config = channel.a2a_config().ok_or_else(not_found)?;
 
-    // Build absolute endpoint URL using the inbound Host header. Agents
-    // discovering the card need an absolute URL; if Host is missing we fall
-    // back to a relative path.
+    // Build the absolute endpoint URL from the actual request URI and inbound
+    // Host header. Test and proxy deployments can mount API routes under a
+    // prefix such as `/api`; deriving from the original URI preserves it.
     let scheme = headers
         .get("x-forwarded-proto")
         .and_then(|h| h.to_str().ok())
@@ -1138,12 +1140,13 @@ pub async fn agent_card(
     let host = headers
         .get(axum::http::header::HOST)
         .and_then(|h| h.to_str().ok());
+    let endpoint_path = original_uri
+        .path()
+        .strip_suffix("/.well-known/agent-card.json")
+        .unwrap_or_else(|| original_uri.path());
     let endpoint = match host {
-        Some(host) => format!(
-            "{scheme}://{host}/v1/apps/{}/a2a/{}",
-            app.public_id, channel.public_id
-        ),
-        None => format!("/v1/apps/{}/a2a/{}", app.public_id, channel.public_id),
+        Some(host) => format!("{scheme}://{host}{endpoint_path}"),
+        None => endpoint_path.to_string(),
     };
 
     let name = config
@@ -1160,10 +1163,14 @@ pub async fn agent_card(
     let card = json!({
         "name": name,
         "description": description,
-        "url": endpoint,
-        "protocolVersion": A2A_PROTOCOL_VERSION,
         "version": A2A_AGENT_VERSION,
-        "preferredTransport": "JSONRPC",
+        "supportedInterfaces": [
+            {
+                "url": endpoint,
+                "protocolBinding": A2A_PROTOCOL_BINDING_JSONRPC,
+                "protocolVersion": A2A_PROTOCOL_VERSION,
+            }
+        ],
         "capabilities": {
             // Streaming is only supported on session_per_invocation channels.
             // Shared-session channels reject message/stream because events
@@ -1183,7 +1190,7 @@ pub async fn agent_card(
             }
         ],
         "securitySchemes": security_schemes,
-        "security": security,
+        "securityRequirements": security,
     });
     Ok(Json(card))
 }
@@ -1203,10 +1210,11 @@ fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, 
             map.insert(
                 "everrunsHmacSignature".to_string(),
                 json!({
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": A2A_SIGNATURE_HEADER,
-                    "description": "HMAC-SHA256 over v0:{timestamp}:{body}; pair with X-Everruns-A2A-Timestamp",
+                    "apiKeySecurityScheme": {
+                        "location": "header",
+                        "name": A2A_SIGNATURE_HEADER,
+                        "description": "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp",
+                    }
                 }),
             );
         }
@@ -1224,13 +1232,13 @@ fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, 
 fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
     let Some(auth) = config.auth.as_ref() else {
         return (
-            json!({ "apiKey": { "type": "http", "scheme": "bearer" } }),
+            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "apiKey": [] }]),
         );
     };
     match (&auth.mode, auth.provider.as_ref()) {
         (everruns_core::AppEndpointAuthMode::HttpBasic, _) => (
-            json!({ "httpBasic": { "type": "http", "scheme": "basic" } }),
+            json!({ "httpBasic": { "httpAuthSecurityScheme": { "scheme": "basic" } } }),
             json!([{ "httpBasic": [] }]),
         ),
         (
@@ -1239,8 +1247,9 @@ fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value)
         ) => (
             json!({
                 "googleOidc": {
-                    "type": "openIdConnect",
-                    "openIdConnectUrl": "https://accounts.google.com/.well-known/openid-configuration"
+                    "openIdConnectSecurityScheme": {
+                        "openIdConnectUrl": "https://accounts.google.com/.well-known/openid-configuration"
+                    }
                 }
             }),
             json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
@@ -1256,29 +1265,28 @@ fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value)
             (
                 json!({
                     "oidc": {
-                        "type": "openIdConnect",
-                        "openIdConnectUrl": discovery
+                        "openIdConnectSecurityScheme": {
+                            "openIdConnectUrl": discovery
+                        }
                     }
                 }),
                 json!([{ "oidc": auth.requirements.scopes.clone() }]),
             )
         }
+        // The linked A2A schema models OAuth2 as concrete OpenAPI flows. An
+        // introspection-only channel has no token URL to publish, so advertise
+        // generic bearer auth rather than fabricating an unusable OAuth flow.
         (everruns_core::AppEndpointAuthMode::OAuth2Introspection, _) => (
-            json!({
-                "oauth2": {
-                    "type": "oauth2",
-                    "flows": {}
-                }
-            }),
-            json!([{ "oauth2": auth.requirements.scopes.clone() }]),
+            json!({ "oauth2Bearer": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
+            json!([{ "oauth2Bearer": auth.requirements.scopes.clone() }]),
         ),
         (everruns_core::AppEndpointAuthMode::Mtls, _) => (
-            json!({ "mtls": { "type": "mutualTLS" } }),
+            json!({ "mtls": { "mtlsSecurityScheme": {} } }),
             json!([{ "mtls": [] }]),
         ),
         (everruns_core::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
         _ => (
-            json!({ "apiKey": { "type": "http", "scheme": "bearer" } }),
+            json!({ "apiKey": { "httpAuthSecurityScheme": { "scheme": "bearer" } } }),
             json!([{ "apiKey": [] }]),
         ),
     }
@@ -1371,6 +1379,48 @@ mod tests {
     fn extract_a2a_api_key_rejects_missing() {
         let headers = HeaderMap::new();
         assert!(extract_a2a_api_key(&headers).is_none());
+    }
+
+    #[test]
+    fn oauth2_introspection_security_advertises_bearer_auth() {
+        let config = everruns_core::A2aChannelConfig {
+            api_key_hash: "hash".to_string(),
+            api_key_prefix: "evra2a_abcd...".to_string(),
+            session_mode: everruns_core::app::InvocationSessionMode::SharedSession,
+            message: "{{a2a.text}}".to_string(),
+            agent_card_name: None,
+            agent_card_description: None,
+            rate_limit_per_minute: None,
+            auth: Some(everruns_core::AppEndpointAuthConfig {
+                mode: everruns_core::AppEndpointAuthMode::OAuth2Introspection,
+                provider: Some(
+                    everruns_core::AppEndpointAuthProviderConfig::OAuth2Introspection {
+                        introspection_url: "https://auth.example.test/introspect".to_string(),
+                        client_id: None,
+                        client_secret: None,
+                    },
+                ),
+                requirements: everruns_core::AppEndpointAuthRequirements {
+                    audiences: vec![],
+                    scopes: vec!["app:invoke".to_string()],
+                    claims: serde_json::Map::new(),
+                    subjects: vec![],
+                    groups: vec![],
+                    domains: vec![],
+                },
+            }),
+            signing_secret: None,
+        };
+
+        let (schemes, requirements) = a2a_security_for_config(&config);
+
+        assert_eq!(
+            schemes["oauth2Bearer"]["httpAuthSecurityScheme"]["scheme"],
+            "bearer"
+        );
+        assert_eq!(requirements, json!([{ "oauth2Bearer": ["app:invoke"] }]));
+        serde_json::from_value::<std::collections::HashMap<String, a2a::SecurityScheme>>(schemes)
+            .expect("securitySchemes should parse as linked A2A security schemes");
     }
 
     #[test]

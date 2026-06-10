@@ -2832,6 +2832,8 @@ dependencies = [
 name = "everruns-server"
 version = "0.9.0"
 dependencies = [
+ "a2a-client-lf",
+ "a2a-lf",
  "aes-gcm",
  "ag-ui-core",
  "anyhow",

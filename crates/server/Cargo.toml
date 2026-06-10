@@ -108,6 +108,8 @@ ag-ui-core = "0.1.0"
 url = "2"
 
 [dev-dependencies]
+a2a.workspace = true
+a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }
 futures.workspace = true
 http-body-util = "0.1"

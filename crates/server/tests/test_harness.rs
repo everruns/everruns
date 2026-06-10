@@ -113,6 +113,18 @@ impl TestServer {
     /// Returns `(server, base_url)`. The server is served on a random port
     /// and the MCP endpoint's `execute` tool can make HTTP callbacks to it.
     pub async fn serving() -> (Self, String) {
+        Self::serving_with_mode(TestMode::Postgres).await
+    }
+
+    /// Create an in-memory test server backed by a real TCP listener.
+    ///
+    /// Returns `(server, base_url)`. Use this when the code under test needs
+    /// to make real HTTP callbacks but does not need PostgreSQL-backed storage.
+    pub async fn serving_in_memory() -> (Self, String) {
+        Self::serving_with_mode(TestMode::InMemory).await
+    }
+
+    async fn serving_with_mode(mode: TestMode) -> (Self, String) {
         use tokio::net::TcpListener;
 
         let listener = TcpListener::bind("127.0.0.1:0")
@@ -121,7 +133,7 @@ impl TestServer {
         let addr = listener.local_addr().unwrap();
         let base_url = format!("http://{addr}");
 
-        let server = Self::with_mode_and_url(TestMode::Postgres, format!("{base_url}/api")).await;
+        let server = Self::with_mode_and_url(mode, format!("{base_url}/api")).await;
         let router = server.router.clone();
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();

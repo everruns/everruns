@@ -246,10 +246,14 @@ A2A channels; otherwise `404`. Card shape:
 {
   "name": "<agent_card_name | app.name>",
   "description": "<agent_card_description | app.description>",
-  "url": "<absolute endpoint URL>",
-  "protocolVersion": "0.3.0",
   "version": "0.1",
-  "preferredTransport": "JSONRPC",
+  "supportedInterfaces": [
+    {
+      "url": "<absolute endpoint URL>",
+      "protocolBinding": "JSONRPC",
+      "protocolVersion": "1.0"
+    }
+  ],
   "capabilities": {
     "streaming": true,
     "pushNotifications": false,
@@ -266,13 +270,14 @@ A2A channels; otherwise `404`. Card shape:
     }
   ],
   "securitySchemes": { "...": "derived from channel_config.auth" },
-  "security": [{ "...": [] }]
+  "securityRequirements": [{ "...": [] }]
 }
 ```
 
 The Agent Card derives `securitySchemes` from the effective channel auth policy:
 legacy/default API key emits HTTP bearer; HTTP Basic emits `http/basic`; Google
-and generic OIDC emit `openIdConnect`; OAuth2 introspection emits `oauth2`;
+and generic OIDC emit `openIdConnect`; OAuth2 introspection emits generic HTTP
+bearer because the A2A schema requires concrete token flows for OAuth2 schemes;
 mTLS emits `mutualTLS`. The card never includes credentials, hashes, trusted
 header values, or the channel internal id.
 
