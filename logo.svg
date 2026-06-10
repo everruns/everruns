@@ -6,15 +6,17 @@
   <defs>
     <!--
       Three rings on the vertices of an equilateral triangle (true 3-fold
-      symmetry). Centroid of the ring centers sits exactly on the canvas
-      center (256, 256), which is also the GOLD convergence point.
+      symmetry), translated so the artwork's visual bounding box is
+      centered in the canvas (optically centered).
         r = 120, side d = 125.34, circumradius R = d/sqrt(3) = 72.36
+      Centroid of the ring centers (and the GOLD convergence point) is at
+      (256, 274.09).
     -->
 
     <!-- Top ring -->
     <linearGradient id="gTop" gradientUnits="userSpaceOnUse"
-      x1="256" y1="63.64"
-      x2="256" y2="256">
+      x1="256" y1="81.73"
+      x2="256" y2="274.09">
       <stop offset="0.00" stop-color="#0A1636"/>
       <stop offset="0.70" stop-color="#0A1636"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
@@ -22,8 +24,8 @@
 
     <!-- Bottom-left ring -->
     <linearGradient id="gLeft" gradientUnits="userSpaceOnUse"
-      x1="89.41" y1="352.18"
-      x2="256" y2="256">
+      x1="89.41" y1="370.27"
+      x2="256" y2="274.09">
       <stop offset="0.00" stop-color="#081C3F"/>
       <stop offset="0.70" stop-color="#081C3F"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
@@ -31,8 +33,8 @@
 
     <!-- Bottom-right ring -->
     <linearGradient id="gRight" gradientUnits="userSpaceOnUse"
-      x1="422.59" y1="352.18"
-      x2="256" y2="256">
+      x1="422.59" y1="370.27"
+      x2="256" y2="274.09">
       <stop offset="0.00" stop-color="#0B1233"/>
       <stop offset="0.70" stop-color="#0B1233"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
@@ -46,13 +48,13 @@
      stroke-linejoin="round">
 
     <!-- Top -->
-    <circle cx="256" cy="183.64" r="120" stroke="url(#gTop)"/>
+    <circle cx="256" cy="201.73" r="120" stroke="url(#gTop)"/>
 
     <!-- Bottom-left -->
-    <circle cx="193.33" cy="292.18" r="120" stroke="url(#gLeft)"/>
+    <circle cx="193.33" cy="310.27" r="120" stroke="url(#gLeft)"/>
 
     <!-- Bottom-right -->
-    <circle cx="318.67" cy="292.18" r="120" stroke="url(#gRight)"/>
+    <circle cx="318.67" cy="310.27" r="120" stroke="url(#gRight)"/>
 
   </g>
 </svg>
