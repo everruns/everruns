@@ -316,7 +316,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     }
 
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
-    /// Default: `None` (no heartbeating — dev/test environments use no-op).
+    /// Default: `None` (no heartbeats sent — durable workers supply one).
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
         None
     }

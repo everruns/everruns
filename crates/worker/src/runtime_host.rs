@@ -279,6 +279,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.stream_heartbeater()
     }
 
+    fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
+        self.adapters.provider_stall_timeout()
+    }
+
     /// Execute `mcp_*` tool calls by resolving server connections over gRPC and
     /// calling them through the shared MCP client over the platform egress
     /// boundary (SSRF-guarded). Returns `None` when no egress service is

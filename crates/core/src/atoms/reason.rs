@@ -1611,6 +1611,14 @@ impl ReasonAtom {
             keepalive_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             keepalive_ticker.tick().await; // consume immediate first tick
             let mut last_stream_heartbeat = Instant::now();
+            // Tracks the wall-clock time of the last actual token received.
+            // Updated only on content events; keepalive heartbeats use this
+            // so the control plane can distinguish "alive/slow" from "making
+            // progress" without conflating keepalive pings with real tokens.
+            let mut last_token_at_unix: u64 = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
 
             loop {
                 let event = tokio::select! {
@@ -1633,13 +1641,9 @@ impl ReasonAtom {
                     },
                     _ = keepalive_ticker.tick() => {
                         if let Some(ref hb) = self.stream_heartbeater {
-                            let now_secs = std::time::SystemTime::now()
-                                .duration_since(std::time::UNIX_EPOCH)
-                                .unwrap_or_default()
-                                .as_secs();
                             hb.heartbeat(crate::traits::StreamProgress {
                                 accumulated_len: text.len() + thinking.len(),
-                                last_delta_at: now_secs,
+                                last_delta_at: last_token_at_unix,
                             })
                             .await;
                             last_stream_heartbeat = Instant::now();
@@ -1651,21 +1655,6 @@ impl ReasonAtom {
                 stall_sleep
                     .as_mut()
                     .reset(tokio::time::Instant::now() + stall_timeout);
-                // Per-event heartbeat (throttled to every 5s)
-                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
-                    && let Some(ref hb) = self.stream_heartbeater
-                {
-                    let now_secs = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or_default()
-                        .as_secs();
-                    hb.heartbeat(crate::traits::StreamProgress {
-                        accumulated_len: text.len() + thinking.len(),
-                        last_delta_at: now_secs,
-                    })
-                    .await;
-                    last_stream_heartbeat = Instant::now();
-                }
                 match event? {
                     LlmStreamEvent::TextDelta(delta) => {
                         // Track time-to-first-token on first non-empty delta
@@ -1680,6 +1669,10 @@ impl ReasonAtom {
                         }
                         text.push_str(&delta);
                         pending_delta.push_str(&delta);
+                        last_token_at_unix = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
 
                         // Run output guardrails on the new accumulated text.
                         // Cheap by contract — runs in the streaming hot path.
@@ -1735,6 +1728,10 @@ impl ReasonAtom {
                         // Accumulate thinking content from extended thinking models
                         thinking.push_str(&delta);
                         pending_thinking_delta.push_str(&delta);
+                        last_token_at_unix = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
                         tracing::debug!(
                             session_id = %session_id,
                             delta_len = delta.len(),
@@ -1946,6 +1943,18 @@ impl ReasonAtom {
                             .await;
                         return Err(AgentLoopError::llm(err));
                     }
+                }
+                // Per-event heartbeat after processing the event, so accumulated_len
+                // reflects the just-received tokens. Throttled to every 5s.
+                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
+                    && let Some(ref hb) = self.stream_heartbeater
+                {
+                    hb.heartbeat(crate::traits::StreamProgress {
+                        accumulated_len: text.len() + thinking.len(),
+                        last_delta_at: last_token_at_unix,
+                    })
+                    .await;
+                    last_stream_heartbeat = Instant::now();
                 }
             }
             (
