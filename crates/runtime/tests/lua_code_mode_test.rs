@@ -102,6 +102,20 @@ async fn hides_math_tools_but_runs_them_via_lua() {
         );
     }
 
+    // The hidden tools are advertised in the lua tool description so a real
+    // model can discover them (their standalone schemas are gone).
+    let lua_desc = ctx
+        .runtime_agent
+        .tools
+        .iter()
+        .find(|t| t.name() == "lua")
+        .map(|t| t.description().to_string())
+        .unwrap_or_default();
+    assert!(
+        lua_desc.contains("multiply(a, b)") && lua_desc.contains("tools.<name>"),
+        "lua description should catalog the hidden tools: {lua_desc}",
+    );
+
     // Run the turn; the agent orchestrates the hidden tools inside Lua.
     let turn = runtime
         .run_text_turn(session_id, "Compute 6 * 7 + 8.")

@@ -158,26 +158,43 @@ fn parse_keep_visible(config: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Drops code-mode-eligible tool definitions from the model-facing tool list.
+/// Drops code-mode-eligible tool definitions from the model-facing tool list
+/// and grafts a catalog of them onto the `lua` tool description.
 ///
 /// Tools listed in `keep_visible` are always retained. Everything that is *not*
 /// eligible (the `lua`/`bash` execution tools, destructive, approval-gated,
 /// client-side, and `cpu_bound` tools) is also retained — those stay direct
 /// tool calls.
+///
+/// Because the hidden tools' standalone schemas are removed, the model would
+/// otherwise have no way to discover their names/arguments. So the eligible set
+/// is summarized into a `tools.<name>{ args }` catalog appended to the `lua`
+/// tool's own description — the discovery surface the model reads right before
+/// it decides to call `lua`.
 struct HideCodeModeToolsHook {
     keep_visible: Vec<String>,
 }
 
 impl ToolDefinitionHook for HideCodeModeToolsHook {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
-        tools
-            .into_iter()
-            .filter(|def| {
-                let name = def.name();
-                self.keep_visible.iter().any(|k| k == name)
-                    || !is_code_mode_eligible(name, def.policy(), def.hints())
-            })
-            .collect()
+        let mut kept: Vec<ToolDefinition> = Vec::new();
+        let mut catalog: Vec<String> = Vec::new();
+        for def in tools {
+            let name = def.name();
+            let hidden = !self.keep_visible.iter().any(|k| k == name)
+                && is_code_mode_eligible(name, def.policy(), def.hints());
+            if hidden {
+                catalog.push(format_catalog_entry(&def));
+            } else {
+                kept.push(def);
+            }
+        }
+        if !catalog.is_empty()
+            && let Some(lua) = kept.iter_mut().find(|d| d.name() == "lua")
+        {
+            graft_catalog_onto_lua(lua, &catalog);
+        }
+        kept
     }
 
     fn applies_with_native_tool_search(&self) -> bool {
@@ -185,6 +202,73 @@ impl ToolDefinitionHook for HideCodeModeToolsHook {
         // schema-deferral optimization, so it applies regardless of whether the
         // model uses hosted tool_search.
         true
+    }
+}
+
+/// One catalog line: `- name(arg1, arg2, opt?) — first sentence of description`.
+fn format_catalog_entry(def: &ToolDefinition) -> String {
+    let args = arg_summary(def.full_parameters());
+    let desc = first_sentence(def.description());
+    if desc.is_empty() {
+        format!("- {}({args})", def.name())
+    } else {
+        format!("- {}({args}) — {desc}", def.name())
+    }
+}
+
+/// Comma-separated argument names from a JSON Schema object: required first,
+/// optional suffixed with `?`. The synthetic `human_intent` narration argument
+/// (added by the `human_intent` capability) is omitted as noise.
+fn arg_summary(schema: &Value) -> String {
+    let Some(props) = schema.get("properties").and_then(|v| v.as_object()) else {
+        return String::new();
+    };
+    let required: Vec<&str> = schema
+        .get("required")
+        .and_then(|v| v.as_array())
+        .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
+        .unwrap_or_default();
+    let mut names: Vec<String> = Vec::new();
+    for r in &required {
+        if *r != crate::tool_types::HUMAN_INTENT_ARGUMENT && props.contains_key(*r) {
+            names.push((*r).to_string());
+        }
+    }
+    for key in props.keys() {
+        if key != crate::tool_types::HUMAN_INTENT_ARGUMENT && !required.contains(&key.as_str()) {
+            names.push(format!("{key}?"));
+        }
+    }
+    names.join(", ")
+}
+
+/// First sentence (up to `.` or newline), trimmed and length-capped.
+fn first_sentence(description: &str) -> String {
+    let trimmed = description.trim();
+    let end = trimmed
+        .find(['.', '\n'])
+        .map(|i| i + 1)
+        .unwrap_or(trimmed.len());
+    let mut s = trimmed[..end].trim().to_string();
+    const MAX: usize = 140;
+    if s.len() > MAX {
+        s.truncate(MAX);
+        s.push('…');
+    }
+    s
+}
+
+/// Append the catalog to the `lua` tool's description so the model can discover
+/// the in-script `tools.*` functions.
+fn graft_catalog_onto_lua(def: &mut ToolDefinition, catalog: &[String]) {
+    let block = format!(
+        "\n\nThese tools are available ONLY inside this script via the `tools` table — \
+call them as `tools.<name>{{ args }}` (e.g. `local r = tools.add{{ a = 1, b = 2 }}`):\n{}",
+        catalog.join("\n")
+    );
+    match def {
+        ToolDefinition::Builtin(b) => b.description.push_str(&block),
+        ToolDefinition::ClientSide(c) => c.description.push_str(&block),
     }
 }
 
@@ -261,6 +345,41 @@ mod tests {
         assert!(kept.contains(&"transfer_funds"));
         assert!(kept.contains(&"pick_file"));
         assert!(!kept.contains(&"add"), "eligible tool must be hidden");
+    }
+
+    #[test]
+    fn grafts_catalog_onto_lua_description() {
+        let hook = HideCodeModeToolsHook {
+            keep_visible: Vec::new(),
+        };
+        let add = ToolDefinition::Builtin(BuiltinTool {
+            name: "add".to_string(),
+            display_name: None,
+            description: "Add two numbers together and return the result.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": { "a": { "type": "number" }, "b": { "type": "number" } },
+                "required": ["a", "b"],
+            }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        });
+        let defs = vec![builtin("lua", ToolPolicy::Auto, ToolHints::default()), add];
+
+        let kept = hook.transform(defs);
+        // `add` is gone from the model's tool list...
+        assert_eq!(names(&kept), vec!["lua"]);
+        // ...but discoverable from the lua tool description with its arguments.
+        let lua_desc = kept[0].description();
+        assert!(lua_desc.contains("tools.<name>"), "{lua_desc}");
+        assert!(lua_desc.contains("- add(a, b)"), "{lua_desc}");
+        assert!(
+            lua_desc.contains("Add two numbers together"),
+            "catalog should carry the description: {lua_desc}",
+        );
     }
 
     #[test]

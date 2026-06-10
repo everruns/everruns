@@ -125,6 +125,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    // The hidden tools are still discoverable: their catalog is grafted onto the
+    // `lua` tool description so a real model knows what `tools.*` to call.
+    let lua_desc = ctx
+        .runtime_agent
+        .tools
+        .iter()
+        .find(|t| t.name() == "lua")
+        .map(|t| t.description().to_string())
+        .unwrap_or_default();
+    println!("\n--- lua tool description (tail) ---");
+    if let Some(idx) = lua_desc.find("These tools are available ONLY inside this script") {
+        println!("{}", &lua_desc[idx..]);
+    }
+    assert!(
+        lua_desc.contains("multiply(a, b)"),
+        "lua description should advertise the hidden tools and their args",
+    );
+
     // 2. Run the turn. The agent orchestrates the hidden tools inside Lua.
     let turn = runtime
         .run_text_turn(session_id, "Compute 6 * 7 + 8.")
