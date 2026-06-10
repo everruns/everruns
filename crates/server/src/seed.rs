@@ -2352,8 +2352,8 @@ pub fn spawn_seed_task_with_platform_definition(
 
                 // Single-tenant / dev convenience: materialize DEFAULT_*_API_KEY
                 // env vars into the default org's providers. Runs after seed so
-                // the provider rows exist; gated so multitenant prod never does
-                // this (EVE-511/EVE-512).
+                // the provider rows exist; gated so untrusted users cannot join
+                // DEFAULT_ORG_ID and spend these keys (EVE-511/EVE-512).
                 if materialize_env_provider_keys_allowed(grade) {
                     match &encryption {
                         Some(encryption) => {
