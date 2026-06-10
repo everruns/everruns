@@ -2,8 +2,21 @@
 
 mod test_harness;
 
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
+
+use async_trait::async_trait;
 use axum::http::{Method, StatusCode};
 use everruns_core::DEFAULT_ORG_ID;
+use everruns_core::capabilities::{A2aAgentDelegationCapability, Capability};
+use everruns_core::session_resource::{
+    RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
+};
+use everruns_core::tools::ToolExecutionResult;
+use everruns_core::traits::{SessionResourceRegistry, ToolContext};
+use everruns_core::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
@@ -134,6 +147,144 @@ async fn wait_for_app_invocation_audit_log(
     }
 
     panic!("expected app invocation audit log for channel {channel_id} session {session_id}");
+}
+
+#[derive(Default)]
+struct TestSessionResourceRegistry {
+    entries: Mutex<HashMap<String, SessionResourceEntry>>,
+}
+
+#[async_trait]
+impl SessionResourceRegistry for TestSessionResourceRegistry {
+    async fn register(
+        &self,
+        entry: RegisterSessionResource,
+    ) -> everruns_core::Result<SessionResourceEntry> {
+        let now = chrono::Utc::now();
+        let mut entries = self.entries.lock().unwrap();
+        let existing = entries.get(&entry.resource_id).cloned();
+        let out = SessionResourceEntry {
+            resource_id: entry.resource_id.clone(),
+            session_id: entry.session_id,
+            kind: entry.kind,
+            display_name: entry.display_name,
+            status: entry.status,
+            metadata: entry.metadata,
+            created_at: existing.as_ref().map(|e| e.created_at).unwrap_or(now),
+            updated_at: now,
+        };
+        entries.insert(entry.resource_id, out.clone());
+        Ok(out)
+    }
+
+    async fn update_status(
+        &self,
+        _session_id: SessionId,
+        resource_id: &str,
+        status: SessionResourceStatus,
+    ) -> everruns_core::Result<Option<SessionResourceEntry>> {
+        let mut entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries.get_mut(resource_id) {
+            entry.status = status;
+            entry.updated_at = chrono::Utc::now();
+            return Ok(Some(entry.clone()));
+        }
+        Ok(None)
+    }
+
+    async fn get(
+        &self,
+        _session_id: SessionId,
+        resource_id: &str,
+    ) -> everruns_core::Result<Option<SessionResourceEntry>> {
+        Ok(self.entries.lock().unwrap().get(resource_id).cloned())
+    }
+
+    async fn list(
+        &self,
+        _session_id: SessionId,
+        filter: Option<&SessionResourceFilter>,
+    ) -> everruns_core::Result<Vec<SessionResourceEntry>> {
+        let entries = self.entries.lock().unwrap();
+        Ok(entries
+            .values()
+            .filter(|entry| {
+                filter
+                    .and_then(|f| f.kind.as_deref())
+                    .is_none_or(|kind| entry.kind == kind)
+            })
+            .filter(|entry| {
+                filter
+                    .and_then(|f| f.status)
+                    .is_none_or(|status| entry.status == status)
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn deregister(
+        &self,
+        _session_id: SessionId,
+        resource_id: &str,
+    ) -> everruns_core::Result<bool> {
+        Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
+    }
+}
+
+async fn create_published_served_a2a_app() -> (TestServer, String, String) {
+    let (server, base_url) = TestServer::serving_in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
+    (server, endpoint, api_key)
+}
+
+fn outbound_delegation_config(discovery_base_url: &str, api_key: &str) -> Value {
+    json!({
+        "agents": [{
+            "id": "local_app",
+            "name": "Local App",
+            "description": "Local Everruns A2A app endpoint",
+            "base_url": discovery_base_url,
+            "headers": {
+                "authorization": format!("Bearer {api_key}")
+            },
+            "preferred_binding": "JSONRPC",
+            "poll_interval_ms": 100,
+            "allow_local_urls": true
+        }]
+    })
+}
+
+async fn spawn_background_against_local_a2a(config: Value) -> Value {
+    let capability = A2aAgentDelegationCapability;
+    let spawn_tool = capability
+        .tools_with_config(&config)
+        .into_iter()
+        .find(|tool| tool.name() == "spawn_agent")
+        .expect("spawn_agent tool");
+    let registry = Arc::new(TestSessionResourceRegistry::default());
+    let ctx = ToolContext::new(SessionId::new()).with_session_resource_registry(registry);
+
+    let result = spawn_tool
+        .execute_with_context(
+            json!({
+                "task": "hello from outbound delegation",
+                "target": {"type": "external_a2a", "external_agent_id": "local_app"},
+                "mode": "background",
+                "wait_timeout_secs": 5,
+                "wake_on_completion": false
+            }),
+            &ctx,
+        )
+        .await;
+
+    let ToolExecutionResult::Success(value) = result else {
+        panic!("expected successful spawn_agent result: {result:?}");
+    };
+    value
 }
 
 #[tokio::test]
@@ -895,7 +1046,7 @@ async fn a2a_agent_card_published_only_when_live() {
         .request_raw(
             Method::GET,
             &card_path,
-            vec![("host", "example.test")],
+            vec![("host", "example.test"), ("x-forwarded-proto", "http")],
             vec![],
         )
         .await
@@ -903,14 +1054,31 @@ async fn a2a_agent_card_published_only_when_live() {
         .json();
 
     assert_eq!(card["name"], "Inbox triage");
-    assert_eq!(card["protocolVersion"], "0.3.0");
-    assert_eq!(card["preferredTransport"], "JSONRPC");
+    assert!(card.get("protocolVersion").is_none());
+    assert!(card.get("preferredTransport").is_none());
+    assert!(card.get("url").is_none());
+    let interfaces = card["supportedInterfaces"].as_array().unwrap();
+    assert_eq!(interfaces.len(), 1);
+    assert_eq!(interfaces[0]["protocolBinding"], "JSONRPC");
+    assert_eq!(interfaces[0]["protocolVersion"], "1.0");
     assert!(
-        card["url"]
+        interfaces[0]["url"]
             .as_str()
             .unwrap()
             .ends_with(&format!("/v1/apps/{app_id}/a2a/{channel_id}"))
     );
+    let parsed_card: a2a::AgentCard = serde_json::from_value(card.clone()).unwrap();
+    assert_eq!(parsed_card.supported_interfaces.len(), 1);
+    assert_eq!(
+        parsed_card.supported_interfaces[0].protocol_binding,
+        "JSONRPC"
+    );
+    assert_eq!(parsed_card.supported_interfaces[0].protocol_version, "1.0");
+    a2a_client::A2AClientFactory::builder()
+        .build()
+        .create_from_card(&parsed_card)
+        .await
+        .expect("served AgentCard should negotiate with the linked A2AClientFactory");
     // Streaming is only advertised for session_per_invocation channels.
     // The helper builds a shared_session channel by default, so the card
     // must report streaming=false to stay consistent with the runtime gate.
@@ -934,6 +1102,29 @@ async fn a2a_agent_card_published_only_when_live() {
         .request_raw(Method::GET, &card_path, vec![], vec![])
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn outbound_a2a_delegation_resolves_local_app_discovery_card() {
+    let (_server, endpoint, api_key) = create_published_served_a2a_app().await;
+    let config = outbound_delegation_config(&endpoint, &api_key);
+
+    let spawn_result = spawn_background_against_local_a2a(config).await;
+
+    assert_eq!(spawn_result["status"], "failed");
+    let error = spawn_result["error"].as_str().unwrap_or_default();
+    assert!(
+        !error.contains("Failed to resolve A2A AgentCard"),
+        "card discovery should parse before any send failure: {spawn_result:?}",
+    );
+    assert!(
+        !error.contains("failed to parse agent card"),
+        "served card must deserialize with the outbound A2A resolver: {spawn_result:?}",
+    );
+    assert!(
+        error.contains("A2A send_message failed") || error.contains("Method not found"),
+        "expected remaining failure, if any, to be past AgentCard parsing and in EVE-540 scope: {spawn_result:?}",
+    );
 }
 
 #[tokio::test]
@@ -1757,6 +1948,10 @@ async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
     assert!(
         schemes.contains_key("everrunsHmacSignature"),
         "signing scheme must be advertised when signing_secret is configured"
+    );
+    assert_eq!(
+        schemes["everrunsHmacSignature"]["apiKeySecurityScheme"]["description"],
+        "HMAC-SHA256 over v0:{timestamp}:{channel_scope}:{body}; pair with X-Everruns-A2A-Timestamp"
     );
 
     // Card never echoes the secret.
