@@ -333,6 +333,10 @@ jobs:
         run: |
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
           cargo test -p everruns-runtime --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
+          # Lua code-mode capability: compiles the mlua engine (`lua` feature) and
+          # exercises the end-to-end routing contract + runnable example.
+          cargo test -p everruns-runtime --features lua --test lua_code_mode_test -- --test-threads=1
+          cargo run -p everruns-runtime --features lua --example lua_code_mode_agent
           cargo test -p everruns-cli --test auth_integration_test --test chat_integration_test --test files_integration_test -- --test-threads=1
           # Do not pass --all-features to integration crates: it enables their *-live-tests
           # features, which fail closed without real credentials. Live tests run in their

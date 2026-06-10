@@ -158,15 +158,59 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
     by the allow-list + the central egress boundary (TM-LUA-005).
   - **Code mode (target 7) — DONE.** The agent's sibling tools are registered as
     `tools.<name>(args) -> result`, dispatched over the same channel bridge as
-    `fs.*`. Gated (`gated_code_mode_tools`): only `Auto`-policy, non-destructive,
-    non-`cpu_bound` tools; approval/client-side and the execution tools
-    (`lua`/`bash`) are excluded. The child `ToolContext` drops `tool_registry`, so
-    code mode cannot recurse (TM-LUA-009).
+    `fs.*`. Eligibility is decided by the shared `lua::is_code_mode_eligible`
+    predicate (`gated_code_mode_tools` filters the live registry through it):
+    only `Auto`-policy, non-destructive, non-`cpu_bound` tools; approval/client-side
+    and the execution tools (`lua`/`bash`) are excluded. The child `ToolContext`
+    drops `tool_registry`, so code mode cannot recurse (TM-LUA-009).
+  - **Code-mode routing capability (`lua_code_mode`) — DONE.** Makes Lua the
+    agent's *primary* action surface by hiding the code-mode-eligible tools from
+    the model's direct tool list, so the agent must orchestrate them inside a
+    `lua` script. See "Code-mode routing capability" below.
   - **User libraries (target 6) — deferred.** A controlled `require(path)`-style
     loader that reads a **text** Lua file from `/workspace` and returns its
     exports. Text-only loading stays within the script's trust level (no bytecode
     → TM-LUA-006 holds), but the loader must cap module count/recursion and
     resolve paths through `LuaVfs`. Not yet implemented.
+
+## Code-mode routing capability (`lua_code_mode`)
+
+A separate, composable capability (`crates/core/src/capabilities/lua_code_mode.rs`)
+that turns code mode from an occasional optimization into the agent's default
+action path. It exists to satisfy three constraints:
+
+1. **Capability-extensibility only.** The single mechanism is the existing
+   `ToolDefinitionHook` tool-filtering seam (`specs/capabilities.md`). The hook
+   runs after the runtime agent has merged its final tool list and drops every
+   code-mode-eligible `ToolDefinition` before the schemas reach the model. No
+   new agent-loop plumbing.
+2. **Relies on the `lua` capability.** `lua_code_mode` declares `lua` as a hard
+   dependency and reuses `lua::is_code_mode_eligible` as the *same* predicate the
+   engine uses to expose `tools.<name>`. Because both sides share one predicate,
+   the set hidden from the model is exactly the set Lua re-exposes — a tool can
+   never become unreachable.
+3. **Capabilities export their tools to Lua.** The export channel is the
+   engine's `tools.<name>(args)` table; this capability is what makes that the
+   agent's primary path rather than an opt-in.
+
+Key property that makes this safe: the *executable* `ToolRegistry`
+(`ToolContext::tool_registry`) is built from capability `tools()` independently
+of the model-facing `ToolDefinition` list. The hook only edits the latter, so
+hidden tools stay fully executable — the act atom passes the full registry into
+the Lua child context, and code mode calls them directly (not back through the
+model). Essential tools (the `lua`/`bash` execution tools, destructive,
+approval-gated, client-side, `cpu_bound`) are never eligible and stay direct
+tool calls.
+
+- **Config:** `{ "keep_visible": ["tool_a", ...] }` force-keeps named tools as
+  direct calls even when they would otherwise be routed through Lua. Default empty.
+- **Risk:** `High` — inseparable from `lua` (scripted execution) and admin-gated
+  like its dependency. Registered only when `FEATURE_LUA` is on, next to `lua`.
+- **Evidence:** runnable end-to-end smoke test
+  `crates/runtime/tests/lua_code_mode_test.rs` and the documented example
+  `crates/runtime/examples/lua_code_mode_agent.rs` (both behind the runtime
+  `lua` feature, run in CI) assert that the math tools are hidden from the model
+  yet executed through one `lua` script.
 
 ## Migration (supersede `virtual_bash`)
 

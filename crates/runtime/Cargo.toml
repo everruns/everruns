@@ -21,6 +21,11 @@ default = []
 # server/worker (which depend on this crate transitively) never compile stdio
 # in — see specs/runtime-mcp.md (D2). Embedders like the coding CLI opt in.
 mcp-stdio = ["everruns-mcp/stdio"]
+# Compile the experimental sandboxed Lua execution engine (mlua) into core so
+# the `lua` / `lua_code_mode` capabilities actually run scripts. Off by default
+# so the standard runtime build pulls in no interpreter. Enables the
+# `lua_code_mode_agent` example and the `lua_code_mode_test` integration test.
+lua = ["everruns-core/lua"]
 
 [dependencies]
 async-trait.workspace = true

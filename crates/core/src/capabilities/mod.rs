@@ -105,6 +105,7 @@ mod infinity_context;
 mod knowledge_base;
 mod loop_detection;
 mod lua;
+mod lua_code_mode;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
@@ -212,7 +213,8 @@ pub use knowledge_base::{
     validate_knowledge_base_config,
 };
 pub use loop_detection::LoopDetectionCapability;
-pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs};
+pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs, is_code_mode_eligible};
+pub use lua_code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
 pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
@@ -1030,6 +1032,9 @@ impl CapabilityRegistry {
         // when the `lua` cargo feature is also compiled in.
         if internal_flags.lua {
             registry.register(LuaCapability);
+            // Routes non-essential tool calls through the Lua sandbox by hiding
+            // them from the model's direct tool list. Depends on `lua`.
+            registry.register(LuaCodeModeCapability);
         }
         for plugin in inventory::iter::<IntegrationPlugin>() {
             if (!plugin.experimental_only || grade.experimental_features_enabled())
