@@ -1036,6 +1036,50 @@ impl StreamHeartbeater for NoopStreamHeartbeater {
     async fn heartbeat(&self, _progress: StreamProgress) {}
 }
 
+// ============================================================================
+// PartialStreamStore — partial-stream recovery for Reason activity (EVE-532)
+// ============================================================================
+
+/// State of a partially-streamed assistant message detected in the event log.
+#[derive(Debug, Clone)]
+pub struct PartialStreamState {
+    /// Accumulated text from the last `output.message.delta` for the turn.
+    /// Empty when `output.message.started` was emitted but no delta arrived.
+    pub accumulated: String,
+}
+
+/// Consults the persisted event log to detect whether a `reason` activity
+/// was interrupted after `output.message.started` but before
+/// `output.message.completed` or `output.message.replaced`.
+///
+/// Used by `ReasonAtom` on re-entry to apply the ContinuePartial recovery
+/// policy (EVE-532): finalize the partial text without a second provider call,
+/// or restart clean if the partial is unusable.
+#[async_trait]
+pub trait PartialStreamStore: Send + Sync {
+    /// Return the partial-stream state for `(session_id, turn_id)` if an
+    /// in-flight assistant message exists (started but not completed).
+    async fn get_partial_stream(
+        &self,
+        session_id: SessionId,
+        turn_id: &str,
+    ) -> Result<Option<PartialStreamState>>;
+}
+
+/// No-op — always reports no partial stream (dev/test / in-memory mode).
+pub struct NoopPartialStreamStore;
+
+#[async_trait]
+impl PartialStreamStore for NoopPartialStreamStore {
+    async fn get_partial_stream(
+        &self,
+        _session_id: SessionId,
+        _turn_id: &str,
+    ) -> Result<Option<PartialStreamState>> {
+        Ok(None)
+    }
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:

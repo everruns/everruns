@@ -192,6 +192,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Partial-stream store for ContinuePartial recovery (EVE-532).
+    /// Default: `None` (no recovery; in-memory and dev hosts use this default).
+    fn partial_stream_store(&self) -> Option<Arc<dyn everruns_core::PartialStreamStore>> {
+        None
+    }
+
     /// Provider stall timeout for the Reason activity (EVE-531).
     /// Default: `None` (use built-in 120s default).
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
@@ -974,6 +980,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     }
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
+    }
+    if let Some(store) = adapter.partial_stream_store() {
+        atom = atom.with_partial_stream_store(store);
     }
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);

@@ -57,6 +57,7 @@ pub const TURN_CANCELLED: &str = "turn.cancelled";
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
 pub const REASON_COMPLETED: &str = "reason.completed";
+pub const REASON_RECOVERED: &str = "reason.recovered";
 pub const CAPABILITY_USAGE: &str = "capability.usage";
 pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
@@ -148,6 +149,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TURN_CANCELLED,
     REASON_STARTED,
     REASON_COMPLETED,
+    REASON_RECOVERED,
     ACT_STARTED,
     ACT_COMPLETED,
     TOOL_STARTED,
@@ -459,6 +461,7 @@ impl Event {
             self.event_type.as_str(),
             REASON_STARTED
                 | REASON_COMPLETED
+                | REASON_RECOVERED
                 | ACT_STARTED
                 | ACT_COMPLETED
                 | TOOL_STARTED
@@ -844,6 +847,37 @@ impl ReasonCompletedData {
             usage: None,
         }
     }
+}
+
+/// Recovery mode chosen by the ContinuePartial classifier (EVE-532).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryMode {
+    /// Persisted accumulated text was finalised as the assistant message;
+    /// no second provider call was made.
+    Finalize,
+    /// Partial was unusable (empty accumulated); re-issued the provider call.
+    Restart,
+}
+
+/// Data for the `reason.recovered` event (EVE-532).
+///
+/// Emitted by `ReasonAtom` when it detects an in-flight partial assistant
+/// message from a previous worker execution and applies the ContinuePartial
+/// recovery policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasonRecoveredData {
+    /// Turn ID the partial belonged to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Recovery action taken.
+    pub mode: RecoveryMode,
+
+    /// Character length of the persisted accumulated text.
+    pub accumulated_len: usize,
 }
 
 /// Reporting-only capability usage kinds.
@@ -2287,6 +2321,7 @@ pub enum EventData {
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData),
     ReasonCompleted(ReasonCompletedData),
+    ReasonRecovered(ReasonRecoveredData),
     CapabilityUsage(CapabilityUsageData),
     ActStarted(ActStartedData),
     ActCompleted(ActCompletedData),
@@ -2384,6 +2419,7 @@ impl EventData {
             EventData::TurnCancelled(_) => TURN_CANCELLED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
+            EventData::ReasonRecovered(_) => REASON_RECOVERED,
             EventData::CapabilityUsage(_) => CAPABILITY_USAGE,
             EventData::ActStarted(_) => ACT_STARTED,
             EventData::ActCompleted(_) => ACT_COMPLETED,
@@ -2486,6 +2522,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ReasonStarted),
             REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
                 .map(EventData::ReasonCompleted),
+            REASON_RECOVERED => serde_json::from_value::<ReasonRecoveredData>(data.clone())
+                .map(EventData::ReasonRecovered),
             CAPABILITY_USAGE => serde_json::from_value::<CapabilityUsageData>(data.clone())
                 .map(EventData::CapabilityUsage),
             ACT_STARTED => {
@@ -2625,6 +2663,7 @@ impl_from_event_data! {
     TurnCancelledData => TurnCancelled,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
+    ReasonRecoveredData => ReasonRecovered,
     CapabilityUsageData => CapabilityUsage,
     ActStartedData => ActStarted,
     ActCompletedData => ActCompleted,
