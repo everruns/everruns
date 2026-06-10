@@ -273,7 +273,10 @@ impl DirectEgressService {
         }
         // Host-wide allowlist: when enabled, every outbound request must match
         // one of the curated public resources, regardless of request kind or the
-        // per-request network access list.
+        // per-request network access list. This is a separate, AND-ed gate — it
+        // is never merged into `request.network_access`, so harness/agent/session
+        // allowlists can only narrow within it and can never widen past it. The
+        // system allowlist is a hard ceiling with maximum priority.
         if let Some(allowlist) = &self.system_allowlist
             && !allowlist.is_url_allowed(&request.url)
         {
@@ -482,6 +485,37 @@ mod tests {
                 // subject to the host-wide allowlist.
                 EgressRequestKind::LlmProvider,
             ))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
+    }
+
+    #[tokio::test]
+    async fn system_allowlist_cannot_be_overridden_by_request_acl() {
+        use crate::system_allowlist::SystemAllowlist;
+        // The system allowlist is a hard ceiling: even a request whose own
+        // network_access explicitly permits the host must still be denied when
+        // the system allowlist does not list it. Sessions can narrow, never widen.
+        let allowlist = SystemAllowlist::from_toml(
+            r#"
+            [groups.test]
+            allowed = ["allowed.example.com"]
+            "#,
+        )
+        .unwrap();
+
+        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
+        let error = service
+            .send(
+                EgressRequest::new(
+                    "GET",
+                    "https://blocked.example.com/path",
+                    EgressRequestKind::Capability,
+                )
+                // A maximally-permissive per-request ACL that allows the host.
+                .network_access(Some(NetworkAccessList::allow_only(["blocked.example.com"]))),
+            )
             .await
             .unwrap_err();
 

@@ -80,6 +80,15 @@ independent of the per-request `network_access`. Both the system allowlist
 (if active) and the per-request `NetworkAccessList` (if present) must permit a
 URL for the request to proceed.
 
+### Maximum priority (hard ceiling)
+
+The system allowlist is a separate, AND-ed gate — it is **never merged into**
+the harness/agent/session `NetworkAccessList`. Those layers can only narrow
+within the system allowlist (intersection on `allowed`, union on `blocked`);
+they can **never widen past it or override it**. When the allowlist is enabled,
+a session that explicitly allows a host still cannot reach it unless the system
+allowlist also lists it. The system allowlist always wins.
+
 ### fetchkit / web_fetch
 
 `web_fetch` (fetchkit) owns its own HTTP client and does not route through
