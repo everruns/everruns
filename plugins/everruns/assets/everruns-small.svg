@@ -3,6 +3,13 @@
      height="1024"
      viewBox="0 0 512 512">
 
+  <!--
+    Three rings on the vertices of an equilateral triangle (true 3-fold
+    symmetry). Centroid of the ring centers sits exactly on the canvas
+    center (256, 256).
+      r = 120, side d = 125.34, circumradius R = d/sqrt(3) = 72.36
+  -->
+
   <!-- Rings -->
   <g fill="none"
      stroke="#0A0A0A"
@@ -11,13 +18,13 @@
      stroke-linejoin="round">
 
     <!-- Top -->
-    <circle cx="256" cy="214" r="120"/>
+    <circle cx="256" cy="183.64" r="120"/>
 
     <!-- Bottom-left -->
-    <circle cx="186" cy="309" r="120"/>
+    <circle cx="193.33" cy="292.18" r="120"/>
 
     <!-- Bottom-right -->
-    <circle cx="326" cy="309" r="120"/>
+    <circle cx="318.67" cy="292.18" r="120"/>
 
   </g>
 </svg>
