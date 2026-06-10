@@ -904,6 +904,18 @@ The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management
 
 Experimental capabilities are available in development environments only (`DeploymentGrade::Dev`). They may change significantly or be removed.
 
+#### Lua execution (`lua`) and code-mode routing (`lua_code_mode`)
+
+- `lua` — sandboxed Lua 5.4 interpreter over the session workspace. High risk,
+  admin-gated, `FEATURE_LUA` + `lua` cargo feature. See
+  [lua-execution.md](lua-execution.md).
+- `lua_code_mode` — depends on `lua`; hides code-mode-eligible tools from the
+  model's direct tool list (via a `ToolDefinitionHook`) so the agent
+  orchestrates them inside a `lua` script through `tools.<name>(args)`. This is
+  the canonical example of using the tool-filtering extension point to reshape
+  the agent's action surface. See
+  [lua-execution.md](lua-execution.md#code-mode-routing-capability-lua_code_mode).
+
 #### DockerContainer
 
 - **ID**: `docker_container` (Dev only, integration plugin)
