@@ -34,7 +34,8 @@ use crate::events::{
     LlmToolSearchInfo, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonItemData,
     ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
+    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary, TranscriptRepairAction,
+    TranscriptRepairedData,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -52,8 +53,8 @@ use crate::output_guardrail::{
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
-    AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
-    ResolvedImage, SessionStore,
+    AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
+    ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{UserFacingErrorContext, user_facing_error_codes};
@@ -62,35 +63,139 @@ use crate::{UserFacingErrorContext, user_facing_error_codes};
 // Helper Functions
 // ============================================================================
 
-/// Patch dangling tool calls by adding synthetic "cancelled" results.
+/// Repair dangling tool calls (EVE-533): for every assistant tool_call with no matching
+/// ToolResult, synthesize a well-formed result so the next LLM call does not reject the
+/// transcript. Consults `durable_tool_results` (EVE-530) when available:
 ///
-/// This ensures every tool call has a corresponding tool result,
-/// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
-fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
+/// - `Settled` row found   → replay the stored result directly.
+/// - `Interrupted` row     → replay the stored interrupted error.
+/// - `Running` (stale)     → synthesize an "interrupted" placeholder.
+/// - Row not found         → synthesize a "cancelled" placeholder.
+///
+/// Emits `transcript.repaired` events via `event_emitter` for each repaired call.
+async fn repair_dangling_tool_calls(
+    messages: &[Message],
+    durable_store: Option<&dyn DurableToolResultStore>,
+    event_emitter: &dyn EventEmitter,
+    session_id: crate::typed_id::SessionId,
+    event_context: &EventContext,
+    turn_id: &str,
+) -> Vec<Message> {
     let mut result = Vec::new();
 
     for (i, msg) in messages.iter().enumerate() {
         result.push(msg.clone());
 
-        // After an assistant message with tool calls, add cancelled results for any missing ones
-        if msg.role == MessageRole::Agent && msg.has_tool_calls() {
-            for tc in msg.tool_calls() {
-                // Look for a matching tool result in ALL subsequent messages
-                let has_result = messages[(i + 1)..]
-                    .iter()
-                    .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+        if msg.role != MessageRole::Agent || !msg.has_tool_calls() {
+            continue;
+        }
 
-                if !has_result {
-                    result.push(Message::tool_result(
+        for tc in msg.tool_calls() {
+            let has_result = messages[(i + 1)..]
+                .iter()
+                .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+
+            if has_result {
+                continue;
+            }
+
+            // Consult durable_tool_results to determine the best repair strategy.
+            let (repair_msg, action) = if let Some(store) = durable_store {
+                match store.get_tool_call_status(turn_id, &tc.id).await {
+                    Ok(Some(DurableToolCallStatus::Settled { result_json })) => {
+                        // A settled result exists in durable storage; deserialize and replay it.
+                        let repair = match serde_json::from_value::<crate::tool_types::ToolResult>(
+                            result_json.clone(),
+                        ) {
+                            Ok(tr) => Message::tool_result(&tc.id, tr.result, tr.error),
+                            Err(_) => Message::tool_result(&tc.id, Some(result_json), None),
+                        };
+                        (repair, TranscriptRepairAction::Replay)
+                    }
+                    Ok(Some(DurableToolCallStatus::Interrupted { result_json })) => {
+                        // Settled as interrupted by a prior recovery.
+                        let err = result_json
+                            .as_ref()
+                            .and_then(|v| {
+                                serde_json::from_value::<crate::tool_types::ToolResult>(v.clone())
+                                    .ok()
+                            })
+                            .and_then(|tr| tr.error)
+                            .unwrap_or_else(|| {
+                                "tool execution did not complete before recovery; result unknown"
+                                    .to_string()
+                            });
+                        (
+                            Message::tool_result(&tc.id, None, Some(err)),
+                            TranscriptRepairAction::Replay,
+                        )
+                    }
+                    Ok(Some(DurableToolCallStatus::Running)) => {
+                        // Stale running claim from a dead worker; safe to synthesize.
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool execution was interrupted by worker \
+                                     failure and the result is uncertain; do not retry \
+                                     automatically"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                    Ok(None) | Err(_) => {
+                        // No durable record: tool was never dispatched or store is unavailable.
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool was not executed before recovery; \
+                                     safe to retry"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                }
+            } else {
+                // No durable store; fall back to generic cancelled.
+                (
+                    Message::tool_result(
                         &tc.id,
                         None,
                         Some(
                             "cancelled - another message came in before it could be completed"
                                 .to_string(),
                         ),
-                    ));
-                }
+                    ),
+                    TranscriptRepairAction::Synthesize,
+                )
+            };
+
+            // Emit transcript.repaired event for observability.
+            let repair_event = EventRequest::new(
+                session_id,
+                event_context.clone(),
+                TranscriptRepairedData {
+                    tool_call_id: tc.id.clone(),
+                    tool_name: Some(tc.name.clone()),
+                    action,
+                },
+            );
+            if let Err(e) = event_emitter.emit(repair_event).await {
+                tracing::warn!(
+                    tool_call_id = %tc.id,
+                    error = %e,
+                    "transcript repair: failed to emit transcript.repaired event"
+                );
             }
+
+            result.push(repair_msg);
         }
     }
 
@@ -405,6 +510,8 @@ pub struct ReasonAtom {
     stream_heartbeater: Option<Arc<dyn crate::traits::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
+    /// Optional durable tool result store for transcript repair (EVE-533).
+    durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
 }
 
 impl ReasonAtom {
@@ -433,6 +540,7 @@ impl ReasonAtom {
             file_store: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,
+            durable_tool_result_store: None,
         }
     }
 
@@ -480,6 +588,19 @@ impl ReasonAtom {
     /// the stream is aborted and the activity fails with a retryable error.
     pub fn with_provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.provider_stall_timeout = Some(timeout);
+        self
+    }
+
+    /// Set the durable tool result store for transcript repair (EVE-533).
+    ///
+    /// When provided, transcript repair consults this store to replay settled tool
+    /// results or synthesize appropriate interrupted placeholders rather than always
+    /// emitting a generic "cancelled" message.
+    pub fn with_durable_tool_result_store(
+        mut self,
+        store: Arc<dyn DurableToolResultStore>,
+    ) -> Self {
+        self.durable_tool_result_store = Some(store);
         self
     }
 }
@@ -889,8 +1010,19 @@ impl ReasonAtom {
                 }
             });
 
-        // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
-        let patched_messages = patch_dangling_tool_calls(&messages);
+        // 9. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
+        // has a matching ToolResult before the LLM call. Consults durable_tool_results
+        // when available to replay settled results or synthesize interrupted placeholders.
+        let repair_event_context = EventContext::from_atom_context(context);
+        let patched_messages = repair_dangling_tool_calls(
+            &messages,
+            self.durable_tool_result_store.as_deref(),
+            self.event_emitter.as_ref(),
+            session_id,
+            &repair_event_context,
+            &context.turn_id.to_string(),
+        )
+        .await;
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -2453,15 +2585,24 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_no_tool_calls() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_no_tool_calls() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         assert_eq!(patched.len(), 2);
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_with_result() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_with_result() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             name: "get_weather".to_string(),
@@ -2474,12 +2615,19 @@ mod tests {
             Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
         ];
 
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         assert_eq!(patched.len(), 3);
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_missing_result() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_missing_result_no_store() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let tool_call = ToolCall {
             id: "call_456".to_string(),
             name: "search_web".to_string(),
@@ -2492,11 +2640,94 @@ mod tests {
             Message::user("Actually, never mind"),
         ];
 
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         // Should have added a cancelled result
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_settled_result_replayed() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockSettledStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockSettledStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Settled {
+                    result_json: serde_json::json!({
+                        "tool_call_id": "call_789",
+                        "result": {"answer": 42},
+                        "error": null,
+                        "images": null,
+                        "connection_required": null,
+                        "raw_output": null
+                    }),
+                }))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_789".to_string(),
+            name: "compute".to_string(),
+            arguments: serde_json::json!({"x": 21}),
+        };
+        let messages = vec![
+            Message::user("Compute"),
+            Message::assistant_with_tools("Computing...", vec![tool_call]),
+        ];
+
+        let store = MockSettledStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        // Settled result should be replayed (not cancelled message)
+        assert_eq!(patched.len(), 3);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_789"));
     }
 
     #[test]

@@ -975,6 +975,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
     }
+    if let Some(store) = adapter.durable_tool_result_store() {
+        atom = atom.with_durable_tool_result_store(store);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
