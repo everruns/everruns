@@ -26646,6 +26646,15 @@
           }
         }
       },
+      "SideEffectClass": {
+        "type": "string",
+        "description": "How many times a tool call may safely be executed given the same inputs.\n\nUsed by the durable Act activity (EVE-530) to decide what to do when a\nprior execution attempt left a `running` claim in `durable_tool_results`:\n\n* `Pure` / `Idempotent` — the running claim is stale; re-execute freely.\n* `AtMostOnce` — never re-execute from a stale running claim; settle it\n  as `interrupted` and surface an uncertain result to the model instead.\n\nWhen unset (`None`), the conservative default is `AtMostOnce`.",
+        "enum": [
+          "Pure",
+          "Idempotent",
+          "AtMostOnce"
+        ]
+      },
       "Skill": {
         "type": "object",
         "description": "Skill entity (API response type)",
@@ -27642,6 +27651,17 @@
               "null"
             ],
             "description": "Tool requires API keys, credentials, or other secrets to function.\nUseful for UI to show connection prompts and for LLMs to anticipate\nauthentication failures."
+          },
+          "side_effect_class": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SideEffectClass",
+                "description": "Replay-safety class used by the durable Act activity (EVE-530).\n\nControls what happens when a worker reclaims a stale `running` claim:\n`Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are\nsettled as `interrupted` to prevent double side-effects.\n\n`None` is treated conservatively as `AtMostOnce`."
+              }
+            ]
           },
           "supports_background": {
             "type": [
