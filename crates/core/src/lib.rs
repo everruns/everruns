@@ -187,12 +187,13 @@ pub use runtime_context::{
     resolve_runtime_capabilities,
 };
 pub use traits::{
-    DisabledSessionFileSystemFactory, EventEmitter, HarnessStore, ImageResolver, KeyInfo,
-    LeasedResourceStore, LlmProviderStore, ModelWithProvider, NoopEventEmitter,
-    OutboundToolRateLimiter, ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem,
-    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionMutator,
-    SessionResourceRegistry, SessionSqlDbStoreRef, SessionStorageStore, SessionStore, ToolContext,
-    ToolExecutor, UserConnectionResolver,
+    DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
+    ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
+    NoopDurableToolResultStore, NoopEventEmitter, OutboundToolRateLimiter, ResolvedImage,
+    SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
+    SessionStorageStore, SessionStore, ToolCallClaimResult, ToolContext, ToolExecutor,
+    UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
@@ -343,8 +344,8 @@ pub use atoms::{
 
 // Tool types (runtime types defined in this crate)
 pub use tool_types::{
-    BuiltinTool, ClientSideTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy,
-    ToolResult,
+    BuiltinTool, ClientSideTool, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
+    ToolHints, ToolPolicy, ToolResult,
 };
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module

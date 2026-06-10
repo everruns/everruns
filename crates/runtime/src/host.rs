@@ -180,6 +180,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
+    /// Default: `None` (no durable claim/settle — every execution runs tools fresh).
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+        None
+    }
+
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
     /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
@@ -1120,6 +1126,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);
+    }
+    if let Some(store) = adapter.durable_tool_result_store() {
+        atom = atom.with_durable_tool_result_store(store);
     }
 
     atom.execute(input).await

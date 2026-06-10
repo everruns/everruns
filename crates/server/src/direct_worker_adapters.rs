@@ -1550,6 +1550,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .map(|l| l.clone() as Arc<dyn everruns_core::OutboundToolRateLimiter>)
     }
 
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+        self.db.pool().map(|pool| {
+            Arc::new(crate::storage::PgDurableToolResultStore::new(pool.clone()))
+                as Arc<dyn everruns_core::DurableToolResultStore>
+        })
+    }
+
     async fn invoke_scheduled_app_channel(
         &self,
         org_id: i64,

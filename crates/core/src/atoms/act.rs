@@ -51,10 +51,10 @@ use crate::tool_fingerprint::{
 use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
-use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
+use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
-    AgentStore, EventEmitter, SessionFileSystem, SessionMutator, SessionStore, ToolContext,
-    ToolExecutor,
+    AgentStore, DurableToolResultStore, EventEmitter, SessionFileSystem, SessionMutator,
+    SessionStore, ToolCallClaimResult, ToolContext, ToolExecutor,
 };
 use crate::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
@@ -250,6 +250,11 @@ where
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
     outbound_tool_rate_limiter: Option<Arc<dyn crate::traits::OutboundToolRateLimiter>>,
+    /// Per-tool-call idempotency store (EVE-530). When present, each tool call
+    /// is claimed before dispatch and settled after completion so that reclaiming
+    /// workers can skip already-settled calls and avoid double side-effects for
+    /// `AtMostOnce` tools.
+    durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -303,6 +308,7 @@ where
             budget_checker: None,
             payment_authority: None,
             outbound_tool_rate_limiter: None,
+            durable_tool_result_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -343,6 +349,7 @@ where
             budget_checker: None,
             payment_authority: None,
             outbound_tool_rate_limiter: None,
+            durable_tool_result_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -566,6 +573,15 @@ where
         limiter: Arc<dyn crate::traits::OutboundToolRateLimiter>,
     ) -> Self {
         self.outbound_tool_rate_limiter = Some(limiter);
+        self
+    }
+
+    /// Set the durable per-tool-call idempotency store (EVE-530).
+    pub fn with_durable_tool_result_store(
+        mut self,
+        store: Arc<dyn DurableToolResultStore>,
+    ) -> Self {
+        self.durable_tool_result_store = Some(store);
         self
     }
 }
@@ -990,6 +1006,218 @@ where
             };
         }
 
+        // Per-tool-call idempotency (EVE-530): claim before dispatch, replay if
+        // already settled, refuse AtMostOnce re-execution on stale running claims.
+        let claim_token = if let Some(ref store) = self.durable_tool_result_store {
+            let turn_id = context.turn_id.to_string();
+            match store
+                .try_claim_tool_call(
+                    &turn_id,
+                    &tool_call.id,
+                    &tool_call.name,
+                    &tool_call_fingerprint,
+                )
+                .await
+            {
+                Ok(ToolCallClaimResult::Claimed { claim_token }) => Some(claim_token),
+
+                Ok(ToolCallClaimResult::AlreadySettled {
+                    result_json,
+                    args_fingerprint: stored_fp,
+                }) => {
+                    // Determinism guard: stored args fingerprint must match current call.
+                    if stored_fp != tool_call_fingerprint {
+                        tracing::error!(
+                            session_id = %context.session_id,
+                            turn_id = %context.turn_id,
+                            tool_call_id = %tool_call.id,
+                            stored_fp = %stored_fp,
+                            current_fp = %tool_call_fingerprint,
+                            "ActAtom: determinism violation — replay args fingerprint mismatch"
+                        );
+                        return ToolCallResult {
+                            tool_call: tool_call.clone(),
+                            result: ToolResult {
+                                tool_call_id: tool_call.id.clone(),
+                                result: None,
+                                images: None,
+                                error: Some(format!(
+                                    "determinism violation: tool '{}' replay args fingerprint \
+                                     does not match prior execution (stored={stored_fp}, \
+                                     current={})",
+                                    tool_call.name, tool_call_fingerprint
+                                )),
+                                connection_required: None,
+                                raw_output: None,
+                            },
+                            success: false,
+                            status: "error".to_string(),
+                            connection_required: None,
+                        };
+                    }
+                    tracing::debug!(
+                        session_id = %context.session_id,
+                        turn_id = %context.turn_id,
+                        tool_call_id = %tool_call.id,
+                        "ActAtom: replaying already-settled tool call"
+                    );
+                    // Emit a replayed tool.completed without re-emitting tool.started.
+                    let replayed_result: ToolResult = serde_json::from_value(result_json.clone())
+                        .unwrap_or(ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: Some(result_json),
+                            images: None,
+                            error: None,
+                            connection_required: None,
+                            raw_output: None,
+                        });
+                    let success = replayed_result.error.is_none();
+                    let status = if success { "success" } else { "error" };
+                    let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
+                    let completed_data = if success {
+                        let content = replayed_result
+                            .result
+                            .as_ref()
+                            .map(|r| vec![ContentPart::text(r.to_string())])
+                            .unwrap_or_default();
+                        ToolCompletedData::success(
+                            tool_call.id.clone(),
+                            tool_call.name.clone(),
+                            content,
+                            None,
+                        )
+                        .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                        .with_display_name(display_name.clone())
+                    } else {
+                        ToolCompletedData::failure(
+                            tool_call.id.clone(),
+                            tool_call.name.clone(),
+                            status.to_string(),
+                            replayed_result.error.clone().unwrap_or_default(),
+                            None,
+                        )
+                        .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                        .with_display_name(display_name.clone())
+                    };
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            context.session_id,
+                            event_context,
+                            completed_data,
+                        ))
+                        .await;
+                    let conn_req = replayed_result.connection_required.clone();
+                    return ToolCallResult {
+                        tool_call,
+                        result: replayed_result,
+                        success,
+                        status: status.to_string(),
+                        connection_required: conn_req,
+                    };
+                }
+
+                Ok(ToolCallClaimResult::AlreadyRunning { .. }) => {
+                    let sec = tool_def
+                        .map(|d| d.side_effect_class())
+                        .unwrap_or(SideEffectClass::AtMostOnce);
+                    match sec {
+                        SideEffectClass::Pure | SideEffectClass::Idempotent => {
+                            // Safe to re-execute; proceed as normal (no claim token).
+                            tracing::debug!(
+                                session_id = %context.session_id,
+                                tool_call_id = %tool_call.id,
+                                "ActAtom: stale running claim for idempotent tool, re-executing"
+                            );
+                            None
+                        }
+                        SideEffectClass::AtMostOnce => {
+                            tracing::warn!(
+                                session_id = %context.session_id,
+                                turn_id = %context.turn_id,
+                                tool_call_id = %tool_call.id,
+                                "ActAtom: AtMostOnce tool has stale running claim; returning interrupted result"
+                            );
+                            // Settle the stale claim as interrupted, then return an error.
+                            let _ = store
+                                .settle_tool_call(
+                                    &turn_id,
+                                    &tool_call.id,
+                                    serde_json::Value::Null,
+                                    "interrupted",
+                                    Uuid::nil(), // sentinel — settle accepts any token for interrupted
+                                )
+                                .await;
+                            return ToolCallResult {
+                                tool_call: tool_call.clone(),
+                                result: ToolResult {
+                                    tool_call_id: tool_call.id.clone(),
+                                    result: None,
+                                    images: None,
+                                    error: Some(format!(
+                                        "tool '{}' was interrupted mid-execution during a prior \
+                                         worker failure; result is uncertain and was not re-run \
+                                         (AtMostOnce safety)",
+                                        tool_call.name
+                                    )),
+                                    connection_required: None,
+                                    raw_output: None,
+                                },
+                                success: false,
+                                status: "error".to_string(),
+                                connection_required: None,
+                            };
+                        }
+                    }
+                }
+
+                Ok(ToolCallClaimResult::DeterminismViolation {
+                    stored_fingerprint,
+                    current_fingerprint,
+                }) => {
+                    tracing::error!(
+                        session_id = %context.session_id,
+                        turn_id = %context.turn_id,
+                        tool_call_id = %tool_call.id,
+                        stored = %stored_fingerprint,
+                        current = %current_fingerprint,
+                        "ActAtom: determinism violation on claim"
+                    );
+                    return ToolCallResult {
+                        tool_call: tool_call.clone(),
+                        result: ToolResult {
+                            tool_call_id: tool_call.id.clone(),
+                            result: None,
+                            images: None,
+                            error: Some(format!(
+                                "determinism violation: tool '{}' args fingerprint changed \
+                                 on replay (stored={stored_fingerprint}, \
+                                 current={current_fingerprint})",
+                                tool_call.name
+                            )),
+                            connection_required: None,
+                            raw_output: None,
+                        },
+                        success: false,
+                        status: "error".to_string(),
+                        connection_required: None,
+                    };
+                }
+
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %context.session_id,
+                        tool_call_id = %tool_call.id,
+                        error = %e,
+                        "ActAtom: durable claim failed; proceeding without idempotency"
+                    );
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         // Emit tool.started event (child of act.started)
         if let Err(e) = self
             .event_emitter
@@ -1321,6 +1549,39 @@ where
                     success = %success,
                     "ActAtom: tool execution completed"
                 );
+
+                // Settle the durable claim (EVE-530).
+                if let (Some(store), Some(token)) = (&self.durable_tool_result_store, claim_token) {
+                    let result_snapshot =
+                        serde_json::to_value(&tool_result).unwrap_or(serde_json::Value::Null);
+                    match store
+                        .settle_tool_call(
+                            &context.turn_id.to_string(),
+                            &tool_call.id,
+                            result_snapshot,
+                            "settled",
+                            token,
+                        )
+                        .await
+                    {
+                        Ok(false) => {
+                            tracing::warn!(
+                                session_id = %context.session_id,
+                                tool_call_id = %tool_call.id,
+                                "ActAtom: settle ownership check failed (task reclaimed)"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                session_id = %context.session_id,
+                                tool_call_id = %tool_call.id,
+                                error = %e,
+                                "ActAtom: settle_tool_call failed"
+                            );
+                        }
+                        Ok(true) => {}
+                    }
+                }
 
                 let conn_req = tool_result.connection_required.clone();
                 ToolCallResult {
@@ -2370,6 +2631,326 @@ mod tests {
         let result = atom.execute(input).await.unwrap();
 
         assert_eq!(result.success_count, 1);
+        assert_eq!(result.error_count, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // DurableToolResultStore idempotency tests (EVE-530)
+    // -----------------------------------------------------------------------
+
+    use crate::tool_types::{SideEffectClass, ToolHints};
+    use crate::traits::{DurableToolResultStore, ToolCallClaimResult};
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct InMemoryDurableStore {
+        rows: Mutex<HashMap<(String, String), StoreRow>>,
+    }
+
+    #[derive(Clone)]
+    struct StoreRow {
+        status: String,
+        result_json: serde_json::Value,
+        args_fingerprint: String,
+        #[allow(dead_code)]
+        claim_token: Uuid,
+    }
+
+    #[async_trait]
+    impl DurableToolResultStore for InMemoryDurableStore {
+        async fn try_claim_tool_call(
+            &self,
+            turn_id: &str,
+            tool_call_id: &str,
+            _tool_name: &str,
+            args_fingerprint: &str,
+        ) -> crate::error::Result<ToolCallClaimResult> {
+            let key = (turn_id.to_string(), tool_call_id.to_string());
+            let mut rows = self.rows.lock().unwrap();
+            if let Some(row) = rows.get(&key) {
+                match row.status.as_str() {
+                    "settled" => {
+                        if row.args_fingerprint != args_fingerprint {
+                            return Ok(ToolCallClaimResult::DeterminismViolation {
+                                stored_fingerprint: row.args_fingerprint.clone(),
+                                current_fingerprint: args_fingerprint.to_string(),
+                            });
+                        }
+                        return Ok(ToolCallClaimResult::AlreadySettled {
+                            result_json: row.result_json.clone(),
+                            args_fingerprint: row.args_fingerprint.clone(),
+                        });
+                    }
+                    _ => {
+                        return Ok(ToolCallClaimResult::AlreadyRunning {
+                            args_fingerprint: row.args_fingerprint.clone(),
+                        });
+                    }
+                }
+            }
+            let token = Uuid::new_v4();
+            rows.insert(
+                key,
+                StoreRow {
+                    status: "running".to_string(),
+                    result_json: serde_json::Value::Null,
+                    args_fingerprint: args_fingerprint.to_string(),
+                    claim_token: token,
+                },
+            );
+            Ok(ToolCallClaimResult::Claimed { claim_token: token })
+        }
+
+        async fn settle_tool_call(
+            &self,
+            turn_id: &str,
+            tool_call_id: &str,
+            result_json: serde_json::Value,
+            status: &str,
+            _claim_token: Uuid,
+        ) -> crate::error::Result<bool> {
+            let key = (turn_id.to_string(), tool_call_id.to_string());
+            let mut rows = self.rows.lock().unwrap();
+            if let Some(row) = rows.get_mut(&key) {
+                row.status = status.to_string();
+                row.result_json = result_json;
+                return Ok(true);
+            }
+            Ok(false)
+        }
+    }
+
+    fn make_act_input_with_store(
+        tool_call: ToolCall,
+        tool_defs: Vec<ToolDefinition>,
+        context: AtomContext,
+    ) -> ActInput {
+        ActInput {
+            org_id: None,
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![tool_call],
+            tool_definitions: tool_defs,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        }
+    }
+
+    fn arg_echo_tool_def(side_effect: SideEffectClass) -> ToolDefinition {
+        ToolDefinition::Builtin(crate::BuiltinTool {
+            name: "argument_echo".to_string(),
+            display_name: None,
+            description: "echo".to_string(),
+            parameters: json!({"type": "object"}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: ToolHints::default().with_side_effect_class(side_effect),
+            full_parameters: None,
+        })
+    }
+
+    /// First execution succeeds normally and the result is settled in the store.
+    #[tokio::test]
+    async fn test_idempotency_first_execution_claims_and_settles() {
+        let store = Arc::new(InMemoryDurableStore::default());
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom =
+            ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let tc = ToolCall {
+            id: "c1".to_string(),
+            name: "argument_echo".to_string(),
+            arguments: json!({"value": "hello"}),
+        };
+        let input = make_act_input_with_store(
+            tc,
+            vec![arg_echo_tool_def(SideEffectClass::AtMostOnce)],
+            context,
+        );
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(result.success_count, 1);
+        assert_eq!(result.error_count, 0);
+
+        // Row should be settled now.
+        let rows = store.rows.lock().unwrap();
+        let row = rows.values().next().unwrap();
+        assert_eq!(row.status, "settled");
+    }
+
+    /// Second execution replays the stored result without re-running the tool.
+    #[tokio::test]
+    async fn test_idempotency_replay_already_settled() {
+        use crate::tool_fingerprint::tool_call_fingerprint;
+
+        let store = Arc::new(InMemoryDurableStore::default());
+        let tc = ToolCall {
+            id: "c1".to_string(),
+            name: "argument_echo".to_string(),
+            arguments: json!({"value": "hello"}),
+        };
+        let fp = tool_call_fingerprint(&tc);
+
+        // Pre-populate as settled.
+        {
+            let stored_result = serde_json::to_value(crate::ToolResult {
+                tool_call_id: "c1".to_string(),
+                result: Some(json!({"value": "hello"})),
+                images: None,
+                error: None,
+                connection_required: None,
+                raw_output: None,
+            })
+            .unwrap();
+            store.rows.lock().unwrap().insert(
+                (
+                    "turn_00000000000000000000000000000000".to_string(),
+                    "c1".to_string(),
+                ),
+                StoreRow {
+                    status: "settled".to_string(),
+                    result_json: stored_result,
+                    args_fingerprint: fp,
+                    claim_token: Uuid::new_v4(),
+                },
+            );
+        }
+
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom =
+            ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
+
+        let context = AtomContext::new(
+            SessionId::new(),
+            TurnId::from_uuid(Uuid::nil()),
+            MessageId::new(),
+        );
+        let input = make_act_input_with_store(
+            tc,
+            vec![arg_echo_tool_def(SideEffectClass::AtMostOnce)],
+            context,
+        );
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(result.success_count, 1, "replay should count as success");
+        assert_eq!(result.error_count, 0);
+    }
+
+    /// AtMostOnce tool with a stale running claim returns an interrupted error.
+    #[tokio::test]
+    async fn test_idempotency_at_most_once_stale_running_returns_interrupted() {
+        use crate::tool_fingerprint::tool_call_fingerprint;
+
+        let store = Arc::new(InMemoryDurableStore::default());
+        let tc = ToolCall {
+            id: "c1".to_string(),
+            name: "argument_echo".to_string(),
+            arguments: json!({"value": "x"}),
+        };
+        let fp = tool_call_fingerprint(&tc);
+
+        // Pre-populate as running (stale from dead worker).
+        store.rows.lock().unwrap().insert(
+            (
+                "turn_00000000000000000000000000000000".to_string(),
+                "c1".to_string(),
+            ),
+            StoreRow {
+                status: "running".to_string(),
+                result_json: serde_json::Value::Null,
+                args_fingerprint: fp,
+                claim_token: Uuid::new_v4(),
+            },
+        );
+
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom =
+            ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
+
+        let context = AtomContext::new(
+            SessionId::new(),
+            TurnId::from_uuid(Uuid::nil()),
+            MessageId::new(),
+        );
+        let input = make_act_input_with_store(
+            tc,
+            vec![arg_echo_tool_def(SideEffectClass::AtMostOnce)],
+            context,
+        );
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(
+            result.error_count, 1,
+            "AtMostOnce stale running should error"
+        );
+        let err = result.results[0].result.error.as_deref().unwrap_or("");
+        assert!(
+            err.contains("interrupted"),
+            "error should mention interrupted: {err}"
+        );
+
+        // Row should be settled as interrupted.
+        let rows = store.rows.lock().unwrap();
+        let row = rows.values().next().unwrap();
+        assert_eq!(row.status, "interrupted");
+    }
+
+    /// Pure/Idempotent tool with a stale running claim proceeds to execution normally.
+    #[tokio::test]
+    async fn test_idempotency_idempotent_tool_stale_running_reexecutes() {
+        use crate::tool_fingerprint::tool_call_fingerprint;
+
+        let store = Arc::new(InMemoryDurableStore::default());
+        let tc = ToolCall {
+            id: "c1".to_string(),
+            name: "argument_echo".to_string(),
+            arguments: json!({"value": "x"}),
+        };
+        let fp = tool_call_fingerprint(&tc);
+
+        store.rows.lock().unwrap().insert(
+            (
+                "turn_00000000000000000000000000000000".to_string(),
+                "c1".to_string(),
+            ),
+            StoreRow {
+                status: "running".to_string(),
+                result_json: serde_json::Value::Null,
+                args_fingerprint: fp,
+                claim_token: Uuid::new_v4(),
+            },
+        );
+
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom =
+            ActAtom::new(executor, NoopEventEmitter).with_durable_tool_result_store(store.clone());
+
+        let context = AtomContext::new(
+            SessionId::new(),
+            TurnId::from_uuid(Uuid::nil()),
+            MessageId::new(),
+        );
+        let input = make_act_input_with_store(
+            tc,
+            vec![arg_echo_tool_def(SideEffectClass::Idempotent)],
+            context,
+        );
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(
+            result.success_count, 1,
+            "Idempotent should re-execute successfully"
+        );
         assert_eq!(result.error_count, 0);
     }
 }

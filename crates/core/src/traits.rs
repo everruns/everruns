@@ -874,6 +874,101 @@ pub trait OutboundToolRateLimiter: Send + Sync {
     async fn check_org(&self, org_id: &crate::typed_id::OrgId) -> bool;
 }
 
+// ============================================================================
+// DurableToolResultStore — per-tool-call idempotency (EVE-530)
+// ============================================================================
+
+/// Result of a claim attempt on the per-tool-call idempotency store.
+#[derive(Debug)]
+pub enum ToolCallClaimResult {
+    /// First claim for this (turn_id, tool_call_id); caller should execute the tool.
+    /// `claim_token` must be passed to `settle_tool_call` to verify ownership.
+    Claimed { claim_token: uuid::Uuid },
+    /// A prior run already settled this call; replay the stored result.
+    AlreadySettled {
+        result_json: serde_json::Value,
+        args_fingerprint: String,
+    },
+    /// A prior run started but never settled. For `AtMostOnce` tools the
+    /// caller should NOT re-execute; for `Pure`/`Idempotent` tools the caller
+    /// may re-execute and then try to settle (the settle CAS will be a no-op if
+    /// a different claimer wins first).
+    AlreadyRunning { args_fingerprint: String },
+    /// A settled row exists but its `args_fingerprint` does not match the
+    /// current call — this is a determinism violation (workflow replay with
+    /// different inputs). The workflow should be failed loudly.
+    DeterminismViolation {
+        stored_fingerprint: String,
+        current_fingerprint: String,
+    },
+}
+
+/// Durable per-tool-call idempotency store (EVE-530).
+///
+/// Implements the claim/settle CAS that prevents double-execution of
+/// `AtMostOnce` tools on worker reclaim/replay.
+#[async_trait]
+pub trait DurableToolResultStore: Send + Sync + 'static {
+    /// Atomically claim `(turn_id, tool_call_id)` before tool dispatch.
+    ///
+    /// - Inserts a `running` row if none exists → `Claimed`.
+    /// - Finds an existing `settled` row → `AlreadySettled`.
+    /// - Finds an existing `running` row → `AlreadyRunning`.
+    /// - Finds a `settled` row with a mismatched `args_fingerprint`
+    ///   (determinism violation) → `DeterminismViolation`.
+    async fn try_claim_tool_call(
+        &self,
+        turn_id: &str,
+        tool_call_id: &str,
+        tool_name: &str,
+        args_fingerprint: &str,
+    ) -> Result<ToolCallClaimResult>;
+
+    /// Settle a previously claimed tool call with its result.
+    ///
+    /// `claim_token` must match the token returned by `try_claim_tool_call`.
+    /// Returns `Ok(true)` if the row was updated, `Ok(false)` if the claim
+    /// token no longer matches (ownership lost — treat as a warning).
+    async fn settle_tool_call(
+        &self,
+        turn_id: &str,
+        tool_call_id: &str,
+        result_json: serde_json::Value,
+        status: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<bool>;
+}
+
+/// No-op implementation — used when no durable store is configured (dev/test).
+/// Every call is treated as a fresh first execution; no replay or ownership checks.
+pub struct NoopDurableToolResultStore;
+
+#[async_trait]
+impl DurableToolResultStore for NoopDurableToolResultStore {
+    async fn try_claim_tool_call(
+        &self,
+        _turn_id: &str,
+        _tool_call_id: &str,
+        _tool_name: &str,
+        _args_fingerprint: &str,
+    ) -> Result<ToolCallClaimResult> {
+        Ok(ToolCallClaimResult::Claimed {
+            claim_token: uuid::Uuid::new_v4(),
+        })
+    }
+
+    async fn settle_tool_call(
+        &self,
+        _turn_id: &str,
+        _tool_call_id: &str,
+        _result_json: serde_json::Value,
+        _status: &str,
+        _claim_token: uuid::Uuid,
+    ) -> Result<bool> {
+        Ok(true)
+    }
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
