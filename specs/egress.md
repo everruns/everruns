@@ -97,6 +97,11 @@ System-owned fixed endpoints, such as a configured email provider or model
 provider URL, do not use the agent/session network access list unless that
 endpoint is derived from agent/session/user input.
 
+An optional deployment-wide allowlist (`specs/system-allowlist.md`) sits at the
+same boundary. When enabled, it constrains *all* egress — every request kind,
+independent of `network_access` — to a curated set of public resources. It is
+the in-process precursor to the future gateway's outbound allowlist.
+
 ## Signing
 
 Requests can set:

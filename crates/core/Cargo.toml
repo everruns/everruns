@@ -34,6 +34,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+toml = "0.8"
 
 # UUID and time
 uuid.workspace = true

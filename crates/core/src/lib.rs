@@ -107,6 +107,7 @@ pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
+pub mod system_allowlist;
 pub mod volume;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
@@ -237,6 +238,7 @@ pub use egress::{
     EgressRequestKind, EgressResponse, EgressResult, EgressService, EgressSigning,
     EgressStreamResponse,
 };
+pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllowlist};
 
 // System email re-exports
 pub use email::{

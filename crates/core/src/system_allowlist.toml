@@ -1,0 +1,134 @@
+# System-wide outbound allowlist ("green list").
+#
+# Curated, internal list of well-known public resources that the global egress
+# boundary permits when the allowlist is enabled
+# (EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true). This is NOT end-user configuration —
+# it ships with the binary and is reviewed by maintainers.
+#
+# Organized into named groups so it stays manageable. Pattern format matches the
+# NetworkAccessList rules (see specs/network-access.md):
+#   - example.com            exact domain (any port/path)
+#   - *.example.com          domain and all subdomains (apex included)
+#   - https://example.com/x/ URL prefix (scheme + host + path)
+
+[groups.package_registries]
+description = "Language and package manager registries (npm, crates, pypi, ...)."
+allowed = [
+    "*.npmjs.org",
+    "*.npmjs.com",
+    "*.yarnpkg.com",
+    "*.crates.io",
+    "*.pypi.org",
+    "*.pythonhosted.org",
+    "*.rubygems.org",
+    "*.nuget.org",
+    "*.packagist.org",
+    "*.cocoapods.org",
+    "*.golang.org",
+    "repo.maven.apache.org",
+    "repo1.maven.org",
+    "*.maven.org",
+    "*.gradle.org",
+    "plugins.gradle.org",
+    "*.conda.anaconda.org",
+    "repo.anaconda.com",
+]
+
+[groups.source_hosting]
+description = "Source code hosting and collaboration platforms."
+allowed = [
+    "*.github.com",
+    "*.githubusercontent.com",
+    "*.github.io",
+    "*.gitlab.com",
+    "*.bitbucket.org",
+    "*.codeberg.org",
+    "*.sourceforge.net",
+    "*.sr.ht",
+]
+
+[groups.container_registries]
+description = "OCI / container image registries."
+allowed = [
+    "*.docker.com",
+    "*.docker.io",
+    "registry-1.docker.io",
+    "auth.docker.io",
+    "ghcr.io",
+    "*.quay.io",
+    "quay.io",
+    "gcr.io",
+    "*.gcr.io",
+    "*.pkg.dev",
+    "mcr.microsoft.com",
+    "public.ecr.aws",
+]
+
+[groups.ai_providers]
+description = "LLM and AI provider APIs."
+allowed = [
+    "*.openai.com",
+    "*.anthropic.com",
+    "*.googleapis.com",
+    "generativelanguage.googleapis.com",
+    "*.cohere.ai",
+    "*.cohere.com",
+    "*.mistral.ai",
+    "*.huggingface.co",
+    "*.hf.co",
+    "*.groq.com",
+    "*.openrouter.ai",
+    "openrouter.ai",
+    "*.replicate.com",
+    "*.together.ai",
+    "*.together.xyz",
+    "*.perplexity.ai",
+    "*.x.ai",
+    "*.deepseek.com",
+]
+
+[groups.cloud_providers]
+description = "Major cloud provider APIs and service endpoints."
+allowed = [
+    "*.amazonaws.com",
+    "*.azure.com",
+    "*.azureedge.net",
+    "*.windows.net",
+    "*.microsoftonline.com",
+    "*.openai.azure.com",
+    "*.googleapis.com",
+    "*.cloud.google.com",
+    "*.cloudflare.com",
+    "*.digitaloceanspaces.com",
+    "api.digitalocean.com",
+]
+
+[groups.os_packages]
+description = "Operating-system package mirrors and distribution archives."
+allowed = [
+    "*.debian.org",
+    "*.ubuntu.com",
+    "*.archlinux.org",
+    "*.alpinelinux.org",
+    "dl-cdn.alpinelinux.org",
+    "*.fedoraproject.org",
+    "*.opensuse.org",
+    "*.brew.sh",
+    "*.homebrew.org",
+]
+
+[groups.developer_tools]
+description = "Language toolchains, runtimes, and developer infrastructure."
+allowed = [
+    "*.rust-lang.org",
+    "static.rust-lang.org",
+    "*.python.org",
+    "*.nodejs.org",
+    "nodejs.org",
+    "*.golang.org",
+    "go.dev",
+    "*.deno.land",
+    "deno.land",
+    "*.gnu.org",
+    "*.kernel.org",
+]

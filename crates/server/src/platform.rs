@@ -24,7 +24,9 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let capability_registry = CapabilityRegistry::with_builtins_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
     let connection_providers = oss_connection_provider_registry_for_grade(grade);
-    let egress_service = Arc::new(DirectEgressService::default());
+    // Resolve the optional host-wide system allowlist from the environment
+    // (EVERRUNS_SYSTEM_ALLOWLIST_ENABLED). Disabled by default.
+    let egress_service = Arc::new(DirectEgressService::from_env());
     let email_sender = SystemEmailConfig::from_env()
         .expect("Invalid system email configuration")
         .into_sender_with_egress(egress_service.clone());

@@ -6,11 +6,13 @@
 //! transport clients directly.
 
 use crate::network_access::NetworkAccessList;
+use crate::system_allowlist::SystemAllowlist;
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -195,6 +197,10 @@ impl EgressService for DisabledEgressService {
 #[derive(Clone)]
 pub struct DirectEgressService {
     client: reqwest::Client,
+    /// Optional host-wide allowlist applied to every outbound request,
+    /// independently of the per-request `network_access`. `None` means no
+    /// global enforcement. See `crate::system_allowlist`.
+    system_allowlist: Option<Arc<SystemAllowlist>>,
 }
 
 impl std::fmt::Debug for DirectEgressService {
@@ -219,14 +225,32 @@ impl DirectEgressService {
                 .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("build direct egress HTTP client"),
+            system_allowlist: None,
         }
     }
 
     pub fn with_client(client: reqwest::Client) -> Self {
-        Self { client }
+        Self {
+            client,
+            system_allowlist: None,
+        }
     }
 
-    fn validate_request(request: &EgressRequest) -> EgressResult<()> {
+    /// Construct with the global system allowlist resolved from the environment.
+    ///
+    /// Enforcement is active only when `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED` is
+    /// set; otherwise this behaves exactly like [`DirectEgressService::new`].
+    pub fn from_env() -> Self {
+        Self::new().with_system_allowlist(SystemAllowlist::from_env())
+    }
+
+    /// Attach (or clear) the host-wide system allowlist.
+    pub fn with_system_allowlist(mut self, system_allowlist: Option<Arc<SystemAllowlist>>) -> Self {
+        self.system_allowlist = system_allowlist;
+        self
+    }
+
+    fn validate_request(&self, request: &EgressRequest) -> EgressResult<()> {
         if request.method.trim().is_empty() {
             return Err(EgressError::invalid("method is required"));
         }
@@ -247,11 +271,21 @@ impl DirectEgressService {
                 url: request.url.clone(),
             });
         }
+        // Host-wide allowlist: when enabled, every outbound request must match
+        // one of the curated public resources, regardless of request kind or the
+        // per-request network access list.
+        if let Some(allowlist) = &self.system_allowlist
+            && !allowlist.is_url_allowed(&request.url)
+        {
+            return Err(EgressError::NetworkAccessDenied {
+                url: request.url.clone(),
+            });
+        }
         Ok(())
     }
 
     fn build_request(&self, request: EgressRequest) -> EgressResult<reqwest::RequestBuilder> {
-        Self::validate_request(&request)?;
+        self.validate_request(&request)?;
         if request.signing == EgressSigning::Required {
             return Err(EgressError::SigningUnavailable);
         }
@@ -426,6 +460,64 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
+    }
+
+    #[tokio::test]
+    async fn system_allowlist_blocks_unlisted_hosts() {
+        use crate::system_allowlist::SystemAllowlist;
+        let allowlist = SystemAllowlist::from_toml(
+            r#"
+            [groups.test]
+            allowed = ["allowed.example.com"]
+            "#,
+        )
+        .unwrap();
+
+        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
+        let error = service
+            .send(EgressRequest::new(
+                "GET",
+                "https://blocked.example.com/path",
+                // Even system-owned traffic (no per-request network_access) is
+                // subject to the host-wide allowlist.
+                EgressRequestKind::LlmProvider,
+            ))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
+    }
+
+    #[tokio::test]
+    async fn system_allowlist_permits_listed_hosts() {
+        use crate::system_allowlist::SystemAllowlist;
+        let server = MockServer::start().await;
+        let host = reqwest::Url::parse(&server.uri())
+            .unwrap()
+            .host_str()
+            .unwrap()
+            .to_string();
+        Mock::given(method("GET"))
+            .and(path("/ok"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let allowlist =
+            SystemAllowlist::from_toml(&format!("[groups.test]\nallowed = [\"{host}\"]\n"))
+                .unwrap();
+        let service = DirectEgressService::new().with_system_allowlist(Some(Arc::new(allowlist)));
+        let response = service
+            .send(EgressRequest::new(
+                "GET",
+                format!("{}/ok", server.uri()),
+                EgressRequestKind::Capability,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status, 200);
     }
 
     #[tokio::test]
