@@ -567,10 +567,10 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
             // without a discriminator, so accept missing kind/type only when
             // a string `text` field is present.
             let kind = part.get("kind").or_else(|| part.get("type"));
-            let is_text = kind
-                .and_then(Value::as_str)
-                .map(|kind| kind == "text")
-                .unwrap_or_else(|| part.get("text").and_then(Value::as_str).is_some());
+            let is_text = match kind {
+                Some(kind) => kind.as_str() == Some("text"),
+                None => part.get("text").and_then(Value::as_str).is_some(),
+            };
             if is_text {
                 part.get("text").and_then(Value::as_str).map(str::to_owned)
             } else {

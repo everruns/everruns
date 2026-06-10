@@ -168,7 +168,6 @@ impl TestSessionResourceRegistry {
     }
 }
 
-
 #[async_trait]
 impl SessionResourceRegistry for TestSessionResourceRegistry {
     async fn register(
@@ -666,6 +665,35 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
         "method": "message/send",
         "params": {
             "message": { "role": "user", "parts": [] }
+        }
+    }))
+    .unwrap();
+    let response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(response["error"]["code"], -32602);
+
+    // Present-but-malformed discriminators are invalid rather than treated as
+    // legacy discriminator-free text parts.
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "z",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": 123, "text": "malformed discriminator" }]
+            }
         }
     }))
     .unwrap();
