@@ -112,8 +112,8 @@ async fn hides_math_tools_but_runs_them_via_lua() {
         .map(|t| t.description().to_string())
         .unwrap_or_default();
     assert!(
-        lua_desc.contains("multiply(a, b)") && lua_desc.contains("tools.<name>"),
-        "lua description should catalog the hidden tools: {lua_desc}",
+        lua_desc.contains("multiply(a: number, b: number)") && lua_desc.contains("tools.<name>"),
+        "lua description should catalog the hidden tools with typed args: {lua_desc}",
     );
 
     // Run the turn; the agent orchestrates the hidden tools inside Lua.

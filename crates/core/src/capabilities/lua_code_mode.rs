@@ -98,17 +98,17 @@ round-trips, structured results.
     }
 
     fn tool_definition_hooks(&self) -> Vec<Arc<dyn ToolDefinitionHook>> {
-        vec![Arc::new(HideCodeModeToolsHook {
-            keep_visible: Vec::new(),
-        })]
+        vec![Arc::new(HideCodeModeToolsHook::default())]
     }
 
     fn tool_definition_hooks_with_config(
         &self,
         config: &Value,
     ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        let opts = parse_options(config);
         vec![Arc::new(HideCodeModeToolsHook {
-            keep_visible: parse_keep_visible(config),
+            keep_visible: opts.keep_visible,
+            full_schemas: opts.full_schemas,
         })]
     }
 
@@ -120,6 +120,11 @@ round-trips, structured results.
                     "type": "array",
                     "items": { "type": "string" },
                     "description": "Tool names to keep directly callable by the model even when they would otherwise be routed through Lua code mode."
+                },
+                "full_schemas": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Embed each hidden tool's full JSON Schema in the lua tool description (lossless discovery). Off by default: a compact typed signature is shown instead."
                 }
             },
             "additionalProperties": false
@@ -141,21 +146,38 @@ round-trips, structured results.
                 return Err("keep_visible entries must be strings".to_string());
             }
         }
+        if let Some(full) = obj.get("full_schemas")
+            && !full.is_boolean()
+        {
+            return Err("full_schemas must be a boolean".to_string());
+        }
         Ok(())
     }
 }
 
-/// Read the optional `keep_visible` allowlist from per-agent config.
-fn parse_keep_visible(config: &Value) -> Vec<String> {
-    config
-        .get("keep_visible")
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
+/// Per-agent options parsed from capability config.
+#[derive(Default)]
+struct CodeModeOptions {
+    keep_visible: Vec<String>,
+    full_schemas: bool,
+}
+
+fn parse_options(config: &Value) -> CodeModeOptions {
+    CodeModeOptions {
+        keep_visible: config
+            .get("keep_visible")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
+        full_schemas: config
+            .get("full_schemas")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    }
 }
 
 /// Drops code-mode-eligible tool definitions from the model-facing tool list
@@ -170,9 +192,12 @@ fn parse_keep_visible(config: &Value) -> Vec<String> {
 /// otherwise have no way to discover their names/arguments. So the eligible set
 /// is summarized into a `tools.<name>{ args }` catalog appended to the `lua`
 /// tool's own description — the discovery surface the model reads right before
-/// it decides to call `lua`.
+/// it decides to call `lua`. Each entry shows a typed signature; with
+/// `full_schemas` it also embeds the tool's complete JSON Schema (lossless).
+#[derive(Default)]
 struct HideCodeModeToolsHook {
     keep_visible: Vec<String>,
+    full_schemas: bool,
 }
 
 impl ToolDefinitionHook for HideCodeModeToolsHook {
@@ -184,7 +209,7 @@ impl ToolDefinitionHook for HideCodeModeToolsHook {
             let hidden = !self.keep_visible.iter().any(|k| k == name)
                 && is_code_mode_eligible(name, def.policy(), def.hints());
             if hidden {
-                catalog.push(format_catalog_entry(&def));
+                catalog.push(format_catalog_entry(&def, self.full_schemas));
             } else {
                 kept.push(def);
             }
@@ -205,21 +230,29 @@ impl ToolDefinitionHook for HideCodeModeToolsHook {
     }
 }
 
-/// One catalog line: `- name(arg1, arg2, opt?) — first sentence of description`.
-fn format_catalog_entry(def: &ToolDefinition) -> String {
-    let args = arg_summary(def.full_parameters());
+/// One catalog entry: `- name(a: number, b?: string) — first sentence`, with an
+/// optional indented `schema: { ... }` line when `full_schemas` is set.
+fn format_catalog_entry(def: &ToolDefinition, full_schemas: bool) -> String {
+    let sig = typed_signature(def.full_parameters());
     let desc = first_sentence(def.description());
-    if desc.is_empty() {
-        format!("- {}({args})", def.name())
+    let mut entry = if desc.is_empty() {
+        format!("- {}({sig})", def.name())
     } else {
-        format!("- {}({args}) — {desc}", def.name())
+        format!("- {}({sig}) — {desc}", def.name())
+    };
+    if full_schemas {
+        entry.push_str(&format!(
+            "\n    schema: {}",
+            compact_schema(def.full_parameters())
+        ));
     }
+    entry
 }
 
-/// Comma-separated argument names from a JSON Schema object: required first,
-/// optional suffixed with `?`. The synthetic `human_intent` narration argument
-/// (added by the `human_intent` capability) is omitted as noise.
-fn arg_summary(schema: &Value) -> String {
+/// Typed argument signature from a JSON Schema object: `name: type` for required
+/// args first, then `name?: type` for optional ones. The synthetic
+/// `human_intent` narration argument (added by `human_intent`) is omitted.
+fn typed_signature(schema: &Value) -> String {
     let Some(props) = schema.get("properties").and_then(|v| v.as_object()) else {
         return String::new();
     };
@@ -228,18 +261,50 @@ fn arg_summary(schema: &Value) -> String {
         .and_then(|v| v.as_array())
         .map(|a| a.iter().filter_map(|x| x.as_str()).collect())
         .unwrap_or_default();
-    let mut names: Vec<String> = Vec::new();
+    let mut parts: Vec<String> = Vec::new();
     for r in &required {
-        if *r != crate::tool_types::HUMAN_INTENT_ARGUMENT && props.contains_key(*r) {
-            names.push((*r).to_string());
+        if *r != crate::tool_types::HUMAN_INTENT_ARGUMENT
+            && let Some(prop) = props.get(*r)
+        {
+            parts.push(format!("{r}: {}", json_type(prop)));
         }
     }
-    for key in props.keys() {
+    for (key, prop) in props {
         if key != crate::tool_types::HUMAN_INTENT_ARGUMENT && !required.contains(&key.as_str()) {
-            names.push(format!("{key}?"));
+            parts.push(format!("{key}?: {}", json_type(prop)));
         }
     }
-    names.join(", ")
+    parts.join(", ")
+}
+
+/// Render a JSON Schema property's `type` as a short string (e.g. `number`,
+/// `string|null`, `enum`, `object`). Falls back to `any` when unspecified.
+fn json_type(prop: &Value) -> String {
+    match prop.get("type") {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(types)) => types
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect::<Vec<_>>()
+            .join("|"),
+        _ if prop.get("enum").is_some() => "enum".to_string(),
+        _ => "any".to_string(),
+    }
+}
+
+/// Minified JSON Schema for full discovery, with the synthetic `human_intent`
+/// argument stripped (it is never passed to `tools.*`).
+fn compact_schema(schema: &Value) -> String {
+    let mut schema = schema.clone();
+    if let Some(obj) = schema.as_object_mut() {
+        if let Some(props) = obj.get_mut("properties").and_then(|v| v.as_object_mut()) {
+            props.remove(crate::tool_types::HUMAN_INTENT_ARGUMENT);
+        }
+        if let Some(req) = obj.get_mut("required").and_then(|v| v.as_array_mut()) {
+            req.retain(|v| v.as_str() != Some(crate::tool_types::HUMAN_INTENT_ARGUMENT));
+        }
+    }
+    serde_json::to_string(&schema).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// First sentence (up to `.` or newline), trimmed and length-capped.
@@ -259,11 +324,12 @@ fn first_sentence(description: &str) -> String {
 }
 
 /// Append the catalog to the `lua` tool's description so the model can discover
-/// the in-script `tools.*` functions.
+/// the in-script `tools.*` functions and their arguments.
 fn graft_catalog_onto_lua(def: &mut ToolDefinition, catalog: &[String]) {
     let block = format!(
         "\n\nThese tools are available ONLY inside this script via the `tools` table — \
-call them as `tools.<name>{{ args }}` (e.g. `local r = tools.add{{ a = 1, b = 2 }}`):\n{}",
+call them as `tools.<name>{{ args }}` (e.g. `local r = tools.add{{ a = 1, b = 2 }}`). \
+Argument types follow each name:\n{}",
         catalog.join("\n")
     );
     match def {
@@ -309,6 +375,7 @@ mod tests {
     fn hides_eligible_tools_keeps_lua_and_essential() {
         let hook = HideCodeModeToolsHook {
             keep_visible: Vec::new(),
+            full_schemas: false,
         };
         let defs = vec![
             builtin("lua", ToolPolicy::Auto, ToolHints::default()),
@@ -351,6 +418,7 @@ mod tests {
     fn grafts_catalog_onto_lua_description() {
         let hook = HideCodeModeToolsHook {
             keep_visible: Vec::new(),
+            full_schemas: false,
         };
         let add = ToolDefinition::Builtin(BuiltinTool {
             name: "add".to_string(),
@@ -372,20 +440,78 @@ mod tests {
         let kept = hook.transform(defs);
         // `add` is gone from the model's tool list...
         assert_eq!(names(&kept), vec!["lua"]);
-        // ...but discoverable from the lua tool description with its arguments.
+        // ...but discoverable from the lua tool description with typed arguments.
         let lua_desc = kept[0].description();
         assert!(lua_desc.contains("tools.<name>"), "{lua_desc}");
-        assert!(lua_desc.contains("- add(a, b)"), "{lua_desc}");
+        assert!(
+            lua_desc.contains("- add(a: number, b: number)"),
+            "{lua_desc}"
+        );
         assert!(
             lua_desc.contains("Add two numbers together"),
             "catalog should carry the description: {lua_desc}",
         );
+        // Default mode does not embed the full JSON schema.
+        assert!(!lua_desc.contains("schema:"), "{lua_desc}");
+    }
+
+    #[test]
+    fn full_schemas_embeds_complete_schema() {
+        let hook = HideCodeModeToolsHook {
+            keep_visible: Vec::new(),
+            full_schemas: true,
+        };
+        let add = ToolDefinition::Builtin(BuiltinTool {
+            name: "add".to_string(),
+            display_name: None,
+            description: "Add.".to_string(),
+            parameters: json!({
+                "type": "object",
+                "properties": {
+                    "a": { "type": "number" },
+                    "b": { "type": "number" },
+                    "human_intent": { "type": "string" }
+                },
+                "required": ["a", "b"],
+            }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+            full_parameters: None,
+        });
+        let kept = hook.transform(vec![
+            builtin("lua", ToolPolicy::Auto, ToolHints::default()),
+            add,
+        ]);
+        let lua_desc = kept[0].description();
+        assert!(lua_desc.contains("schema:"), "{lua_desc}");
+        assert!(lua_desc.contains("\"properties\""), "{lua_desc}");
+        // The synthetic human_intent arg is stripped from both signature & schema.
+        assert!(!lua_desc.contains("human_intent"), "{lua_desc}");
+    }
+
+    #[test]
+    fn typed_signature_handles_optional_and_union_types() {
+        let sig = typed_signature(&json!({
+            "type": "object",
+            "properties": {
+                "path": { "type": "string" },
+                "limit": { "type": ["integer", "null"] },
+                "mode": { "enum": ["a", "b"] }
+            },
+            "required": ["path"],
+        }));
+        assert!(sig.starts_with("path: string"), "{sig}");
+        assert!(sig.contains("limit?: integer|null"), "{sig}");
+        assert!(sig.contains("mode?: enum"), "{sig}");
     }
 
     #[test]
     fn keep_visible_overrides_hiding() {
         let hook = HideCodeModeToolsHook {
             keep_visible: vec!["add".to_string()],
+            full_schemas: false,
         };
         let defs = vec![
             builtin("add", ToolPolicy::Auto, ToolHints::default()),
@@ -428,6 +554,14 @@ mod tests {
         );
         assert!(
             cap.validate_config(&json!({ "keep_visible": [1, 2] }))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&json!({ "full_schemas": true }))
+                .is_ok()
+        );
+        assert!(
+            cap.validate_config(&json!({ "full_schemas": "yes" }))
                 .is_err()
         );
     }

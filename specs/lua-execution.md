@@ -203,14 +203,17 @@ approval-gated, client-side, `cpu_bound`) are never eligible and stay direct
 tool calls.
 
 **Discovery.** Hiding a tool removes its standalone schema, so the hook also
-grafts a catalog of the hidden tools onto the **`lua` tool's description** —
-one `- name(arg1, arg2, opt?) — first sentence` line per tool, built from the
-same `ToolDefinition` list it is filtering (the synthetic `human_intent`
-argument is omitted). This is what tells the model which `tools.<name>{ args }`
-functions exist and what they take; the policy sentence in the capability's
-system prompt tells it *to* route through Lua, and the catalog in the lua tool
-description tells it *what is callable*. Putting the catalog on the lua tool
-(not the always-on system prompt) means it is paid only when `lua` is present.
+grafts a catalog of the hidden tools onto the **`lua` tool's description**, built
+from the same `ToolDefinition` list it is filtering (the synthetic
+`human_intent` argument is omitted). By default each entry is a typed signature —
+`- name(a: number, b?: string) — first sentence` (required args first, optional
+suffixed with `?`, types from the JSON Schema). The `full_schemas` config option
+additionally embeds each tool's complete minified JSON Schema (`schema: {…}`) for
+lossless discovery of nested/complex parameters, at a token cost. Either way the
+policy sentence in the capability's system prompt tells the model *to* route
+through Lua, and the catalog tells it *what is callable and with which
+arguments*. Putting the catalog on the lua tool (not the always-on system
+prompt) means it is paid only when `lua` is present.
 
 - **Config:** `{ "keep_visible": ["tool_a", ...] }` force-keeps named tools as
   direct calls even when they would otherwise be routed through Lua. Default empty.

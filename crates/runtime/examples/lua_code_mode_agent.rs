@@ -139,8 +139,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", &lua_desc[idx..]);
     }
     assert!(
-        lua_desc.contains("multiply(a, b)"),
-        "lua description should advertise the hidden tools and their args",
+        lua_desc.contains("multiply(a: number, b: number)"),
+        "lua description should advertise the hidden tools and their typed args",
     );
 
     // 2. Run the turn. The agent orchestrates the hidden tools inside Lua.
