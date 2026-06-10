@@ -292,6 +292,12 @@ pub struct WebFetchTool {
     enable_save_to_file: bool,
     /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
+    /// Host-wide system allowlist ("green list"). fetchkit owns its own HTTP
+    /// client and does not (yet) route through `EgressService`, so the
+    /// deployment-wide allowlist is enforced here as a pre-flight check that
+    /// returns a clear system-policy error. `None` = no global enforcement.
+    /// See `crate::system_allowlist` and `specs/system-allowlist.md`.
+    system_allowlist: Option<Arc<crate::system_allowlist::SystemAllowlist>>,
 }
 
 impl WebFetchTool {
@@ -307,6 +313,22 @@ impl WebFetchTool {
             fetchkit_tool,
             enable_save_to_file,
             description,
+            system_allowlist: crate::system_allowlist::SystemAllowlist::from_env(),
+        }
+    }
+
+    /// Reject URLs not covered by the active system allowlist with an explicit
+    /// system-policy error. Returns `None` when the allowlist is disabled or the
+    /// URL is permitted.
+    fn system_policy_block(&self, url: &str) -> Option<ToolExecutionResult> {
+        match &self.system_allowlist {
+            Some(allowlist) if !allowlist.is_url_allowed(url) => {
+                Some(ToolExecutionResult::tool_error(format!(
+                    "Endpoint blocked by system policy: {url} is not on the deployment's \
+                     system allowlist of permitted public resources."
+                )))
+            }
+            _ => None,
         }
     }
 }
@@ -438,6 +460,11 @@ impl Tool for WebFetchTool {
             Err(e) => return e,
         };
 
+        // Host-wide system allowlist applies even without a session context.
+        if let Some(blocked) = self.system_policy_block(&request.url) {
+            return blocked;
+        }
+
         match self.fetchkit_tool.execute(request).await {
             Ok(response) => {
                 ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
@@ -462,6 +489,13 @@ impl Tool for WebFetchTool {
             return ToolExecutionResult::tool_error(
                 "File download is disabled for this capability",
             );
+        }
+
+        // Host-wide system allowlist (green list). Enforced before the
+        // per-session access list so the operator-level policy yields a clear,
+        // distinct error.
+        if let Some(blocked) = self.system_policy_block(&request.url) {
+            return blocked;
         }
 
         // THREAT[TM-AGENT-018]: Enforce network access list
@@ -535,7 +569,37 @@ mod tests {
             fetchkit_tool,
             enable_save_to_file: true,
             description,
+            system_allowlist: None,
         }
+    }
+
+    #[tokio::test]
+    async fn system_allowlist_blocks_with_clear_system_policy_error() {
+        use crate::system_allowlist::SystemAllowlist;
+
+        let mut tool = tool_for_wiremock();
+        tool.system_allowlist = Some(
+            SystemAllowlist::from_toml("[groups.test]\nallowed = [\"allowed.example.com\"]\n")
+                .map(Arc::new)
+                .unwrap(),
+        );
+
+        let result = tool
+            .execute(serde_json::json!({ "url": "https://blocked.example.com/path" }))
+            .await;
+
+        let message = match result {
+            ToolExecutionResult::ToolError(message) => message,
+            other => panic!("blocked URL should be a tool error, got: {other:?}"),
+        };
+        assert!(
+            message.contains("blocked by system policy"),
+            "error should name the system policy, got: {message}"
+        );
+        assert!(
+            message.contains("blocked.example.com"),
+            "error should include the URL, got: {message}"
+        );
     }
 
     #[test]

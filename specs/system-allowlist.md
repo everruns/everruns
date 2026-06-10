@@ -77,6 +77,17 @@ independent of the per-request `network_access`. Both the system allowlist
 (if active) and the per-request `NetworkAccessList` (if present) must permit a
 URL for the request to proceed.
 
+### fetchkit / web_fetch
+
+`web_fetch` (fetchkit) owns its own HTTP client and does not route through
+`EgressService`, so the allowlist is enforced there as an explicit pre-flight
+check in `crates/core/src/capabilities/web_fetch.rs`. When the allowlist is
+enabled and a fetched URL is not covered, the tool returns a clear, distinct
+error — "Endpoint blocked by system policy: …" — before any request is made,
+rather than a generic transport failure. When fetchkit is migrated onto
+`EgressService` (see `specs/egress.md` migration order), the egress boundary
+becomes a second enforcement point and this pre-flight check can be revisited.
+
 ### Operator responsibility
 
 Because enforcement covers provider traffic too, an operator enabling the
