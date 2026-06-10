@@ -126,6 +126,8 @@ mod seed_ids {
     pub const CLAUDE_3_7_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000306);
     pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
     pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
+    // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
+    pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
 
     // LlmSim Models (0x400-0x4FF)
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
@@ -1902,6 +1904,17 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-opus-4-7",
         display_name: "Claude Opus 4.7",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids). Keeps a 1M Opus in the default picker
+        // now that the bare `claude-opus-4-7` profile is the 200K variant.
+        id: seed_ids::CLAUDE_OPUS_4_7_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-7[1m]",
+        display_name: "Claude Opus 4.7 (1M)",
         enabled: true,     // Enabled by default
         is_favorite: true, // Favorite model
     },
