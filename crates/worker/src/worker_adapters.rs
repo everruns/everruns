@@ -315,6 +315,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
+    /// Default: `None` (no heartbeats sent — durable workers supply one).
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+        None
+    }
+
+    /// Provider stall timeout for the Reason activity (EVE-531).
+    /// Default: `None` (use built-in 120s default in ReasonAtom).
+    fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     /// Invoke an app schedule channel when a durable schedule fires.
     async fn invoke_scheduled_app_channel(
         &self,

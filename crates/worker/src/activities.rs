@@ -20,6 +20,7 @@ use everruns_runtime::{
     execute_reason_activity as runtime_execute_reason_activity,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 use crate::grpc_adapters::GrpcClient;
 use crate::grpc_worker_adapters::GrpcWorkerAdapters;
@@ -88,6 +89,7 @@ pub async fn reason_activity(
     org_id: i64,
     input: ReasonInput,
     platform_definition: &PlatformDefinition,
+    stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>>,
 ) -> Result<ReasonResult> {
     tracing::info!(
         org_id = org_id,
@@ -97,16 +99,16 @@ pub async fn reason_activity(
         "Executing reason_activity"
     );
 
-    let result = runtime_execute_reason_activity(
-        &WorkerRuntimeHost::new(GrpcWorkerAdapters::from_client_with_platform_definition(
-            grpc_client,
-            platform_definition.clone(),
-        )),
-        org_id,
-        input,
-    )
-    .await
-    .context("ReasonAtom execution failed")?;
+    let mut adapters = GrpcWorkerAdapters::from_client_with_platform_definition(
+        grpc_client,
+        platform_definition.clone(),
+    );
+    if let Some(hb) = stream_heartbeater {
+        adapters = adapters.with_stream_heartbeater(hb);
+    }
+    let result = runtime_execute_reason_activity(&WorkerRuntimeHost::new(adapters), org_id, input)
+        .await
+        .context("ReasonAtom execution failed")?;
 
     // Turn lifecycle events (turn.completed, turn.failed, session.idled) are NOT
     // emitted here. They are deferred to the workflow scheduler which checks for

@@ -41,6 +41,7 @@ use crate::worker_adapters::{TurnContext, WorkerAdapters};
 pub struct GrpcWorkerAdapters {
     client: GrpcClient,
     platform_definition: PlatformDefinition,
+    stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>>,
 }
 
 impl GrpcWorkerAdapters {
@@ -62,6 +63,7 @@ impl GrpcWorkerAdapters {
         Ok(Self {
             client,
             platform_definition,
+            stream_heartbeater: None,
         })
     }
 
@@ -81,7 +83,17 @@ impl GrpcWorkerAdapters {
         Self {
             client,
             platform_definition,
+            stream_heartbeater: None,
         }
+    }
+
+    /// Set the stream heartbeater for liveness signalling (EVE-531).
+    pub fn with_stream_heartbeater(
+        mut self,
+        heartbeater: Arc<dyn everruns_core::traits::StreamHeartbeater>,
+    ) -> Self {
+        self.stream_heartbeater = Some(heartbeater);
+        self
     }
 
     /// Get the underlying GrpcClient (for MCP executor)
@@ -463,6 +475,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             GrpcPaymentAuthority::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
+    }
+
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+        self.stream_heartbeater.clone()
     }
 
     async fn invoke_scheduled_app_channel(

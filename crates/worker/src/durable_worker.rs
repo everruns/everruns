@@ -911,6 +911,7 @@ impl DurableWorker {
                             grpc_client.clone(),
                             &turn_input,
                             self.store.clone(),
+                            task_id,
                         )
                         .await
                     }
@@ -1214,6 +1215,7 @@ impl DurableWorker {
         grpc_client: GrpcClient,
         input: &DurableTurnInput,
         store: Arc<Mutex<GrpcDurableStore>>,
+        task_id: Uuid,
     ) -> Result<serde_json::Value> {
         debug!(
             session_id = %input.session_id,
@@ -1279,12 +1281,21 @@ impl DurableWorker {
             iteration: input.iteration,
         };
 
+        // EVE-531: create stream heartbeater to signal provider liveness
+        let stream_heartbeater: Option<Arc<dyn everruns_core::traits::StreamHeartbeater>> =
+            Some(Arc::new(crate::stream_heartbeater::GrpcTaskHeartbeater {
+                store: store.clone(),
+                task_id,
+                worker_id: self.config.worker_id.clone(),
+            }));
+
         // Use the existing reason_activity function with gRPC adapters
         let result = reason_activity(
             grpc_client,
             input.org_id,
             reason_input,
             self.platform_definition.as_ref(),
+            stream_heartbeater,
         )
         .await;
 

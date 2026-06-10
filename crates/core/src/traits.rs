@@ -969,6 +969,42 @@ impl DurableToolResultStore for NoopDurableToolResultStore {
     }
 }
 
+// ============================================================================
+// StreamHeartbeater — per-stream liveness signal for Reason activity (EVE-531)
+// ============================================================================
+
+/// Progress snapshot carried in each stream heartbeat.
+#[derive(Debug, Clone)]
+pub struct StreamProgress {
+    /// Accumulated text + thinking length (characters) at the time of heartbeat.
+    pub accumulated_len: usize,
+    /// Wall-clock time of the most recent received token (Unix seconds).
+    pub last_delta_at: u64,
+}
+
+/// Heartbeater the Reason streaming loop calls on delta batches and a keepalive
+/// timer, signalling that the provider connection is alive.
+///
+/// Implementations bridge to the durable-execution layer (e.g. gRPC).
+/// The no-op is used in dev/test where no durable store is present.
+#[async_trait]
+pub trait StreamHeartbeater: Send + Sync {
+    /// Signal stream liveness with current progress.
+    ///
+    /// Must be best-effort: errors must not propagate to the caller.
+    /// Cancel-safety is critical — if the worker dies the heartbeat stops
+    /// and the existing task-level reclaim takes over.
+    async fn heartbeat(&self, progress: StreamProgress);
+}
+
+/// No-op heartbeater — treats every stream as perpetually alive (dev/test).
+pub struct NoopStreamHeartbeater;
+
+#[async_trait]
+impl StreamHeartbeater for NoopStreamHeartbeater {
+    async fn heartbeat(&self, _progress: StreamProgress) {}
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
