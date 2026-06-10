@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.10.0] - 2026-06-10
+
+### Highlights
+
+- **Claude Fable 5 support** - New model with adaptive thinking capability ([#2083](https://github.com/everruns/everruns/pull/2083)).
+- **AWS Bedrock Runtime provider** - Run agents on any Bedrock-hosted model without leaving your AWS environment ([#2080](https://github.com/everruns/everruns/pull/2080)).
+- **OpenRouter provider** - Route to hundreds of models through a single OpenRouter integration.
+- **Sandboxed Lua execution** - Experimental capability to run tool logic in an isolated Lua sandbox ([#2078](https://github.com/everruns/everruns/pull/2078)).
+- **System-wide outbound allowlist** - Operators can now restrict all agent egress to an explicit allowlist ([#2088](https://github.com/everruns/everruns/pull/2088)).
+- **Stream-liveness heartbeat** - Reason activity now sends periodic heartbeats so long-running inference never silently stalls (EVE-531).
+
+### What's Changed
+
+- feat(worker): stream-liveness heartbeat for Reason activity (EVE-531) by [@chaliy](https://github.com/chaliy)
+- fix(seed): block env key seeding for open auth ([#2086](https://github.com/everruns/everruns/pull/2086)) by [@chaliy](https://github.com/chaliy)
+- fix(lua): validate HTTP egress DNS targets by [@chaliy](https://github.com/chaliy)
+- feat(durable): per-tool-call idempotency in Act activity (EVE-530) by [@chaliy](https://github.com/chaliy)
+- feat(llm): split Opus/Fable into 200K and 1M context profiles ([#2089](https://github.com/everruns/everruns/pull/2089)) by [@chaliy](https://github.com/chaliy)
+- feat(llm): add OpenRouter provider by [@chaliy](https://github.com/chaliy)
+- fix(a2a): publish supportedInterfaces in app AgentCard by [@chaliy](https://github.com/chaliy)
+- feat(egress): system-wide outbound allowlist ([#2088](https://github.com/everruns/everruns/pull/2088)) by [@chaliy](https://github.com/chaliy)
+- feat(lua): route non-essential tool calls through Lua code mode ([#2087](https://github.com/everruns/everruns/pull/2087)) by [@chaliy](https://github.com/chaliy)
+- fix(bedrock): drop legacy rustls 0.21 stack from AWS SDK features ([#2084](https://github.com/everruns/everruns/pull/2084)) by [@chaliy](https://github.com/chaliy)
+- feat(models): Claude Fable 5 support with adaptive thinking ([#2083](https://github.com/everruns/everruns/pull/2083)) by [@chaliy](https://github.com/chaliy)
+- fix(core): classify 403 model_not_found as model_unavailable by [@chaliy](https://github.com/chaliy)
+- feat(bedrock): add AWS Bedrock Runtime LLM provider ([#2080](https://github.com/everruns/everruns/pull/2080)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): honor user prompt mutations ([#2074](https://github.com/everruns/everruns/pull/2074)) by [@chaliy](https://github.com/chaliy)
+- feat(lua): sandboxed Lua execution capability (experimental) ([#2078](https://github.com/everruns/everruns/pull/2078)) by [@chaliy](https://github.com/chaliy)
+- fix(core): disclose generic tool search stubs by [@chaliy](https://github.com/chaliy)
+
 ## [0.9.0] - 2026-06-05
 
 ### Highlights
