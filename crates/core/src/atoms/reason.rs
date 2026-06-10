@@ -1606,13 +1606,9 @@ impl ReasonAtom {
             let stall_timeout = self
                 .provider_stall_timeout
                 .unwrap_or(std::time::Duration::from_secs(120));
-            let mut stall_sleep =
-                Box::pin(tokio::time::sleep(stall_timeout));
-            let mut keepalive_ticker = tokio::time::interval(
-                std::time::Duration::from_secs(12),
-            );
-            keepalive_ticker
-                .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            let mut stall_sleep = Box::pin(tokio::time::sleep(stall_timeout));
+            let mut keepalive_ticker = tokio::time::interval(std::time::Duration::from_secs(12));
+            keepalive_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             keepalive_ticker.tick().await; // consume immediate first tick
             let mut last_stream_heartbeat = Instant::now();
 
@@ -1656,19 +1652,19 @@ impl ReasonAtom {
                     .as_mut()
                     .reset(tokio::time::Instant::now() + stall_timeout);
                 // Per-event heartbeat (throttled to every 5s)
-                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000 {
-                    if let Some(ref hb) = self.stream_heartbeater {
-                        let now_secs = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-                        hb.heartbeat(crate::traits::StreamProgress {
-                            accumulated_len: text.len() + thinking.len(),
-                            last_delta_at: now_secs,
-                        })
-                        .await;
-                        last_stream_heartbeat = Instant::now();
-                    }
+                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000
+                    && let Some(ref hb) = self.stream_heartbeater
+                {
+                    let now_secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    hb.heartbeat(crate::traits::StreamProgress {
+                        accumulated_len: text.len() + thinking.len(),
+                        last_delta_at: now_secs,
+                    })
+                    .await;
+                    last_stream_heartbeat = Instant::now();
                 }
                 match event? {
                     LlmStreamEvent::TextDelta(delta) => {

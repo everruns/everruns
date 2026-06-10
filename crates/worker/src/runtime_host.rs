@@ -275,6 +275,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.durable_tool_result_store()
     }
 
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+        self.adapters.stream_heartbeater()
+    }
+
     /// Execute `mcp_*` tool calls by resolving server connections over gRPC and
     /// calling them through the shared MCP client over the platform egress
     /// boundary (SSRF-guarded). Returns `None` when no egress service is

@@ -186,6 +186,18 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Stream-liveness heartbeater for the Reason activity (EVE-531).
+    /// Default: `None` (no heartbeating — dev/in-memory environments use no-op).
+    fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+        None
+    }
+
+    /// Provider stall timeout for the Reason activity (EVE-531).
+    /// Default: `None` (use built-in 120s default).
+    fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
+        None
+    }
+
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
     /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
@@ -956,6 +968,12 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     .with_file_store(adapter.file_store());
     if let Some(image_resolver) = adapter.image_resolver(org_id) {
         atom = atom.with_image_resolver(image_resolver);
+    }
+    if let Some(hb) = adapter.stream_heartbeater() {
+        atom = atom.with_stream_heartbeater(hb);
+    }
+    if let Some(timeout) = adapter.provider_stall_timeout() {
+        atom = atom.with_provider_stall_timeout(timeout);
     }
 
     let input = ReasonInput {

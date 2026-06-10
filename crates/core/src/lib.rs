@@ -190,11 +190,10 @@ pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
     ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
     NoopDurableToolResultStore, NoopEventEmitter, NoopStreamHeartbeater, OutboundToolRateLimiter,
-    ResolvedImage, StreamHeartbeater, StreamProgress,
-    SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
+    ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, ToolCallClaimResult, ToolContext, ToolExecutor,
-    UserConnectionResolver,
+    SessionStorageStore, SessionStore, StreamHeartbeater, StreamProgress, ToolCallClaimResult,
+    ToolContext, ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
