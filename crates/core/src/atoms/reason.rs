@@ -381,6 +381,10 @@ pub struct ReasonAtom {
     /// Optional file store for capabilities that need filesystem access
     /// (e.g., agent_instructions reads AGENTS.md, skills_discovery scans for skills)
     file_store: Option<Arc<dyn crate::traits::SessionFileSystem>>,
+    /// Optional heartbeater for stream-liveness signalling (EVE-531).
+    stream_heartbeater: Option<Arc<dyn crate::traits::StreamHeartbeater>>,
+    /// Optional provider stall timeout (EVE-531). Default: 120s.
+    provider_stall_timeout: Option<std::time::Duration>,
 }
 
 impl ReasonAtom {
@@ -407,6 +411,8 @@ impl ReasonAtom {
             event_emitter: Arc::new(event_emitter),
             image_resolver: None,
             file_store: None,
+            stream_heartbeater: None,
+            provider_stall_timeout: None,
         }
     }
 
@@ -438,6 +444,22 @@ impl ReasonAtom {
     /// ```
     pub fn with_image_resolver(mut self, resolver: Arc<dyn ImageResolver>) -> Self {
         self.image_resolver = Some(resolver);
+        self
+    }
+
+    /// Set the stream heartbeater for liveness signalling during LLM streaming.
+    pub fn with_stream_heartbeater(
+        mut self,
+        heartbeater: Arc<dyn crate::traits::StreamHeartbeater>,
+    ) -> Self {
+        self.stream_heartbeater = Some(heartbeater);
+        self
+    }
+
+    /// Set the provider stall timeout. If no token arrives within this window,
+    /// the stream is aborted and the activity fails with a retryable error.
+    pub fn with_provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.provider_stall_timeout = Some(timeout);
         self
     }
 }
@@ -1580,7 +1602,74 @@ impl ReasonAtom {
             let mut last_thinking_delta_emit = Instant::now();
             let mut time_to_first_token_ms: Option<u64> = None;
 
-            while let Some(event) = stream.next().await {
+            // EVE-531: stall timeout + keepalive heartbeat for stream-liveness
+            let stall_timeout = self
+                .provider_stall_timeout
+                .unwrap_or(std::time::Duration::from_secs(120));
+            let mut stall_sleep =
+                Box::pin(tokio::time::sleep(stall_timeout));
+            let mut keepalive_ticker = tokio::time::interval(
+                std::time::Duration::from_secs(12),
+            );
+            keepalive_ticker
+                .set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            keepalive_ticker.tick().await; // consume immediate first tick
+            let mut last_stream_heartbeat = Instant::now();
+
+            loop {
+                let event = tokio::select! {
+                    biased;
+                    next = stream.next() => match next {
+                        Some(e) => e,
+                        None => break,
+                    },
+                    _ = &mut stall_sleep => {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            turn_id = %context.turn_id,
+                            stall_secs = stall_timeout.as_secs(),
+                            "ReasonAtom: provider stream stall timeout"
+                        );
+                        return Err(AgentLoopError::llm(format!(
+                            "provider stream stall: no tokens for {}s",
+                            stall_timeout.as_secs()
+                        )));
+                    },
+                    _ = keepalive_ticker.tick() => {
+                        if let Some(ref hb) = self.stream_heartbeater {
+                            let now_secs = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            hb.heartbeat(crate::traits::StreamProgress {
+                                accumulated_len: text.len() + thinking.len(),
+                                last_delta_at: now_secs,
+                            })
+                            .await;
+                            last_stream_heartbeat = Instant::now();
+                        }
+                        continue;
+                    },
+                };
+                // Reset stall deadline on every received stream event
+                stall_sleep
+                    .as_mut()
+                    .reset(tokio::time::Instant::now() + stall_timeout);
+                // Per-event heartbeat (throttled to every 5s)
+                if last_stream_heartbeat.elapsed().as_millis() as u64 >= 5_000 {
+                    if let Some(ref hb) = self.stream_heartbeater {
+                        let now_secs = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        hb.heartbeat(crate::traits::StreamProgress {
+                            accumulated_len: text.len() + thinking.len(),
+                            last_delta_at: now_secs,
+                        })
+                        .await;
+                        last_stream_heartbeat = Instant::now();
+                    }
+                }
                 match event? {
                     LlmStreamEvent::TextDelta(delta) => {
                         // Track time-to-first-token on first non-empty delta

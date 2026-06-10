@@ -189,7 +189,8 @@ pub use runtime_context::{
 pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
     ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
-    NoopDurableToolResultStore, NoopEventEmitter, OutboundToolRateLimiter, ResolvedImage,
+    NoopDurableToolResultStore, NoopEventEmitter, NoopStreamHeartbeater, OutboundToolRateLimiter,
+    ResolvedImage, StreamHeartbeater, StreamProgress,
     SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
     SessionStorageStore, SessionStore, ToolCallClaimResult, ToolContext, ToolExecutor,
