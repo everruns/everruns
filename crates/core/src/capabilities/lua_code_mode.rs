@@ -138,6 +138,13 @@ round-trips, structured results.
         let obj = config
             .as_object()
             .ok_or_else(|| "config must be a JSON object".to_string())?;
+        // Enforce the same closed contract as `config_schema`
+        // (`additionalProperties: false`) on every write path.
+        for key in obj.keys() {
+            if key != "keep_visible" && key != "full_schemas" {
+                return Err(format!("unknown config key: {key}"));
+            }
+        }
         if let Some(keep) = obj.get("keep_visible") {
             let arr = keep
                 .as_array()
@@ -563,6 +570,12 @@ mod tests {
         assert!(
             cap.validate_config(&json!({ "full_schemas": "yes" }))
                 .is_err()
+        );
+        // Closed contract: unknown keys are rejected (matches config_schema's
+        // additionalProperties: false).
+        assert!(
+            cap.validate_config(&json!({ "nope": 1 })).is_err(),
+            "unknown config keys must be rejected"
         );
     }
 

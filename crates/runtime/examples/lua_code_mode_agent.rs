@@ -50,9 +50,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     // Build the platform: only the math + lua capabilities are registered.
-    // `session_file_system` is intentionally not registered — the in-memory
-    // runtime provides the file store, and `lua`'s dependency on it resolves to
-    // nothing extra, so the only directly visible tool ends up being `lua`.
+    // `FileSystemCapability` (`session_file_system`) is deliberately NOT
+    // registered. `lua` depends on it, but an unregistered dependency is
+    // silently skipped, so no file tools exist here and the only model-visible
+    // tool ends up being `lua`. (The in-memory runtime still supplies the file
+    // store that `fs.*` writes to.) In a full platform where
+    // `session_file_system` IS registered, its tools would appear too: the
+    // read-only ones routed into code mode, destructive ones like `delete_file`
+    // staying directly callable.
     let mut caps = CapabilityRegistry::new();
     caps.register(LuaCapability);
     caps.register(LuaCodeModeCapability);
