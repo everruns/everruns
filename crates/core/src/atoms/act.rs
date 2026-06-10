@@ -140,6 +140,10 @@ pub struct ToolCallResult {
     /// If set, the tool requires a user connection for this provider before it can execute.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub connection_required: Option<String>,
+    /// Determinism violation message. When Some, ActAtom::execute returns Err to fail the
+    /// durable workflow fast rather than continuing with a corrupted replay.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub determinism_fatal: Option<String>,
 }
 
 /// Result of the ActAtom
@@ -873,6 +877,14 @@ where
             "ActAtom: all tools completed"
         );
 
+        // Fail the durable workflow fast on any determinism violation (EVE-530).
+        // All tool.completed events have already been emitted above for affected calls.
+        if let Some(fatal_msg) = results.iter().find_map(|r| r.determinism_fatal.as_deref()) {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "act activity aborted due to determinism violation: {fatal_msg}"
+            )));
+        }
+
         let mut act_result = ActResult {
             results,
             completed: true,
@@ -1003,6 +1015,7 @@ where
                 success: false,
                 status: "error".to_string(),
                 connection_required: None,
+                determinism_fatal: None,
             };
         }
 
@@ -1027,6 +1040,12 @@ where
                 }) => {
                     // Determinism guard: stored args fingerprint must match current call.
                     if stored_fp != tool_call_fingerprint {
+                        let err_msg = format!(
+                            "determinism violation: tool '{}' replay args fingerprint \
+                             does not match prior execution (stored={stored_fp}, \
+                             current={})",
+                            tool_call.name, tool_call_fingerprint
+                        );
                         tracing::error!(
                             session_id = %context.session_id,
                             turn_id = %context.turn_id,
@@ -1035,24 +1054,38 @@ where
                             current_fp = %tool_call_fingerprint,
                             "ActAtom: determinism violation — replay args fingerprint mismatch"
                         );
+                        let result_fp =
+                            tool_result_fingerprint(&tool_call.name, &ToolResult::error(&err_msg));
+                        let _ = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                context.session_id,
+                                event_context,
+                                ToolCompletedData::failure(
+                                    tool_call.id.clone(),
+                                    tool_call.name.clone(),
+                                    "error".to_string(),
+                                    err_msg.clone(),
+                                    None,
+                                )
+                                .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                                .with_display_name(display_name.clone()),
+                            ))
+                            .await;
                         return ToolCallResult {
                             tool_call: tool_call.clone(),
                             result: ToolResult {
                                 tool_call_id: tool_call.id.clone(),
                                 result: None,
                                 images: None,
-                                error: Some(format!(
-                                    "determinism violation: tool '{}' replay args fingerprint \
-                                     does not match prior execution (stored={stored_fp}, \
-                                     current={})",
-                                    tool_call.name, tool_call_fingerprint
-                                )),
+                                error: Some(err_msg.clone()),
                                 connection_required: None,
                                 raw_output: None,
                             },
                             success: false,
                             status: "error".to_string(),
                             connection_required: None,
+                            determinism_fatal: Some(err_msg),
                         };
                     }
                     tracing::debug!(
@@ -1075,11 +1108,22 @@ where
                     let status = if success { "success" } else { "error" };
                     let result_fp = tool_result_fingerprint(&tool_call.name, &replayed_result);
                     let completed_data = if success {
-                        let content = replayed_result
+                        // Reconstruct content: text + images (preserves image-producing tools on replay)
+                        let mut content = replayed_result
                             .result
                             .as_ref()
                             .map(|r| vec![ContentPart::text(r.to_string())])
                             .unwrap_or_default();
+                        if let Some(ref images) = replayed_result.images {
+                            for img in images {
+                                content.push(ContentPart::Image(
+                                    crate::message::ImageContentPart::from_base64(
+                                        &img.base64,
+                                        &img.media_type,
+                                    ),
+                                ));
+                            }
+                        }
                         ToolCompletedData::success(
                             tool_call.id.clone(),
                             tool_call.name.clone(),
@@ -1114,10 +1158,65 @@ where
                         success,
                         status: status.to_string(),
                         connection_required: conn_req,
+                        determinism_fatal: None,
                     };
                 }
 
-                Ok(ToolCallClaimResult::AlreadyRunning { .. }) => {
+                Ok(ToolCallClaimResult::AlreadyRunning {
+                    args_fingerprint: stored_fp,
+                }) => {
+                    // Determinism guard: even in the running state, a fingerprint mismatch
+                    // means the workflow is replaying with different args — fail loudly.
+                    if stored_fp != tool_call_fingerprint {
+                        let err_msg = format!(
+                            "determinism violation: tool '{}' args fingerprint changed \
+                             while prior claim is still running (stored={stored_fp}, \
+                             current={tool_call_fingerprint})",
+                            tool_call.name
+                        );
+                        tracing::error!(
+                            session_id = %context.session_id,
+                            turn_id = %context.turn_id,
+                            tool_call_id = %tool_call.id,
+                            stored = %stored_fp,
+                            current = %tool_call_fingerprint,
+                            "ActAtom: determinism violation — running claim fingerprint mismatch"
+                        );
+                        let result_fp =
+                            tool_result_fingerprint(&tool_call.name, &ToolResult::error(&err_msg));
+                        let _ = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                context.session_id,
+                                event_context,
+                                ToolCompletedData::failure(
+                                    tool_call.id.clone(),
+                                    tool_call.name.clone(),
+                                    "error".to_string(),
+                                    err_msg.clone(),
+                                    None,
+                                )
+                                .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                                .with_display_name(display_name.clone()),
+                            ))
+                            .await;
+                        return ToolCallResult {
+                            tool_call: tool_call.clone(),
+                            result: ToolResult {
+                                tool_call_id: tool_call.id.clone(),
+                                result: None,
+                                images: None,
+                                error: Some(err_msg.clone()),
+                                connection_required: None,
+                                raw_output: None,
+                            },
+                            success: false,
+                            status: "error".to_string(),
+                            connection_required: None,
+                            determinism_fatal: Some(err_msg),
+                        };
+                    }
+
                     let sec = tool_def
                         .map(|d| d.side_effect_class())
                         .unwrap_or(SideEffectClass::AtMostOnce);
@@ -1145,8 +1244,34 @@ where
                                     &tool_call.id,
                                     serde_json::Value::Null,
                                     "interrupted",
-                                    Uuid::nil(), // sentinel — settle accepts any token for interrupted
+                                    Uuid::nil(), // sentinel — bypass token check for interrupt
                                 )
+                                .await;
+                            let err_msg = format!(
+                                "tool '{}' was interrupted mid-execution during a prior \
+                                 worker failure; result is uncertain and was not re-run \
+                                 (AtMostOnce safety)",
+                                tool_call.name
+                            );
+                            let result_fp = tool_result_fingerprint(
+                                &tool_call.name,
+                                &ToolResult::error(&err_msg),
+                            );
+                            let _ = self
+                                .event_emitter
+                                .emit(EventRequest::new(
+                                    context.session_id,
+                                    event_context,
+                                    ToolCompletedData::failure(
+                                        tool_call.id.clone(),
+                                        tool_call.name.clone(),
+                                        "interrupted".to_string(),
+                                        err_msg.clone(),
+                                        None,
+                                    )
+                                    .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                                    .with_display_name(display_name.clone()),
+                                ))
                                 .await;
                             return ToolCallResult {
                                 tool_call: tool_call.clone(),
@@ -1154,18 +1279,14 @@ where
                                     tool_call_id: tool_call.id.clone(),
                                     result: None,
                                     images: None,
-                                    error: Some(format!(
-                                        "tool '{}' was interrupted mid-execution during a prior \
-                                         worker failure; result is uncertain and was not re-run \
-                                         (AtMostOnce safety)",
-                                        tool_call.name
-                                    )),
+                                    error: Some(err_msg),
                                     connection_required: None,
                                     raw_output: None,
                                 },
                                 success: false,
                                 status: "error".to_string(),
                                 connection_required: None,
+                                determinism_fatal: None,
                             };
                         }
                     }
@@ -1175,6 +1296,12 @@ where
                     stored_fingerprint,
                     current_fingerprint,
                 }) => {
+                    let err_msg = format!(
+                        "determinism violation: tool '{}' args fingerprint changed \
+                         on replay (stored={stored_fingerprint}, \
+                         current={current_fingerprint})",
+                        tool_call.name
+                    );
                     tracing::error!(
                         session_id = %context.session_id,
                         turn_id = %context.turn_id,
@@ -1183,24 +1310,38 @@ where
                         current = %current_fingerprint,
                         "ActAtom: determinism violation on claim"
                     );
+                    let result_fp =
+                        tool_result_fingerprint(&tool_call.name, &ToolResult::error(&err_msg));
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            context.session_id,
+                            event_context,
+                            ToolCompletedData::failure(
+                                tool_call.id.clone(),
+                                tool_call.name.clone(),
+                                "error".to_string(),
+                                err_msg.clone(),
+                                None,
+                            )
+                            .with_fingerprints(tool_call_fingerprint.clone(), result_fp)
+                            .with_display_name(display_name.clone()),
+                        ))
+                        .await;
                     return ToolCallResult {
                         tool_call: tool_call.clone(),
                         result: ToolResult {
                             tool_call_id: tool_call.id.clone(),
                             result: None,
                             images: None,
-                            error: Some(format!(
-                                "determinism violation: tool '{}' args fingerprint changed \
-                                 on replay (stored={stored_fingerprint}, \
-                                 current={current_fingerprint})",
-                                tool_call.name
-                            )),
+                            error: Some(err_msg.clone()),
                             connection_required: None,
                             raw_output: None,
                         },
                         success: false,
                         status: "error".to_string(),
                         connection_required: None,
+                        determinism_fatal: Some(err_msg),
                     };
                 }
 
@@ -1298,6 +1439,7 @@ where
                 success: false,
                 status: "error".to_string(),
                 connection_required: None,
+                determinism_fatal: None,
             };
         };
 
@@ -1590,6 +1732,7 @@ where
                     success,
                     status: status.to_string(),
                     connection_required: conn_req,
+                    determinism_fatal: None,
                 }
             }
             Err(e) => {
@@ -1658,6 +1801,7 @@ where
                     success: false,
                     status: "error".to_string(),
                     connection_required: None,
+                    determinism_fatal: None,
                 }
             }
         }
@@ -2480,6 +2624,7 @@ mod tests {
                 success: false,
                 status: "success".to_string(),
                 connection_required: Some("daytona".to_string()),
+                determinism_fatal: None,
             }],
             completed: true,
             success_count: 0,

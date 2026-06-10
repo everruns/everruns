@@ -453,6 +453,7 @@ mod tests {
             success: true,
             status: "success".to_string(),
             connection_required: connection_required.map(|s| s.to_string()),
+            determinism_fatal: None,
         }
     }
 

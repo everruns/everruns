@@ -630,6 +630,20 @@ pub struct ToolResult {
     pub raw_output: Option<String>,
 }
 
+impl ToolResult {
+    /// Construct a minimal error-only ToolResult (used for fingerprinting error paths).
+    pub fn error(msg: &str) -> Self {
+        Self {
+            tool_call_id: String::new(),
+            result: None,
+            images: None,
+            error: Some(msg.to_string()),
+            connection_required: None,
+            raw_output: None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

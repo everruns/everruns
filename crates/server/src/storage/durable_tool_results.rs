@@ -102,7 +102,13 @@ impl DurableToolResultStore for PgDurableToolResultStore {
         claim_token: Uuid,
     ) -> Result<bool, AgentLoopError> {
         // CAS update: only transition from 'running' if the claim token matches.
-        // The nil UUID sentinel bypasses the token check for forced interrupts.
+        // The nil UUID sentinel bypasses the token check for forced interrupts only.
+        if claim_token == Uuid::nil() && status != "interrupted" {
+            return Err(AgentLoopError::tool(format!(
+                "durable_tool_results: nil claim token bypass is restricted to \
+                 status='interrupted', got '{status}'"
+            )));
+        }
         let rows = if claim_token == Uuid::nil() {
             sqlx::query(
                 r#"
