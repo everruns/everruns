@@ -8,7 +8,11 @@ use std::{
 };
 
 use async_trait::async_trait;
-use axum::http::{Method, StatusCode};
+use axum::{
+    Json, Router,
+    http::{Method, StatusCode},
+    routing::get,
+};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::capabilities::{A2aAgentDelegationCapability, Capability};
 use everruns_core::session_resource::{
@@ -154,6 +158,17 @@ struct TestSessionResourceRegistry {
     entries: Mutex<HashMap<String, SessionResourceEntry>>,
 }
 
+impl TestSessionResourceRegistry {
+    fn metadata(&self, resource_id: &str) -> Option<Value> {
+        self.entries
+            .lock()
+            .unwrap()
+            .get(resource_id)
+            .map(|entry| entry.metadata.clone())
+    }
+}
+
+
 #[async_trait]
 impl SessionResourceRegistry for TestSessionResourceRegistry {
     async fn register(
@@ -231,34 +246,88 @@ impl SessionResourceRegistry for TestSessionResourceRegistry {
     }
 }
 
-async fn create_published_served_a2a_app() -> (TestServer, String, String) {
-    let (server, base_url) = TestServer::serving_in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
-    (server, endpoint, api_key)
-}
-
-fn outbound_delegation_config(discovery_base_url: &str, api_key: &str) -> Value {
+fn a2a_agent_card(endpoint: &str) -> Value {
     json!({
-        "agents": [{
-            "id": "local_app",
-            "name": "Local App",
-            "description": "Local Everruns A2A app endpoint",
-            "base_url": discovery_base_url,
-            "headers": {
-                "authorization": format!("Bearer {api_key}")
-            },
-            "preferred_binding": "JSONRPC",
-            "poll_interval_ms": 100,
-            "allow_local_urls": true
-        }]
+        "name": "Local Everruns A2A app",
+        "description": "Local A2A app endpoint used by outbound delegation tests",
+        "version": "0.1",
+        "protocolVersion": "0.3.0",
+        "preferredTransport": "JSONRPC",
+        "supportedInterfaces": [
+            {
+                "url": endpoint,
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0"
+            }
+        ],
+        "capabilities": {
+            "streaming": false,
+            "pushNotifications": false,
+            "stateTransitionHistory": false
+        },
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "skills": []
     })
 }
 
-async fn spawn_background_against_local_a2a(config: Value) -> Value {
+async fn spawn_agent_card_server(card: Value) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind agent-card server");
+    let addr = listener.local_addr().expect("agent-card server addr");
+    let app = Router::new().route(
+        "/.well-known/agent-card.json",
+        get(move || {
+            let card = card.clone();
+            async move { Json(card) }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("serve agent-card server");
+    });
+    format!("http://{addr}")
+}
+
+async fn create_published_served_a2a_app() -> (TestServer, String, String, String, String) {
+    let (server, base_url) = TestServer::serving_in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap().to_string();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
+    publish_app(&server, &app_id).await;
+    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
+    (server, endpoint, api_key, app_id, channel_id)
+}
+
+fn outbound_delegation_config(
+    endpoint: &str,
+    api_key: &str,
+    discovery_base_url: Option<&str>,
+) -> Value {
+    let mut agent = json!({
+        "id": "local_app",
+        "name": "Local App",
+        "description": "Local Everruns A2A app endpoint",
+        "headers": {
+            "authorization": format!("Bearer {api_key}")
+        },
+        "preferred_binding": "JSONRPC",
+        "poll_interval_ms": 100,
+        "allow_local_urls": true
+    });
+    if let Some(base_url) = discovery_base_url {
+        agent["base_url"] = json!(base_url);
+    } else {
+        agent["agent_card"] = a2a_agent_card(endpoint);
+    }
+    json!({ "agents": [agent] })
+}
+
+async fn spawn_background_against_local_a2a(
+    config: Value,
+) -> (Arc<TestSessionResourceRegistry>, Value) {
     let capability = A2aAgentDelegationCapability;
     let spawn_tool = capability
         .tools_with_config(&config)
@@ -266,7 +335,7 @@ async fn spawn_background_against_local_a2a(config: Value) -> Value {
         .find(|tool| tool.name() == "spawn_agent")
         .expect("spawn_agent tool");
     let registry = Arc::new(TestSessionResourceRegistry::default());
-    let ctx = ToolContext::new(SessionId::new()).with_session_resource_registry(registry);
+    let ctx = ToolContext::new(SessionId::new()).with_session_resource_registry(registry.clone());
 
     let result = spawn_tool
         .execute_with_context(
@@ -284,7 +353,26 @@ async fn spawn_background_against_local_a2a(config: Value) -> Value {
     let ToolExecutionResult::Success(value) = result else {
         panic!("expected successful spawn_agent result: {result:?}");
     };
-    value
+    (registry, value)
+}
+
+async fn wait_for_remote_task_snapshot(
+    registry: &TestSessionResourceRegistry,
+    run_id: &str,
+) -> Value {
+    for _ in 0..30 {
+        if let Some(metadata) = registry.metadata(run_id) {
+            assert_ne!(
+                metadata["status"], "failed",
+                "agent_run failed before remote task snapshot was observed: {metadata:?}",
+            );
+            if metadata["last_remote_task_snapshot"].is_object() {
+                return metadata;
+            }
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    panic!("expected background monitor to record a remote task snapshot for {run_id}");
 }
 
 #[tokio::test]
@@ -1105,25 +1193,79 @@ async fn a2a_agent_card_published_only_when_live() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn outbound_a2a_delegation_resolves_local_app_discovery_card() {
-    let (_server, endpoint, api_key) = create_published_served_a2a_app().await;
-    let config = outbound_delegation_config(&endpoint, &api_key);
+async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
+    let (_server, endpoint, api_key, _app_id, _channel_id) =
+        create_published_served_a2a_app().await;
+    let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
+    let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
 
-    let spawn_result = spawn_background_against_local_a2a(config).await;
+    let (registry, spawn_result) = spawn_background_against_local_a2a(config).await;
 
-    assert_eq!(spawn_result["status"], "failed");
-    let error = spawn_result["error"].as_str().unwrap_or_default();
-    assert!(
-        !error.contains("Failed to resolve A2A AgentCard"),
-        "card discovery should parse before any send failure: {spawn_result:?}",
+    assert_ne!(
+        spawn_result["status"], "failed",
+        "spawn_agent failed: {spawn_result:?}",
     );
-    assert!(
-        !error.contains("failed to parse agent card"),
-        "served card must deserialize with the outbound A2A resolver: {spawn_result:?}",
+    let run_id = spawn_result["agent_run_id"].as_str().unwrap();
+    let remote_task_id = spawn_result["remote_task_id"].as_str().unwrap();
+    assert_eq!(
+        spawn_result["remote_context_id"].as_str().unwrap(),
+        remote_task_id
     );
+
+    let metadata = wait_for_remote_task_snapshot(&registry, run_id).await;
+    assert_eq!(metadata["remote_task_id"], remote_task_id);
+    assert_eq!(metadata["last_remote_task_snapshot"]["id"], remote_task_id);
     assert!(
-        error.contains("A2A send_message failed") || error.contains("Method not found"),
-        "expected remaining failure, if any, to be past AgentCard parsing and in EVE-540 scope: {spawn_result:?}",
+        matches!(
+            metadata["last_remote_task_snapshot"]["state"].as_str(),
+            Some(
+                "submitted"
+                    | "working"
+                    | "completed"
+                    | "TASK_STATE_SUBMITTED"
+                    | "TASK_STATE_WORKING"
+                    | "TASK_STATE_COMPLETED"
+            )
+        ),
+        "expected non-error remote task state, got {metadata:?}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
+    let (_server, endpoint, api_key, _app_id, _channel_id) =
+        create_published_served_a2a_app().await;
+    let config = outbound_delegation_config(&endpoint, &api_key, None);
+
+    let (registry, spawn_result) = spawn_background_against_local_a2a(config).await;
+
+    assert_ne!(
+        spawn_result["status"], "failed",
+        "spawn_agent failed: {spawn_result:?}",
+    );
+    let run_id = spawn_result["agent_run_id"].as_str().unwrap();
+    let remote_task_id = spawn_result["remote_task_id"].as_str().unwrap();
+    assert_eq!(
+        spawn_result["remote_context_id"].as_str().unwrap(),
+        remote_task_id
+    );
+
+    let metadata = wait_for_remote_task_snapshot(&registry, run_id).await;
+    assert_eq!(metadata["remote_task_id"], remote_task_id);
+    assert_eq!(metadata["last_remote_task_snapshot"]["id"], remote_task_id);
+    assert!(
+        matches!(
+            metadata["last_remote_task_snapshot"]["state"].as_str(),
+            Some(
+                "submitted"
+                    | "working"
+                    | "completed"
+                    | "TASK_STATE_SUBMITTED"
+                    | "TASK_STATE_WORKING"
+                    | "TASK_STATE_COMPLETED"
+            )
+        ),
+        "expected non-error remote task state, got {metadata:?}",
     );
 }
 
