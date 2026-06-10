@@ -309,6 +309,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
+    /// Default: `None` (no durable idempotency — suitable for dev/test environments).
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+        None
+    }
+
     /// Invoke an app schedule channel when a durable schedule fires.
     async fn invoke_scheduled_app_channel(
         &self,

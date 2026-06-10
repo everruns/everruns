@@ -271,6 +271,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.outbound_tool_rate_limiter(org_id)
     }
 
+    fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+        self.adapters.durable_tool_result_store()
+    }
+
     /// Execute `mcp_*` tool calls by resolving server connections over gRPC and
     /// calling them through the shared MCP client over the platform egress
     /// boundary (SSRF-guarded). Returns `None` when no egress service is

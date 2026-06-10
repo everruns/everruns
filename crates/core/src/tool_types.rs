@@ -224,6 +224,11 @@ impl ToolDefinition {
         self.hints().cpu_bound.unwrap_or(false)
     }
 
+    /// Effective side-effect class for this tool (defaults to `AtMostOnce`).
+    pub fn side_effect_class(&self) -> SideEffectClass {
+        self.hints().effective_side_effect_class()
+    }
+
     /// Get reporting attribution for the capability that contributed this tool.
     pub fn capability_attribution(&self) -> Option<(&str, Option<&str>)> {
         self.hints()
@@ -335,6 +340,30 @@ fn add_human_intent_to_schema(schema: &mut Value) {
     // useful, but old calls, provider quirks, and client-side calls remain valid.
 }
 
+/// How many times a tool call may safely be executed given the same inputs.
+///
+/// Used by the durable Act activity (EVE-530) to decide what to do when a
+/// prior execution attempt left a `running` claim in `durable_tool_results`:
+///
+/// * `Pure` / `Idempotent` — the running claim is stale; re-execute freely.
+/// * `AtMostOnce` — never re-execute from a stale running claim; settle it
+///   as `interrupted` and surface an uncertain result to the model instead.
+///
+/// When unset (`None`), the conservative default is `AtMostOnce`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum SideEffectClass {
+    /// No external side effects; always safe to re-execute (e.g. read-only queries).
+    Pure,
+    /// Idempotent side effects; safe to re-execute with the same arguments
+    /// (e.g. create-or-update, PUT-style writes).
+    Idempotent,
+    /// Exactly-once semantics required; must not be re-executed from a stale
+    /// running claim (e.g. charge a card, send an email, open a PR).
+    #[default]
+    AtMostOnce,
+}
+
 /// Semantic hints describing a tool's behavioral properties.
 ///
 /// Follows the MCP tool annotations convention (readOnlyHint, destructiveHint,
@@ -432,6 +461,16 @@ pub struct ToolHints {
     /// instead of the generic "Ran Manage Agents".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration_noun: Option<String>,
+
+    /// Replay-safety class used by the durable Act activity (EVE-530).
+    ///
+    /// Controls what happens when a worker reclaims a stale `running` claim:
+    /// `Pure`/`Idempotent` tools are re-executed; `AtMostOnce` tools are
+    /// settled as `interrupted` to prevent double side-effects.
+    ///
+    /// `None` is treated conservatively as `AtMostOnce`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub side_effect_class: Option<SideEffectClass>,
 }
 
 impl ToolHints {
@@ -516,6 +555,20 @@ impl ToolHints {
         self.narration_noun = Some(noun.into());
         self
     }
+
+    /// Builder: set the replay-safety class (EVE-530).
+    pub fn with_side_effect_class(mut self, class: SideEffectClass) -> Self {
+        self.side_effect_class = Some(class);
+        self
+    }
+
+    /// Returns the effective side-effect class, defaulting to `AtMostOnce`
+    /// when unset (conservative default).
+    pub fn effective_side_effect_class(&self) -> SideEffectClass {
+        self.side_effect_class
+            .clone()
+            .unwrap_or(SideEffectClass::AtMostOnce)
+    }
 }
 
 /// Tool call from LLM response
@@ -575,6 +628,20 @@ pub struct ToolResult {
     /// Never serialized to messages or sent to LLM.
     #[serde(skip)]
     pub raw_output: Option<String>,
+}
+
+impl ToolResult {
+    /// Construct a minimal error-only ToolResult (used for fingerprinting error paths).
+    pub fn error(msg: &str) -> Self {
+        Self {
+            tool_call_id: String::new(),
+            result: None,
+            images: None,
+            error: Some(msg.to_string()),
+            connection_required: None,
+            raw_output: None,
+        }
+    }
 }
 
 #[cfg(test)]

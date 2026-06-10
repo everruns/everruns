@@ -303,6 +303,7 @@ mod tests {
                 success: true,
                 status: "success".to_string(),
                 connection_required: None,
+                determinism_fatal: None,
             }],
             completed: true,
             success_count: 1,
