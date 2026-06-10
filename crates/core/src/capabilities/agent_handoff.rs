@@ -24,6 +24,19 @@ pub const AGENT_HANDOFF_CAPABILITY_ID: &str = "agent_handoff";
 const AGENT_HANDOFF_RESOURCE_KIND: &str = "agent_handoff";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 
+fn terminal_handoff_status(wait_status: &str) -> Option<(SessionResourceStatus, SubagentStatus)> {
+    match wait_status {
+        "idle" | "completed" => Some((SessionResourceStatus::Completed, SubagentStatus::Completed)),
+        "error" | "failed" => Some((SessionResourceStatus::Failed, SubagentStatus::Failed)),
+        "cancelled" => Some((SessionResourceStatus::Failed, SubagentStatus::Cancelled)),
+        "max_iterations_reached" => Some((
+            SessionResourceStatus::Failed,
+            SubagentStatus::MaxIterationsReached,
+        )),
+        _ => None,
+    }
+}
+
 pub struct AgentHandoffCapability;
 
 #[async_trait]
@@ -611,30 +624,35 @@ impl Tool for StartAgentHandoffTool {
         let result = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Handoff completed with status: {status}"));
 
-        if let Some(registry) = &context.session_resource_registry {
-            let terminal = if status == "error" {
-                SessionResourceStatus::Failed
-            } else {
-                SessionResourceStatus::Completed
-            };
-            let _ = registry
-                .update_status(context.session_id, &child_session.id.to_string(), terminal)
-                .await;
-        }
+        if let Some((resource_status, subagent_status)) = terminal_handoff_status(&status) {
+            if let Some(registry) = &context.session_resource_registry {
+                let _ = registry
+                    .update_status(
+                        context.session_id,
+                        &child_session.id.to_string(),
+                        resource_status,
+                    )
+                    .await;
+            }
 
-        let _ = store
-            .set_subagent_metadata(
-                child_session.id,
-                context.session_id,
-                &target.name,
-                &handoff_task,
-                if status == "error" {
-                    SubagentStatus::Failed
-                } else {
-                    SubagentStatus::Completed
-                },
-            )
-            .await;
+            if let Err(error) = store
+                .set_subagent_metadata(
+                    child_session.id,
+                    context.session_id,
+                    &target.name,
+                    &handoff_task,
+                    subagent_status,
+                )
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    child_session_id = %child_session.id,
+                    error = %error,
+                    "failed to persist terminal handoff metadata"
+                );
+            }
+        }
 
         ToolExecutionResult::success(json!({
             "handoff_id": child_session.id.to_string(),
@@ -1068,6 +1086,27 @@ mod tests {
         );
         assert!(cap.describe_schema(Some("uk")).is_some());
         assert!(cap.describe_schema(None).is_some());
+    }
+
+    #[test]
+    fn terminal_handoff_status_maps_only_terminal_wait_states() {
+        assert_eq!(
+            terminal_handoff_status("idle"),
+            Some((SessionResourceStatus::Completed, SubagentStatus::Completed))
+        );
+        assert_eq!(
+            terminal_handoff_status("error"),
+            Some((SessionResourceStatus::Failed, SubagentStatus::Failed))
+        );
+        assert_eq!(
+            terminal_handoff_status("max_iterations_reached"),
+            Some((
+                SessionResourceStatus::Failed,
+                SubagentStatus::MaxIterationsReached,
+            ))
+        );
+        assert_eq!(terminal_handoff_status("waiting_for_tool_results"), None);
+        assert_eq!(terminal_handoff_status("paused"), None);
     }
 
     #[test]
