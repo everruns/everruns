@@ -97,6 +97,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/correlation-ids.md` - Correlation IDs
 - `specs/load-testing.md` - End-to-end load testing framework
 - `specs/network-access.md` - Network access allowlist/blocklist
+- `specs/system-allowlist.md` - System-wide outbound allowlist ("green list")
 - `specs/localization.md` - Locale/timezone resolution and backend localization rules
 - `specs/notifications.md` - Generic user notifications
 - `specs/email.md` - Internal email delivery abstraction
