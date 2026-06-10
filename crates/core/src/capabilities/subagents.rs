@@ -399,6 +399,20 @@ impl Tool for SpawnSubagentTool {
                 .await;
         }
 
+        let _ = store
+            .set_subagent_metadata(
+                child_session.id,
+                context.session_id,
+                &name,
+                &task,
+                if status == "error" {
+                    crate::session::SubagentStatus::Failed
+                } else {
+                    crate::session::SubagentStatus::Completed
+                },
+            )
+            .await;
+
         ToolExecutionResult::success(json!({
             "subagent_id": child_session.id.to_string(),
             "name": name,
