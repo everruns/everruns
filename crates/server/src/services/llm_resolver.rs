@@ -49,6 +49,7 @@ where
 {
     match provider_type.to_lowercase().as_str() {
         "openai" => env_lookup("DEFAULT_OPENAI_API_KEY").filter(|s| !s.is_empty()),
+        "openrouter" => env_lookup("DEFAULT_OPENROUTER_API_KEY").filter(|s| !s.is_empty()),
         "azure_openai" => env_lookup("DEFAULT_AZURE_OPENAI_API_KEY").filter(|s| !s.is_empty()),
         "anthropic" => env_lookup("DEFAULT_ANTHROPIC_API_KEY").filter(|s| !s.is_empty()),
         "gemini" => env_lookup("DEFAULT_GEMINI_API_KEY").filter(|s| !s.is_empty()),
@@ -387,6 +388,7 @@ mod tests {
     fn test_get_default_api_key_unknown_provider() {
         let env = mock_env(&[
             ("DEFAULT_OPENAI_API_KEY", "sk-test"),
+            ("DEFAULT_OPENROUTER_API_KEY", "sk-or-test"),
             ("DEFAULT_ANTHROPIC_API_KEY", "sk-ant-test"),
         ]);
         // Unknown providers and providers without defaults return None
@@ -394,6 +396,10 @@ mod tests {
         assert_eq!(
             get_default_api_key_with_lookup("openai_completions", &env),
             None
+        );
+        assert_eq!(
+            get_default_api_key_with_lookup("openrouter", &env),
+            Some("sk-or-test".to_string())
         );
     }
 

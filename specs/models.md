@@ -225,7 +225,7 @@ Configuration for LLM API providers. See `crates/core/src/llm_models.rs` for ful
 
 Key design points:
 - `provider_type` stored as plain string without CHECK constraint (forward compatibility)
-- Supported types: `openai`, `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
+- Supported types: `openai`, `openrouter`, `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`, `llmsim`
 - API keys encrypted with AES-256-GCM envelope encryption (see `specs/encryption.md`)
 
 **API Key Resolution Order:**

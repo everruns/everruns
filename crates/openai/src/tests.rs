@@ -2,8 +2,12 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, register_driver};
+    use crate::{
+        DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, OpenRouterLlmDriver,
+        register_driver,
+    };
     use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
+    use everruns_core::llm_models::LlmProviderType;
 
     #[test]
     fn test_driver_with_api_key() {
@@ -52,6 +56,14 @@ mod driver_tests {
     }
 
     #[test]
+    fn test_openrouter_driver_defaults_to_responses_api() {
+        let driver = OpenRouterLlmDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenRouterLlmDriver"));
+        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
+        assert_eq!(driver.provider_type(), &LlmProviderType::Openrouter);
+    }
+
+    #[test]
     fn test_completions_driver_with_base_url() {
         let driver = OpenAICompletionsLlmDriver::with_base_url(
             "test-key",
@@ -69,12 +81,14 @@ mod driver_tests {
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&ProviderType::OpenAI));
+        assert!(!registry.has_driver(&ProviderType::OpenRouter));
         assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
         assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
+        assert!(registry.has_driver(&ProviderType::OpenRouter));
         assert!(registry.has_driver(&ProviderType::AzureOpenAI));
         assert!(registry.has_driver(&ProviderType::OpenAICompletions));
 
@@ -82,6 +96,11 @@ mod driver_tests {
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
         let driver = registry.create_driver(&config);
         assert!(driver.is_ok());
+
+        let openrouter_config =
+            ProviderConfig::new(ProviderType::OpenRouter).with_api_key("test-key");
+        let openrouter_driver = registry.create_driver(&openrouter_config);
+        assert!(openrouter_driver.is_ok());
 
         let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI)
             .with_api_key("test-key")

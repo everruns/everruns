@@ -96,6 +96,7 @@ impl ModelSyncService {
         // Create driver for the provider
         let driver_type = match provider_type {
             LlmProviderType::Openai => ProviderType::OpenAI,
+            LlmProviderType::Openrouter => ProviderType::OpenRouter,
             LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
             LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
             LlmProviderType::Anthropic => ProviderType::Anthropic,
@@ -278,7 +279,10 @@ impl ModelSyncService {
 fn supports_sync_with_base_url(provider_type: &LlmProviderType) -> bool {
     matches!(
         provider_type,
-        LlmProviderType::Openai | LlmProviderType::AzureOpenai | LlmProviderType::OpenaiCompletions
+        LlmProviderType::Openai
+            | LlmProviderType::Openrouter
+            | LlmProviderType::AzureOpenai
+            | LlmProviderType::OpenaiCompletions
     )
 }
 
@@ -331,6 +335,7 @@ mod tests {
     fn test_azure_openai_supports_sync_with_base_url() {
         assert!(supports_sync_with_base_url(&LlmProviderType::AzureOpenai));
         assert!(supports_sync_with_base_url(&LlmProviderType::Openai));
+        assert!(supports_sync_with_base_url(&LlmProviderType::Openrouter));
         assert!(supports_sync_with_base_url(
             &LlmProviderType::OpenaiCompletions
         ));

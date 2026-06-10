@@ -9,12 +9,25 @@ describe("ProviderIcon", () => {
     "openai_completions",
     "anthropic",
     "gemini",
+    "openrouter",
   ];
+  const filledProviderTypes: LlmProviderType[] = [
+    "openai",
+    "azure_openai",
+    "openai_completions",
+    "anthropic",
+    "gemini",
+  ];
+  const customSvgProviderTypes = filledProviderTypes;
 
   it.each(providerTypes)("renders inline SVG for %s provider", (providerType) => {
     const { container } = render(<ProviderIcon providerType={providerType} />);
     const svg = container.querySelector("svg");
     expect(svg).toBeInTheDocument();
+  });
+
+  it.each(customSvgProviderTypes)("renders path data for %s custom logo", (providerType) => {
+    const { container } = render(<ProviderIcon providerType={providerType} />);
     // Verify it uses currentColor for theme-adaptive rendering
     const path = container.querySelector("path");
     expect(path).toBeInTheDocument();
@@ -26,7 +39,7 @@ describe("ProviderIcon", () => {
     expect(img).not.toBeInTheDocument();
   });
 
-  it.each(providerTypes)("uses currentColor fill for %s", (providerType) => {
+  it.each(filledProviderTypes)("uses currentColor fill for %s", (providerType) => {
     const { container } = render(<ProviderIcon providerType={providerType} />);
     const pathsAndSvgs = container.querySelectorAll("[fill='currentColor']");
     expect(pathsAndSvgs.length).toBeGreaterThan(0);
@@ -97,6 +110,10 @@ describe("getProviderLabel", () => {
 
   it("returns correct label for gemini", () => {
     expect(getProviderLabel("gemini")).toBe("Google Gemini");
+  });
+
+  it("returns correct label for openrouter", () => {
+    expect(getProviderLabel("openrouter")).toBe("OpenRouter");
   });
 
   it("returns type string for unknown provider", () => {

@@ -42,6 +42,7 @@ mod seed_ids {
     pub const LLMSIM_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000003);
     pub const GEMINI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000004);
     pub const BEDROCK_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000005);
+    pub const OPENROUTER_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000006);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -1382,6 +1383,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         id: seed_ids::ANTHROPIC_PROVIDER,
         name: "Anthropic",
         provider_type: "anthropic",
+    },
+    SeedProvider {
+        id: seed_ids::OPENROUTER_PROVIDER,
+        name: "OpenRouter",
+        provider_type: "openrouter",
     },
     SeedProvider {
         id: seed_ids::GEMINI_PROVIDER,

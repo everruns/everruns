@@ -34,6 +34,7 @@ use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::llm_models::LlmProviderType;
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -80,6 +81,7 @@ pub struct OpenResponsesProtocolLlmDriver {
     client: Client,
     api_key: String,
     api_url: String,
+    provider_type: LlmProviderType,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -91,6 +93,7 @@ impl OpenResponsesProtocolLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
+            provider_type: LlmProviderType::Openai,
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -108,8 +111,15 @@ impl OpenResponsesProtocolLlmDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: api_url.into(),
+            provider_type: LlmProviderType::Openai,
             retry_config: LlmRetryConfig::default(),
         }
+    }
+
+    /// Set the model provider used for provider-specific request features.
+    pub fn with_provider_type(mut self, provider_type: LlmProviderType) -> Self {
+        self.provider_type = provider_type;
+        self
     }
 
     /// Configure retry behavior for rate limit errors
@@ -131,6 +141,11 @@ impl OpenResponsesProtocolLlmDriver {
     /// Get the HTTP client (for subclass access)
     pub fn client(&self) -> &Client {
         &self.client
+    }
+
+    /// Get the provider type used for model profile lookup.
+    pub fn provider_type(&self) -> &LlmProviderType {
+        &self.provider_type
     }
 
     fn convert_role(role: &LlmMessageRole) -> &'static str {
@@ -698,13 +713,18 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        // Check model profile to determine if phases should be sent in the wire format.
-        // GPT-5.4 and newer models support native execution phases.
-        let supports_phases = crate::llm_model_profiles::get_model_profile(
-            &crate::llm_models::LlmProviderType::Openai,
-            &config.model,
-        )
-        .is_some_and(|p| p.supports_phases);
+        // Check the provider-specific model profile before sending native
+        // Responses features. OpenAI-compatible gateways may share base model
+        // metadata without supporting OpenAI-only extensions such as phases or
+        // hosted tool_search.
+        let model_profile =
+            crate::llm_model_profiles::get_model_profile(&self.provider_type, &config.model);
+        let supports_phases = model_profile
+            .as_ref()
+            .is_some_and(|profile| profile.supports_phases);
+        let supports_tool_search = model_profile
+            .as_ref()
+            .is_some_and(|profile| profile.tool_search);
 
         let (instructions, input_items) = Self::build_input(&messages, supports_phases);
 
@@ -729,7 +749,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         let tools = if config.tools.is_empty() {
             None
         } else if let Some(ref ts_config) = config.tool_search {
-            if ts_config.enabled {
+            if ts_config.enabled && supports_tool_search {
                 Some(Self::convert_tools_with_search(
                     &config.tools,
                     ts_config.threshold,
@@ -1226,6 +1246,7 @@ impl std::fmt::Debug for OpenResponsesProtocolLlmDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenResponsesProtocolLlmDriver")
             .field("api_url", &self.api_url)
+            .field("provider_type", &self.provider_type)
             .field("api_key", &"[REDACTED]")
             .finish()
     }
@@ -2914,6 +2935,73 @@ mod tests {
         assert!(
             has_tool_output,
             "the latest tool result must still be present; got {input:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn openrouter_provider_does_not_send_hosted_tool_search() {
+        use crate::tool_types::DeferrablePolicy;
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+            .with_provider_type(LlmProviderType::Openrouter);
+
+        let tools: Vec<ToolDefinition> = (0..16)
+            .map(|i| {
+                make_tool(
+                    &format!("tool_{i}"),
+                    Some("General"),
+                    DeferrablePolicy::Automatic,
+                )
+            })
+            .collect();
+
+        let config = LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools,
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: Some(crate::llm_driver_registry::ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            }),
+            prompt_cache: None,
+        };
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+        let _ = driver.chat_completion_stream(messages, &config).await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+        let tools = body["tools"].as_array().expect("tools is an array");
+
+        assert!(
+            tools.iter().all(|tool| tool["type"] == "function"),
+            "OpenRouter should receive regular function tools, not hosted tool_search payloads: {tools:?}"
+        );
+        assert!(
+            tools.iter().all(|tool| tool.get("defer_loading").is_none()),
+            "OpenRouter tool schemas should not be deferred by hosted tool_search: {tools:?}"
+        );
+        assert_eq!(
+            body["input"],
+            json!([{"type": "message", "role": "user", "content": "hello"}])
         );
     }
 

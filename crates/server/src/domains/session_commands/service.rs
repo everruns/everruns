@@ -384,6 +384,7 @@ fn reasoning_effort(controls: Option<&Controls>) -> Option<String> {
 fn provider_type_from_llm(provider_type: LlmProviderType) -> Result<ProviderType> {
     Ok(match provider_type {
         LlmProviderType::Openai => ProviderType::OpenAI,
+        LlmProviderType::Openrouter => ProviderType::OpenRouter,
         LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
         LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
         LlmProviderType::Anthropic => ProviderType::Anthropic,

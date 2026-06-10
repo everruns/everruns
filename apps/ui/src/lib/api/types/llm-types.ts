@@ -6,6 +6,7 @@
 
 export type LlmProviderType =
   | "openai"
+  | "openrouter"
   | "azure_openai"
   | "openai_completions"
   | "anthropic"

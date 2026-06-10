@@ -196,11 +196,15 @@ const fn md(
 // Chat Completions path, but never Azure.
 const OPENAI: &[LlmProviderType] = &[
     LlmProviderType::Openai,
+    LlmProviderType::Openrouter,
     LlmProviderType::AzureOpenai,
     LlmProviderType::OpenaiCompletions,
 ];
-const OPENAI_COMPAT: &[LlmProviderType] =
-    &[LlmProviderType::Openai, LlmProviderType::OpenaiCompletions];
+const OPENAI_COMPAT: &[LlmProviderType] = &[
+    LlmProviderType::Openai,
+    LlmProviderType::Openrouter,
+    LlmProviderType::OpenaiCompletions,
+];
 const ANTHROPIC: &[LlmProviderType] = &[LlmProviderType::Anthropic];
 const GEMINI: &[LlmProviderType] = &[LlmProviderType::Gemini];
 const LLMSIM: &[LlmProviderType] = &[LlmProviderType::LlmSim];
@@ -352,11 +356,9 @@ pub fn get_model_profile(
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
     // Native execution phases and tool_search are advertised only for the
-    // `openai` (Open Responses) provider type — that is the only surface whose
-    // driver implements them. Every other provider type (Azure, Chat
-    // Completions) gets them masked off, regardless of which model it serves.
-    // A gateway that exposes a Responses-compatible endpoint is configured as
-    // `openai`, so it is intentionally treated as Responses-capable here.
+    // `openai` provider type. OpenRouter uses a compatible but stateless
+    // Responses endpoint, so it keeps the base model profile while masking
+    // native OpenAI-only request options.
     if !matches!(provider_type, LlmProviderType::Openai) {
         profile.supports_phases = false;
         profile.tool_search = false;
