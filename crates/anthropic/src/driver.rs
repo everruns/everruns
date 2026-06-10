@@ -1088,16 +1088,45 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-sonnet-4-6",
 ];
 
-/// Split a possibly `[1m]`-suffixed model id (e.g. `claude-opus-4-8[1m]`) into
+/// Anthropic families that support the 1M context window (Anthropic docs:
+/// context-windows / long-context pricing). Gates `[1m]` suffix handling. These
+/// coincide with `ADAPTIVE_THINKING_FAMILIES` today but are a distinct
+/// capability — kept separate so a future divergence (1M without adaptive
+/// thinking, or vice versa) cannot silently mis-gate either path.
+const MILLION_CONTEXT_FAMILIES: &[&str] = &[
+    "claude-fable-5",
+    "claude-opus-4-8",
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+];
+
+/// Split a `[1m]`-suffixed Anthropic model id (e.g. `claude-opus-4-8[1m]`) into
 /// the bare wire id Anthropic accepts and a flag marking the 1M-context twin.
-/// The `[1m]` ids are gateway-exposed large-context variants that share the
-/// base model's wire id and opt into the larger window via the `context-1m`
-/// beta header.
+///
+/// The suffix is honored only when the bare id belongs to a family that
+/// actually supports the 1M window (`MILLION_CONTEXT_FAMILIES`). A
+/// manually-configured id that merely ends in `[1m]` but is not 1M-capable —
+/// e.g. `claude-3-haiku[1m]` or `claude-sonnet-4-5[1m]` — is left untouched. We
+/// must never rewrite an arbitrary configured id or send the `context-1m` beta
+/// header to a model that does not support the 1M window (it can 400 or
+/// silently truncate on models where the header was retired). Date-suffixed 1M
+/// ids (`claude-opus-4-8-20260101[1m]`) are still honored via family
+/// normalization.
 fn split_million_context(model_id: &str) -> (&str, bool) {
     match model_id.strip_suffix("[1m]") {
-        Some(bare) => (bare, true),
-        None => (model_id, false),
+        Some(bare) if is_million_context_family(bare) => (bare, true),
+        _ => (model_id, false),
     }
+}
+
+/// Whether a bare (optionally date-suffixed) Anthropic model id belongs to a
+/// family that supports the 1M context window.
+fn is_million_context_family(model_id: &str) -> bool {
+    let family = normalize_anthropic_id(model_id);
+    MILLION_CONTEXT_FAMILIES
+        .iter()
+        .any(|f| family.eq_ignore_ascii_case(f))
 }
 
 /// Whether a model id (optionally date-suffixed) belongs to an
@@ -2200,6 +2229,7 @@ mod tests {
 
     #[test]
     fn test_split_million_context() {
+        // Registered `[1m]` twins: stripped to the wire id and flagged.
         assert_eq!(
             split_million_context("claude-opus-4-8[1m]"),
             ("claude-opus-4-8", true)
@@ -2208,11 +2238,34 @@ mod tests {
             split_million_context("claude-fable-5[1m]"),
             ("claude-fable-5", true)
         );
+        assert_eq!(
+            split_million_context("claude-opus-4-6[1m]"),
+            ("claude-opus-4-6", true)
+        );
+
+        // Date-suffixed 1M-capable id is still honored (family normalization).
+        assert_eq!(
+            split_million_context("claude-opus-4-8-20260101[1m]"),
+            ("claude-opus-4-8-20260101", true)
+        );
+
         // Bare ids are unchanged and not flagged.
         assert_eq!(
             split_million_context("claude-opus-4-8"),
             ("claude-opus-4-8", false)
         );
+
+        // Models that merely end in `[1m]` but are NOT 1M-capable must be left
+        // untouched — never strip them or send `context-1m` (it can 400 or
+        // silently truncate, e.g. on sonnet-4-5 where the header was retired).
+        for not_1m in [
+            "claude-3-haiku[1m]",
+            "claude-3-haiku-20240307[1m]",
+            "claude-sonnet-4-5[1m]",
+            "totally-made-up[1m]",
+        ] {
+            assert_eq!(split_million_context(not_1m), (not_1m, false), "{not_1m}");
+        }
     }
 
     #[test]
