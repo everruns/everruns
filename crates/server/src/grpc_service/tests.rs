@@ -654,58 +654,6 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
 }
 
 #[tokio::test]
-async fn test_memory_rpc_create_and_recall_round_trip() {
-    let service = test_worker_service().await;
-    let public_org_id = everruns_core::org_public_id_from_internal(everruns_core::DEFAULT_ORG_ID);
-
-    let store = service
-        .memory_get_or_create_default_store(Request::new(MemoryGetOrCreateDefaultStoreRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            public_org_id,
-        }))
-        .await
-        .expect("default store should be available")
-        .into_inner()
-        .store
-        .expect("store response");
-
-    service
-        .memory_create(Request::new(MemoryCreateRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            store_id: store.id.clone(),
-            content: "The user's name is Mike and he prefers concise technical answers."
-                .to_string(),
-            content_parts_json: serde_json::to_vec(&vec![everruns_core::MemoryContentPart::text(
-                "The user's name is Mike and he prefers concise technical answers.",
-            )])
-            .expect("content parts json"),
-            kind: "fact".to_string(),
-            importance: 7,
-            tags: vec!["name".to_string(), "preference".to_string()],
-        }))
-        .await
-        .expect("memory create should succeed");
-
-    let recalled = service
-        .memory_recall(Request::new(MemoryRecallRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            store_id: Some(store.id),
-            query: Some("Mike".to_string()),
-            tags: vec![],
-            has_tags: false,
-            kind: None,
-            limit: 10,
-        }))
-        .await
-        .expect("memory recall should succeed")
-        .into_inner();
-
-    assert_eq!(recalled.total, 1);
-    assert_eq!(recalled.memories.len(), 1);
-    assert!(recalled.memories[0].content.contains("Mike"));
-}
-
-#[tokio::test]
 async fn test_execute_command_uses_user_permissions() {
     use crate::storage::models::CreateUserRow;
 

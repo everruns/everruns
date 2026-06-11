@@ -37,7 +37,6 @@ mod sessions;
 mod skills;
 mod user_connections;
 mod users;
-mod volumes;
 
 #[cfg(test)]
 mod tests;
@@ -153,12 +152,9 @@ pub struct InMemoryDatabase {
     payment_accounts: RwLock<HashMap<Uuid, PaymentAccountRow>>,
     payment_policies: RwLock<HashMap<Uuid, PaymentPolicyRow>>,
     payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
-    // Workspace volumes
-    volumes: RwLock<HashMap<Uuid, VolumeRow>>,
-    volume_files: RwLock<HashMap<Uuid, VolumeFileRow>>,
-    // Memory stores and memories (org-scoped agent memory)
-    memory_stores: RwLock<HashMap<Uuid, MemoryStoreDbRow>>,
-    memories: RwLock<HashMap<Uuid, MemoryDbRow>>,
+    // Memories (org-scoped named Memories — see specs/memory.md)
+    memories: RwLock<HashMap<Uuid, MemoryRow>>,
+    memory_files: RwLock<HashMap<Uuid, MemoryFileRow>>,
     // Knowledge bases (curated org knowledge)
     knowledge_bases: RwLock<HashMap<Uuid, KnowledgeBaseRow>>,
     knowledge_entries: RwLock<HashMap<Uuid, KnowledgeEntryRow>>,
@@ -239,10 +235,8 @@ impl Default for InMemoryDatabase {
             payment_accounts: RwLock::new(HashMap::new()),
             payment_policies: RwLock::new(HashMap::new()),
             payment_attempts: RwLock::new(HashMap::new()),
-            volumes: RwLock::new(HashMap::new()),
-            volume_files: RwLock::new(HashMap::new()),
-            memory_stores: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),
+            memory_files: RwLock::new(HashMap::new()),
             knowledge_bases: RwLock::new(HashMap::new()),
             knowledge_entries: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),

@@ -39,8 +39,7 @@ use everruns_core::traits::{
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
-    InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
-    SessionFileSystemFactoryContext,
+    InputMessage, MessageRetriever, SessionFileSystem, SessionFileSystemFactoryContext,
 };
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -404,7 +403,6 @@ impl InProcessRuntimeBuilder {
             persisting_emitter,
             file_store,
             storage_store: backends.storage_store,
-            memory_store: backends.memory_store,
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
@@ -444,7 +442,6 @@ pub struct InProcessRuntime {
     persisting_emitter: PersistingEventEmitter,
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
-    memory_store: Arc<dyn MemoryStoreBackend>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
 }
 
@@ -902,10 +899,6 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
         Some(self.platform_definition.egress_service())
-    }
-
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
-        Some(self.memory_store.clone())
     }
 }
 

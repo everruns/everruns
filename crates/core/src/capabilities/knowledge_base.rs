@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn validate_rejects_malformed_kb_id() {
         let cap = KnowledgeBaseCapability;
-        let cfg = json!({ "bases": ["vol_00000000000000000000000000000001"] });
+        let cfg = json!({ "bases": ["mem_00000000000000000000000000000001"] });
         let err = cap.validate_config(&cfg).unwrap_err();
         assert!(err.contains("kb_"));
     }

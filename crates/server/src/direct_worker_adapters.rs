@@ -1502,16 +1502,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
-    fn memory_store(
-        &self,
-        org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::memory_store::MemoryStoreBackend>> {
-        Some(Arc::new(crate::storage::DbMemoryStore::new(
-            self.db.clone(),
-            org_id,
-        )))
-    }
-
     fn budget_checker(
         &self,
         org_id: i64,

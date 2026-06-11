@@ -35,7 +35,7 @@ pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_endpoint;
 pub mod mcp_servers;
-pub mod memory_stores;
+pub mod memory;
 pub mod messages;
 pub mod notifications;
 pub mod org_feature_flags;
@@ -62,7 +62,6 @@ pub mod user_connections;
 pub mod users;
 pub mod validation;
 pub mod voice;
-pub mod volumes;
 
 // Re-export common types
 pub use common::{ErrorResponse, ListResponse, PaginatedResponse};

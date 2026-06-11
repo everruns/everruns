@@ -81,7 +81,7 @@ Implementations MUST:
 
 - Treat the optional leading `/workspace` segment as equivalent to the root.
   The `/workspace` prefix exists because agents reason about a `/workspace`
-  mount point (see `specs/session-filesystem.md`), but the store itself
+  mount point (see `specs/workspace.md`), but the store itself
   works in a flat per-session namespace.
 - Strip trailing slashes (except for `/`).
 - Reject path traversal: any path that, after normalization, would escape
@@ -375,7 +375,7 @@ When the mount-overlay resolver lands, the migration path is:
 - `crates/runtime/examples/real_disk_file_system_tools.rs` — wiring
   example for `file_system` capability tools
 - `crates/server/src/storage/session_file_store.rs` — `DbSessionFileStore`
-- `specs/session-filesystem.md` — `/workspace` mount and session VFS
+- `specs/workspace.md` — `/workspace` mount and session VFS
   semantics
 - `specs/runtime.md` — `RuntimeBackends` and the embedder seam
 - `specs/capabilities.md` — `ToolContext` / `SystemPromptContext` wiring

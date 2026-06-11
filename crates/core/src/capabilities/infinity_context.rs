@@ -560,7 +560,7 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMessageRetriever;
+    use crate::in_memory::InMemoryMessageRetriever;
     use crate::typed_id::SessionId;
 
     #[test]

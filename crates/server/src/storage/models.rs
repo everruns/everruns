@@ -1016,11 +1016,11 @@ pub struct SessionFileInfoRow {
 }
 
 // ============================================
-// Workspace Volume models
+// Workspace Memory models
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct VolumeRow {
+pub struct MemoryRow {
     pub id: Uuid,
     pub org_id: i64,
     pub public_id: String,
@@ -1042,7 +1042,7 @@ pub struct VolumeRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateVolumeRow {
+pub struct CreateMemoryRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
@@ -1055,7 +1055,7 @@ pub struct CreateVolumeRow {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct UpdateVolume {
+pub struct UpdateMemory {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub status: Option<String>,
@@ -1068,9 +1068,9 @@ pub struct UpdateVolume {
 }
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct VolumeFileRow {
+pub struct MemoryFileRow {
     pub id: Uuid,
-    pub volume_id: Uuid,
+    pub memory_id: Uuid,
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
@@ -1081,89 +1081,11 @@ pub struct VolumeFileRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateVolumeFileRow {
+pub struct CreateMemoryFileRow {
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
     pub content_hash: Option<String>,
-}
-
-// ============================================
-// Memory Store models (org-scoped persistent memories — see specs/memory.md)
-// ============================================
-
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryStoreDbRow {
-    pub id: Uuid,
-    pub org_id: i64,
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryStoreWithCount {
-    pub id: Uuid,
-    pub org_id: i64,
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub active_count: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateMemoryStoreRow {
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct UpdateMemoryStoreRow {
-    pub name: Option<String>,
-    pub is_default: Option<bool>,
-}
-
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryDbRow {
-    pub id: Uuid,
-    pub public_id: String,
-    pub store_id: Uuid,
-    pub store_public_id: String,
-    pub org_id: i64,
-    pub content: String,
-    pub content_parts: serde_json::Value,
-    pub kind: String,
-    pub importance: i16,
-    pub tags: Vec<String>,
-    pub active: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateMemoryRow {
-    pub public_id: String,
-    pub store_id: Uuid,
-    pub org_id: i64,
-    pub content: String,
-    pub content_parts: serde_json::Value,
-    pub kind: String,
-    pub importance: i16,
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ListMemoriesFilter {
-    pub query: Option<String>,
-    pub kind: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub include_inactive: bool,
-    pub limit: usize,
 }
 
 // ============================================

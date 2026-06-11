@@ -123,10 +123,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
-        None
-    }
-
     fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
@@ -1126,9 +1122,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(egress_service) = adapter.egress_service() {
         atom = atom.with_egress_service(egress_service);
-    }
-    if let Some(memory_store) = adapter.memory_store(org_id) {
-        atom = atom.with_memory_store(memory_store);
     }
     if let Some(connection_resolver) = adapter.connection_resolver() {
         atom = atom.with_connection_resolver(connection_resolver);

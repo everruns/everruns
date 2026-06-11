@@ -10,11 +10,10 @@ use everruns_core::agent::Agent;
 use everruns_core::error::Result;
 use everruns_core::events::Event;
 use everruns_core::harness::Harness;
-use everruns_core::memory::{
+use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
+    InMemoryMessageRetriever,
 };
-use everruns_core::memory_store::MemoryStoreBackend;
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
@@ -109,8 +108,6 @@ pub struct RuntimeBackends {
     pub event_bus: Arc<dyn EventBus>,
     /// Session key/value + secret storage backend.
     pub storage_store: Arc<dyn SessionStorageStore>,
-    /// Persistent cross-session memory backend.
-    pub memory_store: Arc<dyn MemoryStoreBackend>,
 }
 
 impl RuntimeBackends {
@@ -128,7 +125,6 @@ impl RuntimeBackends {
             provider_store: Arc::new(InMemoryLlmProviderStore::new()),
             event_bus,
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
-            memory_store: Arc::new(InMemoryMemoryStore::new()),
         }
     }
 
@@ -164,11 +160,6 @@ impl RuntimeBackends {
 
     pub fn with_storage_store(mut self, store: Arc<dyn SessionStorageStore>) -> Self {
         self.storage_store = store;
-        self
-    }
-
-    pub fn with_memory_store(mut self, store: Arc<dyn MemoryStoreBackend>) -> Self {
-        self.memory_store = store;
         self
     }
 }

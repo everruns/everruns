@@ -1163,10 +1163,7 @@ pub struct ToolContext {
     /// sibling tool metadata, because the execution registry can be a superset.
     pub visible_tool_names: Option<Arc<HashSet<String>>>,
 
-    /// Optional memory store backend for persistent cross-session memory.
-    pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
-
-    /// Optional org ID for org-scoped operations (memory stores, etc.).
+    /// Optional org ID for org-scoped operations.
     pub org_id: Option<crate::typed_id::OrgId>,
 
     /// Merged network access list (harness ∩ agent ∩ session).
@@ -1212,7 +1209,6 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
@@ -1247,7 +1243,6 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
@@ -1285,7 +1280,6 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
@@ -1324,7 +1318,6 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
@@ -1401,7 +1394,6 @@ impl ToolContext {
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
@@ -1458,15 +1450,6 @@ impl ToolContext {
         registry: Arc<dyn SessionResourceRegistry>,
     ) -> Self {
         self.session_resource_registry = Some(registry);
-        self
-    }
-
-    /// Add a memory store backend for persistent cross-session memory.
-    pub fn with_memory_store(
-        mut self,
-        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
-    ) -> Self {
-        self.memory_store = Some(store);
         self
     }
 
@@ -1595,7 +1578,6 @@ impl std::fmt::Debug for ToolContext {
             )
             .field("event_emitter", &self.event_emitter.is_some())
             .field("tool_registry", &self.tool_registry.is_some())
-            .field("memory_store", &self.memory_store.is_some())
             .field("payment_authority", &self.payment_authority.is_some())
             .field("org_id", &self.org_id)
             .finish()
