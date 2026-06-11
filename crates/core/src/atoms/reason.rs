@@ -137,6 +137,26 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
     ERROR_PLACEHOLDER_MESSAGES.contains(&text) || is_dynamic_error_placeholder(text)
 }
 
+fn append_guarded_thinking_delta(
+    armed_guardrails: &mut [ArmedGuardrail],
+    thinking: &mut String,
+    pending_thinking_delta: &mut String,
+    delta: &str,
+) -> Option<TrippedGuardrail> {
+    thinking.push_str(delta);
+
+    // Thinking streams are user-visible and persisted on completion, so they
+    // must pass the same output guardrails as assistant text before any delta
+    // is emitted.
+    if let Some(t) = evaluate_guardrails(armed_guardrails, thinking, delta) {
+        pending_thinking_delta.clear();
+        Some(t)
+    } else {
+        pending_thinking_delta.push_str(delta);
+        None
+    }
+}
+
 fn is_dynamic_error_placeholder(text: &str) -> bool {
     (text.starts_with("Budget exhausted.") && text.ends_with("Increase the budget to continue."))
         || (text.starts_with("Budget paused.")
@@ -1725,9 +1745,21 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingDelta(delta) => {
-                        // Accumulate thinking content from extended thinking models
-                        thinking.push_str(&delta);
-                        pending_thinking_delta.push_str(&delta);
+                        if let Some(t) = append_guarded_thinking_delta(
+                            &mut armed_guardrails,
+                            &mut thinking,
+                            &mut pending_thinking_delta,
+                            &delta,
+                        ) {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                guardrail_capability_id = %t.capability_id,
+                                guardrail_id = %t.guardrail_id,
+                                "ReasonAtom: output guardrail tripped on thinking stream, replacing assistant message"
+                            );
+                            tripped = Some(t);
+                            break;
+                        }
                         last_token_at_unix = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -2301,6 +2333,72 @@ mod tests {
     use super::*;
     use crate::llm_driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
     use std::collections::HashMap;
+
+    struct BlockWhenDeltaContains {
+        needle: &'static str,
+    }
+
+    impl crate::output_guardrail::OutputGuardrailRun for BlockWhenDeltaContains {
+        fn check(
+            &mut self,
+            _accumulated: &str,
+            delta: &str,
+        ) -> crate::output_guardrail::GuardrailDecision {
+            if delta.contains(self.needle) {
+                crate::output_guardrail::GuardrailDecision::block("test_leak", "[blocked]")
+            } else {
+                crate::output_guardrail::GuardrailDecision::Pass
+            }
+        }
+    }
+
+    fn test_armed_guardrail() -> ArmedGuardrail {
+        ArmedGuardrail {
+            capability_id: "test_capability".to_string(),
+            guardrail_id: "test_guardrail".to_string(),
+            run: Box::new(BlockWhenDeltaContains { needle: "secret" }),
+        }
+    }
+
+    #[test]
+    fn test_append_guarded_thinking_delta_blocks_before_pending_emit() {
+        let mut guardrails = vec![test_armed_guardrail()];
+        let mut thinking = "safe ".to_string();
+        let mut pending = "safe ".to_string();
+
+        let tripped = append_guarded_thinking_delta(
+            &mut guardrails,
+            &mut thinking,
+            &mut pending,
+            "secret instructions",
+        )
+        .expect("thinking delta should trip guardrail");
+
+        assert_eq!(tripped.capability_id, "test_capability");
+        assert_eq!(tripped.guardrail_id, "test_guardrail");
+        assert_eq!(tripped.block.reason_code, "test_leak");
+        assert_eq!(tripped.block.replacement, "[blocked]");
+        assert_eq!(thinking, "safe secret instructions");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn test_append_guarded_thinking_delta_allows_safe_pending_emit() {
+        let mut guardrails = vec![test_armed_guardrail()];
+        let mut thinking = String::new();
+        let mut pending = String::new();
+
+        let tripped = append_guarded_thinking_delta(
+            &mut guardrails,
+            &mut thinking,
+            &mut pending,
+            "ordinary reasoning",
+        );
+
+        assert!(tripped.is_none());
+        assert_eq!(thinking, "ordinary reasoning");
+        assert_eq!(pending, "ordinary reasoning");
+    }
 
     #[test]
     fn test_reason_result_default() {
