@@ -858,6 +858,46 @@ pub fn guarded_bash_demo_script() -> LlmSimConfig {
     LlmSimConfig::scripted(turns)
 }
 
+/// Scripted scenario that exercises the session task registry end-to-end
+/// without an LLM API key. The scripted agent starts a background bash run
+/// via `spawn_background` (which creates a `background_tool` session task),
+/// then inspects the registry with `list_tasks`.
+///
+/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `virtual_bash`
+/// and `session_tasks` capabilities.
+pub fn session_tasks_demo_script() -> LlmSimConfig {
+    let turns = vec![
+        SimTurn::Mixed {
+            text: "Kicking off a background bash run.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "spawn_background".to_string(),
+                arguments: serde_json::json!({
+                    "tool": "bash",
+                    "args": { "commands": "echo task demo start; echo task demo done" },
+                    "title": "Demo background run",
+                    "signal_on_completion": false,
+                }),
+                id: Some("call_demo_spawn".to_string()),
+            }],
+        },
+        SimTurn::Mixed {
+            text: "Checking the session task registry.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "list_tasks".to_string(),
+                arguments: serde_json::json!({}),
+                id: Some("call_demo_list".to_string()),
+            }],
+        },
+        SimTurn::Assistant(
+            "Session tasks demo complete: a background run was started and \
+             tracked as a session task. Inspect it via \
+             GET /v1/sessions/{session_id}/tasks."
+                .to_string(),
+        ),
+    ];
+    LlmSimConfig::scripted(turns)
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

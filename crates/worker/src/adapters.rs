@@ -35,6 +35,9 @@ pub fn create_driver_registry() -> DriverRegistry {
     //     safe `ls`. With a matching `pre_tool_use` block hook the first
     //     call gets refused and the second succeeds — a live demo of the
     //     pre_tool_use block path.
+    //   - `tasks` — starts a background bash run via `spawn_background` and
+    //     lists it with `list_tasks`, exercising the session task registry
+    //     end-to-end (specs/session-tasks.md) without an LLM API key.
     //
     // Unknown values fall back to the default driver with a warning.
     match std::env::var("LLMSIM_DEMO").ok().as_deref() {
@@ -54,6 +57,15 @@ pub fn create_driver_registry() -> DriverRegistry {
             everruns_core::llmsim_driver::register_driver_with_config(
                 &mut registry,
                 everruns_core::llmsim_driver::guarded_bash_demo_script(),
+            );
+        }
+        Some("tasks") => {
+            tracing::info!(
+                "LLMSIM_DEMO=tasks: registering scripted LlmSim driver for the session tasks demo"
+            );
+            everruns_core::llmsim_driver::register_driver_with_config(
+                &mut registry,
+                everruns_core::llmsim_driver::session_tasks_demo_script(),
             );
         }
         Some(other) => {

@@ -64,6 +64,7 @@ use everruns_internal_protocol::proto::{
     CreateImageArtifactResponse,
     CreateSessionScheduleRequest,
     CreateSessionScheduleResponse,
+    CreateSessionTaskRequest,
     DeregisterDurableWorkerRequest,
     DeregisterDurableWorkerResponse,
     // Session resource registry
@@ -112,6 +113,7 @@ use everruns_internal_protocol::proto::{
     GetModelWithProviderResponse,
     GetSessionRequest,
     GetSessionResponse,
+    GetSessionTaskRequest,
     GetTurnContextRequest,
     GetTurnContextResponse,
     HeartbeatDurableTaskRequest,
@@ -128,6 +130,10 @@ use everruns_internal_protocol::proto::{
     ListSessionResourcesResponse,
     ListSessionSchedulesRequest,
     ListSessionSchedulesResponse,
+    ListSessionTaskMessagesRequest,
+    ListSessionTaskMessagesResponse,
+    ListSessionTasksRequest,
+    ListSessionTasksResponse,
     LoadMessagesRequest,
     LoadMessagesResponse,
     MarkLeasedResourceCleanupFailedRequest,
@@ -136,6 +142,7 @@ use everruns_internal_protocol::proto::{
     MarkLeasedResourceReleasedResponse,
     McpServerInfo,
     McpToolDef,
+    OptionalSessionTaskResponse,
     PlatformCapabilityInfo,
     // Platform management types
     PlatformCopyHarnessRequest,
@@ -176,12 +183,14 @@ use everruns_internal_protocol::proto::{
     RecordCircuitBreakerFailureResponse,
     RecordCircuitBreakerSuccessRequest,
     RecordCircuitBreakerSuccessResponse,
+    RecordSessionTaskMessageRequest,
     RegisterDurableWorkerRequest,
     RegisterDurableWorkerResponse,
     RegisterSessionResourceRequest,
     RegisterSessionResourceResponse,
     ReleaseLeasedResourceRequest,
     ReleaseLeasedResourceResponse,
+    RequestCancelSessionTaskRequest,
     ResolveImageRequest,
     ResolveImageResponse,
     ResolveImagesRequest,
@@ -231,6 +240,8 @@ use everruns_internal_protocol::proto::{
     SessionStorageSetSecretResponse,
     SessionStorageSetValueRequest,
     SessionStorageSetValueResponse,
+    SessionTaskMessageResponse,
+    SessionTaskResponse,
     SessionWriteFileIfContentMatchesRequest,
     SessionWriteFileIfContentMatchesResponse,
     SessionWriteFileRequest,
@@ -248,6 +259,7 @@ use everruns_internal_protocol::proto::{
     UpdateDurableWorkflowStatusResponse,
     UpdateSessionResourceStatusRequest,
     UpdateSessionResourceStatusResponse,
+    UpdateSessionTaskRequest,
     UpsertLeasedResourceRequest,
     UpsertLeasedResourceResponse,
 };
@@ -618,6 +630,15 @@ impl WorkerServiceImpl {
         Arc::new(crate::storage::DbSessionResourceRegistry::new(
             self.db.clone(),
         ))
+    }
+
+    /// Create the session task registry used by tools over gRPC. Attaches the
+    /// event service so registry mutations emit task.* events.
+    fn session_task_registry(&self) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+        Arc::new(
+            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+                .with_event_emitter(Arc::new(self.event_service.clone())),
+        )
     }
 
     /// Create the leased-resource store used by tools over gRPC.

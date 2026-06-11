@@ -444,6 +444,14 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        Some(Arc::new(
+            crate::grpc_adapters::GrpcSessionTaskRegistry::new(self.client.clone()),
+        ))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::grpc_adapters::GrpcScheduleStore::new(
             self.client.clone(),
