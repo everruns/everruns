@@ -1,8 +1,11 @@
-// Session SQL Database crate
-//
-// Provides session-scoped SQLite databases backed by PostgreSQL page-level
-// storage (production) or in-memory serialize/deserialize (DEV_MODE).
-//
+//! Session-scoped SQL databases for Everruns agents.
+//!
+//! `everruns-session-sqldb` is part of the [Everruns](https://everruns.com)
+//! ecosystem. It gives each session its own SQLite-compatible database, backed
+//! by PostgreSQL page-level storage in production (or an in-memory backend in
+//! dev mode), so agents can create tables, run queries, and persist structured
+//! data with multi-tenant isolation.
+
 // Architecture:
 // - types.rs: Shared types (DatabaseInfo, SqlQueryResult, etc.)
 // - executor.rs: Shared query execution on rusqlite::Connection

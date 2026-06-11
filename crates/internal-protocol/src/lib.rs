@@ -1,5 +1,11 @@
-// Internal Protocol for Worker <-> Control Plane Communication
-//
+//! gRPC protocol for Everruns worker ↔ control-plane communication.
+//!
+//! `everruns-internal-protocol` is part of the [Everruns](https://everruns.com)
+//! ecosystem. It is an internal building block that defines the gRPC service and
+//! message types Everruns workers use to talk to the control-plane server, and
+//! the conversions between protobuf and Everruns domain types. It is not a stable
+//! public API.
+
 // Decision: gRPC with tonic (industry standard, already in stack)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth

@@ -5,6 +5,7 @@
 
 [package]
 name = "everruns-bedrock"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

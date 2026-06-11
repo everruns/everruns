@@ -1,7 +1,10 @@
-// Proc macros for Everruns
-//
-// Currently provides `#[audit]` for AOP audit logging on service methods.
-//
+//! Procedural macros for the Everruns workspace.
+//!
+//! `everruns-macros` is part of the [Everruns](https://everruns.com) ecosystem.
+//! It is an internal building block that provides the proc macros shared by the
+//! Everruns crates — currently the `#[audit]` attribute for AOP audit logging
+//! on service methods.
+
 // NOTE: `#[policy]` was retired. Command-layer authorization is enforced
 // uniformly by `Command::run` (see `specs/permissions.md` and
 // `crates/server/src/domains/common.rs`). Service-layer policy checks were
