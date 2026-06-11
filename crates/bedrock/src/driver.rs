@@ -29,8 +29,10 @@ use everruns_core::llm_driver_registry::{
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
-use tokio_stream::wrappers::UnboundedReceiverStream;
+use tokio_stream::wrappers::ReceiverStream;
 use tracing::warn;
+
+const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
 use crate::credential::BedrockCredential;
 
@@ -140,7 +142,8 @@ impl LlmDriver for BedrockLlmDriver {
         })?;
 
         let mut event_stream = response.stream;
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Result<LlmStreamEvent>>();
+        let (tx, rx) =
+            tokio::sync::mpsc::channel::<Result<LlmStreamEvent>>(BEDROCK_STREAM_BUFFER_SIZE);
 
         tokio::spawn(async move {
             let mut pending: HashMap<usize, PartialToolCall> = HashMap::new();
@@ -153,7 +156,13 @@ impl LlmDriver for BedrockLlmDriver {
                             let idx = e.content_block_index() as usize;
                             match e.delta() {
                                 Some(ContentBlockDelta::Text(t)) => {
-                                    let _ = tx.send(Ok(LlmStreamEvent::TextDelta(t.clone())));
+                                    if tx
+                                        .send(Ok(LlmStreamEvent::TextDelta(t.clone())))
+                                        .await
+                                        .is_err()
+                                    {
+                                        return;
+                                    }
                                 }
                                 Some(ContentBlockDelta::ToolUse(t)) => {
                                     if let Some(tc) = pending.get_mut(&idx) {
@@ -201,10 +210,16 @@ impl LlmDriver for BedrockLlmDriver {
                                     .collect();
                                 match result {
                                     Ok(calls) => {
-                                        let _ = tx.send(Ok(LlmStreamEvent::ToolCalls(calls)));
+                                        if tx
+                                            .send(Ok(LlmStreamEvent::ToolCalls(calls)))
+                                            .await
+                                            .is_err()
+                                        {
+                                            return;
+                                        }
                                     }
                                     Err(e) => {
-                                        let _ = tx.send(Err(e));
+                                        let _ = tx.send(Err(e)).await;
                                         return;
                                     }
                                 }
@@ -224,7 +239,7 @@ impl LlmDriver for BedrockLlmDriver {
                     },
                     Ok(None) => {
                         // Stream ended — emit Done with accumulated metadata.
-                        let _ = tx.send(Ok(LlmStreamEvent::Done(Box::new(meta))));
+                        let _ = tx.send(Ok(LlmStreamEvent::Done(Box::new(meta)))).await;
                         return;
                     }
                     Err(e) => {
@@ -234,14 +249,14 @@ impl LlmDriver for BedrockLlmDriver {
                         } else {
                             AgentLoopError::llm(format!("Bedrock stream error: {e}"))
                         };
-                        let _ = tx.send(Err(err));
+                        let _ = tx.send(Err(err)).await;
                         return;
                     }
                 }
             }
         });
 
-        Ok(Box::pin(UnboundedReceiverStream::new(rx)))
+        Ok(Box::pin(ReceiverStream::new(rx)))
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
