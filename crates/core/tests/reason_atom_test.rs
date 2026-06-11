@@ -2453,7 +2453,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
     use everruns_core::capabilities::{
         PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     };
-    use everruns_core::memory::InMemoryEventEmitter;
+    use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
         harness_store,
