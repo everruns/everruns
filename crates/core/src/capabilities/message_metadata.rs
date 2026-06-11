@@ -42,15 +42,12 @@ impl MessageMetadataField {
 }
 
 /// Per-agent configuration for message metadata annotations.
+///
+/// User and agent messages are always annotated; only the rendered fields are
+/// configurable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MessageMetadataConfig {
-    /// Annotate user messages.
-    #[serde(default = "default_true")]
-    pub user_messages: bool,
-    /// Annotate agent messages.
-    #[serde(default = "default_true")]
-    pub agent_messages: bool,
     /// Which metadata fields to annotate, in render order.
     #[serde(default = "default_fields")]
     pub fields: Vec<MessageMetadataField>,
@@ -59,15 +56,9 @@ pub struct MessageMetadataConfig {
 impl Default for MessageMetadataConfig {
     fn default() -> Self {
         Self {
-            user_messages: default_true(),
-            agent_messages: default_true(),
             fields: default_fields(),
         }
     }
-}
-
-fn default_true() -> bool {
-    true
 }
 
 fn default_fields() -> Vec<MessageMetadataField> {
@@ -116,16 +107,6 @@ impl Capability for MessageMetadataCapability {
         Some(serde_json::json!({
             "type": "object",
             "properties": {
-                "user_messages": {
-                    "type": "boolean",
-                    "default": true,
-                    "title": "Annotate user messages"
-                },
-                "agent_messages": {
-                    "type": "boolean",
-                    "default": true,
-                    "title": "Annotate agent messages"
-                },
                 "fields": {
                     "type": "array",
                     "items": {
@@ -165,12 +146,7 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
     ) -> Vec<Message> {
         let config = MessageMetadataConfig::from_json(config);
         for msg in &mut messages {
-            let annotate = match msg.role {
-                MessageRole::User => config.user_messages,
-                MessageRole::Agent => config.agent_messages,
-                MessageRole::System | MessageRole::ToolResult => false,
-            };
-            if annotate {
+            if matches!(msg.role, MessageRole::User | MessageRole::Agent) {
                 annotate_message(msg, &config.fields);
             }
         }
@@ -295,21 +271,6 @@ mod tests {
     }
 
     #[test]
-    fn test_config_disables_roles() {
-        let user = Message::user("hello");
-        let agent = Message::assistant("hi");
-        let expected_agent = time_annotation(&agent);
-
-        let out = apply(
-            vec![user, agent],
-            serde_json::json!({"user_messages": false}),
-        );
-
-        assert_eq!(out[0].text().unwrap(), "hello");
-        assert_eq!(out[1].text().unwrap(), format!("{expected_agent} hi"));
-    }
-
-    #[test]
     fn test_tool_call_only_agent_message_gets_text_part() {
         let mut agent = Message::assistant("");
         agent.content = vec![ContentPart::ToolCall(ToolCallContentPart::new(
@@ -341,15 +302,11 @@ mod tests {
         assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
         assert!(cap.validate_config(&serde_json::json!({})).is_ok());
         assert!(
-            cap.validate_config(&serde_json::json!({"user_messages": false}))
+            cap.validate_config(&serde_json::json!({"fields": ["timestamp"]}))
                 .is_ok()
         );
         assert!(
-            cap.validate_config(&serde_json::json!({"user_messages": "nope"}))
-                .is_err()
-        );
-        assert!(
-            cap.validate_config(&serde_json::json!({"fields": ["timestamp"]}))
+            cap.validate_config(&serde_json::json!({"fields": []}))
                 .is_ok()
         );
         assert!(
@@ -358,8 +315,69 @@ mod tests {
             "unknown metadata fields are rejected until implemented"
         );
         assert!(
+            cap.validate_config(&serde_json::json!({"fields": "timestamp"}))
+                .is_err(),
+            "fields must be an array"
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"user_messages": false}))
+                .is_err(),
+            "role toggles were removed; user/agent messages are always annotated"
+        );
+        assert!(
             cap.validate_config(&serde_json::json!({"unknown": true}))
                 .is_err()
         );
+    }
+
+    /// Keeps `config_schema()` honest against the serde config shape, since
+    /// there is no compile-time link between the two.
+    #[test]
+    fn test_config_schema_matches_config_shape() {
+        let cap = MessageMetadataCapability;
+        let schema = cap.config_schema().expect("capability exposes a schema");
+
+        assert_eq!(schema["type"], "object");
+        assert_eq!(
+            schema["additionalProperties"], false,
+            "schema must reject unknown keys like validate_config does"
+        );
+
+        // Schema properties == serde fields of the default config.
+        let schema_keys: std::collections::BTreeSet<&str> = schema["properties"]
+            .as_object()
+            .expect("properties object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let config_value = serde_json::to_value(MessageMetadataConfig::default()).unwrap();
+        let config_keys: std::collections::BTreeSet<&str> = config_value
+            .as_object()
+            .expect("config serializes to object")
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(schema_keys, config_keys);
+
+        // The schema's enum of field names matches MessageMetadataField's
+        // serde names, and its default parses as a valid config.
+        let enum_values = schema["properties"]["fields"]["items"]["enum"]
+            .as_array()
+            .expect("fields enum");
+        for value in enum_values {
+            assert!(
+                serde_json::from_value::<MessageMetadataField>(value.clone()).is_ok(),
+                "schema enum value {value} is not a known MessageMetadataField"
+            );
+        }
+        assert_eq!(
+            enum_values.len(),
+            1,
+            "add new MessageMetadataField variants to the schema enum"
+        );
+        let schema_default = serde_json::json!({
+            "fields": schema["properties"]["fields"]["default"]
+        });
+        assert!(cap.validate_config(&schema_default).is_ok());
     }
 }

@@ -660,7 +660,7 @@ Following the agentskills.io specification:
 - **ID**: `message_metadata`
 - **Purpose**: Annotates user and agent messages with metadata (message timestamp, UTC) in the prompt-facing model view so the model can reason about timing and gaps between messages
 - **Tools**: None (uses `ModelViewProvider` only; priority 100, after compaction masking)
-- **Config**: `{"user_messages": bool, "agent_messages": bool, "fields": ["timestamp"]}` — which roles to annotate (both default true) and which metadata fields to render (default `["timestamp"]`)
+- **Config**: `{"fields": ["timestamp"]}` — which metadata fields to render, in order (default `["timestamp"]`; `[]` disables annotations). User and agent messages are always annotated; system and tool-result messages never are.
 - **Source**: `crates/core/src/capabilities/message_metadata.rs`
 - **Behavior**: Prefixes the first text part of each user/agent message with one bracketed segment per configured field (e.g. `[time <RFC3339 UTC>]` from `Message::created_at`); tool-call-only agent messages get the annotation as a leading text part. Fields are an extensible enum (`MessageMetadataField`); future fields (e.g. the LLM model behind an agent message, once stored messages record it) render their own segment and may skip messages that lack the data. Stored messages are unchanged, and `created_at` is immutable, so annotations are deterministic across turns and do not invalidate provider prompt caches. A small system prompt addition explains the annotation and forbids the model from emitting it.
 

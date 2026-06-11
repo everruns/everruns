@@ -30,9 +30,9 @@ None.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `user_messages` | boolean | `true` | Annotate user messages |
-| `agent_messages` | boolean | `true` | Annotate agent messages |
-| `fields` | array | `["timestamp"]` | Metadata fields to render, in order. Supported: `timestamp`. More fields (e.g. the LLM model) will be added over time. |
+| `fields` | array | `["timestamp"]` | Metadata fields to render, in order. Supported: `timestamp`. An empty array disables annotations. More fields (e.g. the LLM model) will be added over time. |
+
+User and agent messages are always annotated; system and tool-result messages never are.
 
 ## See Also
 
