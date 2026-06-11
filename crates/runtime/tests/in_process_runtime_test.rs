@@ -772,23 +772,37 @@ impl everruns_core::tools::Tool for ConnectionEchoTool {
         arguments: serde_json::Value,
         context: &everruns_core::traits::ToolContext,
     ) -> everruns_core::tools::ToolExecutionResult {
-        let provider = arguments
-            .get("provider")
-            .and_then(|v| v.as_str())
-            .unwrap_or("daytona");
-        let token = match context.connection_resolver.as_ref() {
-            Some(resolver) => resolver
-                .get_connection_token(context.session_id, provider)
-                .await
-                .ok()
-                .flatten(),
-            None => None,
+        // Fail fast on broken argument plumbing rather than defaulting — a
+        // missing/empty `provider` means the tool call did not arrive intact,
+        // which must surface as an error, not a "no connection" false pass.
+        let provider = match arguments.get("provider").and_then(|v| v.as_str()) {
+            Some(provider) if !provider.is_empty() => provider,
+            _ => {
+                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "echo_connection_token: missing or empty `provider` argument",
+                );
+            }
         };
-        match token {
-            Some(token) => everruns_core::tools::ToolExecutionResult::success(serde_json::json!({
-                "token": token
-            })),
-            None => everruns_core::tools::ToolExecutionResult::tool_error("no connection"),
+        // A missing resolver is a distinct wiring failure from "user has no
+        // connection" — keep them separable so the test catches each.
+        let Some(resolver) = context.connection_resolver.as_ref() else {
+            return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                "echo_connection_token: no connection resolver in ToolContext",
+            );
+        };
+        // Surface resolver failures as internal errors instead of swallowing
+        // them; only a clean `Ok(None)` is the legitimate "not connected" case.
+        match resolver
+            .get_connection_token(context.session_id, provider)
+            .await
+        {
+            Ok(Some(token)) => everruns_core::tools::ToolExecutionResult::success(
+                serde_json::json!({ "token": token }),
+            ),
+            Ok(None) => everruns_core::tools::ToolExecutionResult::tool_error("no connection"),
+            Err(err) => everruns_core::tools::ToolExecutionResult::internal_error_msg(format!(
+                "echo_connection_token: resolver failed: {err}"
+            )),
         }
     }
 }
