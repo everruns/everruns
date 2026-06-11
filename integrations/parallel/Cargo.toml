@@ -14,6 +14,8 @@ repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-parallel"
 description = "Parallel web search MCP integration for Everruns"
 readme = "README.md"
+keywords = ["everruns", "parallel", "search", "agents"]
+categories = ["api-bindings", "development-tools"]
 
 [dependencies]
 everruns-core.workspace = true
