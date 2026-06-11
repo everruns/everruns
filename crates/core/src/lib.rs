@@ -191,10 +191,9 @@ pub use traits::{
     NoopDurableToolResultStore, NoopEventEmitter, NoopPartialStreamStore, NoopStreamHeartbeater,
     NoopSubagentSpawnStore, OutboundToolRateLimiter, PartialStreamState, PartialStreamStore,
     ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater,
-    StreamProgress, SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor,
-    UserConnectionResolver,
+    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
+    SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress,
+    SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
