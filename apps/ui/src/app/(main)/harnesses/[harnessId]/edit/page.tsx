@@ -37,6 +37,7 @@ import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
+import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import {
@@ -45,7 +46,7 @@ import {
   type FieldErrors,
   parseTagList,
 } from "@/lib/form-validation";
-import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
+import type { AgentCapabilityConfig, InitialFile, NetworkAccessList } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 
@@ -131,6 +132,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const initialFiles = useMemo(() => harness?.initial_files ?? [], [harness?.initial_files]);
   const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
   const selectedInitialFiles = localInitialFiles ?? initialFiles;
+  const initialNetworkAccess = harness?.network_access ?? null;
+  const [localNetworkAccess, setLocalNetworkAccess] = useState<NetworkAccessList | null>(null);
 
   const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
     setLocalCapabilities(newCapabilities);
@@ -153,6 +156,11 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
       const initialFilesToSave = localInitialFiles ?? initialFiles;
       const initialFilesChanged =
         JSON.stringify(initialFilesToSave) !== JSON.stringify(initialFiles);
+      // Omitting network_access leaves it unchanged; {} clears the layer.
+      const networkAccessChanged =
+        localNetworkAccess !== null &&
+        JSON.stringify(normalizeNetworkAccess(localNetworkAccess)) !==
+          JSON.stringify(normalizeNetworkAccess(initialNetworkAccess));
 
       await updateHarness.mutateAsync({
         harnessId,
@@ -166,6 +174,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           default_model_id: parsed.data.default_model_id,
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
           ...(initialFilesChanged && { initial_files: initialFilesToSave }),
+          ...(networkAccessChanged && { network_access: localNetworkAccess }),
         },
       });
 
@@ -400,6 +409,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                       onChange={setLocalInitialFiles}
                       disabled={isSaving || isReadOnly}
                       description="Files copied into each new session created from this harness."
+                    />
+
+                    <NetworkAccessEditor
+                      value={initialNetworkAccess}
+                      onChange={setLocalNetworkAccess}
+                      disabled={isSaving || isReadOnly}
+                      description="Baseline network policy for every agent and session on this harness. Agents and sessions can only narrow it, never widen it."
                     />
                   </CardContent>
                 </Card>
