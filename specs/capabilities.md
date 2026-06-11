@@ -655,6 +655,15 @@ Following the agentskills.io specification:
 - **Config**: `{"threshold": N}` — number of consecutive identical tool-call batches before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
+#### MessageMetadata
+
+- **ID**: `message_metadata`
+- **Purpose**: Annotates user and agent messages with metadata (sent time, UTC) in the prompt-facing model view so the model can reason about timing and gaps between messages
+- **Tools**: None (uses `ModelViewProvider` only; priority 100, after compaction masking)
+- **Config**: `{"user_messages": bool, "agent_messages": bool}` — which roles to annotate (both default true)
+- **Source**: `crates/core/src/capabilities/message_metadata.rs`
+- **Behavior**: Prefixes the first text part of each user/agent message with `[sent <RFC3339 UTC>]` derived from `Message::created_at`; tool-call-only agent messages get the annotation as a leading text part. Stored messages are unchanged, and `created_at` is immutable, so annotations are deterministic across turns and do not invalidate provider prompt caches. A small system prompt addition explains the annotation and forbids the model from emitting it.
+
 #### PromptCanaryGuardrail
 
 - **ID**: `prompt_canary_guardrail`

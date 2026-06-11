@@ -108,6 +108,7 @@ mod lua;
 mod lua_code_mode;
 pub mod mcp;
 mod memory;
+mod message_metadata;
 mod noop;
 mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
@@ -220,6 +221,9 @@ pub use mcp::{
     parse_mcp_capability_id,
 };
 pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
+pub use message_metadata::{
+    MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
+};
 pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
@@ -937,6 +941,7 @@ impl CapabilityRegistry {
         registry.register(HumanIntentCapability);
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
+        registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
@@ -2154,6 +2159,7 @@ mod tests {
             "infinity_context",
             "compaction",
             "memory",
+            "message_metadata",
             "openai_tool_search",
             "tool_search",
             "auto_tool_search",
