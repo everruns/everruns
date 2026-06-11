@@ -18,7 +18,6 @@ pub mod harness_store;
 pub mod leased_resource_store;
 pub mod llm_provider_store;
 pub mod memory;
-pub mod memory_store_backend;
 pub mod message_store;
 pub mod models;
 pub mod password;
@@ -47,7 +46,6 @@ pub use leased_resource_store::{
 };
 pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
-pub use memory_store_backend::DbMemoryStore;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
 pub use repositories::*;

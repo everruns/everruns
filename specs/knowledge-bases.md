@@ -5,12 +5,12 @@
 Knowledge Bases are org-scoped, named collections of curated text **entries**
 (facts, table docs, business rules, validated SQL templates, runbooks, etc.)
 that users manage through a dedicated UI and that agents can search through a
-`search_knowledge` tool. Knowledge Bases sit alongside two adjacent primitives:
+`search_knowledge` tool. Knowledge Bases sit alongside one adjacent primitive:
 
-* **Persistent Memory** (`specs/memory.md`) — agent-written facts that
-  accumulate across sessions; emphasizes write-from-the-loop.
-* **Workspace Volumes** (`specs/volumes.md`) — org-scoped filesystem trees
-  mounted into `/workspace`; emphasizes file fidelity and direct file edits.
+* **Memory** (`specs/memory.md`) — org-scoped, named stores mountable into
+  session workspaces. Files-only today; emphasizes file fidelity and direct
+  file edits. Knowledge Bases may fold into Memory as a `structured` surface
+  later — see open questions in `specs/memory.md`.
 
 Knowledge Bases fill the curation-first slot: small, structured, human-edited
 entries that an agent should consult **before** generating output, with stable
@@ -39,8 +39,8 @@ workaround, but:
 * No stable citation IDs that survive renames or filesystem changes.
 
 Curated knowledge is a first-class product surface. It needs the same lifecycle
-guarantees (active/archived/deleted) and org-scoping as Volumes, and the same
-agent-facing affordances (typed tool, structured responses) as Memory.
+guarantees (active/archived/deleted) and org-scoping as Memory, and a dedicated
+agent-facing affordance (typed search tool, structured responses).
 
 ## Concepts
 
@@ -53,13 +53,13 @@ agent-facing affordances (typed tool, structured responses) as Memory.
 
 Boundary with adjacent primitives:
 
-| Question                           | Memory     | Workspace Volume | Knowledge Base |
-|------------------------------------|------------|------------------|----------------|
-| Who writes the content?            | Agent      | User (files)     | User (entries) |
-| Primary access pattern             | Recall     | Filesystem reads | Search         |
-| Granularity                        | 1–3 sentences | Files/dirs    | Short docs     |
-| Mounted into `/workspace`?         | No         | Yes              | No             |
-| Stable citation IDs?               | Yes (`mem_`) | Path-based     | Yes (`kbe_`)   |
+| Question                           | Memory           | Knowledge Base |
+|------------------------------------|------------------|----------------|
+| Who writes the content?            | User (files)     | User (entries) |
+| Primary access pattern             | Filesystem reads | Search         |
+| Granularity                        | Files/dirs       | Short docs     |
+| Mounted into `/workspace`?         | Yes              | No             |
+| Stable citation IDs?               | Path-based       | Yes (`kbe_`)   |
 
 ## Lifecycle
 

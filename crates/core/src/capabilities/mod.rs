@@ -107,11 +107,11 @@ mod loop_detection;
 mod lua;
 mod lua_code_mode;
 pub mod mcp;
+mod memory;
 mod noop;
 mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
-pub mod persistent_memory;
 mod platform_management;
 mod prompt_caching;
 mod prompt_canary_guardrail;
@@ -134,7 +134,6 @@ mod tool_search;
 pub mod user_hooks;
 mod virtual_bash;
 mod web_fetch;
-mod workspace_volumes;
 
 // Re-export capabilities
 pub use a2a_delegation::{
@@ -219,6 +218,7 @@ pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
 };
+pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
 pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
@@ -226,9 +226,6 @@ pub use openai_tool_search::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use persistent_memory::{
-    ForgetTool, MEMORY_CAPABILITY_ID, MemoryCapability, MemoryConfig, RecallTool, RememberTool,
-};
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
     ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
@@ -272,7 +269,6 @@ pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
 };
-pub use workspace_volumes::{WORKSPACE_VOLUMES_CAPABILITY_ID, WorkspaceVolumesCapability};
 
 // ============================================================================
 // System Prompt Context
@@ -942,7 +938,7 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
-        registry.register(WorkspaceVolumesCapability);
+        registry.register(MemoryCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
@@ -958,7 +954,6 @@ impl CapabilityRegistry {
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
-        registry.register(MemoryCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -2140,7 +2135,6 @@ mod tests {
             "research",
             "platform_management",
             "session_file_system",
-            "workspace_volumes",
             "session_storage",
             "session",
             "session_sql_database",

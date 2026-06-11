@@ -181,7 +181,7 @@ inventory::submit! {
 inventory::submit! {
     ResourceOrgResolver {
         prefix: "vol",
-        resolve: |db, id| Box::pin(async move { db.get_volume_organization_id(id).await }),
+        resolve: |db, id| Box::pin(async move { db.get_memory_organization_id(id).await }),
     }
 }
 

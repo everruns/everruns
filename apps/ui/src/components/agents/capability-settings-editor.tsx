@@ -15,12 +15,10 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
-import { MemoryCapabilityConfigEditor } from "./memory-capability-config-editor";
-import { WorkspaceVolumesConfigEditor } from "./workspace-volumes-config-editor";
+import { MemoryConfigEditor } from "./memory-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
 // from crates/core/src/capabilities/*.
-const WORKSPACE_VOLUMES_CAPABILITY_ID = "workspace_volumes";
 const MEMORY_CAPABILITY_ID = "memory";
 
 interface CapabilitySettingsEditorProps {
@@ -40,11 +38,8 @@ export function CapabilitySettingsEditor({
   onChange,
   disabled,
 }: CapabilitySettingsEditorProps) {
-  if (capability.id === WORKSPACE_VOLUMES_CAPABILITY_ID) {
-    return <WorkspaceVolumesConfigEditor config={config} onChange={onChange} disabled={disabled} />;
-  }
   if (capability.id === MEMORY_CAPABILITY_ID) {
-    return <MemoryCapabilityConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+    return <MemoryConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
   return (
     <SchemaCapabilityEditor

@@ -5,15 +5,14 @@ use everruns_core::ToolContext;
 use everruns_core::atoms::ReasonResult;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput};
 use everruns_core::capabilities::{
-    Capability, CapabilityStatus, MemoryCapability, SystemPromptContext, TestMathCapability,
+    Capability, CapabilityStatus, SystemPromptContext, TestMathCapability,
     collect_capabilities_with_configs,
 };
-use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::memory::{
+use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
+    InMemoryMessageRetriever,
 };
-use everruns_core::memory_store::MemoryStoreBackend;
+use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, SessionFileSystem, SessionMutator,
     SessionStore,
@@ -90,7 +89,6 @@ struct MockHostAdapter {
     provider_store: Arc<InMemoryLlmProviderStore>,
     event_emitter: Arc<InMemoryEventEmitter>,
     file_store: Arc<InMemorySessionFileStore>,
-    memory_store: Option<Arc<dyn MemoryStoreBackend>>,
 }
 
 #[async_trait]
@@ -181,10 +179,6 @@ impl RuntimeHostAdapter for MockHostAdapter {
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem> {
         self.file_store.clone()
-    }
-
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
-        self.memory_store.clone()
     }
 }
 
@@ -511,7 +505,6 @@ fn mock_host() -> MockHostAdapter {
         provider_store: Arc::new(InMemoryLlmProviderStore::new()),
         event_emitter: Arc::new(InMemoryEventEmitter::new()),
         file_store: Arc::new(InMemorySessionFileStore::new()),
-        memory_store: None,
     }
 }
 
@@ -1014,80 +1007,6 @@ async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
         result.results[0].result.result.as_ref().unwrap()["hooked"],
         true
     );
-}
-
-#[tokio::test]
-async fn act_activity_passes_public_org_id_to_memory_tools() {
-    let mut adapter = mock_host();
-    adapter.capability_registry.register(MemoryCapability);
-    let memory_store = Arc::new(InMemoryMemoryStore::new());
-    adapter.memory_store = Some(memory_store.clone());
-
-    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
-    let session_id = SessionId::from_uuid(Uuid::now_v7());
-    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
-    adapter
-        .harness_store
-        .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("memory")],
-            ..harness(harness_id)
-        })
-        .await;
-    adapter
-        .session_store
-        .insert(session(session_id, harness_id))
-        .await;
-
-    let result = execute_act_activity(
-        &adapter,
-        ActInput {
-            org_id: Some(42),
-            context: AtomContext::new(
-                session_id,
-                TurnId::from_uuid(Uuid::now_v7()),
-                input_message_id,
-            ),
-            harness_id,
-            agent_id: None,
-            tool_calls: vec![ToolCall {
-                id: "call_remember".into(),
-                name: "remember".into(),
-                arguments: serde_json::json!({
-                    "content": "Runtime host should pass org id to memory tools",
-                    "kind": "fact",
-                    "importance": 6,
-                    "tags": ["runtime"]
-                }),
-            }],
-            tool_definitions: build_registry(
-                &adapter.capability_registry,
-                session_id,
-                &[AgentCapabilityConfig::new("memory")],
-            )
-            .await
-            .unwrap()
-            .tool_definitions(),
-            locale: None,
-            blueprint_id: None,
-            network_access: None,
-            parallel_tool_calls: None,
-        },
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(result.success_count, 1);
-    assert_eq!(result.error_count, 0);
-
-    let store = memory_store
-        .get_or_create_default_store(
-            everruns_core::org_public_id_from_internal(42)
-                .parse()
-                .expect("valid public org id"),
-        )
-        .await
-        .unwrap();
-    assert_eq!(memory_store.count_active(store.id).await.unwrap(), 1);
 }
 
 #[tokio::test]

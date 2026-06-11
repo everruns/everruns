@@ -1038,8 +1038,7 @@ impl ServerAppBuilder {
             platform_definition.built_in_harnesses().to_vec(),
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
-        let volumes_state = api::volumes::AppState::new(db.clone(), auth_state.clone());
-        let memory_stores_state = api::memory_stores::AppState::new(db.clone(), auth_state.clone());
+        let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
         let payments_state =
@@ -1177,8 +1176,7 @@ impl ServerAppBuilder {
                     feature_flags.clone(),
                 ),
             ))
-            .merge(api::volumes::routes(volumes_state))
-            .merge(api::memory_stores::routes(memory_stores_state))
+            .merge(api::memory::routes(memory_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
             .merge(api::payments::routes(payments_state))
             .merge(api::reporting::routes(reporting_state))
@@ -1798,8 +1796,8 @@ impl ServerAppBuilder {
             std::time::Duration::from_secs(15),
         );
 
-        // -- Source-backed workspace volume sync (both prod and dev) --
-        let volume_connection_resolver = encryption.as_ref().map(|enc| {
+        // -- Source-backed Memory sync (both prod and dev) --
+        let memory_connection_resolver = encryption.as_ref().map(|enc| {
             let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
                 crate::storage::GitHubAppTokenMinter::new(
                     config.app_id.clone(),
@@ -1812,9 +1810,9 @@ impl ServerAppBuilder {
                 github_app_minter,
             )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
         });
-        crate::domains::volumes::source_sync::spawn_volume_source_sync_task(
+        crate::domains::memory::source_sync::spawn_memory_source_sync_task(
             db.clone(),
-            volume_connection_resolver,
+            memory_connection_resolver,
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --

@@ -6283,20 +6283,44 @@
         }
       }
     },
-    "/v1/memory-stores": {
+    "/v1/memories": {
       "get": {
         "tags": [
-          "memory_stores"
+          "memories"
         ],
-        "description": "List memory stores.",
-        "operationId": "list_memory_stores",
+        "description": "List workspace memories.",
+        "operationId": "list_memories",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "List org memory stores",
+            "description": "List memories",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_MemoryStoreResponse"
+                  "$ref": "#/components/schemas/ListResponse_MemoryResponse"
                 }
               }
             }
@@ -6305,15 +6329,15 @@
       },
       "post": {
         "tags": [
-          "memory_stores"
+          "memories"
         ],
-        "description": "Create a new memory store.",
-        "operationId": "create_memory_store",
+        "description": "Create a new workspace memory.",
+        "operationId": "create_memory",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateMemoryStoreRequest"
+                "$ref": "#/components/schemas/CreateMemoryRequest"
               }
             }
           },
@@ -6321,11 +6345,11 @@
         },
         "responses": {
           "201": {
-            "description": "Memory store created",
+            "description": "Memory created",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryStoreResponse"
+                  "$ref": "#/components/schemas/MemoryResponse"
                 }
               }
             }
@@ -6341,7 +6365,7 @@
             }
           },
           "409": {
-            "description": "Duplicate name or default conflict",
+            "description": "Duplicate memory name",
             "content": {
               "application/json": {
                 "schema": {
@@ -6353,18 +6377,18 @@
         }
       }
     },
-    "/v1/memory-stores/{store_id}": {
+    "/v1/memories/{memory_id}": {
       "get": {
         "tags": [
-          "memory_stores"
+          "memories"
         ],
-        "description": "Get a memory store by ID.",
-        "operationId": "get_memory_store",
+        "description": "Get a workspace memory by ID.",
+        "operationId": "get_memory",
         "parameters": [
           {
-            "name": "store_id",
+            "name": "memory_id",
             "in": "path",
-            "description": "Memory store ID",
+            "description": "Memory ID",
             "required": true,
             "schema": {
               "type": "string"
@@ -6373,17 +6397,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Memory store",
+            "description": "Memory found",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryStoreResponse"
+                  "$ref": "#/components/schemas/MemoryResponse"
                 }
               }
             }
           },
           "404": {
-            "description": "Not found",
+            "description": "Memory not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -6394,200 +6418,13 @@
           }
         }
       },
-      "patch": {
-        "tags": [
-          "memory_stores"
-        ],
-        "description": "Update a memory store. Only provided fields are modified.",
-        "operationId": "update_memory_store",
-        "parameters": [
-          {
-            "name": "store_id",
-            "in": "path",
-            "description": "Memory store ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateMemoryStoreRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Memory store updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/MemoryStoreResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Conflict (duplicate name or concurrent default reassignment)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/memory-stores/{store_id}/memories": {
-      "get": {
-        "tags": [
-          "memory_stores"
-        ],
-        "description": "List memories.",
-        "operationId": "list_memories",
-        "parameters": [
-          {
-            "name": "store_id",
-            "in": "path",
-            "description": "Memory store ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "query",
-            "in": "query",
-            "description": "Substring filter applied to memory content.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "kind",
-            "in": "query",
-            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "tag",
-            "in": "query",
-            "description": "Filter to memories tagged with at least one of these labels.",
-            "required": false,
-            "schema": {
-              "type": [
-                "array",
-                "null"
-              ],
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          {
-            "name": "include_inactive",
-            "in": "query",
-            "description": "When `true`, also returns inactive (deactivated) memories.",
-            "required": false,
-            "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Maximum number of items returned in this page.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Memories",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListMemoriesResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Store not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/memory-stores/{store_id}/memories/{memory_id}": {
       "delete": {
         "tags": [
-          "memory_stores"
+          "memories"
         ],
-        "description": "Forget a memory.",
-        "operationId": "forget_memory",
+        "description": "Delete a workspace memory.",
+        "operationId": "delete_memory",
         "parameters": [
-          {
-            "name": "store_id",
-            "in": "path",
-            "description": "Memory store ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "name": "memory_id",
             "in": "path",
@@ -6600,10 +6437,132 @@
         ],
         "responses": {
           "204": {
-            "description": "Memory deactivated"
+            "description": "Memory archived"
           },
           "404": {
-            "description": "Not found",
+            "description": "Memory not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "memories"
+        ],
+        "description": "Update a workspace memory. Only provided fields are modified.",
+        "operationId": "update_memory",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Memory ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Memory updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memory not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate memory name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memories/{memory_id}/sync": {
+      "post": {
+        "tags": [
+          "memories"
+        ],
+        "description": "Trigger a synchronous sync of a memory now.",
+        "operationId": "sync_memory_now",
+        "parameters": [
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Memory ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory sync queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid sync request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memory not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -11263,297 +11222,6 @@
           }
         }
       }
-    },
-    "/v1/volumes": {
-      "get": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "List workspace volumes.",
-        "operationId": "list_volumes",
-        "parameters": [
-          {
-            "name": "search",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "include_archived",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": [
-                "boolean",
-                "null"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List volumes",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_VolumeResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "Create a new workspace volume.",
-        "operationId": "create_volume",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateVolumeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Volume created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VolumeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate volume name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/volumes/{volume_id}": {
-      "get": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "Get a workspace volume by ID.",
-        "operationId": "get_volume",
-        "parameters": [
-          {
-            "name": "volume_id",
-            "in": "path",
-            "description": "Volume ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Volume found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VolumeResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Volume not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "Delete a workspace volume.",
-        "operationId": "delete_volume",
-        "parameters": [
-          {
-            "name": "volume_id",
-            "in": "path",
-            "description": "Volume ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Volume archived"
-          },
-          "404": {
-            "description": "Volume not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "Update a workspace volume. Only provided fields are modified.",
-        "operationId": "update_volume",
-        "parameters": [
-          {
-            "name": "volume_id",
-            "in": "path",
-            "description": "Volume ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateVolumeRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Volume updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VolumeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid input",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Volume not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Duplicate volume name",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/volumes/{volume_id}/sync": {
-      "post": {
-        "tags": [
-          "volumes"
-        ],
-        "description": "Trigger a synchronous sync of a volume now.",
-        "operationId": "sync_volume_now",
-        "parameters": [
-          {
-            "name": "volume_id",
-            "in": "path",
-            "description": "Volume ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Volume sync queued",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/VolumeResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid sync request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Volume not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -14386,23 +14054,90 @@
           }
         }
       },
-      "CreateMemoryStoreRequest": {
+      "CreateMemoryRequest": {
         "type": "object",
-        "description": "Request body for the `create_memory_store` operation.",
+        "description": "Request body for the `create_memory` operation.",
         "required": [
           "name"
         ],
         "properties": {
-          "is_default": {
-            "type": "boolean",
-            "description": "When `true`, sets this store as the org's default for newly-created memories.",
-            "example": false
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
           },
           "name": {
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "customer-preferences"
+            "example": "design-docs"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CreateMemorySourceRequest",
+                "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
+              }
+            ]
           }
+        }
+      },
+      "CreateMemorySourceRequest": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitHubMemorySourceRequest"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "github"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitMemorySourceRequest"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "git"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "Request body for the `create_memory_source` operation.",
+        "example": {
+          "branch": "main",
+          "repository": "acme/design-docs",
+          "root_folder": "docs/",
+          "type": "github"
         }
       },
       "CreateMessageRequest": {
@@ -14928,92 +14663,6 @@
             "description": "Full SKILL.md content (YAML frontmatter + markdown body)",
             "example": "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\n# PDF Processing\n\nUse pdfplumber..."
           }
-        }
-      },
-      "CreateVolumeRequest": {
-        "type": "object",
-        "description": "Request body for the `create_volume` operation.",
-        "required": [
-          "name"
-        ],
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Living design documents synced from GitHub"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "design-docs"
-          },
-          "source": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CreateVolumeSourceRequest",
-                "description": "Source configuration. Example shape is defined on `CreateVolumeSourceRequest`."
-              }
-            ]
-          }
-        }
-      },
-      "CreateVolumeSourceRequest": {
-        "oneOf": [
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/GitHubVolumeSourceRequest"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "type"
-                ],
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "github"
-                    ]
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/GitVolumeSourceRequest"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "type"
-                ],
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "enum": [
-                      "git"
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        ],
-        "description": "Request body for the `create_volume_source` operation.",
-        "example": {
-          "branch": "main",
-          "repository": "acme/design-docs",
-          "root_folder": "docs/",
-          "type": "github"
         }
       },
       "DatabaseInfoResponse": {
@@ -16638,9 +16287,9 @@
           }
         }
       },
-      "GitHubVolumeSourceRequest": {
+      "GitHubMemorySourceRequest": {
         "type": "object",
-        "description": "Request body for GitHub volume source.",
+        "description": "Request body for GitHub memory source.",
         "required": [
           "repository"
         ],
@@ -16679,9 +16328,9 @@
           }
         }
       },
-      "GitHubVolumeSourceResponse": {
+      "GitHubMemorySourceResponse": {
         "type": "object",
-        "description": "Response body for GitHub volume source.",
+        "description": "Response body for GitHub memory source.",
         "required": [
           "repository",
           "branch"
@@ -16711,30 +16360,9 @@
           }
         }
       },
-      "GitRefInfo": {
+      "GitMemorySourceRequest": {
         "type": "object",
-        "description": "A git ref (branch pointer)",
-        "required": [
-          "name",
-          "target",
-          "is_symbolic"
-        ],
-        "properties": {
-          "is_symbolic": {
-            "type": "boolean"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
-          },
-          "target": {
-            "type": "string"
-          }
-        }
-      },
-      "GitVolumeSourceRequest": {
-        "type": "object",
-        "description": "Request body for git volume source.",
+        "description": "Request body for git memory source.",
         "required": [
           "url"
         ],
@@ -16773,9 +16401,9 @@
           }
         }
       },
-      "GitVolumeSourceResponse": {
+      "GitMemorySourceResponse": {
         "type": "object",
-        "description": "Response body for git volume source.",
+        "description": "Response body for git memory source.",
         "required": [
           "url",
           "branch"
@@ -16801,6 +16429,27 @@
             "minimum": 0
           },
           "url": {
+            "type": "string"
+          }
+        }
+      },
+      "GitRefInfo": {
+        "type": "object",
+        "description": "A git ref (branch pointer)",
+        "required": [
+          "name",
+          "target",
+          "is_symbolic"
+        ],
+        "properties": {
+          "is_symbolic": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
+          },
+          "target": {
             "type": "string"
           }
         }
@@ -17881,76 +17530,19 @@
       },
       "ListMemoriesQuery": {
         "type": "object",
-        "description": "Query parameters for listing memories within a store — optional content\nsearch and kind filter.",
+        "description": "Query parameters for `GET /v1/memories` — optional name search and a\nflag to include archived memories in the listing.",
         "properties": {
-          "include_inactive": {
+          "include_archived": {
             "type": [
               "boolean",
               "null"
-            ],
-            "description": "When `true`, also returns inactive (deactivated) memories.",
-            "example": false
-          },
-          "kind": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
-            "example": "preference"
-          },
-          "limit": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "description": "Maximum number of items returned in this page.",
-            "example": 50,
-            "minimum": 0
-          },
-          "query": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Substring filter applied to memory content.",
-            "example": "preferred timezone"
-          },
-          "tag": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "Filter to memories tagged with at least one of these labels.",
-            "example": [
-              "onboarding",
-              "billing"
             ]
-          }
-        }
-      },
-      "ListMemoriesResponse": {
-        "type": "object",
-        "description": "Response body for the `list_memories` operation.",
-        "required": [
-          "data",
-          "total"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MemoryResponse"
-            },
-            "description": "Page of items returned by this query."
           },
-          "total": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Total number of items matching the query, across all pages."
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -18980,7 +18572,7 @@
           }
         }
       },
-      "ListResponse_MemoryStoreResponse": {
+      "ListResponse_MemoryResponse": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
         "required": [
@@ -18991,41 +18583,107 @@
             "type": "array",
             "items": {
               "type": "object",
-              "description": "Response body for memory store.",
+              "description": "Response body for memory.",
               "required": [
                 "id",
                 "name",
-                "is_default",
-                "active_memory_count",
+                "source_type",
+                "source",
+                "is_readonly",
+                "sync_status",
+                "status",
                 "created_at",
                 "updated_at"
               ],
               "properties": {
-                "active_memory_count": {
-                  "type": "integer",
-                  "format": "int64"
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was archived, if any (RFC 3339).",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
+                  "description": "Timestamp when this resource was created (RFC 3339).",
+                  "example": "2026-04-01T10:00:00Z"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
+                  "example": "2026-05-26T00:00:00Z"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description. Safe to render in user-facing messages.",
+                  "example": "Living design documents synced from GitHub"
                 },
                 "id": {
                   "type": "string",
                   "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                  "example": "mst_01933b5a000070008000000000000001"
+                  "example": "mem_01933b5a000070008000000000000001"
                 },
-                "is_default": {
-                  "type": "boolean"
+                "is_readonly": {
+                  "type": "boolean",
+                  "description": "Whether the memory is mounted read-only into sessions. Read-only memories accept no writes from the session sandbox.",
+                  "example": false
+                },
+                "last_sync_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Most recent sync error message; cleared on the next successful sync.",
+                  "example": "ssh: connect to host github.com port 22: Connection timed out"
+                },
+                "last_synced_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
+                  "example": "2026-05-25T08:00:00Z"
                 },
                 "name": {
                   "type": "string",
-                  "description": "Human-readable name. Safe to render in user-facing messages."
+                  "description": "Human-readable name. Safe to render in user-facing messages.",
+                  "example": "design-docs"
+                },
+                "source": {
+                  "$ref": "#/components/schemas/MemorySourceResponse",
+                  "description": "Source-specific configuration (git remote, github repo, manual upload)."
+                },
+                "source_type": {
+                  "type": "string",
+                  "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
+                  "example": "github"
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Current lifecycle status.",
+                  "example": "active"
+                },
+                "sync_status": {
+                  "type": "string",
+                  "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
+                  "example": "succeeded"
                 },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
+                  "description": "Timestamp when this resource was last updated (RFC 3339).",
+                  "example": "2026-05-25T08:00:00Z"
                 }
               }
             },
@@ -19461,125 +19119,6 @@
                   "items": {
                     "type": "string"
                   }
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_VolumeResponse": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "description": "Response body for volume.",
-              "required": [
-                "id",
-                "name",
-                "source_type",
-                "source",
-                "is_readonly",
-                "sync_status",
-                "status",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "archived_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was archived, if any (RFC 3339).",
-                  "example": "2026-05-26T00:00:00Z"
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339).",
-                  "example": "2026-04-01T10:00:00Z"
-                },
-                "deleted_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
-                  "example": "2026-05-26T00:00:00Z"
-                },
-                "description": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Human-readable description. Safe to render in user-facing messages.",
-                  "example": "Living design documents synced from GitHub"
-                },
-                "id": {
-                  "type": "string",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                  "example": "vol_01933b5a000070008000000000000001"
-                },
-                "is_readonly": {
-                  "type": "boolean",
-                  "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.",
-                  "example": false
-                },
-                "last_sync_error": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Most recent sync error message; cleared on the next successful sync.",
-                  "example": "ssh: connect to host github.com port 22: Connection timed out"
-                },
-                "last_synced_at": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "format": "date-time",
-                  "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
-                  "example": "2026-05-25T08:00:00Z"
-                },
-                "name": {
-                  "type": "string",
-                  "description": "Human-readable name. Safe to render in user-facing messages.",
-                  "example": "design-docs"
-                },
-                "source": {
-                  "$ref": "#/components/schemas/VolumeSourceResponse",
-                  "description": "Source-specific configuration (git remote, github repo, manual upload)."
-                },
-                "source_type": {
-                  "type": "string",
-                  "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
-                  "example": "github"
-                },
-                "status": {
-                  "type": "string",
-                  "description": "Current lifecycle status.",
-                  "example": "active"
-                },
-                "sync_status": {
-                  "type": "string",
-                  "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
-                  "example": "succeeded"
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339).",
-                  "example": "2026-05-25T08:00:00Z"
                 }
               }
             },
@@ -20853,24 +20392,6 @@
           }
         }
       },
-      "ListVolumesQuery": {
-        "type": "object",
-        "description": "Query parameters for `GET /v1/volumes` — optional name search and a\nflag to include archived volumes in the listing.",
-        "properties": {
-          "include_archived": {
-            "type": [
-              "boolean",
-              "null"
-            ]
-          },
-          "search": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "LlmCompactionInfo": {
         "type": "object",
         "description": "Information about context compaction performed before LLM generation\n\nWhen the conversation context exceeds the model's limit, compaction is\nautomatically triggered to compress the context before retrying.",
@@ -21790,9 +21311,9 @@
           }
         }
       },
-      "ManualVolumeSourceResponse": {
+      "ManualMemorySourceResponse": {
         "type": "object",
-        "description": "Response body for manual volume source."
+        "description": "Response body for manual memory source."
       },
       "McpErrorCategory": {
         "type": "string",
@@ -22035,99 +21556,174 @@
         "description": "Response body for memory.",
         "required": [
           "id",
-          "store_id",
-          "content",
-          "content_parts",
-          "kind",
-          "importance",
-          "tags",
-          "active",
+          "name",
+          "source_type",
+          "source",
+          "is_readonly",
+          "sync_status",
+          "status",
           "created_at",
           "updated_at"
         ],
         "properties": {
-          "active": {
-            "type": "boolean"
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
           },
-          "content": {
-            "type": "string"
-          },
-          "content_parts": {},
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-04-01T10:00:00Z"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
           },
           "id": {
             "type": "string",
             "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "mem_01933b5a000070008000000000000001"
           },
-          "importance": {
-            "type": "integer",
-            "format": "int32"
+          "is_readonly": {
+            "type": "boolean",
+            "description": "Whether the memory is mounted read-only into sessions. Read-only memories accept no writes from the session sandbox.",
+            "example": false
           },
-          "kind": {
-            "type": "string",
-            "description": "Discriminator selecting the variant of this resource."
+          "last_sync_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Most recent sync error message; cleared on the next successful sync.",
+            "example": "ssh: connect to host github.com port 22: Connection timed out"
           },
-          "store_id": {
-            "type": "string",
-            "example": "mst_01933b5a000070008000000000000001"
-          },
-          "tags": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Free-form tags attached to this resource."
-          },
-          "updated_at": {
-            "type": "string",
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
-          }
-        }
-      },
-      "MemoryStoreResponse": {
-        "type": "object",
-        "description": "Response body for memory store.",
-        "required": [
-          "id",
-          "name",
-          "is_default",
-          "active_memory_count",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "active_memory_count": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "mst_01933b5a000070008000000000000001"
-          },
-          "is_default": {
-            "type": "boolean"
+            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
+            "example": "2026-05-25T08:00:00Z"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MemorySourceResponse",
+            "description": "Source-specific configuration (git remote, github repo, manual upload)."
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
+            "example": "github"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current lifecycle status.",
+            "example": "active"
+          },
+          "sync_status": {
+            "type": "string",
+            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
+            "example": "succeeded"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this resource was last updated (RFC 3339).",
+            "example": "2026-05-25T08:00:00Z"
           }
         }
+      },
+      "MemorySourceResponse": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManualMemorySourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "manual"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitHubMemorySourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "github"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitMemorySourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "git"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "Response body for memory source."
       },
       "Message": {
         "type": "object",
@@ -28718,17 +28314,16 @@
           }
         }
       },
-      "UpdateMemoryStoreRequest": {
+      "UpdateMemoryRequest": {
         "type": "object",
-        "description": "Request body for the `update_memory_store` operation.",
+        "description": "Request body for the `update_memory` operation.",
         "properties": {
-          "is_default": {
+          "description": {
             "type": [
-              "boolean",
+              "string",
               "null"
             ],
-            "description": "Toggle this store as the org default.",
-            "example": true
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
             "type": [
@@ -28736,7 +28331,18 @@
               "null"
             ],
             "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "customer-preferences-archive"
+            "example": "design-docs"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CreateMemorySourceRequest",
+                "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
+              }
+            ]
           }
         }
       },
@@ -29130,38 +28736,6 @@
               {
                 "$ref": "#/components/schemas/SkillStatus",
                 "description": "Update status"
-              }
-            ]
-          }
-        }
-      },
-      "UpdateVolumeRequest": {
-        "type": "object",
-        "description": "Request body for the `update_volume` operation.",
-        "properties": {
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "design-docs"
-          },
-          "source": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/CreateVolumeSourceRequest",
-                "description": "Source configuration. Example shape is defined on `CreateVolumeSourceRequest`."
               }
             ]
           }
@@ -29679,180 +29253,6 @@
             "description": "Prefixed voice connection identifier this transcript belongs to."
           }
         }
-      },
-      "VolumeResponse": {
-        "type": "object",
-        "description": "Response body for volume.",
-        "required": [
-          "id",
-          "name",
-          "source_type",
-          "source",
-          "is_readonly",
-          "sync_status",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "archived_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was archived, if any (RFC 3339).",
-            "example": "2026-05-26T00:00:00Z"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339).",
-            "example": "2026-04-01T10:00:00Z"
-          },
-          "deleted_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
-            "example": "2026-05-26T00:00:00Z"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Living design documents synced from GitHub"
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "vol_01933b5a000070008000000000000001"
-          },
-          "is_readonly": {
-            "type": "boolean",
-            "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.",
-            "example": false
-          },
-          "last_sync_error": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Most recent sync error message; cleared on the next successful sync.",
-            "example": "ssh: connect to host github.com port 22: Connection timed out"
-          },
-          "last_synced_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
-            "example": "2026-05-25T08:00:00Z"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "design-docs"
-          },
-          "source": {
-            "$ref": "#/components/schemas/VolumeSourceResponse",
-            "description": "Source-specific configuration (git remote, github repo, manual upload)."
-          },
-          "source_type": {
-            "type": "string",
-            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
-            "example": "github"
-          },
-          "status": {
-            "type": "string",
-            "description": "Current lifecycle status.",
-            "example": "active"
-          },
-          "sync_status": {
-            "type": "string",
-            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
-            "example": "succeeded"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339).",
-            "example": "2026-05-25T08:00:00Z"
-          }
-        }
-      },
-      "VolumeSourceResponse": {
-        "oneOf": [
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/ManualVolumeSourceResponse"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "provider"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "manual"
-                    ]
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/GitHubVolumeSourceResponse"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "provider"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "github"
-                    ]
-                  }
-                }
-              }
-            ]
-          },
-          {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/GitVolumeSourceResponse"
-              },
-              {
-                "type": "object",
-                "required": [
-                  "provider"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "enum": [
-                      "git"
-                    ]
-                  }
-                }
-              }
-            ]
-          }
-        ],
-        "description": "Response body for volume source."
       },
       "WebhookInvocationResponse": {
         "type": "object",
@@ -32601,12 +32001,8 @@
       "description": "Organization management endpoints"
     },
     {
-      "name": "volumes",
-      "description": "Workspace volume management endpoints"
-    },
-    {
-      "name": "memory_stores",
-      "description": "Org-scoped persistent memory stores"
+      "name": "memory",
+      "description": "Org-scoped named Memory management endpoints"
     },
     {
       "name": "knowledge_bases",

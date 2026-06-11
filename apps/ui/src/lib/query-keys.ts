@@ -201,21 +201,12 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
-  // Workspace Volume queries
-  volumes: {
-    all: ["volumes"] as const,
+  // Memory queries
+  memory: {
+    all: ["memory"] as const,
     list: (includeArchived = false, search = "") =>
-      ["volumes", { includeArchived, search }] as const,
-    detail: (volumeId: string) => ["volume", volumeId] as const,
-  },
-
-  // Memory store queries
-  memoryStores: {
-    all: ["memory-stores"] as const,
-    list: () => ["memory-stores"] as const,
-    detail: (storeId: string) => ["memory-store", storeId] as const,
-    memories: (storeId: string, params: Record<string, unknown> = {}) =>
-      ["memory-store", storeId, "memories", params] as const,
+      ["memory", { includeArchived, search }] as const,
+    detail: (memoryId: string) => ["memory", memoryId] as const,
   },
 
   // Eval queries

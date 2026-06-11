@@ -441,14 +441,7 @@ impl IdMarker for NotificationIdMarker {
     const PREFIX: &'static str = "notification";
 }
 
-/// Marker for Memory Store IDs
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct MemoryStoreIdMarker;
-impl IdMarker for MemoryStoreIdMarker {
-    const PREFIX: &'static str = "mst";
-}
-
-/// Marker for Memory IDs
+/// Marker for Memory IDs (org-scoped named Memories — see `specs/memory.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryIdMarker;
 impl IdMarker for MemoryIdMarker {
@@ -516,13 +509,6 @@ impl IdMarker for PaymentAttemptIdMarker {
 pub struct LedgerEntryIdMarker;
 impl IdMarker for LedgerEntryIdMarker {
     const PREFIX: &'static str = "ledger";
-}
-
-/// Marker for Volume IDs (workspace volumes — see `specs/volumes.md`)
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct VolumeIdMarker;
-impl IdMarker for VolumeIdMarker {
-    const PREFIX: &'static str = "vol";
 }
 
 /// Marker for Knowledge Base IDs (curated org knowledge — see `specs/knowledge-bases.md`)
@@ -594,7 +580,7 @@ pub type AppId = TypedId<AppIdMarker>;
 pub type AppChannelId = TypedId<AppChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
-pub type MemoryStoreId = TypedId<MemoryStoreIdMarker>;
+/// Memory ID (org-scoped named Memory — see `specs/memory.md`)
 pub type MemoryId = TypedId<MemoryIdMarker>;
 /// Eval ID
 pub type EvalId = TypedId<EvalIdMarker>;
@@ -614,8 +600,6 @@ pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
 pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
-/// Volume ID (workspace volumes — see `specs/volumes.md`)
-pub type VolumeId = TypedId<VolumeIdMarker>;
 /// Knowledge Base ID (curated org knowledge — see `specs/knowledge-bases.md`)
 pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
 /// Knowledge Entry ID (entry inside a Knowledge Base)

@@ -26,8 +26,8 @@ use uuid::Uuid;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
-    GrpcMemoryStore, GrpcMessageRetriever, GrpcPaymentAuthority, GrpcProviderCredentialStore,
-    GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcMessageRetriever, GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcSessionFileStore,
+    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -451,10 +451,6 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
-    fn memory_store(&self, org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
-        Some(Arc::new(GrpcMemoryStore::new(self.client.clone(), org_id)))
-    }
-
     fn budget_checker(
         &self,
         org_id: i64,
@@ -527,24 +523,5 @@ impl WorkerAdapters for GrpcWorkerAdapters {
                 error,
             )
             .await
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::worker_adapters::WorkerAdapters;
-
-    #[tokio::test]
-    async fn grpc_worker_adapters_exposes_memory_store_backend() {
-        let channel = tonic::transport::Endpoint::from_static("http://127.0.0.1:1").connect_lazy();
-        let adapters = GrpcWorkerAdapters::from_client(GrpcClient::from_channel(channel));
-
-        assert!(
-            adapters
-                .memory_store(everruns_core::DEFAULT_ORG_ID)
-                .is_some(),
-            "gRPC workers must expose memory_store so remember/recall tools persist in production"
-        );
     }
 }

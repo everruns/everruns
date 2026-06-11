@@ -13,9 +13,6 @@ use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
-use everruns_core::memory_store::{
-    Memory, MemoryContentPart, MemoryKind, MemoryQuery, MemoryStoreBackend, MemoryStoreEntity,
-};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
@@ -24,9 +21,7 @@ use everruns_core::traits::{
     ProviderCredentials, ResolvedImage, SessionFileSystem, SessionStore, StoredImage,
     StoredImageInfo,
 };
-use everruns_core::typed_id::{
-    AgentId, LeasedResourceId, MemoryId, MemoryStoreId, MessageId, ModelId, OrgId, SessionId,
-};
+use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
     Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
 };
@@ -49,16 +44,6 @@ const COMMAND_API_VERSION_V1: &str = "v1";
 struct CommandPage<T> {
     data: Vec<T>,
     total: u32,
-}
-
-struct GrpcMemoryCreateRequest {
-    org_id: i64,
-    store_id: MemoryStoreId,
-    content: String,
-    content_parts: Vec<MemoryContentPart>,
-    kind: MemoryKind,
-    importance: u8,
-    tags: Vec<String>,
 }
 
 /// Map a tonic gRPC status to the appropriate AgentLoopError variant.
@@ -389,134 +374,6 @@ impl GrpcClient {
         }))
     }
 
-    pub async fn memory_get_or_create_default_store(
-        &self,
-        org_id: i64,
-        public_org_id: OrgId,
-    ) -> Result<MemoryStoreEntity> {
-        let request = proto::MemoryGetOrCreateDefaultStoreRequest {
-            org_id,
-            public_org_id: public_org_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_get_or_create_default_store(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        proto_memory_store_to_schema(
-            response
-                .into_inner()
-                .store
-                .ok_or_else(|| grpc_missing_field("No memory store in response"))?,
-        )
-    }
-
-    pub async fn memory_get_store(
-        &self,
-        org_id: i64,
-        store_id: MemoryStoreId,
-    ) -> Result<Option<MemoryStoreEntity>> {
-        let request = proto::MemoryGetStoreRequest {
-            org_id,
-            store_id: store_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_get_store(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .store
-            .map(proto_memory_store_to_schema)
-            .transpose()
-    }
-
-    async fn memory_create(&self, params: GrpcMemoryCreateRequest) -> Result<Memory> {
-        let request = proto::MemoryCreateRequest {
-            org_id: params.org_id,
-            store_id: params.store_id.to_string(),
-            content: params.content,
-            content_parts_json: serde_json::to_vec(&params.content_parts).map_err(|e| {
-                AgentLoopError::store(format!("Failed to encode memory content parts: {e}"))
-            })?,
-            kind: params.kind.to_string(),
-            importance: params.importance as u32,
-            tags: params.tags,
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_create(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        proto_memory_to_schema(
-            response
-                .into_inner()
-                .memory
-                .ok_or_else(|| grpc_missing_field("No memory in response"))?,
-        )
-    }
-
-    pub async fn memory_recall(
-        &self,
-        org_id: i64,
-        query: MemoryQuery,
-    ) -> Result<(Vec<Memory>, usize)> {
-        let request = proto::MemoryRecallRequest {
-            org_id,
-            store_id: query.store_id.map(|id| id.to_string()),
-            query: query.query,
-            tags: query.tags.clone().unwrap_or_default(),
-            has_tags: query.tags.is_some(),
-            kind: query.kind.map(|kind| kind.to_string()),
-            limit: query.limit as u32,
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_recall(request)
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
-        let memories = response
-            .memories
-            .into_iter()
-            .map(proto_memory_to_schema)
-            .collect::<Result<Vec<_>>>()?;
-        Ok((memories, response.total as usize))
-    }
-
-    pub async fn memory_forget(
-        &self,
-        org_id: i64,
-        store_id: MemoryStoreId,
-        memory_id: MemoryId,
-    ) -> Result<bool> {
-        let request = proto::MemoryForgetRequest {
-            org_id,
-            store_id: store_id.to_string(),
-            memory_id: memory_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_forget(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().forgotten)
-    }
-
-    pub async fn memory_count_active(&self, org_id: i64, store_id: MemoryStoreId) -> Result<usize> {
-        let request = proto::MemoryCountActiveRequest {
-            org_id,
-            store_id: store_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_count_active(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().count as usize)
-    }
-
     /// Get MCP server info by name prefix (for MCP tool execution)
     pub async fn get_mcp_server_by_prefix(
         &self,
@@ -828,7 +685,6 @@ pub type GrpcImageArtifactStore = GrpcOrgAdapter;
 pub type GrpcProviderCredentialStore = GrpcOrgAdapter;
 pub type GrpcSessionMutator = GrpcOrgAdapter;
 pub type GrpcScheduleStore = GrpcOrgAdapter;
-pub type GrpcMemoryStore = GrpcOrgAdapter;
 pub type GrpcPlatformStore = GrpcOrgAdapter;
 /// Budget checker that carries org_id and optional agent_id (captured at
 /// construction) for gRPC calls.
@@ -937,55 +793,6 @@ fn proto_stored_image_to_schema(proto_image: proto::StoredImage) -> Result<Store
     Ok(StoredImage {
         info: proto_stored_image_info_to_schema(info)?,
         data: proto_image.data,
-    })
-}
-
-fn proto_memory_kind(kind: &str) -> MemoryKind {
-    match kind {
-        "preference" => MemoryKind::Preference,
-        "correction" => MemoryKind::Correction,
-        "procedure" => MemoryKind::Procedure,
-        "context" => MemoryKind::Context,
-        _ => MemoryKind::Fact,
-    }
-}
-
-fn proto_memory_store_to_schema(proto_store: proto::MemoryStore) -> Result<MemoryStoreEntity> {
-    Ok(MemoryStoreEntity {
-        id: proto_store
-            .id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory store ID: {e}")))?,
-        org_id: proto_store
-            .org_id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid org ID: {e}")))?,
-        name: proto_store.name,
-        is_default: proto_store.is_default,
-        created_at: proto_timestamp_or_now(proto_store.created_at.as_ref()),
-    })
-}
-
-fn proto_memory_to_schema(proto_memory: proto::Memory) -> Result<Memory> {
-    Ok(Memory {
-        id: proto_memory
-            .id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory ID: {e}")))?,
-        store_id: proto_memory
-            .store_id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory store ID: {e}")))?,
-        content: proto_memory.content,
-        content_parts: serde_json::from_slice(&proto_memory.content_parts_json).map_err(|e| {
-            AgentLoopError::store(format!("Invalid memory content parts JSON: {e}"))
-        })?,
-        kind: proto_memory_kind(&proto_memory.kind),
-        importance: proto_memory.importance.clamp(1, 10) as u8,
-        tags: proto_memory.tags,
-        active: proto_memory.active,
-        created_at: proto_timestamp_or_now(proto_memory.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(proto_memory.updated_at.as_ref()),
     })
 }
 
@@ -1615,55 +1422,6 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
         self.client
             .get_default_provider_credentials(self.org_id, provider_type)
             .await
-    }
-}
-
-#[async_trait]
-impl MemoryStoreBackend for GrpcOrgAdapter {
-    async fn get_or_create_default_store(&self, org_id: OrgId) -> Result<MemoryStoreEntity> {
-        self.client
-            .memory_get_or_create_default_store(self.org_id, org_id)
-            .await
-    }
-
-    async fn get_store(&self, store_id: MemoryStoreId) -> Result<Option<MemoryStoreEntity>> {
-        self.client.memory_get_store(self.org_id, store_id).await
-    }
-
-    async fn create_memory(
-        &self,
-        store_id: MemoryStoreId,
-        content: String,
-        content_parts: Vec<MemoryContentPart>,
-        kind: MemoryKind,
-        importance: u8,
-        tags: Vec<String>,
-    ) -> Result<Memory> {
-        self.client
-            .memory_create(GrpcMemoryCreateRequest {
-                org_id: self.org_id,
-                store_id,
-                content,
-                content_parts,
-                kind,
-                importance,
-                tags,
-            })
-            .await
-    }
-
-    async fn recall(&self, query: MemoryQuery) -> Result<(Vec<Memory>, usize)> {
-        self.client.memory_recall(self.org_id, query).await
-    }
-
-    async fn forget(&self, store_id: MemoryStoreId, memory_id: MemoryId) -> Result<bool> {
-        self.client
-            .memory_forget(self.org_id, store_id, memory_id)
-            .await
-    }
-
-    async fn count_active(&self, store_id: MemoryStoreId) -> Result<usize> {
-        self.client.memory_count_active(self.org_id, store_id).await
     }
 }
 

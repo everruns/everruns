@@ -93,7 +93,7 @@ pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_proxy;
 pub mod mcp_server;
-pub mod memory_store;
+pub mod memory;
 pub mod model_router;
 pub mod network_access;
 pub mod organization;
@@ -108,7 +108,6 @@ pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
 pub mod system_allowlist;
-pub mod volume;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
@@ -151,7 +150,7 @@ pub mod truncation_info;
 pub mod user_facing_error;
 
 // In-memory implementations for examples and testing
-pub mod memory;
+pub mod in_memory;
 
 // LLM Simulator driver for testing
 pub mod llmsim_driver;
@@ -198,12 +197,6 @@ pub use traits::{
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
     codes as user_facing_error_codes, trim_error_chain_prefixes,
-};
-
-// Memory store re-exports
-pub use memory_store::{
-    Memory, MemoryContentPart, MemoryImagePart, MemoryKind, MemoryLimits, MemoryQuery,
-    MemoryStoreBackend, MemoryStoreEntity, MemoryTextPart,
 };
 
 // Channel abstraction re-exports
@@ -433,9 +426,8 @@ pub use typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
-    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId,
-    PaymentAttemptId, PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
-    TurnId, TypedId,
+    MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
+    PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

@@ -9,7 +9,7 @@ use everruns_core::{
 };
 use everruns_core::{
     GetCurrentTimeTool, Message, MessageRetriever, MessageRole, SessionId,
-    memory::InMemoryMessageRetriever,
+    in_memory::InMemoryMessageRetriever,
     tools::{EchoTool, FailingTool, Tool, ToolExecutionResult, ToolRegistry},
     traits::ToolExecutor,
 };

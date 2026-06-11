@@ -50,12 +50,12 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/session-resources.md` - Session resource registry
 - `specs/leased-resources.md` - Generic lease primitive
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
-- `specs/session-filesystem.md` - Per-session virtual filesystem
+- `specs/workspace.md` - Session workspace (file surface + tables)
 - `specs/file-store.md` - Pluggable `SessionFileStore` backends
 - `specs/session-sqldb.md` - Session-scoped SQL databases
 - `specs/session-export.md` - Session export to JSONL
 - `specs/knowledge-bases.md` - Curated organization knowledge
-- `specs/memory.md` - Persistent cross-session memory
+- `specs/memory.md` - Org-scoped named Memories (mountable into Workspaces)
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/compaction.md` - Context compaction capability
 - `specs/client-hints.md` - Generic client hints mechanism
@@ -104,7 +104,6 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/egress.md` - Host-owned outbound network boundary and future gateway
 - `specs/utility-llm.md` - Internal utility LLM service for capability internals
 - `specs/voice.md` - Voice Sessions
-- `specs/volumes.md` - Workspace Volumes
 
 ## Security, auth, and governance
 

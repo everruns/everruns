@@ -131,8 +131,8 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["ability", "tool"],
   },
   {
-    title: "Volumes",
-    href: "/volumes",
+    title: "Memory",
+    href: "/memory",
     icon: HardDrive,
     keywords: ["workspace", "files", "storage"],
   },
@@ -243,7 +243,7 @@ const ID_PREFIX_MAP: Record<
   cap_: { category: "capability", label: "Declarative Capability", path: "/capabilities" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
-  vol_: { category: "id", label: "Volume", path: "/volumes" },
+  mem_: { category: "id", label: "Memory", path: "/memory" },
   identity_: {
     category: "agent_identity",
     label: "Agent Identity",

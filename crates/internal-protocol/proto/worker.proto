@@ -138,15 +138,6 @@ service WorkerService {
     // Resolve default provider credentials for tool-side API clients.
     rpc GetDefaultProviderCredentials(GetDefaultProviderCredentialsRequest) returns (GetDefaultProviderCredentialsResponse);
 
-    // === Memory store operations ===
-    // Org-scoped persistent memory for remember/recall/forget tools.
-    rpc MemoryGetOrCreateDefaultStore(MemoryGetOrCreateDefaultStoreRequest) returns (MemoryGetOrCreateDefaultStoreResponse);
-    rpc MemoryGetStore(MemoryGetStoreRequest) returns (MemoryGetStoreResponse);
-    rpc MemoryCreate(MemoryCreateRequest) returns (MemoryCreateResponse);
-    rpc MemoryRecall(MemoryRecallRequest) returns (MemoryRecallResponse);
-    rpc MemoryForget(MemoryForgetRequest) returns (MemoryForgetResponse);
-    rpc MemoryCountActive(MemoryCountActiveRequest) returns (MemoryCountActiveResponse);
-
     // === MCP server operations ===
     // Get MCP server info by name prefix (for tool execution)
     rpc GetMcpServerByPrefix(GetMcpServerByPrefixRequest) returns (GetMcpServerByPrefixResponse);
@@ -1082,92 +1073,6 @@ message GetDefaultProviderCredentialsResponse {
     string base_url = 3;
 }
 
-message MemoryStore {
-    string id = 1;
-    string org_id = 2;
-    string name = 3;
-    bool is_default = 4;
-    Timestamp created_at = 5;
-}
-
-message Memory {
-    string id = 1;
-    string store_id = 2;
-    string content = 3;
-    bytes content_parts_json = 4;
-    string kind = 5;
-    uint32 importance = 6;
-    repeated string tags = 7;
-    bool active = 8;
-    Timestamp created_at = 9;
-    Timestamp updated_at = 10;
-}
-
-message MemoryGetOrCreateDefaultStoreRequest {
-    int64 org_id = 1;
-    string public_org_id = 2;
-}
-
-message MemoryGetOrCreateDefaultStoreResponse {
-    MemoryStore store = 1;
-}
-
-message MemoryGetStoreRequest {
-    int64 org_id = 1;
-    string store_id = 2;
-}
-
-message MemoryGetStoreResponse {
-    optional MemoryStore store = 1;
-}
-
-message MemoryCreateRequest {
-    int64 org_id = 1;
-    string store_id = 2;
-    string content = 3;
-    bytes content_parts_json = 4;
-    string kind = 5;
-    uint32 importance = 6;
-    repeated string tags = 7;
-}
-
-message MemoryCreateResponse {
-    Memory memory = 1;
-}
-
-message MemoryRecallRequest {
-    int64 org_id = 1;
-    optional string store_id = 2;
-    optional string query = 3;
-    repeated string tags = 4;
-    bool has_tags = 5;
-    optional string kind = 6;
-    uint32 limit = 7;
-}
-
-message MemoryRecallResponse {
-    repeated Memory memories = 1;
-    uint32 total = 2;
-}
-
-message MemoryForgetRequest {
-    int64 org_id = 1;
-    string store_id = 2;
-    string memory_id = 3;
-}
-
-message MemoryForgetResponse {
-    bool forgotten = 1;
-}
-
-message MemoryCountActiveRequest {
-    int64 org_id = 1;
-    string store_id = 2;
-}
-
-message MemoryCountActiveResponse {
-    uint32 count = 1;
-}
 
 // Resolved image data for batch response
 message ResolvedImageData {

@@ -240,8 +240,6 @@ where
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
     tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
-    /// Optional memory store backend for persistent cross-session memory.
-    memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
     /// Optional org ID for org-scoped operations.
     org_id: Option<crate::typed_id::OrgId>,
     /// Merged network access list for URL filtering in tools.
@@ -306,7 +304,6 @@ where
             session_resource_registry: None,
             capability_registry: None,
             tool_registry: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             budget_checker: None,
@@ -347,7 +344,6 @@ where
             session_resource_registry: None,
             capability_registry: None,
             tool_registry: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             budget_checker: None,
@@ -529,15 +525,6 @@ where
         hooks: Vec<Arc<dyn crate::capabilities::ToolCallHook>>,
     ) -> Self {
         self.tool_call_hooks.extend(hooks);
-        self
-    }
-
-    /// Set memory store backend for persistent cross-session memory tools.
-    pub fn with_memory_store(
-        mut self,
-        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
-    ) -> Self {
-        self.memory_store = Some(store);
         self
     }
 
@@ -1498,9 +1485,6 @@ where
             tool_context.tool_registry = Some(registry.clone());
         }
         tool_context.visible_tool_names = Some(visible_tool_names.clone());
-        if let Some(ref store) = self.memory_store {
-            tool_context.memory_store = Some(store.clone());
-        }
         if let Some(ref checker) = self.budget_checker {
             tool_context.budget_checker = Some(checker.clone());
         }
@@ -2342,7 +2326,7 @@ mod tests {
         let mut executor = ToolRegistry::new();
         executor.register(ArgumentEchoTool);
         let tool_def = executor.get("argument_echo").unwrap().to_definition();
-        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter.clone())
             .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
 
@@ -2422,7 +2406,7 @@ mod tests {
         use crate::capabilities::{Capability, HumanIntentCapability};
 
         let executor = ToolRegistry::new();
-        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter)
             .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
 
