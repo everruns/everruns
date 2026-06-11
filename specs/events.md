@@ -1042,6 +1042,29 @@ Emitted when a subagent is cancelled via `message_subagent` with `cancel: true`.
 
 All four events share the same `SubagentEventData` shape: `subagent_session_id`, `subagent_name`, `task`, `status`, and optional `result`/`error` fields.
 
+### Session Task Events
+
+Session task lifecycle events (see `specs/session-tasks.md`) are emitted on
+the owning session whenever the task registry creates or mutates a task.
+They carry the **full task snapshot** so consumers reconcile by `task.id`
+without follow-up reads (snapshot-then-delta). See `crates/core/src/events.rs`
+for `SessionTaskEventData` and `TaskMessageEventData`.
+
+#### `task.created`
+
+Emitted when a task is created. `data.task` is the full snapshot.
+
+#### `task.updated`
+
+Emitted on every state, progress, detail, or cancel-intent change.
+`data.task` is the full snapshot.
+
+#### `task.message.sent` / `task.message.received`
+
+Emitted when a message is recorded on a task's channel (`sent` = inbound,
+session → task; `received` = outbound, task → session). `data` carries
+`task_id` and the stored `message`.
+
 ### Extended Thinking Events
 
 Extended thinking events provide visibility into the model's chain-of-thought reasoning when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured).

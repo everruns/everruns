@@ -1,9 +1,7 @@
 # Session Tasks
 
-Status: design proposal. Not implemented yet. When implemented, this spec
-becomes the contract for the task registry and the tracking sections of
-`specs/subagents.md`, `specs/a2a-capability.md`, and
-`specs/background-execution.md` re-point here.
+Status: implemented (v1). This spec is the contract for the task registry.
+Phased-out pieces and deviations are listed under Implementation notes below.
 
 A session does work in the foreground (turns) and in the background (**tasks**).
 A task is any asynchronous work owned by a session: a subagent, a delegated
@@ -108,8 +106,9 @@ TaskMessage {
 }
 ```
 
-- Messages persist to the session event journal (`task.message.sent` /
-  `task.message.received`), giving each task a replayable thread.
+- Messages persist to the `session_task_messages` table (the queryable
+  thread) and are mirrored as `task.message.sent` / `task.message.received`
+  events on the session stream for live UIs.
 - Answering an input request is an inbound message with `in_reply_to` set;
   delivery clears `input_request` and returns the task to `running`.
 - For subagents the channel carries only cross-boundary messages — the child
@@ -278,6 +277,27 @@ No backward compatibility is required; data migrates forward once:
 - `get_subagents`, `get_agent_runs`, `wait_agent`, `message_agent`,
   `message_subagent` retire in favor of the generic tools.
 - `GET /v1/sessions/{id}/resources` keeps serving infrastructure resources.
+
+## Implementation notes (v1)
+
+- Storage: `session_tasks` + `session_task_messages` (migration 051);
+  PostgreSQL and in-memory backends both route updates through
+  `apply_task_update` in `crates/core/src/session_task.rs`. gRPC workers get
+  the registry via task RPCs in the internal worker protocol (payloads travel
+  as canonical core JSON).
+- Spawning capabilities currently dual-write: tasks plus their legacy
+  session-resource registrations and `subagent.*` events. Retiring the
+  duplicates (and the `sessions.subagent_*` columns and the
+  `task` → `instructions` parameter rename) is follow-up work.
+- Durability is partial: `attempt`/`worker_id`/`heartbeat_at` exist on the
+  record, but the orphan reconciler and stale-attempt fencing are not built
+  yet.
+- Wake-ups: `wake_policy` is stored; registry-level wake delivery is not yet
+  enforced — A2A keeps its existing completion wake-up message.
+- Background tool cancel reports unsupported (no cancel token exists for
+  background runs yet).
+- `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
+  key (see `crates/core/src/llmsim_driver.rs`).
 
 ## Out of scope (v1)
 
