@@ -180,7 +180,7 @@ inventory::submit! {
 
 inventory::submit! {
     ResourceOrgResolver {
-        prefix: "vol",
+        prefix: "mem",
         resolve: |db, id| Box::pin(async move { db.get_memory_organization_id(id).await }),
     }
 }

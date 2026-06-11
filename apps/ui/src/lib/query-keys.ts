@@ -201,11 +201,13 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
-  // Memory queries
+  // Memory queries — split list/detail roots to avoid prefix collision when
+  // setQueriesData matches by prefix (a detail query value is a single object,
+  // not an array, so a shared root would crash the list updater).
   memory: {
-    all: ["memory"] as const,
+    all: ["memories"] as const,
     list: (includeArchived = false, search = "") =>
-      ["memory", { includeArchived, search }] as const,
+      ["memories", { includeArchived, search }] as const,
     detail: (memoryId: string) => ["memory", memoryId] as const,
   },
 

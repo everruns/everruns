@@ -64,7 +64,7 @@ pub fn routes(state: AppState) -> Router {
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 409, description = "Duplicate memory name", body = ErrorResponse)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn create_memory(
     org: ResolvedOrg,
@@ -83,7 +83,7 @@ pub async fn create_memory(
     responses(
         (status = 200, description = "List memories", body = ListResponse<MemoryResponse>)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn list_memories(
     org: ResolvedOrg,
@@ -103,7 +103,7 @@ pub async fn list_memories(
         (status = 200, description = "Memory found", body = MemoryResponse),
         (status = 404, description = "Memory not found", body = ErrorResponse)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn get_memory(
     org: ResolvedOrg,
@@ -125,7 +125,7 @@ pub async fn get_memory(
         (status = 404, description = "Memory not found", body = ErrorResponse),
         (status = 409, description = "Duplicate memory name", body = ErrorResponse)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn update_memory(
     org: ResolvedOrg,
@@ -150,7 +150,7 @@ pub async fn update_memory(
         (status = 400, description = "Invalid sync request", body = ErrorResponse),
         (status = 404, description = "Memory not found", body = ErrorResponse)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn sync_memory_now(
     org: ResolvedOrg,
@@ -171,7 +171,7 @@ pub async fn sync_memory_now(
         (status = 204, description = "Memory archived"),
         (status = 404, description = "Memory not found", body = ErrorResponse)
     ),
-    tag = "memories"
+    tag = "memory"
 )]
 pub async fn delete_memory(
     org: ResolvedOrg,

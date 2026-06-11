@@ -8,7 +8,7 @@ Verify that the **Memory** capability config editor (on an agent or harness) let
 
 - Server running (`just start-all`)
 - User logged in
-- At least two active memory exist:
+- At least two active memories exist:
   - `tc006-research`
   - `tc006-team-memory`
 - An editable agent or harness with capability configuration access

@@ -19,7 +19,7 @@ function memoryQuery(params: ListMemoriesParams = {}): string {
     query.set("search", search);
   }
   const suffix = query.toString();
-  return suffix ? `/v1/memory?${suffix}` : "/v1/memory";
+  return suffix ? `/v1/memories?${suffix}` : "/v1/memories";
 }
 
 export async function listMemories(params: ListMemoriesParams = {}): Promise<Memory[]> {
@@ -28,12 +28,12 @@ export async function listMemories(params: ListMemoriesParams = {}): Promise<Mem
 }
 
 export async function getMemory(memoryId: string): Promise<Memory> {
-  const response = await api.get<Memory>(`/v1/memory/${memoryId}`);
+  const response = await api.get<Memory>(`/v1/memories/${memoryId}`);
   return response.data;
 }
 
 export async function createMemory(request: CreateMemoryRequest): Promise<Memory> {
-  const response = await api.post<Memory>("/v1/memory", request);
+  const response = await api.post<Memory>("/v1/memories", request);
   return response.data;
 }
 
@@ -41,15 +41,15 @@ export async function updateMemory(
   memoryId: string,
   request: UpdateMemoryRequest,
 ): Promise<Memory> {
-  const response = await api.patch<Memory>(`/v1/memory/${memoryId}`, request);
+  const response = await api.patch<Memory>(`/v1/memories/${memoryId}`, request);
   return response.data;
 }
 
 export async function syncMemoryNow(memoryId: string): Promise<Memory> {
-  const response = await api.post<Memory>(`/v1/memory/${memoryId}/sync`);
+  const response = await api.post<Memory>(`/v1/memories/${memoryId}/sync`);
   return response.data;
 }
 
 export async function archiveMemory(memoryId: string): Promise<void> {
-  await api.delete(`/v1/memory/${memoryId}`);
+  await api.delete(`/v1/memories/${memoryId}`);
 }
