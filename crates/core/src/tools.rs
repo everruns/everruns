@@ -1212,23 +1212,96 @@ impl Tool for SpawnBackgroundTool {
         let tool_for_task = tool.clone();
         let tool_name_for_task = tool_name.to_string();
 
+        // Clone registry/ids for the cancel-watcher inside the spawned task.
+        let cancel_registry = context.session_task_registry.clone();
+        let cancel_session_id = context.session_id;
+        let cancel_task_id = task_id.clone();
+
         tokio::spawn(async move {
             let _background_run_permit = background_run_permit;
             let _session_run_permit = session_run_permit;
             let _ = sink.status("Starting").await;
-            let outcome = match tool_for_task.as_background_executable() {
-                Some(background_tool) => {
-                    background_tool
-                        .execute_background(tool_args, background_context, sink.clone())
-                        .await
+
+            // Run the tool future inside a select! against a cancel-watch loop
+            // when a task registry and task_id are wired up.  The watcher sends
+            // a heartbeat every ~2 s and checks cancel_requested_at; when set,
+            // it wins the select and the tool future is dropped.
+            //
+            // Rationale: cancel intent is recorded in shared storage so this
+            // design works even when cancel_task executes on a different worker.
+            let outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult> = match (
+                cancel_registry.as_ref(),
+                cancel_task_id.as_deref(),
+            ) {
+                (Some(registry), Some(task_id_str)) => {
+                    let registry = registry.clone();
+                    let task_id_str = task_id_str.to_string();
+                    let tool_fut = async {
+                        match tool_for_task.as_background_executable() {
+                            Some(background_tool) => {
+                                background_tool
+                                    .execute_background(tool_args, background_context, sink.clone())
+                                    .await
+                            }
+                            None => Err(ToolExecutionResult::tool_error(format!(
+                                "Tool declared background support but has no background executor: {}",
+                                tool_name_for_task
+                            ))),
+                        }
+                    };
+                    let watch_fut = async {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            // Send heartbeat.
+                            let _ = registry
+                                .update(
+                                    cancel_session_id,
+                                    &task_id_str,
+                                    crate::session_task::SessionTaskUpdate {
+                                        heartbeat_at: Some(chrono::Utc::now()),
+                                        ..Default::default()
+                                    },
+                                )
+                                .await;
+                            // Check for cooperative cancel intent.
+                            if let Ok(Some(task)) =
+                                registry.get(cancel_session_id, &task_id_str).await
+                                && task.cancel_requested_at.is_some()
+                            {
+                                break;
+                            }
+                        }
+                    };
+                    tokio::select! {
+                        result = tool_fut => result,
+                        () = watch_fut => {
+                            // Cancel was requested; the tool future is dropped.
+                            Err(ToolExecutionResult::ToolError("canceled".to_string()))
+                        }
+                    }
                 }
-                None => Err(ToolExecutionResult::tool_error(format!(
-                    "Tool declared background support but has no background executor: {}",
-                    tool_name_for_task
-                ))),
+                // No registry or no task_id: run without cancel watch (unchanged behaviour).
+                _ => match tool_for_task.as_background_executable() {
+                    Some(background_tool) => {
+                        background_tool
+                            .execute_background(tool_args, background_context, sink.clone())
+                            .await
+                    }
+                    None => Err(ToolExecutionResult::tool_error(format!(
+                        "Tool declared background support but has no background executor: {}",
+                        tool_name_for_task
+                    ))),
+                },
             };
 
-            if let Err(err) = sink.finalize(outcome).await {
+            // Route canceled outcome through finalize_canceled so file/resource
+            // cleanup is consistent with the success/fail paths.
+            let finalize_result = if is_canceled_outcome(&outcome) {
+                sink.finalize_canceled().await
+            } else {
+                sink.finalize(outcome).await
+            };
+            if let Err(err) = finalize_result {
                 tracing::warn!(
                     run_id = run_id_for_task,
                     error = %err,
@@ -1318,6 +1391,39 @@ impl SessionBackgroundSink {
         let _ = registry
             .update(self.context.session_id, task_id, update)
             .await;
+    }
+
+    async fn finalize_canceled(&self) -> Result<()> {
+        let output_log = {
+            let state = self.state.lock().await;
+            let mut log = Self::final_output_log(&state);
+            log.push_str("\nCanceled by request.\n");
+            log
+        };
+        self.write_text_file(&self.log_path, &output_log).await?;
+        let result_json = serde_json::to_string_pretty(&serde_json::json!({"status": "canceled"}))
+            .unwrap_or_else(|_| r#"{"status":"canceled"}"#.to_string());
+        self.write_text_file(&self.result_path, &result_json)
+            .await?;
+
+        let mut state = self.state.lock().await;
+        state.status_text = "Canceled".to_string();
+        drop(state);
+
+        self.mirror_task(crate::session_task::SessionTaskUpdate {
+            state: Some(crate::session_task::SessionTaskState::Canceled),
+            summary: Some("Canceled by request.".to_string()),
+            result_path: Some(self.result_path.clone()),
+            ..Default::default()
+        })
+        .await;
+        self.update_resource(SessionResourceStatus::Failed, Some("Canceled by request."))
+            .await?;
+        if self.signal_on_completion {
+            self.signal_session("canceled", "Canceled by request.")
+                .await?;
+        }
+        Ok(())
     }
 
     async fn finalize(
@@ -1568,6 +1674,15 @@ impl SessionBackgroundSink {
     }
 }
 
+/// Returns true when an outcome from the cancel-watch select is the sentinel
+/// cancel signal (Err(ToolError("canceled"))).  Factored out so the condition
+/// is testable without a running async runtime.
+fn is_canceled_outcome(
+    outcome: &std::result::Result<BackgroundOutcome, ToolExecutionResult>,
+) -> bool {
+    matches!(outcome, Err(ToolExecutionResult::ToolError(msg)) if msg == "canceled")
+}
+
 async fn ensure_directory(
     file_store: &dyn crate::traits::SessionFileSystem,
     session_id: crate::SessionId,
@@ -1661,6 +1776,7 @@ mod tests {
     use crate::platform_store::PlatformStore;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
+    use crate::session_task::SessionTaskRegistry;
     use crate::traits::{SessionFileSystem, SessionResourceRegistry, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
@@ -3234,5 +3350,305 @@ mod tests {
             panic!("spawn_background should reject ambiguous schedule shape");
         };
         assert!(message.contains("must not include both cron_expression and scheduled_at"));
+    }
+
+    // =========================================================================
+    // Cooperative cancellation tests
+    // =========================================================================
+
+    #[test]
+    fn test_is_canceled_outcome_detects_sentinel() {
+        // The sentinel produced by the cancel-watcher branch.
+        let sentinel: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
+            Err(ToolExecutionResult::ToolError("canceled".to_string()));
+        assert!(is_canceled_outcome(&sentinel));
+    }
+
+    #[test]
+    fn test_is_canceled_outcome_does_not_match_other_errors() {
+        let other_err: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
+            Err(ToolExecutionResult::ToolError("boom".to_string()));
+        assert!(!is_canceled_outcome(&other_err));
+
+        let success: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
+            Ok(BackgroundOutcome {
+                summary: "ok".to_string(),
+                result: json!({"ok": true}),
+                raw_output: None,
+            });
+        assert!(!is_canceled_outcome(&success));
+    }
+
+    /// A background tool that sleeps indefinitely, allowing the test to exercise
+    /// cancel via the cancel-watcher without actually waiting forever.
+    #[derive(Default)]
+    struct SleepingBackgroundTool;
+
+    #[async_trait]
+    impl BackgroundExecutableTool for SleepingBackgroundTool {
+        async fn execute_background(
+            &self,
+            _arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            sink.status("Sleeping forever")
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            // Sleep for a very long time; the cancel-watcher will win the select.
+            tokio::time::sleep(std::time::Duration::from_secs(3600)).await;
+            Ok(BackgroundOutcome {
+                summary: "should not reach here".to_string(),
+                result: json!({}),
+                raw_output: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl Tool for SleepingBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background_sleeping"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background Sleeping")
+        }
+
+        fn description(&self) -> &str {
+            "background test tool that sleeps indefinitely"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {}
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
+    // Minimal in-memory SessionTaskRegistry for cancel tests.
+    // (Mirrors the double in capabilities/session_tasks.rs — kept local because
+    //  that module is private.)
+    #[derive(Default)]
+    struct InMemoryTaskRegistry {
+        tasks: Mutex<HashMap<String, crate::session_task::SessionTask>>,
+    }
+
+    #[async_trait]
+    impl crate::session_task::SessionTaskRegistry for InMemoryTaskRegistry {
+        async fn create(
+            &self,
+            input: crate::session_task::CreateSessionTask,
+        ) -> crate::Result<crate::session_task::SessionTask> {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(id) = &input.id
+                && let Some(existing) = tasks.get(id)
+            {
+                return Ok(existing.clone());
+            }
+            let task = crate::session_task::new_session_task(input, chrono::Utc::now());
+            tasks.insert(task.id.clone(), task.clone());
+            Ok(task)
+        }
+
+        async fn update(
+            &self,
+            _session_id: SessionId,
+            task_id: &str,
+            update: crate::session_task::SessionTaskUpdate,
+        ) -> crate::Result<Option<crate::session_task::SessionTask>> {
+            let mut tasks = self.tasks.lock().unwrap();
+            let Some(task) = tasks.get_mut(task_id) else {
+                return Ok(None);
+            };
+            crate::session_task::apply_task_update(task, update, chrono::Utc::now());
+            Ok(Some(task.clone()))
+        }
+
+        async fn get(
+            &self,
+            _session_id: SessionId,
+            task_id: &str,
+        ) -> crate::Result<Option<crate::session_task::SessionTask>> {
+            Ok(self.tasks.lock().unwrap().get(task_id).cloned())
+        }
+
+        async fn list(
+            &self,
+            _session_id: SessionId,
+            filter: Option<&crate::session_task::SessionTaskFilter>,
+        ) -> crate::Result<Vec<crate::session_task::SessionTask>> {
+            let tasks = self.tasks.lock().unwrap();
+            Ok(tasks
+                .values()
+                .filter(|task| {
+                    filter.is_none_or(|f| {
+                        f.kind.as_deref().is_none_or(|kind| task.kind == kind)
+                            && f.state.is_none_or(|state| task.state == state)
+                    })
+                })
+                .cloned()
+                .collect())
+        }
+
+        async fn request_cancel(
+            &self,
+            _session_id: SessionId,
+            task_id: &str,
+        ) -> crate::Result<Option<crate::session_task::SessionTask>> {
+            let mut tasks = self.tasks.lock().unwrap();
+            let Some(task) = tasks.get_mut(task_id) else {
+                return Ok(None);
+            };
+            task.cancel_requested_at
+                .get_or_insert_with(chrono::Utc::now);
+            task.updated_at = chrono::Utc::now();
+            Ok(Some(task.clone()))
+        }
+
+        async fn record_message(
+            &self,
+            _session_id: SessionId,
+            task_id: &str,
+            message: crate::session_task::NewTaskMessage,
+        ) -> crate::Result<crate::session_task::TaskMessage> {
+            let tasks = self.tasks.lock().unwrap();
+            let _task = tasks
+                .get(task_id)
+                .ok_or_else(|| crate::AgentLoopError::tool(format!("no task {task_id}")))?;
+            Ok(crate::session_task::TaskMessage {
+                id: crate::session_task::generate_task_message_id(),
+                task_id: task_id.to_string(),
+                direction: message.direction,
+                content: message.content,
+                in_reply_to: message.in_reply_to,
+                created_at: chrono::Utc::now(),
+            })
+        }
+
+        async fn list_messages(
+            &self,
+            _session_id: SessionId,
+            _task_id: &str,
+            _limit: Option<u32>,
+        ) -> crate::Result<Vec<crate::session_task::TaskMessage>> {
+            Ok(Vec::new())
+        }
+    }
+
+    /// End-to-end cancel test: spawn a long-sleeping background tool, then call
+    /// `request_cancel` on the task registry, and assert the task ends Canceled.
+    #[tokio::test]
+    async fn test_cancel_background_run_via_task_registry() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
+
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(SleepingBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry.clone())
+            .with_session_task_registry(task_registry.clone());
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background_sleeping",
+                    "args": {},
+                    "signal_on_completion": false
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should succeed");
+        };
+        let run_id = value["run_id"].as_str().unwrap().to_string();
+        let task_id = value["task_id"].as_str().unwrap().to_string();
+
+        // Wait until the background task is Running (heartbeat loop started).
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            loop {
+                let entry = resource_registry
+                    .get(session_id, &run_id)
+                    .await
+                    .unwrap()
+                    .expect("resource exists");
+                // Also wait for a heartbeat to confirm the watcher is live.
+                if entry.status == SessionResourceStatus::Active
+                    && let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                    && task.heartbeat_at.is_some()
+                {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("background run should start and send at least one heartbeat");
+
+        // Request cancel.
+        task_registry
+            .request_cancel(session_id, &task_id)
+            .await
+            .expect("request_cancel should succeed");
+
+        // Wait for the task to reach Canceled state.
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                    && task.state == crate::session_task::SessionTaskState::Canceled
+                {
+                    break task;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("background task should reach Canceled state");
+
+        // Verify result.json and output.log were written.
+        let result_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/result.json"))
+            .await
+            .unwrap()
+            .expect("result.json should exist");
+        let result_json: Value =
+            serde_json::from_str(result_file.content.as_deref().unwrap_or_default())
+                .expect("valid json");
+        assert_eq!(result_json["status"], "canceled");
+
+        let log_file = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+            .await
+            .unwrap()
+            .expect("output.log should exist");
+        assert!(
+            log_file
+                .content
+                .as_deref()
+                .unwrap_or_default()
+                .contains("Canceled by request.")
+        );
     }
 }
