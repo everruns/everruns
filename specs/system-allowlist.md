@@ -91,14 +91,16 @@ allowlist also lists it. The system allowlist always wins.
 
 ### fetchkit / web_fetch
 
-`web_fetch` (fetchkit) owns its own HTTP client and does not route through
-`EgressService`, so the allowlist is enforced there as an explicit pre-flight
-check in `crates/core/src/capabilities/web_fetch.rs`. When the allowlist is
-enabled and a fetched URL is not covered, the tool returns a clear, distinct
-error — "Endpoint blocked by system policy: …" — before any request is made,
-rather than a generic transport failure. When fetchkit is migrated onto
-`EgressService` (see `specs/egress.md` migration order), the egress boundary
-becomes a second enforcement point and this pre-flight check can be revisited.
+When `ToolContext.egress_service` is present (always true in the runtime),
+`web_fetch` routes through the egress boundary
+(`crates/core/src/capabilities/web_fetch_egress.rs`), which enforces the
+allowlist like any other egress traffic; an egress denial surfaces as the same
+"Endpoint blocked by system policy: …" tool error.
+
+On the legacy direct path (contexts without an egress service, e.g. embedded
+hosts), fetchkit still owns the HTTP client and the allowlist is enforced as an
+explicit pre-flight check in `crates/core/src/capabilities/web_fetch.rs` before
+any request is made.
 
 ### Operator responsibility
 
