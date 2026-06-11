@@ -1495,6 +1495,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )))
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        Some(Arc::new(
+            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+                .with_event_emitter(self.event_service.clone()),
+        ))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::storage::DbSessionScheduleStore::new(
             self.db.clone(),

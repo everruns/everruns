@@ -2588,6 +2588,68 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Session Tasks
+    // ============================================
+
+    /// Insert a task. Idempotent on `id`; the `bool` is true when inserted.
+    pub async fn create_session_task(
+        &self,
+        task: &everruns_core::SessionTask,
+    ) -> Result<(SessionTaskRow, bool)> {
+        dispatch!(self, create_session_task, task)
+    }
+
+    pub async fn get_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<SessionTaskRow>> {
+        dispatch!(self, get_session_task, session_id, task_id)
+    }
+
+    pub async fn list_session_tasks(
+        &self,
+        session_id: SessionId,
+        kind: Option<&str>,
+        state: Option<&str>,
+    ) -> Result<Vec<SessionTaskRow>> {
+        dispatch!(self, list_session_tasks, session_id, kind, state)
+    }
+
+    pub async fn update_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: everruns_core::SessionTaskUpdate,
+    ) -> Result<Option<SessionTaskRow>> {
+        dispatch!(self, update_session_task, session_id, task_id, update)
+    }
+
+    pub async fn request_cancel_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<(SessionTaskRow, bool)>> {
+        dispatch!(self, request_cancel_session_task, session_id, task_id)
+    }
+
+    pub async fn insert_session_task_message(
+        &self,
+        input: NewSessionTaskMessageRow,
+    ) -> Result<SessionTaskMessageRow> {
+        dispatch!(self, insert_session_task_message, input)
+    }
+
+    pub async fn list_session_task_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<SessionTaskMessageRow>> {
+        dispatch!(self, list_session_task_messages, session_id, task_id, limit)
+    }
+
+    // ============================================
     // Audit Logs (TM-OBS-007, EVE-226)
     // ============================================
 

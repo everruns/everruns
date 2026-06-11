@@ -33,6 +33,7 @@ mod session_files;
 mod session_git;
 mod session_resources;
 mod session_storage;
+mod session_tasks;
 mod sessions;
 mod skills;
 pub mod subagent_spawn_handles;
@@ -127,6 +128,9 @@ pub struct InMemoryDatabase {
     leased_resources: RwLock<HashMap<LeasedResourceId, LeasedResourceRow>>,
     // Session resource registry (generic active-resource tracking).
     session_resources: RwLock<HashMap<(SessionId, String), SessionResourceRow>>,
+    // Session tasks (background work owned by a session), keyed by task id.
+    session_tasks: RwLock<HashMap<String, SessionTaskRow>>,
+    session_task_messages: RwLock<Vec<SessionTaskMessageRow>>,
     // Audit logs (TM-OBS-007)
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
@@ -218,6 +222,8 @@ impl Default for InMemoryDatabase {
             session_schedules: RwLock::new(HashMap::new()),
             leased_resources: RwLock::new(HashMap::new()),
             session_resources: RwLock::new(HashMap::new()),
+            session_tasks: RwLock::new(HashMap::new()),
+            session_task_messages: RwLock::new(Vec::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),

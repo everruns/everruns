@@ -270,6 +270,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Get the session task registry for background work tracking.
+    /// Returns None when the registry is not available (e.g. gRPC workers
+    /// without the task RPCs — follow-up work).
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        None
+    }
+
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;

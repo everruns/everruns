@@ -1065,6 +1065,11 @@ impl ServerAppBuilder {
         );
         let session_resources_state =
             api::session_resources::AppState::new(db.clone(), auth_state.clone());
+        let session_tasks_state = api::session_tasks::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            event_service.clone(),
+        );
 
         // MCP endpoint: derive the protected-resource metadata URL from
         // auth_config.base_url. Path-derived per RFC 9728 §3.1 for resource
@@ -1144,6 +1149,7 @@ impl ServerAppBuilder {
             .merge(api::session_files::routes(session_files_state))
             .merge(api::session_git::routes(session_git_state))
             .merge(api::session_resources::routes(session_resources_state))
+            .merge(api::session_tasks::routes(session_tasks_state))
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))

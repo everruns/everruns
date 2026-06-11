@@ -139,6 +139,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        None
+    }
+
     fn schedule_store(&self, _org_id: i64) -> Option<Arc<dyn SessionScheduleStore>> {
         None
     }
@@ -1140,6 +1146,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(registry) = adapter.session_resource_registry() {
         atom = atom.with_session_resource_registry(registry);
+    }
+    if let Some(registry) = adapter.session_task_registry() {
+        atom = atom.with_session_task_registry(registry);
     }
     if let Some(schedule_store) = adapter.schedule_store(org_id) {
         atom = atom.with_schedule_store(schedule_store);
