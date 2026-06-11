@@ -176,7 +176,7 @@ impl std::fmt::Debug for OpenAILlmDriver {
 #[derive(Clone)]
 pub struct OpenRouterLlmDriver {
     inner: OpenResponsesProtocolLlmDriver,
-    /// Whether using a custom base URL (not OpenRouter's API).
+    /// Whether constructed with an explicit base URL override via [`with_base_url`].
     uses_custom_url: bool,
 }
 
@@ -384,6 +384,7 @@ async fn list_openrouter_models(
 
     if !response.status().is_success() {
         let status = response.status();
+        let _ = response.bytes().await; // drain body to allow connection reuse
         return Err(models_api_status_error(status));
     }
 
@@ -426,6 +427,7 @@ async fn list_openai_models(
 
     if !response.status().is_success() {
         let status = response.status();
+        let _ = response.bytes().await; // drain body to allow connection reuse
         return Err(models_api_status_error(status));
     }
 
