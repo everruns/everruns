@@ -381,6 +381,25 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         retry_after_seconds: u32,
         error: &str,
     ) -> Result<bool>;
+
+    // =========================================================================
+    // Session task reaper (orphan reconciler)
+    // =========================================================================
+
+    /// Return (session_id, task_id) pairs for tasks whose worker heartbeat has
+    /// gone stale. Tasks with NULL heartbeat_at are excluded (foreground tasks
+    /// with no liveness probe are covered by EVE-535 spawn handles).
+    async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(everruns_core::SessionId, String)>>;
+
+    /// Session task registry for the reaper to call `update` through.
+    /// Must include an event emitter so task.updated events fire on reap.
+    fn reaper_session_task_registry(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>;
 }
 
 // =============================================================================

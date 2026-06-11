@@ -26,6 +26,7 @@ pub mod platform;
 pub mod runner;
 pub mod runtime_host;
 pub mod session_lifecycle;
+pub mod session_task_reaper;
 mod stream_heartbeater;
 pub mod task_error;
 pub mod unified_worker;

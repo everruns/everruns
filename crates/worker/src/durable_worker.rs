@@ -224,6 +224,7 @@ impl Default for DurableWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
+                "session_task_reaper".to_string(),
                 "invoke_scheduled_app_channel".to_string(),
             ],
             max_concurrent_tasks: 1000, // High default for massive workflow parallelism
@@ -980,6 +981,19 @@ impl DurableWorker {
                     &cleanup_input,
                 )
                 .await;
+                (res, None)
+            }
+            "session_task_reaper" => {
+                let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
+                let adapters = crate::grpc_worker_adapters::GrpcWorkerAdapters::from_client_with_platform_definition(
+                    grpc_client.clone(),
+                    self.platform_definition.as_ref().clone(),
+                );
+                let res =
+                    crate::session_task_reaper::execute_reaper_activity(&adapters, &reaper_input)
+                        .await;
                 (res, None)
             }
             "invoke_scheduled_app_channel" => {

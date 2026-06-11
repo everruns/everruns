@@ -240,6 +240,41 @@ impl Database {
         Ok(row)
     }
 
+    /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
+    ///
+    /// Tasks with NULL heartbeat_at are excluded (foreground tasks without
+    /// liveness probes; EVE-535 spawn-handle coverage applies instead).
+    /// Runs inside a transaction with `FOR UPDATE SKIP LOCKED` so concurrent
+    /// reapers claim disjoint sets.
+    pub async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String)>> {
+        let stale_secs = stale_after.num_seconds();
+        // Transaction is necessary for FOR UPDATE to take effect for the
+        // caller's subsequent updates; the reaper calls update_session_task
+        // for each row in its own transaction, so we open and commit here
+        // just to get a consistent, lock-free snapshot.
+        let rows = sqlx::query_as::<_, (SessionId, String)>(
+            r#"
+            SELECT session_id, id
+            FROM session_tasks
+            WHERE state IN ('queued', 'running')
+              AND heartbeat_at IS NOT NULL
+              AND heartbeat_at < NOW() - ($1::bigint * INTERVAL '1 second')
+            ORDER BY id
+            LIMIT $2
+            FOR UPDATE SKIP LOCKED
+            "#,
+        )
+        .bind(stale_secs)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Last `limit` messages, returned oldest first.
     pub async fn list_session_task_messages(
         &self,
