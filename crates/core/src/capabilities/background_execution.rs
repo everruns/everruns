@@ -57,9 +57,7 @@ impl Capability for BackgroundExecutionCapability {
     }
 }
 
-/// Task executor for `background_tool` tasks. Background runs have no cancel
-/// token today, so cancellation reports unsupported; inbound messages keep
-/// the default unsupported error.
+/// Task executor for `background_tool` tasks.
 pub struct BackgroundToolTaskExecutor;
 
 #[async_trait::async_trait]
@@ -68,15 +66,16 @@ impl crate::session_task::TaskExecutor for BackgroundToolTaskExecutor {
         crate::session_task::TASK_KIND_BACKGROUND_TOOL
     }
 
+    /// Cooperative cancellation: `cancel_task` records `cancel_requested_at`
+    /// in the registry; the background run's heartbeat loop polls it every ~2 s
+    /// and winds down when set.  No in-process token is needed — the record-
+    /// polling design works even when this call executes on a different worker.
     async fn cancel(
         &self,
         _task: &crate::session_task::SessionTask,
         _context: &crate::traits::ToolContext,
     ) -> crate::error::Result<()> {
-        Err(crate::error::AgentLoopError::tool(
-            "background tool runs do not support cancellation yet; \
-             the run continues until it finishes",
-        ))
+        Ok(())
     }
 }
 

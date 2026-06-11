@@ -1001,14 +1001,20 @@ async fn background_monitor(
             let _ = write_result_artifact(&context, &mut failed).await;
             let _ = save_run(&context, &failed).await;
             post_task_completion_message(&context, &failed).await;
-            if failed.wake_on_completion {
+            // Legacy wake: only when no registry is present (registry-level
+            // wake_policy handles it otherwise via post_task_completion_message).
+            if failed.wake_on_completion && context.session_task_registry.is_none() {
                 let _ = wake_parent(&context, &failed).await;
             }
             return;
         }
     };
     post_task_completion_message(&context, &record).await;
-    if record.wake_on_completion {
+    // Registry-level wake_policy handles the wake when a task registry is
+    // present (post_task_completion_message records an outbound message which
+    // triggers the waker). Fall back to the legacy synthetic session message
+    // only when no registry is wired (older execution contexts).
+    if record.wake_on_completion && context.session_task_registry.is_none() {
         let _ = wake_parent(&context, &record).await;
     }
     let _ = save_run(&context, &record).await;

@@ -289,13 +289,22 @@ No backward compatibility is required; data migrates forward once:
   session-resource registrations and `subagent.*` events. Retiring the
   duplicates (and the `sessions.subagent_*` columns and the
   `task` → `instructions` parameter rename) is follow-up work.
-- Durability is partial: `attempt`/`worker_id`/`heartbeat_at` exist on the
-  record, but the orphan reconciler and stale-attempt fencing are not built
-  yet.
-- Wake-ups: `wake_policy` is stored; registry-level wake delivery is not yet
-  enforced — A2A keeps its existing completion wake-up message.
-- Background tool cancel reports unsupported (no cancel token exists for
-  background runs yet).
+- Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
+  reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
+  with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -
+  5m`) and fails them via the registry using `FOR UPDATE SKIP LOCKED` on the
+  PG backend. Tasks with `NULL heartbeat_at` (foreground subagent tasks) are
+  excluded (covered by EVE-535 spawn handles). Stale-attempt fencing is not
+  yet built.
+- Wake-ups: `wake_policy` is enforced at the registry level
+  (`DbSessionTaskRegistry`). `OnTerminal` wakes on any transition into
+  `succeeded`/`failed`/`canceled`. `OnActivity` additionally wakes on
+  `awaiting_input` entry and outbound messages. `Silent` never wakes.
+  A2A's legacy `wake_parent` call is gated on `session_task_registry.is_none()`
+  (backward compat for sessions without a registry).
+- Background tool cancellation is cooperative: runs with a task record
+  heartbeat every ~2s and poll `cancel_requested_at`, winding down to
+  `canceled` when set (works across worker processes).
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
   key (see `crates/core/src/llmsim_driver.rs`).
 

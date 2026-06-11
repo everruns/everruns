@@ -367,6 +367,83 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
     }
 }
 
+// =============================================================================
+// GrpcSessionTaskWaker — inject wake messages into sessions from gRPC path
+// =============================================================================
+
+/// Wake the owning session by injecting a synthetic user message, mirroring
+/// the `platform_send_message` gRPC handler. Used by the session task registry
+/// in the gRPC worker path.
+struct GrpcSessionTaskWaker {
+    db: Arc<StorageBackend>,
+    event_service: EventService,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+}
+
+#[async_trait::async_trait]
+impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWaker {
+    async fn wake(&self, session_id: everruns_core::SessionId, text: &str) -> anyhow::Result<()> {
+        let session = self
+            .db
+            .get_session_unscoped(session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to look up session for wake: {e}"))?;
+        let Some(session) = session else {
+            return Ok(());
+        };
+        let Some(harness_id) = session.harness_id else {
+            tracing::debug!(
+                session_id = %session_id,
+                "GrpcSessionTaskWaker: session has no harness_id; skipping wake"
+            );
+            return Ok(());
+        };
+
+        let message_id = everruns_core::MessageId::new();
+        let now = chrono::Utc::now();
+        let core_message = everruns_core::Message {
+            id: message_id,
+            role: everruns_core::MessageRole::User,
+            content: vec![everruns_core::ContentPart::text(text)],
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            external_actor: None,
+            created_at: now,
+        };
+
+        self.event_service
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::InputMessageData::new(core_message),
+            ))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))?;
+
+        if let Some(runner) = &self.runner {
+            let runner = runner.clone();
+            let agent_id = session.agent_id;
+            let org_id = session.org_id;
+            tokio::spawn(async move {
+                if let Err(e) = runner
+                    .start_run(org_id, session_id, harness_id, agent_id, message_id, None)
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        "GrpcSessionTaskWaker: failed to start turn workflow: {e}"
+                    );
+                }
+            });
+        }
+
+        Ok(())
+    }
+}
+
 /// gRPC service implementation for worker communication
 ///
 /// Uses domain commands/queries for agents and harnesses, and services for
@@ -633,11 +710,18 @@ impl WorkerServiceImpl {
     }
 
     /// Create the session task registry used by tools over gRPC. Attaches the
-    /// event service so registry mutations emit task.* events.
+    /// event service and waker so registry mutations emit task.* events and
+    /// inject wake messages into sessions per wake_policy.
     fn session_task_registry(&self) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+        let waker = Arc::new(GrpcSessionTaskWaker {
+            db: self.db.clone(),
+            event_service: self.event_service.clone(),
+            runner: self.runner.clone(),
+        });
         Arc::new(
             crate::storage::DbSessionTaskRegistry::new(self.db.clone())
-                .with_event_emitter(Arc::new(self.event_service.clone())),
+                .with_event_emitter(Arc::new(self.event_service.clone()))
+                .with_waker(waker),
         )
     }
 
