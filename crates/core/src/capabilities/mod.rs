@@ -123,6 +123,7 @@ mod session_sandbox;
 mod session_schedule;
 mod session_sql_database;
 mod session_storage;
+mod session_tasks;
 mod skills;
 mod stateless_todo_list;
 mod subagents;
@@ -253,6 +254,7 @@ pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
+pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use subagents::SubagentCapability;
@@ -968,6 +970,9 @@ impl CapabilityRegistry {
 
         // Subagents (spawn child agent sessions, all environments)
         registry.register(SubagentCapability);
+
+        // Session tasks (inspect/steer background work, all environments)
+        registry.register(SessionTasksCapability);
 
         // Outbound agent delegation — experimental (dev-only by default).
         // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
@@ -2153,6 +2158,7 @@ mod tests {
             "tool_search",
             "auto_tool_search",
             "prompt_caching",
+            "session_tasks",
             "skills",
             "subagents",
             "system_commands",

@@ -57,6 +57,35 @@ impl Capability for BackgroundExecutionCapability {
     }
 }
 
+/// Task executor for `background_tool` tasks. Background runs have no cancel
+/// token today, so cancellation reports unsupported; inbound messages keep
+/// the default unsupported error.
+pub struct BackgroundToolTaskExecutor;
+
+#[async_trait::async_trait]
+impl crate::session_task::TaskExecutor for BackgroundToolTaskExecutor {
+    fn kind(&self) -> &str {
+        crate::session_task::TASK_KIND_BACKGROUND_TOOL
+    }
+
+    async fn cancel(
+        &self,
+        _task: &crate::session_task::SessionTask,
+        _context: &crate::traits::ToolContext,
+    ) -> crate::error::Result<()> {
+        Err(crate::error::AgentLoopError::tool(
+            "background tool runs do not support cancellation yet; \
+             the run continues until it finishes",
+        ))
+    }
+}
+
+inventory::submit! {
+    crate::session_task::TaskExecutorPlugin {
+        executor: || std::sync::Arc::new(BackgroundToolTaskExecutor),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
