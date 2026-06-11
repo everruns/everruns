@@ -1,11 +1,28 @@
-//! Parallel MCP Integration.
+//! Parallel web search and fetch for Everruns agents.
 //!
-//! Decision: Use Parallel's hosted MCP server directly so Everruns gets the
-//! provider-owned `web_search` and `web_fetch` behavior without proxying or
-//! reimplementing it.
-//! Decision: Default to the free unauthenticated endpoint. Per-capability config
-//! can require a user-scoped Parallel API-key connection and can switch to the
-//! OAuth-compatible MCP endpoint.
+//! `everruns-integrations-parallel` is part of the
+//! [Everruns](https://everruns.com) ecosystem. It contributes
+//! [Parallel](https://parallel.ai)'s hosted MCP server so agents get
+//! provider-owned `web_search` and `web_fetch` tools — free by default, with an
+//! optional Parallel API-key connection for authenticated usage.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_parallel::ParallelCapability;
+//!
+//! let capability = ParallelCapability;
+//! assert_eq!(capability.id(), "parallel_search");
+//! ```
+//!
+//! # Design notes
+//!
+//! - Uses Parallel's hosted MCP server directly, so Everruns gets the
+//!   provider-owned behavior without proxying or reimplementing it.
+//! - Defaults to the free unauthenticated endpoint. Per-capability config can
+//!   require a user-scoped Parallel API-key connection and switch to the
+//!   OAuth-compatible MCP endpoint.
 
 pub mod connection;
 pub mod payments;

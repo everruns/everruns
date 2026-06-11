@@ -1,10 +1,20 @@
 # everruns-openui
 
-OpenUI component definitions and prompt generation for Everruns generative UI.
+> OpenUI component library and prompt generator for Everruns generative UI.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It builds
-the system-prompt text that teaches an LLM to produce `openui` fenced blocks for
-rendering in clients that understand OpenUI Lang.
+[![Crates.io](https://img.shields.io/crates/v/everruns-openui.svg)](https://crates.io/crates/everruns-openui)
+[![Documentation](https://docs.rs/everruns-openui/badge.svg)](https://docs.rs/everruns-openui)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-openui` builds the system-prompt text that teaches an LLM to produce
+`openui` fenced blocks — generative UI that Everruns clients understanding OpenUI
+Lang can render directly in a conversation. It ships a static component library
+and lets you extend the prompt with your own rules and examples.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. See
+[`everruns-a2ui`](https://crates.io/crates/everruns-a2ui) for the JSON-component
+variant of generative UI.
 
 ## Quick Example
 
@@ -28,6 +38,11 @@ assert!(prompt.contains("```openui"));
 - Prompt generation for OpenUI Lang output
 - Custom prompt options for extra rules and examples
 
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-openui)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
