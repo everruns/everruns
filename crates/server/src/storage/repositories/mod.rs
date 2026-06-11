@@ -29,6 +29,7 @@ mod session_files;
 mod session_git;
 mod session_resources;
 mod session_storage;
+mod session_tasks;
 mod sessions;
 mod skills;
 mod user_connections;

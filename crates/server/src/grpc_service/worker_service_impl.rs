@@ -2847,6 +2847,193 @@ impl WorkerService for WorkerServiceImpl {
     }
 
     // ========================================================================
+    // Session task registry
+    // ========================================================================
+
+    async fn create_session_task(
+        &self,
+        request: Request<CreateSessionTaskRequest>,
+    ) -> Result<Response<SessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let input: everruns_core::CreateSessionTask = serde_json::from_slice(&req.create_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task create JSON: {e}")))?;
+
+        let task = self
+            .session_task_registry()
+            .create(input)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create session task: {e}");
+                Status::internal("Failed to create session task")
+            })?;
+
+        Ok(Response::new(SessionTaskResponse {
+            task_json: serde_json::to_vec(&task)
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn update_session_task(
+        &self,
+        request: Request<UpdateSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let update: everruns_core::SessionTaskUpdate = serde_json::from_slice(&req.update_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task update JSON: {e}")))?;
+
+        let task = self
+            .session_task_registry()
+            .update(session_id.into(), &req.task_id, update)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update session task: {e}");
+                Status::internal("Failed to update session task")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn get_session_task(
+        &self,
+        request: Request<GetSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let task = self
+            .session_task_registry()
+            .get(session_id.into(), &req.task_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session task: {e}");
+                Status::internal("Failed to get session task")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn list_session_tasks(
+        &self,
+        request: Request<ListSessionTasksRequest>,
+    ) -> Result<Response<ListSessionTasksResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let filter = if req.kind.is_some() || req.state.is_some() {
+            Some(everruns_core::SessionTaskFilter {
+                kind: req.kind,
+                state: req
+                    .state
+                    .as_deref()
+                    .map(everruns_core::SessionTaskState::from),
+            })
+        } else {
+            None
+        };
+
+        let tasks = self
+            .session_task_registry()
+            .list(session_id.into(), filter.as_ref())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list session tasks: {e}");
+                Status::internal("Failed to list session tasks")
+            })?;
+
+        Ok(Response::new(ListSessionTasksResponse {
+            task_json: tasks
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<_, _>>()
+                .map_err(|e| Status::internal(format!("Failed to encode tasks: {e}")))?,
+        }))
+    }
+
+    async fn request_cancel_session_task(
+        &self,
+        request: Request<RequestCancelSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let task = self
+            .session_task_registry()
+            .request_cancel(session_id.into(), &req.task_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to request session task cancel: {e}");
+                Status::internal("Failed to request session task cancel")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn record_session_task_message(
+        &self,
+        request: Request<RecordSessionTaskMessageRequest>,
+    ) -> Result<Response<SessionTaskMessageResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let message: everruns_core::NewTaskMessage = serde_json::from_slice(&req.message_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task message JSON: {e}")))?;
+
+        let stored = self
+            .session_task_registry()
+            .record_message(session_id.into(), &req.task_id, message)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to record session task message: {e}");
+                Status::internal("Failed to record session task message")
+            })?;
+
+        Ok(Response::new(SessionTaskMessageResponse {
+            message_json: serde_json::to_vec(&stored)
+                .map_err(|e| Status::internal(format!("Failed to encode task message: {e}")))?,
+        }))
+    }
+
+    async fn list_session_task_messages(
+        &self,
+        request: Request<ListSessionTaskMessagesRequest>,
+    ) -> Result<Response<ListSessionTaskMessagesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let messages = self
+            .session_task_registry()
+            .list_messages(session_id.into(), &req.task_id, req.limit)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list session task messages: {e}");
+                Status::internal("Failed to list session task messages")
+            })?;
+
+        Ok(Response::new(ListSessionTaskMessagesResponse {
+            message_json: messages
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<_, _>>()
+                .map_err(|e| Status::internal(format!("Failed to encode task messages: {e}")))?,
+        }))
+    }
+
+    // ========================================================================
     // Session schedule operations
     // ========================================================================
 

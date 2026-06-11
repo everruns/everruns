@@ -1,5 +1,11 @@
 # Subagents Specification
 
+Each spawned subagent is also tracked as a session task (`kind = subagent`,
+`links.child_session_id` pointing at the child) with lifecycle `task.*`
+events and a message channel — see
+[`specs/session-tasks.md`](./session-tasks.md). The generic `message_task` /
+`cancel_task` tools work on subagents via the `SubagentTaskExecutor`.
+
 <!-- Design Decisions:
   - 3 tools only: spawn_subagent, get_subagents, message_subagent
   - Foreground execution blocks parent tool call (Phase 1); background mode deferred

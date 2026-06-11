@@ -9,6 +9,11 @@ use super::{Capability, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::session_resource::{
     RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
 };
+use crate::session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
+    TaskLinks, TaskMessage, TaskWakePolicy, task_message_text,
+};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionResourceRegistry, ToolContext};
@@ -430,6 +435,16 @@ struct AgentRunRecord {
     last_remote_task_snapshot: Option<Value>,
     #[serde(default)]
     wake_on_completion: bool,
+    /// Session task mirroring this run (specs/session-tasks.md). Absent on
+    /// records that predate the task registry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    task_id: Option<String>,
+    /// Snapshot of the agent config used to create the run, so the task
+    /// executor can rebuild the A2A client without the capability config.
+    /// Headers are non-secret by config-schema contract, so persisting them
+    /// in resource metadata is safe. Absent on old records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    agent_config: Option<ExternalA2aAgentConfig>,
 }
 
 impl AgentRunRecord {
@@ -455,6 +470,8 @@ impl AgentRunRecord {
             error: None,
             last_remote_task_snapshot: None,
             wake_on_completion,
+            task_id: None,
+            agent_config: Some(agent.clone()),
         }
     }
 
@@ -483,6 +500,7 @@ impl AgentRunRecord {
             "result_path": self.result_path,
             "error": self.error,
             "wake_on_completion": self.wake_on_completion,
+            "task_id": self.task_id,
         })
     }
 }
@@ -515,6 +533,7 @@ fn require_str<'a>(
 }
 
 async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
+    mirror_run_to_task(context, record).await;
     let Some(registry) = &context.session_resource_registry else {
         return Ok(());
     };
@@ -529,6 +548,122 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
         })
         .await?;
     Ok(())
+}
+
+/// A2A run status → session task state (specs/session-tasks.md). Rejection is
+/// an `error.kind` on `failed`, not a state.
+fn task_state_for(status: &AgentRunStatus) -> SessionTaskState {
+    match status {
+        AgentRunStatus::Submitted => SessionTaskState::Queued,
+        AgentRunStatus::Working => SessionTaskState::Running,
+        AgentRunStatus::InputRequired | AgentRunStatus::AuthRequired => {
+            SessionTaskState::AwaitingInput
+        }
+        AgentRunStatus::Completed => SessionTaskState::Succeeded,
+        AgentRunStatus::Failed => SessionTaskState::Failed,
+        AgentRunStatus::Canceled => SessionTaskState::Canceled,
+        AgentRunStatus::Rejected => SessionTaskState::Failed,
+    }
+}
+
+/// Mirror a run snapshot into the session task registry (best-effort; no-op
+/// when the registry is absent or the record predates task creation).
+async fn mirror_run_to_task(context: &ToolContext, record: &AgentRunRecord) {
+    let Some(registry) = &context.session_task_registry else {
+        return;
+    };
+    let Some(task_id) = &record.task_id else {
+        return;
+    };
+    let state = task_state_for(&record.status);
+
+    // Generate an input request only on the TRANSITION into awaiting_input so
+    // repeated polling does not churn the request id.
+    let input_request = if state == SessionTaskState::AwaitingInput {
+        let already_awaiting = registry
+            .get(context.session_id, task_id)
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|task| task.state == SessionTaskState::AwaitingInput);
+        if already_awaiting {
+            None
+        } else {
+            Some(TaskInputRequest {
+                id: format!("inreq_{}", uuid::Uuid::now_v7().simple()),
+                prompt: record
+                    .result
+                    .clone()
+                    .unwrap_or_else(|| "External agent requires additional input".to_string()),
+                expected: None,
+            })
+        }
+    } else {
+        None
+    };
+
+    let error = match record.status {
+        AgentRunStatus::Failed => Some(TaskError {
+            kind: "remote_failed".to_string(),
+            message: record
+                .error
+                .clone()
+                .unwrap_or_else(|| "External agent run failed".to_string()),
+        }),
+        AgentRunStatus::Rejected => Some(TaskError {
+            kind: "rejected".to_string(),
+            message: record
+                .error
+                .clone()
+                .unwrap_or_else(|| "External agent rejected the task".to_string()),
+        }),
+        _ => None,
+    };
+
+    let _ = registry
+        .update(
+            context.session_id,
+            task_id,
+            SessionTaskUpdate {
+                state: Some(state),
+                input_request,
+                summary: record.result.clone(),
+                result_path: record.result_path.clone(),
+                error,
+                links: record
+                    .remote_task_id
+                    .clone()
+                    .map(|remote_task_id| TaskLinks {
+                        remote_task_id: Some(remote_task_id),
+                        ..Default::default()
+                    }),
+                ..Default::default()
+            },
+        )
+        .await;
+}
+
+/// Post the completion summary on the task's outbound message channel
+/// (best-effort). The legacy wake-up session message is sent separately.
+async fn post_task_completion_message(context: &ToolContext, record: &AgentRunRecord) {
+    let (Some(registry), Some(task_id)) = (&context.session_task_registry, &record.task_id) else {
+        return;
+    };
+    let summary = record
+        .result
+        .as_deref()
+        .or(record.error.as_deref())
+        .unwrap_or("No result text returned");
+    let _ = registry
+        .record_message(
+            context.session_id,
+            task_id,
+            NewTaskMessage::outbound_text(format!(
+                "External agent run {}: {summary}",
+                record.status
+            )),
+        )
+        .await;
 }
 
 async fn load_run(
@@ -865,12 +1000,14 @@ async fn background_monitor(
             set_error(&mut failed, error);
             let _ = write_result_artifact(&context, &mut failed).await;
             let _ = save_run(&context, &failed).await;
+            post_task_completion_message(&context, &failed).await;
             if failed.wake_on_completion {
                 let _ = wake_parent(&context, &failed).await;
             }
             return;
         }
     };
+    post_task_completion_message(&context, &record).await;
     if record.wake_on_completion {
         let _ = wake_parent(&context, &record).await;
     }
@@ -991,6 +1128,30 @@ impl Tool for SpawnAgentTool {
             mode.clone(),
             wake_on_completion,
         );
+        // Create the session task tracking this run (specs/session-tasks.md).
+        if let Some(task_registry) = &context.session_task_registry
+            && let Ok(created) = task_registry
+                .create(CreateSessionTask {
+                    session_id: context.session_id,
+                    id: None,
+                    kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+                    display_name: agent.name.clone(),
+                    spec: json!({
+                        "external_agent_id": agent.id,
+                        "instructions": &task,
+                        "mode": &mode,
+                    }),
+                    state: SessionTaskState::Queued,
+                    links: TaskLinks::default(),
+                    wake_policy: match mode {
+                        AgentRunMode::Background => TaskWakePolicy::OnTerminal,
+                        AgentRunMode::Wait => TaskWakePolicy::Silent,
+                    },
+                })
+                .await
+        {
+            record.task_id = Some(created.id);
+        }
         if let Err(e) = save_run(context, &record).await {
             return ToolExecutionResult::internal_error(e);
         }
@@ -1397,6 +1558,157 @@ impl Tool for CancelAgentTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+// ============================================================================
+// Task executor: external_agent
+// ============================================================================
+
+/// Locate the agent run mirrored by a session task. Runs land in the session
+/// resource registry as `agent_run` resources with the task id in metadata.
+async fn load_run_for_task(
+    context: &ToolContext,
+    task: &SessionTask,
+) -> std::result::Result<AgentRunRecord, String> {
+    let Some(registry) = &context.session_resource_registry else {
+        return Err("external agent tasks require session_resource_registry context".to_string());
+    };
+    let entries = registry
+        .list(
+            context.session_id,
+            Some(&SessionResourceFilter {
+                kind: Some(AGENT_RUN_KIND.to_string()),
+                status: None,
+            }),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+    entries
+        .into_iter()
+        .filter_map(|entry| serde_json::from_value::<AgentRunRecord>(entry.metadata).ok())
+        .find(|record| record.task_id.as_deref() == Some(task.id.as_str()))
+        .ok_or_else(|| format!("No agent run found for task {}", task.id))
+}
+
+/// Agent config snapshot stored on the run, required to rebuild the A2A
+/// client outside the capability's configured tool instances.
+fn agent_snapshot(record: &AgentRunRecord) -> std::result::Result<ExternalA2aAgentConfig, String> {
+    record.agent_config.clone().ok_or_else(|| {
+        format!(
+            "Agent run {} has no stored agent config snapshot (created before task support); use message_agent/cancel_agent instead",
+            record.run_id
+        )
+    })
+}
+
+/// Control plane for `external_agent` tasks. Rebuilds the A2A client from the
+/// agent config snapshot persisted on the run record.
+pub struct ExternalAgentTaskExecutor;
+
+#[async_trait]
+impl TaskExecutor for ExternalAgentTaskExecutor {
+    fn kind(&self) -> &str {
+        TASK_KIND_EXTERNAL_AGENT
+    }
+
+    async fn deliver(
+        &self,
+        task: &SessionTask,
+        message: &TaskMessage,
+        context: &ToolContext,
+    ) -> crate::error::Result<()> {
+        let mut record = load_run_for_task(context, task)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let text = task_message_text(&message.content);
+        let remote_task_id = record.remote_task_id.clone();
+        let remote_context_id = record.remote_context_id.clone();
+        // On send error the run state stays unchanged — return the error and
+        // let the caller decide; the registry already holds the message.
+        submit_run(
+            context,
+            &agent,
+            &mut record,
+            &text,
+            remote_task_id,
+            remote_context_id,
+        )
+        .await
+        .map_err(crate::error::AgentLoopError::tool)
+    }
+
+    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+        let mut record = load_run_for_task(context, task)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+        if record.status.is_terminal() {
+            return Ok(());
+        }
+        let Some(remote_task_id) = record.remote_task_id.clone() else {
+            // Never reached the remote agent; cancel locally.
+            record.status = AgentRunStatus::Canceled;
+            save_run(context, &record).await?;
+            return Ok(());
+        };
+        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let client = build_client(&agent, context)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+        let remote = client
+            .cancel_task(&CancelTaskRequest {
+                id: remote_task_id,
+                metadata: None,
+                tenant: None,
+            })
+            .await
+            .map_err(|e| {
+                crate::error::AgentLoopError::tool(format!("A2A cancel_task failed: {e}"))
+            })?;
+        apply_task(&mut record, &remote);
+        save_run(context, &record).await?;
+        Ok(())
+    }
+
+    async fn reconcile(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> crate::error::Result<()> {
+        let mut record = load_run_for_task(context, task)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+        if record.status.is_terminal() {
+            return Ok(());
+        }
+        let Some(remote_task_id) = record.remote_task_id.clone() else {
+            return Ok(());
+        };
+        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+        let client = build_client(&agent, context)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+        let remote = client
+            .get_task(&GetTaskRequest {
+                id: remote_task_id,
+                history_length: Some(10),
+                tenant: None,
+            })
+            .await
+            .map_err(|e| crate::error::AgentLoopError::tool(format!("A2A get_task failed: {e}")))?;
+        apply_task(&mut record, &remote);
+        if record.status.is_terminal() {
+            let _ = write_result_artifact(context, &mut record).await;
+        }
+        save_run(context, &record).await?;
+        Ok(())
+    }
+}
+
+inventory::submit! {
+    TaskExecutorPlugin {
+        executor: || Arc::new(ExternalAgentTaskExecutor),
     }
 }
 

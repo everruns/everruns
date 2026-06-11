@@ -674,6 +674,7 @@ pub type GrpcSessionStorageStore = GrpcAdapter;
 pub type GrpcConnectionResolver = GrpcAdapter;
 pub type GrpcLeasedResourceStore = GrpcAdapter;
 pub type GrpcSessionResourceRegistry = GrpcAdapter;
+pub type GrpcSessionTaskRegistry = GrpcAdapter;
 pub type GrpcSessionSqlDbStore = GrpcAdapter;
 
 pub type GrpcAgentStore = GrpcOrgAdapter;
@@ -3655,6 +3656,173 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
             response: body,
             receipt,
         })
+    }
+}
+
+// ============================================================================
+// GrpcSessionTaskRegistry - SessionTaskRegistry over gRPC
+// ============================================================================
+//
+// Task and message payloads travel as canonical core JSON (see worker.proto),
+// so lifecycle invariants stay server-side in DbSessionTaskRegistry and the
+// record shape is defined once in everruns-core.
+
+fn decode_task(bytes: &[u8]) -> Result<everruns_core::SessionTask> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
+}
+
+fn decode_task_message(bytes: &[u8]) -> Result<everruns_core::TaskMessage> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
+}
+
+#[async_trait]
+impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
+    async fn create(
+        &self,
+        input: everruns_core::CreateSessionTask,
+    ) -> Result<everruns_core::SessionTask> {
+        let create_json = serde_json::to_vec(&input)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task create: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .create_session_task(proto::CreateSessionTaskRequest { create_json })
+            .await
+            .map_err(grpc_status_to_error)?;
+        decode_task(&response.into_inner().task_json)
+    }
+
+    async fn update(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: everruns_core::SessionTaskUpdate,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let update_json = serde_json::to_vec(&update)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task update: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .update_session_task(proto::UpdateSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                update_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn get(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_session_task(proto::GetSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&everruns_core::SessionTaskFilter>,
+    ) -> Result<Vec<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_tasks(proto::ListSessionTasksRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                kind: filter.and_then(|f| f.kind.clone()),
+                state: filter.and_then(|f| f.state.map(|s| s.to_string())),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .iter()
+            .map(|bytes| decode_task(bytes))
+            .collect()
+    }
+
+    async fn request_cancel(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .request_cancel_session_task(proto::RequestCancelSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn record_message(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        message: everruns_core::NewTaskMessage,
+    ) -> Result<everruns_core::TaskMessage> {
+        let message_json = serde_json::to_vec(&message)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task message: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .record_session_task_message(proto::RecordSessionTaskMessageRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                message_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        decode_task_message(&response.into_inner().message_json)
+    }
+
+    async fn list_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<everruns_core::TaskMessage>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_task_messages(proto::ListSessionTaskMessagesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                limit,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .message_json
+            .iter()
+            .map(|bytes| decode_task_message(bytes))
+            .collect()
     }
 }
 

@@ -6,6 +6,10 @@ This document captures the contract. Tool-side behavior of `spawn_background` (a
 
 ## Goal
 
+Each accepted background run is tracked as a session task
+(`kind = background_tool`) with progress, state, and `task.*` events — see
+[`specs/session-tasks.md`](./session-tasks.md).
+
 `spawn_background` is the generic background runner. It wraps any registered built-in tool that opts in via hints. Before EVE-501 the meta-tool was registered into the worker's tool registry by default but was never advertised to the model — sessions had `bash` with `supports_background=true` but no visible `spawn_background`, so models fell back to raw shell detaching. The fix is to expose `spawn_background` through the same capability path that contributes all other model-visible tools.
 
 ## Contract

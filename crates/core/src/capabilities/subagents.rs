@@ -17,11 +17,17 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::platform_store::PlatformStore;
+use crate::session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
+    SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
+    TaskMessage, TaskWakePolicy, task_message_text,
+};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SpawnClaimResult, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 /// Subagent capability — spawn and manage child agent sessions.
 pub struct SubagentCapability;
@@ -113,6 +119,66 @@ fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Op
         .iter()
         .rfind(|m| m.role == "agent" || m.role == "assistant")
         .map(|m| m.content.clone())
+}
+
+/// Truncated human summary stored on the subagent's task record.
+const MAX_TASK_SUMMARY_CHARS: usize = 2_048;
+
+fn truncate_summary(text: &str) -> String {
+    let mut chars = text.chars();
+    let truncated: String = chars.by_ref().take(MAX_TASK_SUMMARY_CHARS).collect();
+    if chars.next().is_some() {
+        format!("{truncated}\n[truncated]")
+    } else {
+        truncated
+    }
+}
+
+/// Mirror a terminal outcome onto the subagent's session task (best-effort;
+/// tolerates a missing registry or task).
+async fn finish_subagent_task(
+    context: &ToolContext,
+    task_id: Option<&str>,
+    state: SessionTaskState,
+    summary: Option<String>,
+    error: Option<TaskError>,
+) {
+    let (Some(registry), Some(task_id)) = (context.session_task_registry.as_ref(), task_id) else {
+        return;
+    };
+    let _ = registry
+        .update(
+            context.session_id,
+            task_id,
+            SessionTaskUpdate {
+                state: Some(state),
+                summary,
+                error,
+                ..Default::default()
+            },
+        )
+        .await;
+}
+
+/// Find the session task tracking a subagent by its child session id.
+async fn find_subagent_task(
+    context: &ToolContext,
+    child_id: crate::typed_id::SessionId,
+) -> Option<SessionTask> {
+    let registry = context.session_task_registry.as_ref()?;
+    let tasks = registry
+        .list(
+            context.session_id,
+            Some(&SessionTaskFilter {
+                kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                state: None,
+            }),
+        )
+        .await
+        .ok()?;
+    tasks
+        .into_iter()
+        .find(|task| task.links.child_session_id == Some(child_id))
 }
 
 /// Find a child session by name (case-insensitive) or ID within a list of sessions.
@@ -324,11 +390,15 @@ impl Tool for SpawnSubagentTool {
                     terminal_result,
                 } => {
                     // Already settled on a previous execution: return stored result.
+                    let task_id = find_subagent_task(context, child_session_id)
+                        .await
+                        .map(|t| t.id);
                     return ToolExecutionResult::success(json!({
                         "subagent_id": child_session_id.to_string(),
                         "name": name,
                         "status": terminal_status,
                         "result": terminal_result,
+                        "task_id": task_id,
                         "blueprint": blueprint_param,
                     }));
                 }
@@ -338,6 +408,9 @@ impl Tool for SpawnSubagentTool {
                 } => {
                     // Child was spawned before but hasn't settled yet — reattach.
                     // Use the stored claim_token so settle succeeds on this replay.
+                    let task_id = find_subagent_task(context, child_session_id)
+                        .await
+                        .map(|t| t.id);
                     return run_subagent_wait_and_settle(
                         store,
                         context,
@@ -345,6 +418,7 @@ impl Tool for SpawnSubagentTool {
                         &name,
                         &task,
                         &blueprint_param,
+                        task_id,
                         Some((
                             spawn_store.as_ref(),
                             tool_call_id.as_str(),
@@ -477,6 +551,31 @@ async fn spawn_create_and_wait(
             .await;
     }
 
+    // Create the session task tracking this subagent (specs/session-tasks.md).
+    let mut task_id: Option<String> = None;
+    if let Some(ref task_registry) = context.session_task_registry
+        && let Ok(created) = task_registry
+            .create(CreateSessionTask {
+                session_id: context.session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: name.to_string(),
+                spec: json!({
+                    "instructions": task,
+                    "blueprint_id": blueprint_param,
+                }),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_session.id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+    {
+        task_id = Some(created.id);
+    }
+
     // Register child session ID durably BEFORE waiting.
     // This is the durability boundary: once registered, a reclaim/replay can
     // reattach to this child instead of spawning another.
@@ -500,6 +599,17 @@ async fn spawn_create_and_wait(
 
     // Send the task as the first message
     if let Err(e) = store.send_message(child_session.id, task).await {
+        finish_subagent_task(
+            context,
+            task_id.as_deref(),
+            SessionTaskState::Failed,
+            None,
+            Some(TaskError {
+                kind: "error".to_string(),
+                message: e.to_string(),
+            }),
+        )
+        .await;
         return ToolExecutionResult::internal_error(e);
     }
 
@@ -510,6 +620,7 @@ async fn spawn_create_and_wait(
         name,
         task,
         blueprint_param,
+        task_id,
         wait_settle_ctx,
     )
     .await
@@ -517,6 +628,7 @@ async fn spawn_create_and_wait(
 
 /// Wait for a child session to reach idle, collect its result, update the
 /// registry, and settle the spawn handle (if a settle context is supplied).
+#[allow(clippy::too_many_arguments)]
 async fn run_subagent_wait_and_settle(
     store: &dyn PlatformStore,
     context: &ToolContext,
@@ -524,6 +636,7 @@ async fn run_subagent_wait_and_settle(
     name: &str,
     task: &str,
     blueprint_param: &Option<String>,
+    task_id: Option<String>,
     settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
 ) -> ToolExecutionResult {
     // Foreground mode: wait for completion
@@ -540,11 +653,23 @@ async fn run_subagent_wait_and_settle(
                     )
                     .await;
             }
+            finish_subagent_task(
+                context,
+                task_id.as_deref(),
+                SessionTaskState::Failed,
+                None,
+                Some(TaskError {
+                    kind: "error".to_string(),
+                    message: e.to_string(),
+                }),
+            )
+            .await;
             return ToolExecutionResult::success(json!({
                 "subagent_id": child_id.to_string(),
                 "name": name,
                 "status": "failed",
                 "error": e.to_string(),
+                "task_id": task_id,
                 "blueprint": blueprint_param,
             }));
         }
@@ -609,6 +734,26 @@ async fn run_subagent_wait_and_settle(
                 "failed to persist subagent completed metadata"
             );
         }
+        finish_subagent_task(
+            context,
+            task_id.as_deref(),
+            SessionTaskState::Succeeded,
+            Some(truncate_summary(&result_text)),
+            None,
+        )
+        .await;
+    } else if status == "error" {
+        finish_subagent_task(
+            context,
+            task_id.as_deref(),
+            SessionTaskState::Failed,
+            Some(truncate_summary(&result_text)),
+            Some(TaskError {
+                kind: "error".to_string(),
+                message: "Subagent session ended with an error".to_string(),
+            }),
+        )
+        .await;
     }
 
     ToolExecutionResult::success(json!({
@@ -616,6 +761,7 @@ async fn run_subagent_wait_and_settle(
         "name": name,
         "status": status,
         "result": result_text,
+        "task_id": task_id,
         "blueprint": blueprint_param,
     }))
 }
@@ -855,6 +1001,19 @@ impl Tool for MessageSubagentTool {
             return ToolExecutionResult::internal_error(e);
         }
 
+        // Record the inbound message on the subagent's task channel (best-effort).
+        if let Some(ref task_registry) = context.session_task_registry
+            && let Some(subagent_task) = find_subagent_task(context, child_id).await
+        {
+            let _ = task_registry
+                .record_message(
+                    context.session_id,
+                    &subagent_task.id,
+                    NewTaskMessage::inbound_text(&message),
+                )
+                .await;
+        }
+
         if cancel {
             // For cancel, just send the message and report
             // (actual cancellation mechanism to be added when background mode lands)
@@ -898,6 +1057,71 @@ impl Tool for MessageSubagentTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+// =============================================================================
+// Task executor: subagent
+// =============================================================================
+
+/// Control plane for `subagent` tasks. Inbound messages and cooperative
+/// cancellation route through the child session's message channel — there is
+/// no hard kill, so cancel delivers a graceful stop request (same mechanics
+/// as `message_subagent(cancel=true)`).
+pub struct SubagentTaskExecutor;
+
+#[async_trait]
+impl TaskExecutor for SubagentTaskExecutor {
+    fn kind(&self) -> &str {
+        TASK_KIND_SUBAGENT
+    }
+
+    async fn deliver(
+        &self,
+        task: &SessionTask,
+        message: &TaskMessage,
+        context: &ToolContext,
+    ) -> crate::error::Result<()> {
+        let Some(store) = context.platform_store.as_ref() else {
+            return Err(crate::error::AgentLoopError::tool(
+                "subagent task delivery requires platform_store context",
+            ));
+        };
+        let Some(child_id) = task.links.child_session_id else {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "subagent task {} has no child session link",
+                task.id
+            )));
+        };
+        let text = task_message_text(&message.content);
+        store.send_message(child_id, &text).await
+    }
+
+    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+        let Some(store) = context.platform_store.as_ref() else {
+            return Err(crate::error::AgentLoopError::tool(
+                "subagent task cancellation requires platform_store context",
+            ));
+        };
+        let Some(child_id) = task.links.child_session_id else {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "subagent task {} has no child session link",
+                task.id
+            )));
+        };
+        // Graceful stop request; takes effect after the current turn.
+        store
+            .send_message(
+                child_id,
+                "Cancellation requested by the parent session. Stop work, wind down, and reply with a brief summary of progress so far.",
+            )
+            .await
+    }
+}
+
+inventory::submit! {
+    TaskExecutorPlugin {
+        executor: || Arc::new(SubagentTaskExecutor),
     }
 }
 

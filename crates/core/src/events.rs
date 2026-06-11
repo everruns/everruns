@@ -112,6 +112,12 @@ pub const SUBAGENT_COMPLETED: &str = "subagent.completed";
 pub const SUBAGENT_FAILED: &str = "subagent.failed";
 pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
 
+// Session task lifecycle events (specs/session-tasks.md)
+pub const TASK_CREATED: &str = "task.created";
+pub const TASK_UPDATED: &str = "task.updated";
+pub const TASK_MESSAGE_SENT: &str = "task.message.sent";
+pub const TASK_MESSAGE_RECEIVED: &str = "task.message.received";
+
 // Context compaction events
 pub const CONTEXT_COMPACTING: &str = "context.compacting";
 pub const CONTEXT_COMPACTED: &str = "context.compacted";
@@ -2041,6 +2047,28 @@ impl From<SubagentEventData> for EventData {
 }
 
 // ============================================================================
+// Session task event data
+// ============================================================================
+
+/// Data for task lifecycle events (`task.created`, `task.updated`).
+///
+/// Carries the full task snapshot so consumers never need a follow-up read;
+/// UIs reconcile by `task.id` (snapshot-then-delta).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionTaskEventData {
+    pub task: crate::session_task::SessionTask,
+}
+
+/// Data for task message events (`task.message.sent`, `task.message.received`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TaskMessageEventData {
+    pub task_id: String,
+    pub message: crate::session_task::TaskMessage,
+}
+
+// ============================================================================
 // Context compaction event data
 // ============================================================================
 
@@ -2369,6 +2397,12 @@ pub enum EventData {
     SubagentFailed(SubagentEventData),
     SubagentCancelled(SubagentEventData),
 
+    // Session task lifecycle events (full snapshots)
+    TaskCreated(SessionTaskEventData),
+    TaskUpdated(SessionTaskEventData),
+    TaskMessageSent(TaskMessageEventData),
+    TaskMessageReceived(TaskMessageEventData),
+
     // Context compaction events
     ContextCompacting(ContextCompactingData),
     ContextCompacted(ContextCompactedData),
@@ -2441,6 +2475,10 @@ impl EventData {
             EventData::SubagentCompleted(_) => SUBAGENT_COMPLETED,
             EventData::SubagentFailed(_) => SUBAGENT_FAILED,
             EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
+            EventData::TaskCreated(_) => TASK_CREATED,
+            EventData::TaskUpdated(_) => TASK_UPDATED,
+            EventData::TaskMessageSent(_) => TASK_MESSAGE_SENT,
+            EventData::TaskMessageReceived(_) => TASK_MESSAGE_RECEIVED,
             EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
             EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
             EventData::FileWritten(_) => FILE_WRITTEN,
@@ -2615,6 +2653,14 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::SubagentFailed),
             SUBAGENT_CANCELLED => serde_json::from_value::<SubagentEventData>(data.clone())
                 .map(EventData::SubagentCancelled),
+            TASK_CREATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
+                .map(EventData::TaskCreated),
+            TASK_UPDATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
+                .map(EventData::TaskUpdated),
+            TASK_MESSAGE_SENT => serde_json::from_value::<TaskMessageEventData>(data.clone())
+                .map(EventData::TaskMessageSent),
+            TASK_MESSAGE_RECEIVED => serde_json::from_value::<TaskMessageEventData>(data.clone())
+                .map(EventData::TaskMessageReceived),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);

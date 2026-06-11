@@ -165,6 +165,18 @@ service WorkerService {
     rpc ListSessionResources(ListSessionResourcesRequest) returns (ListSessionResourcesResponse);
     rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
 
+    // === Session task registry ===
+    // Background work owned by a session (specs/session-tasks.md).
+    // Task and message payloads travel as canonical core JSON (bytes) so the
+    // rich record shape stays defined in one place (everruns-core).
+    rpc CreateSessionTask(CreateSessionTaskRequest) returns (SessionTaskResponse);
+    rpc UpdateSessionTask(UpdateSessionTaskRequest) returns (OptionalSessionTaskResponse);
+    rpc GetSessionTask(GetSessionTaskRequest) returns (OptionalSessionTaskResponse);
+    rpc ListSessionTasks(ListSessionTasksRequest) returns (ListSessionTasksResponse);
+    rpc RequestCancelSessionTask(RequestCancelSessionTaskRequest) returns (OptionalSessionTaskResponse);
+    rpc RecordSessionTaskMessage(RecordSessionTaskMessageRequest) returns (SessionTaskMessageResponse);
+    rpc ListSessionTaskMessages(ListSessionTaskMessagesRequest) returns (ListSessionTaskMessagesResponse);
+
     // === Session schedule operations ===
     // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
     rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
@@ -1921,4 +1933,69 @@ message DeregisterSessionResourceRequest {
 
 message DeregisterSessionResourceResponse {
     bool removed = 1;
+}
+
+// === Session task registry messages ===
+
+message CreateSessionTaskRequest {
+    // everruns_core::session_task::CreateSessionTask as JSON
+    bytes create_json = 1;
+}
+
+message SessionTaskResponse {
+    // everruns_core::session_task::SessionTask as JSON
+    bytes task_json = 1;
+}
+
+message OptionalSessionTaskResponse {
+    optional bytes task_json = 1;
+}
+
+message UpdateSessionTaskRequest {
+    Uuid session_id = 1;
+    string task_id = 2;
+    // everruns_core::session_task::SessionTaskUpdate as JSON
+    bytes update_json = 3;
+}
+
+message GetSessionTaskRequest {
+    Uuid session_id = 1;
+    string task_id = 2;
+}
+
+message ListSessionTasksRequest {
+    Uuid session_id = 1;
+    optional string kind = 2;
+    optional string state = 3;
+}
+
+message ListSessionTasksResponse {
+    repeated bytes task_json = 1;
+}
+
+message RequestCancelSessionTaskRequest {
+    Uuid session_id = 1;
+    string task_id = 2;
+}
+
+message RecordSessionTaskMessageRequest {
+    Uuid session_id = 1;
+    string task_id = 2;
+    // everruns_core::session_task::NewTaskMessage as JSON
+    bytes message_json = 3;
+}
+
+message SessionTaskMessageResponse {
+    // everruns_core::session_task::TaskMessage as JSON
+    bytes message_json = 1;
+}
+
+message ListSessionTaskMessagesRequest {
+    Uuid session_id = 1;
+    string task_id = 2;
+    optional uint32 limit = 3;
+}
+
+message ListSessionTaskMessagesResponse {
+    repeated bytes message_json = 1;
 }

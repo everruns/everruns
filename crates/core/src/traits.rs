@@ -1140,6 +1140,10 @@ pub struct ToolContext {
     /// Optional session resource registry — generic registry of active resources.
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
 
+    /// Optional session task registry — background work owned by the session
+    /// (specs/session-tasks.md).
+    pub session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
+
     /// Optional event emitter for tools that need to stream progress updates.
     /// When set, tools can emit `tool.progress` events during execution.
     pub event_emitter: Option<Arc<dyn EventEmitter>>,
@@ -1208,6 +1212,7 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -1243,6 +1248,7 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -1281,6 +1287,7 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -1320,6 +1327,7 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -1397,6 +1405,7 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
@@ -1460,6 +1469,15 @@ impl ToolContext {
         registry: Arc<dyn SessionResourceRegistry>,
     ) -> Self {
         self.session_resource_registry = Some(registry);
+        self
+    }
+
+    /// Add a session task registry to this context.
+    pub fn with_session_task_registry(
+        mut self,
+        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
+    ) -> Self {
+        self.session_task_registry = Some(registry);
         self
     }
 

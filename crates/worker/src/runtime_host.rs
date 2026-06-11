@@ -229,6 +229,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.session_resource_registry()
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        self.adapters.session_task_registry()
+    }
+
     fn schedule_store(
         &self,
         org_id: i64,

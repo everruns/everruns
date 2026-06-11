@@ -10897,6 +10897,207 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/tasks": {
+      "get": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "List background tasks owned by a session.",
+        "operationId": "list_tasks",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Filter by state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Filter by kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionTask"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Get one session task with its recent message thread.",
+        "operationId": "get_task",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session task detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTaskDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Request cooperative cancellation of a session task.",
+        "operationId": "cancel_task",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Task with cancel intent recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}/messages": {
+      "post": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Send an inbound message to a session task.",
+        "operationId": "post_task_message",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTaskMessageBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Recorded task message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskMessage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty message"
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tool-results": {
       "post": {
         "tags": [
@@ -12894,6 +13095,40 @@
         },
         "propertyNames": {
           "type": "string"
+        }
+      },
+      "BackgroundProgress": {
+        "type": "object",
+        "description": "Structured progress reported by background tools.",
+        "properties": {
+          "current": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "total": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
         }
       },
       "BatchSetSecretsRequest": {
@@ -15880,6 +16115,18 @@
           },
           {
             "$ref": "#/components/schemas/SubagentEventData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionTaskEventData"
+          },
+          {
+            "$ref": "#/components/schemas/SessionTaskEventData"
+          },
+          {
+            "$ref": "#/components/schemas/TaskMessageEventData"
+          },
+          {
+            "$ref": "#/components/schemas/TaskMessageEventData"
           },
           {
             "$ref": "#/components/schemas/ContextCompactingData"
@@ -24620,6 +24867,36 @@
           "released"
         ]
       },
+      "PostTaskMessageBody": {
+        "type": "object",
+        "description": "Request body for posting an inbound task message.",
+        "properties": {
+          "content": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/TaskMessagePart"
+            },
+            "description": "Structured message parts (alternative to `text`)."
+          },
+          "in_reply_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Input request ID this message answers, when applicable."
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-text message (alternative to `content`)."
+          }
+        }
+      },
       "PreviewAgentRequest": {
         "type": "object",
         "description": "Request to preview the final agent shape with capabilities applied",
@@ -26932,6 +27209,199 @@
           "paused"
         ]
       },
+      "SessionTask": {
+        "type": "object",
+        "description": "A unit of background work owned by a session.",
+        "required": [
+          "id",
+          "session_id",
+          "kind",
+          "display_name",
+          "state",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskArtifact"
+            }
+          },
+          "attempt": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Execution attempt, starting at 1. Incremented on re-attach."
+          },
+          "cancel_requested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Cooperative cancel intent. A flag, not a state."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable label."
+          },
+          "error": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskError"
+              }
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "heartbeat_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "description": "`task_*` public ID."
+          },
+          "input_request": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TaskInputRequest",
+                "description": "Pending ask while `awaiting_input`; cleared when answered."
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "description": "Task kind: \"subagent\", \"external_agent\", \"background_tool\", \"monitor\", …"
+          },
+          "links": {
+            "$ref": "#/components/schemas/TaskLinks"
+          },
+          "progress": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BackgroundProgress"
+              }
+            ]
+          },
+          "result_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Machine result in the session VFS: `/.tasks/{task_id}/result.json`."
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Owning session."
+          },
+          "spec": {
+            "type": "object",
+            "description": "Kind-specific input (instructions, tool args, external agent id)."
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SessionTaskState"
+          },
+          "state_detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short live status line (\"polling remote task\", \"iteration 4/10\")."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable outcome."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "wake_policy": {
+            "$ref": "#/components/schemas/TaskWakePolicy"
+          },
+          "worker_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SessionTaskDetail": {
+        "type": "object",
+        "description": "Task snapshot plus the recent message thread.",
+        "required": [
+          "task",
+          "messages"
+        ],
+        "properties": {
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskMessage"
+            }
+          },
+          "task": {
+            "$ref": "#/components/schemas/SessionTask"
+          }
+        }
+      },
+      "SessionTaskEventData": {
+        "type": "object",
+        "description": "Data for task lifecycle events (`task.created`, `task.updated`).\n\nCarries the full task snapshot so consumers never need a follow-up read;\nUIs reconcile by `task.id` (snapshot-then-delta).",
+        "required": [
+          "task"
+        ],
+        "properties": {
+          "task": {
+            "$ref": "#/components/schemas/SessionTask"
+          }
+        }
+      },
+      "SessionTaskState": {
+        "type": "string",
+        "description": "Lifecycle state of a session task.\n\nThree classes: active (`queued`, `running`), interrupted (`awaiting_input`,\nresumable), terminal (`succeeded`, `failed`, `canceled`). Timeout and\nrejection are `error.kind` values on `failed`, not states.",
+        "enum": [
+          "queued",
+          "running",
+          "awaiting_input",
+          "succeeded",
+          "failed",
+          "canceled"
+        ]
+      },
       "SetDefaultAgentVersionRequest": {
         "type": "object",
         "description": "Request body for the `set_default_agent_version` operation.",
@@ -27380,6 +27850,207 @@
         ],
         "description": "Response from syncing models from a provider"
       },
+      "TaskArtifact": {
+        "type": "object",
+        "description": "Typed link to something the task produced.",
+        "required": [
+          "name",
+          "type"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session VFS path, when the artifact lives in the session filesystem."
+          },
+          "type": {
+            "type": "string",
+            "description": "Artifact type: \"file\", \"url\", \"session\", \"pr\", etc."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "External URL, when the artifact lives elsewhere."
+          }
+        }
+      },
+      "TaskError": {
+        "type": "object",
+        "description": "Terminal error detail. Timeout/rejection/orphaned are kinds, not states.",
+        "required": [
+          "kind",
+          "message"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskInputRequest": {
+        "type": "object",
+        "description": "Structured ask posted by a task that needs input to continue.",
+        "required": [
+          "id",
+          "prompt"
+        ],
+        "properties": {
+          "expected": {
+            "type": "object",
+            "description": "Optional machine-readable description of the expected answer."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable ID referenced by the answering message's `in_reply_to`."
+          },
+          "prompt": {
+            "type": "string",
+            "description": "Human/agent-readable prompt."
+          }
+        }
+      },
+      "TaskLinks": {
+        "type": "object",
+        "description": "Cross-references owned by a task.",
+        "properties": {
+          "child_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Child session, for subagent-shaped tasks. Full transcript lives there."
+          },
+          "remote_task_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Remote task ID, for tasks wrapping an external protocol task (A2A)."
+          },
+          "resource_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Session resources (sandboxes, browser sessions) this task holds."
+          }
+        }
+      },
+      "TaskMessage": {
+        "type": "object",
+        "description": "A message exchanged between a session and one of its tasks.",
+        "required": [
+          "id",
+          "task_id",
+          "direction",
+          "content",
+          "created_at"
+        ],
+        "properties": {
+          "content": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskMessagePart"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/TaskMessageDirection"
+          },
+          "id": {
+            "type": "string",
+            "description": "`tmsg_*` public ID."
+          },
+          "in_reply_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when this message answers a `TaskInputRequest`."
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskMessageDirection": {
+        "type": "string",
+        "description": "Direction of a task message. Inbound = session → task.",
+        "enum": [
+          "inbound",
+          "outbound"
+        ]
+      },
+      "TaskMessageEventData": {
+        "type": "object",
+        "description": "Data for task message events (`task.message.sent`, `task.message.received`).",
+        "required": [
+          "task_id",
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/TaskMessage"
+          },
+          "task_id": {
+            "type": "string"
+          }
+        }
+      },
+      "TaskMessagePart": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "text",
+              "type"
+            ],
+            "properties": {
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "data",
+              "type"
+            ],
+            "properties": {
+              "data": {
+                "type": "object"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "data"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "One content part of a task message."
+      },
       "TaskResponse": {
         "type": "object",
         "description": "Task response",
@@ -27476,6 +28147,15 @@
             "example": "9a1b2c3d-4e5f-6789-abcd-ef0123456789"
           }
         }
+      },
+      "TaskWakePolicy": {
+        "type": "string",
+        "description": "When outbound task activity wakes the owning session's agent.",
+        "enum": [
+          "silent",
+          "on_terminal",
+          "on_activity"
+        ]
       },
       "TasksListResponse": {
         "type": "object",

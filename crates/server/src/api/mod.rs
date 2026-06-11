@@ -54,6 +54,7 @@ pub mod session_resources;
 pub mod session_sandbox;
 pub mod session_schedules;
 pub mod session_storage;
+pub mod session_tasks;
 pub mod sessions;
 pub mod skills;
 pub mod slack_events;

@@ -1175,6 +1175,28 @@ impl Tool for SpawnBackgroundTool {
             ));
         }
 
+        // Create the session task tracking this run (specs/session-tasks.md).
+        let mut task_id: Option<String> = None;
+        if let Some(ref task_registry) = context.session_task_registry
+            && let Ok(task) = task_registry
+                .create(crate::session_task::CreateSessionTask {
+                    session_id: context.session_id,
+                    id: None,
+                    kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
+                    display_name: title.clone(),
+                    spec: json!({
+                        "tool": tool_name,
+                        "arguments": &tool_args,
+                    }),
+                    state: crate::session_task::SessionTaskState::Running,
+                    links: crate::session_task::TaskLinks::default(),
+                    wake_policy: crate::session_task::TaskWakePolicy::Silent,
+                })
+                .await
+        {
+            task_id = Some(task.id);
+        }
+
         let background_context = context.clone().with_tool_registry(tool_registry.clone());
         let sink = Arc::new(SessionBackgroundSink::new(
             background_context.clone(),
@@ -1184,6 +1206,7 @@ impl Tool for SpawnBackgroundTool {
             log_path.clone(),
             result_path.clone(),
             signal_on_completion,
+            task_id.clone(),
         ));
         let run_id_for_task = run_id.clone();
         let tool_for_task = tool.clone();
@@ -1217,6 +1240,7 @@ impl Tool for SpawnBackgroundTool {
         ToolExecutionResult::success(json!({
             "run_id": run_id,
             "resource_id": run_id,
+            "task_id": task_id,
             "title": title,
             "tool": tool_name,
             "status": "running",
@@ -1252,10 +1276,13 @@ struct SessionBackgroundSink {
     log_path: String,
     result_path: String,
     signal_on_completion: bool,
+    /// Session task mirroring this run; None when no task registry is wired.
+    task_id: Option<String>,
     state: tokio::sync::Mutex<SessionBackgroundState>,
 }
 
 impl SessionBackgroundSink {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         context: ToolContext,
         run_id: String,
@@ -1264,6 +1291,7 @@ impl SessionBackgroundSink {
         log_path: String,
         result_path: String,
         signal_on_completion: bool,
+        task_id: Option<String>,
     ) -> Self {
         Self {
             context,
@@ -1273,11 +1301,23 @@ impl SessionBackgroundSink {
             log_path,
             result_path,
             signal_on_completion,
+            task_id,
             state: tokio::sync::Mutex::new(SessionBackgroundState {
                 status_text: "Queued".to_string(),
                 ..Default::default()
             }),
         }
+    }
+
+    /// Mirror an update onto the session task (best-effort).
+    async fn mirror_task(&self, update: crate::session_task::SessionTaskUpdate) {
+        let (Some(registry), Some(task_id)) = (&self.context.session_task_registry, &self.task_id)
+        else {
+            return;
+        };
+        let _ = registry
+            .update(self.context.session_id, task_id, update)
+            .await;
     }
 
     async fn finalize(
@@ -1301,6 +1341,13 @@ impl SessionBackgroundSink {
                 let mut state = self.state.lock().await;
                 state.status_text = "Completed".to_string();
                 drop(state);
+                self.mirror_task(crate::session_task::SessionTaskUpdate {
+                    state: Some(crate::session_task::SessionTaskState::Succeeded),
+                    summary: Some(outcome.summary.clone()),
+                    result_path: Some(self.result_path.clone()),
+                    ..Default::default()
+                })
+                .await;
                 self.update_resource(SessionResourceStatus::Completed, Some(&outcome.summary))
                     .await?;
                 if self.signal_on_completion {
@@ -1339,6 +1386,17 @@ impl SessionBackgroundSink {
                 let mut state = self.state.lock().await;
                 state.status_text = "Failed".to_string();
                 drop(state);
+                self.mirror_task(crate::session_task::SessionTaskUpdate {
+                    state: Some(crate::session_task::SessionTaskState::Failed),
+                    summary: Some(message.clone()),
+                    result_path: Some(self.result_path.clone()),
+                    error: Some(crate::session_task::TaskError {
+                        kind: "error".to_string(),
+                        message: message.clone(),
+                    }),
+                    ..Default::default()
+                })
+                .await;
                 self.update_resource(SessionResourceStatus::Failed, Some(&message))
                     .await?;
                 if self.signal_on_completion {
@@ -1428,6 +1486,11 @@ impl BackgroundEventSink for SessionBackgroundSink {
         let mut state = self.state.lock().await;
         state.status_text = message.to_string();
         drop(state);
+        self.mirror_task(crate::session_task::SessionTaskUpdate {
+            state_detail: Some(message.to_string()),
+            ..Default::default()
+        })
+        .await;
         self.update_resource(SessionResourceStatus::Active, None)
             .await
     }
@@ -1458,8 +1521,13 @@ impl BackgroundEventSink for SessionBackgroundSink {
 
     async fn progress(&self, progress: BackgroundProgress) -> Result<()> {
         let mut state = self.state.lock().await;
-        state.progress = Some(progress);
+        state.progress = Some(progress.clone());
         drop(state);
+        self.mirror_task(crate::session_task::SessionTaskUpdate {
+            progress: Some(progress),
+            ..Default::default()
+        })
+        .await;
         self.update_resource(SessionResourceStatus::Active, None)
             .await
     }
