@@ -1430,7 +1430,7 @@ async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_i
 // ============================================================================
 
 /// Test capability that contributes one lifecycle hook via `user_hooks()`.
-/// The bash command is run for real through the in-process `virtual_bash`
+/// The bash command is run for real through the in-process `bashkit_shell`
 /// dispatcher, so these tests exercise the full collect -> build -> dispatch
 /// -> decision path, not a mock.
 struct LifecycleHookCapability {

@@ -74,7 +74,7 @@ What the running agent actually sees:
    └────────────────────────────────────────────────────────┘
 ```
 
-The same tools (`read_file`, `list_directory`, `grep_files`, `virtual_bash`) traverse native and mounted paths uniformly. Writes to read-only mounts return clear errors; writes to read-write mounts write through to the underlying Memory and are audited.
+The same tools (`read_file`, `list_directory`, `grep_files`, `bashkit_shell`) traverse native and mounted paths uniformly. Writes to read-only mounts return clear errors; writes to read-write mounts write through to the underlying Memory and are audited.
 
 ## Why two tiers, not one
 

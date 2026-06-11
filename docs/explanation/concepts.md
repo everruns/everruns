@@ -41,7 +41,7 @@ Tools could just be free-floating function declarations attached to an agent. Ca
 2. The **system prompt addition** that teaches the model when to use it.
 3. The **session state** the tool needs (mount points in the filesystem, secrets, dependencies on other capabilities).
 
-A capability bundles those three. Enabling `web_fetch` on an agent gives you not just the tool but also the prompt fragment explaining how to use it. Enabling `virtual_bash` automatically pulls in `session_file_system` because of the declared dependency. Capability ordering is meaningful — earlier capabilities' prompt fragments appear first in the merged system prompt.
+A capability bundles those three. Enabling `web_fetch` on an agent gives you not just the tool but also the prompt fragment explaining how to use it. Enabling `bashkit_shell` automatically pulls in `session_file_system` because of the declared dependency. Capability ordering is meaningful — earlier capabilities' prompt fragments appear first in the merged system prompt.
 
 MCP servers and skills are also capabilities. They participate in the same merge, dependency resolution, and tool-name prefixing. This keeps the model surface uniform regardless of where a tool came from.
 

@@ -2906,10 +2906,10 @@ mod tests {
     fn test_with_defaults_excludes_capability_only_tools() {
         let registry = ToolRegistry::with_defaults();
 
-        // bash comes from virtual_bash capability, not defaults
+        // bash comes from bashkit_shell capability, not defaults
         assert!(
             !registry.has("bash"),
-            "bash must not be in defaults — it comes from virtual_bash capability"
+            "bash must not be in defaults — it comes from bashkit_shell capability"
         );
         // kv_store/secret_store come from session_storage capability
         assert!(

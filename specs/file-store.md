@@ -341,7 +341,7 @@ demonstrated is the wrong default.
 - **Filesystem permissions for `is_readonly`.** Today `is_readonly` is
   honored at the trait layer (in-memory tracking) but is not mapped to
   `0o444` on disk.
-- **`virtual_bash` over real disk.** Replacing the in-VFS bash tool with
+- **`bashkit_shell` over real disk.** Replacing the in-VFS bash tool with
   a real-disk variant is a separate security conversation about
   unsandboxed shell execution.
 

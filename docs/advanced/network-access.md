@@ -122,4 +122,4 @@ Standard SSRF protections (blocking private IPs, loopback, cloud metadata endpoi
 | Capability | Enforced | Notes |
 |-----------|----------|-------|
 | `web_fetch` | Yes | Checked before every HTTP request |
-| `virtual_bash` | N/A | No network builtins (curl/wget not available) |
+| `bashkit_shell` | N/A | No network builtins (curl/wget not available) |

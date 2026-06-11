@@ -2,7 +2,7 @@
 //
 // Read/write/edit/list/grep/stat all live in the built-in `file_system`
 // capability now that ercode selects `RealDiskFileStore` through its platform
-// filesystem factory. The bash tool stays custom because the built-in `virtual_bash`
+// filesystem factory. The bash tool stays custom because the built-in `bashkit_shell`
 // runs commands against the VFS, not against the real workspace, and the
 // security model for unsandboxed shell-on-host needs ercode-specific policy
 // (timeout, output cap, approval gate). See EVE-478 for the eventual

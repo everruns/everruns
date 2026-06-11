@@ -6,7 +6,7 @@ compatibility: Python 3.10+
 metadata:
   category: data-processing
   version: "1.0"
-allowed-tools: read_file write_file virtual_bash
+allowed-tools: read_file write_file bashkit_shell
 ---
 
 # CSV Analyzer

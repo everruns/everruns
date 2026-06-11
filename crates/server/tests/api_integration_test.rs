@@ -1973,7 +1973,7 @@ async fn test_get_generic_harness() {
         "Should have file system"
     );
     assert!(
-        cap_ids.contains(&"virtual_bash"),
+        cap_ids.contains(&"bashkit_shell"),
         "Should have virtual bash"
     );
     assert!(cap_ids.contains(&"web_fetch"), "Should have web fetch");
@@ -2878,7 +2878,7 @@ async fn test_session_features_generic_harness() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // Generic harness has session_file_system, virtual_bash, session_storage, etc.
+    // Generic harness has session_file_system, bashkit_shell, session_storage, etc.
     let session: Session = server
         .post(
             "/v1/sessions",
@@ -2906,7 +2906,7 @@ async fn test_session_features_generic_harness() {
         "Generic harness should include key_value feature, got: {:?}",
         session.features,
     );
-    // file_system should only appear once despite session_file_system + virtual_bash
+    // file_system should only appear once despite session_file_system + bashkit_shell
     let fs_count = session
         .features
         .iter()

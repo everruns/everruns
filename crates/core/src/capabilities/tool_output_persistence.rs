@@ -279,7 +279,7 @@ impl PostToolExecHook for PersistOutputHook {
 /// Split combined output text into stdout and stderr streams.
 ///
 /// The raw output from exec tools uses `\n--- stderr ---\n` as a separator
-/// (see `virtual_bash.rs` and other sandbox tools). Uses `rfind` to split at
+/// (see `bashkit_shell.rs` and other sandbox tools). Uses `rfind` to split at
 /// the *last* occurrence, since the separator is injected by our tools and
 /// shouldn't appear more than once — but if stdout happens to contain the
 /// marker text, taking the last match minimizes corruption.

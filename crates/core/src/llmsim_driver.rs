@@ -863,7 +863,7 @@ pub fn guarded_bash_demo_script() -> LlmSimConfig {
 /// via `spawn_background` (which creates a `background_tool` session task),
 /// then inspects the registry with `list_tasks`.
 ///
-/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `virtual_bash`
+/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `bashkit_shell`
 /// and `session_tasks` capabilities.
 pub fn session_tasks_demo_script() -> LlmSimConfig {
     let turns = vec![

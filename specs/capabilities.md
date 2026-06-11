@@ -187,6 +187,10 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 
 For the full list of built-in capability IDs, see `crates/core/src/capabilities/mod.rs` (registry initialization).
 
+##### ID Aliases
+
+A built-in capability may declare legacy IDs via `Capability::aliases()`. Aliases exist so a capability can be renamed without breaking persisted agent configs: registry lookup (`get`, `has`), dependency resolution, and the high-risk admin gate treat an alias exactly like the canonical ID, and resolution normalizes aliases to the canonical ID (an alias and its canonical ID never activate the capability twice). New configs must use the canonical ID; aliases are a compatibility surface only. Current aliases: `virtual_bash` → `bashkit_shell`.
+
 #### AgentCapabilityConfig (Per-agent configuration)
 
 Associates a capability with an agent via `ref` (CapabilityId) + optional `config` (JSON). The `config` field is capability-specific and passed during execution, allowing per-agent behavior.
@@ -346,7 +350,7 @@ See `crates/core/src/capabilities/mod.rs` for `resolve_dependencies()` and `Reso
 |------------|-----------|----------|
 | `sample_data` | `session_file_system` | `file_system` |
 | `skills` | `session_file_system` | *(none)* |
-| `virtual_bash` | `session_file_system` | `file_system` |
+| `bashkit_shell` | `session_file_system` | `file_system` |
 | `gpt_image_gen` | `session_file_system`, `session_storage` | *(none)* |
 
 #### Tool-Side Provider Clients
@@ -375,7 +379,7 @@ Capabilities declare UI features they contribute to via `features()`. Features a
 | Capability | Features |
 |------------|----------|
 | `session_file_system` | `file_system` |
-| `virtual_bash` | `file_system` |
+| `bashkit_shell` | `file_system` |
 | `sample_data` | `file_system` |
 | `session_storage` | `secrets`, `key_value` |
 | `session_schedule` | `schedules` |
@@ -414,21 +418,21 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 | `medium` | Logged but allowed for org members. | Any org member |
 | `high` | Can access external compute or resources, or perform unrestricted outbound network calls, or run scripted code execution. | Requires Admin role |
 
-High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`.
+High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`.
 
 See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
 
 #### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
 
-`virtual_bash` (previously `Low`) and `web_fetch` (previously `Medium`) were elevated to `High` and the high-risk admin gate now applies to them.
+`bashkit_shell` (previously `Low`) and `web_fetch` (previously `Medium`) were elevated to `High` and the high-risk admin gate now applies to them.
 
 - **Trust rationale.**
-  - `virtual_bash` is sandboxed (workspace-only FS, no real network), but exposes scripted code execution. Combined with LLM-driven invocation it is a meaningful trust elevation versus single-purpose tools.
+  - `bashkit_shell` is sandboxed (workspace-only FS, no real network), but exposes scripted code execution. Combined with LLM-driven invocation it is a meaningful trust elevation versus single-purpose tools.
   - `web_fetch` doubles as a data-exfiltration channel (TM-AGENT-013) and a partial SSRF vector. Loopback/RFC1918 are blocked with DNS pinning (TM-API-008), and outbound URL filtering now exists via per-layer `NetworkAccessList` plus the system allowlist at the egress boundary (TM-AGENT-018 MITIGATED, `specs/network-access.md`) — but both default to open, so admin assignment remains the explicit trust gate for enabling the capability.
 - **Gate location.** Canonical agent create / update enforcement lives in `check_high_risk_caps` (`crates/server/src/domains/agents/commands.rs`), invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`. The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents.rs` enforces the same contract on agent-import / copy paths. Member-attempted assignments are rejected with HTTP 403 and an error message that names the offending capability ids.
-- **Migration / grandfathering.** The gate is *not* enforced at runtime. Member-owned agents that already had `virtual_bash` or `web_fetch` before this change continue to run. Members can still edit other fields on those agents; the gate fires only when a member request would *add or keep* a high-risk capability that violates the role contract on a write that is itself reshaping the capability set.
-- **Member experience.** Members trying to add `virtual_bash` or `web_fetch` see a 403 with the locked capability id. Admin approval is the path: an admin must either own the agent or perform the update on the member's behalf. A self-serve "request admin approval" UI flow is not part of this contract; it is tracked separately and may be added later without breaking the gate.
-- **What this is *not*.** This is not a per-capability policy override. There is no env var or org setting today that downgrades `virtual_bash` / `web_fetch` to member-assignable. If product later wants a tunable, it will be added explicitly (org-level policy `members_can_use_high_risk_capabilities` per-capability override) rather than emerging from constant edits in capability source files.
+- **Migration / grandfathering.** The gate is *not* enforced at runtime. Member-owned agents that already had `bashkit_shell` or `web_fetch` before this change continue to run. Members can still edit other fields on those agents; the gate fires only when a member request would *add or keep* a high-risk capability that violates the role contract on a write that is itself reshaping the capability set.
+- **Member experience.** Members trying to add `bashkit_shell` or `web_fetch` see a 403 with the locked capability id. Admin approval is the path: an admin must either own the agent or perform the update on the member's behalf. A self-serve "request admin approval" UI flow is not part of this contract; it is tracked separately and may be added later without breaking the gate.
+- **What this is *not*.** This is not a per-capability policy override. There is no env var or org setting today that downgrades `bashkit_shell` / `web_fetch` to member-assignable. If product later wants a tunable, it will be added explicitly (org-level policy `members_can_use_high_risk_capabilities` per-capability override) rather than emerging from constant edits in capability source files.
 
 ### Built-in Capabilities
 
@@ -439,7 +443,7 @@ For the full list of built-in capabilities with their tools, parameters, and sys
 - **ID**: `session_file_system`
 - **Purpose**: Tools to access and manipulate files in the session workspace (`/workspace`)
 - **Tools**: `read_file`, `write_file`, `edit_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file`
-- **Workspace Mount**: All paths relative to `/workspace`, normalized internally for virtual_bash integration
+- **Workspace Mount**: All paths relative to `/workspace`, normalized internally for bashkit_shell integration
 
 ##### Design Decision: Context-Aware Tools
 
@@ -470,13 +474,17 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 
 `edit_file` is intentionally narrower than `write_file`: it only edits existing text files, requires the current `content_hash` from `read_file` or `write_file`, applies one or more exact replacements against the original file content, and commits via compare-and-set semantics so concurrent writes fail instead of clobbering newer content. This keeps the tool model-friendly while preventing stale writes, ambiguous snippet matches, and accidental binary corruption.
 
-#### VirtualBash
+#### BashkitShell
 
-- **ID**: `virtual_bash`
+- **ID**: `bashkit_shell` (legacy alias: `virtual_bash`)
 - **Purpose**: Sandboxed bash shell execution for safe code execution and file manipulation
 - **Dependencies**: `session_file_system` (operates on same workspace)
 - **Tools**: `bash` (execute command with optional working_dir and timeout)
 - **Workspace Mount**: Session files at `/workspace`, shared with FileSystem tools
+
+##### Naming Convention: `*_shell` Family
+
+Shell-execution capability IDs name the engine plus the `_shell` suffix: `bashkit_shell` today; a future native or remote engine would be e.g. `native_shell` or `aws_shell`, and an engine-selecting wrapper would be `auto_shell`. The tool name `bash` is intentionally shared across the family so agents and harnesses stay portable across engines.
 
 ##### Design Decision: bashkit Library
 

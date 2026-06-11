@@ -1,4 +1,4 @@
-//! Virtual Bash Capability
+//! Bashkit Shell Capability
 //!
 //! This capability provides a sandboxed bash interpreter using bashkit.
 //! The bash environment uses a custom FileSystem adapter that bridges
@@ -15,17 +15,18 @@
 //!
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `virtual_bash`
+//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `bashkit_shell`
 //!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
 //!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
 //!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
 //!   `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper
 //!   in `crates/server/src/api/agents.rs` enforces the same contract on
 //!   agent-import / copy paths. Existing member-owned agents that already had
-//!   `virtual_bash` before the elevation continue to run (gate is
+//!   `bashkit_shell` before the elevation continue to run (gate is
 //!   creation/update only, not runtime). New assignments by non-admin members
-//!   are rejected with HTTP 403.
-//! - Rationale: `virtual_bash` exposes scripted code execution. Even though
+//!   are rejected with HTTP 403. The legacy `virtual_bash` alias resolves to
+//!   this capability through the registry, so the gate covers it too.
+//! - Rationale: `bashkit_shell` exposes scripted code execution. Even though
 //!   the bashkit sandbox provides workspace-only filesystem access and no
 //!   real network, the combination of arbitrary command composition + LLM-
 //!   driven invocation makes this a meaningful trust elevation versus
@@ -120,16 +121,21 @@ static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     schema
 });
 
-/// Virtual Bash capability - execute bash commands in a sandboxed environment
-pub struct VirtualBashCapability;
+/// Bashkit Shell capability - execute bash commands in a sandboxed environment
+pub struct BashkitShellCapability;
 
-impl Capability for VirtualBashCapability {
+impl Capability for BashkitShellCapability {
     fn id(&self) -> &str {
-        "virtual_bash"
+        "bashkit_shell"
+    }
+
+    fn aliases(&self) -> Vec<&'static str> {
+        // Pre-rename ID; still present in persisted agent configs.
+        vec!["virtual_bash"]
     }
 
     fn name(&self) -> &str {
-        "Virtual Bash"
+        "Bashkit Shell"
     }
 
     fn description(&self) -> &str {
@@ -663,14 +669,14 @@ impl BackgroundExecutableTool for BashTool {
 // never the argument values or builtin stdout — those surfaces can carry
 // tenant paths, URLs, or embedded secrets. HTTP hooks (`before_http` /
 // `after_http`) require bashkit's `http_client` feature, which everruns does
-// not enable for `virtual_bash` (TM-BASH-003: no network builtins).
+// not enable for `bashkit_shell` (TM-BASH-003: no network builtins).
 fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> BashBuilder {
     use bashkit::hooks::{ErrorEvent, HookAction, ToolEvent, ToolResult};
     builder
         .before_tool(Box::new(move |ev: ToolEvent| {
             tracing::debug!(
                 target: "bashkit.hook",
-                capability = "virtual_bash",
+                capability = "bashkit_shell",
                 session_id = %session_id,
                 event = "before_tool",
                 tool = %ev.name,
@@ -682,7 +688,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
         .after_tool(Box::new(move |res: ToolResult| {
             tracing::debug!(
                 target: "bashkit.hook",
-                capability = "virtual_bash",
+                capability = "bashkit_shell",
                 session_id = %session_id,
                 event = "after_tool",
                 tool = %res.name,
@@ -696,7 +702,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
             let preview = truncate_for_log(&ev.message, 256);
             tracing::warn!(
                 target: "bashkit.hook",
-                capability = "virtual_bash",
+                capability = "bashkit_shell",
                 session_id = %session_id,
                 event = "on_error",
                 message = %preview,
@@ -1450,9 +1456,9 @@ mod tests {
 
     #[test]
     fn test_capability_metadata() {
-        let cap = VirtualBashCapability;
-        assert_eq!(cap.id(), "virtual_bash");
-        assert_eq!(cap.name(), "Virtual Bash");
+        let cap = BashkitShellCapability;
+        assert_eq!(cap.id(), "bashkit_shell");
+        assert_eq!(cap.name(), "Bashkit Shell");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.risk_level(), RiskLevel::High);
         assert_eq!(cap.icon(), Some("terminal"));
@@ -1472,7 +1478,7 @@ mod tests {
 
     #[test]
     fn test_capability_has_tools() {
-        let cap = VirtualBashCapability;
+        let cap = BashkitShellCapability;
         let tools = cap.tools();
 
         assert_eq!(tools.len(), 1);
@@ -1481,7 +1487,7 @@ mod tests {
 
     #[test]
     fn test_capability_has_system_prompt() {
-        let cap = VirtualBashCapability;
+        let cap = BashkitShellCapability;
         let prompt = cap.system_prompt_addition().unwrap();
         // System prompt is now provided by bashkit library
         assert!(!prompt.is_empty(), "System prompt should not be empty");
@@ -1494,7 +1500,7 @@ mod tests {
 
     #[test]
     fn test_capability_has_dependencies() {
-        let cap = VirtualBashCapability;
+        let cap = BashkitShellCapability;
         let deps = cap.dependencies();
         assert_eq!(deps.len(), 1);
         assert_eq!(deps[0], "session_file_system");

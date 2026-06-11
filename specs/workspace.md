@@ -6,7 +6,7 @@ This document defines the Workspace — the agent's active working area for a
 session. Today a Workspace contains a file surface (virtual filesystem
 backed by PostgreSQL) and a tables surface (`specs/session-sqldb.md`). It is
 exposed to agents at `/workspace` and capabilities (`file_system`,
-`virtual_bash`) read and write through a `WorkspaceFileSystem` seam.
+`bashkit_shell`) read and write through a `WorkspaceFileSystem` seam.
 
 A Workspace is currently owned 1:1 by a session. The durable intent is to
 loosen that ownership so multiple sessions may share a Workspace; the type
@@ -80,7 +80,7 @@ future change is additive — the FK migrates to a join table, types stay.
 - Mount at root `/`: Conflicts with system directories
 - Mount at `/home/agent`: Confusing with bash HOME directory
 - Mount at `/app/session`: Less intuitive
-**Rationale:** `/workspace` is a common convention (similar to VS Code DevContainers, GitHub Codespaces) and clearly indicates agent work area. All capabilities (file_system, virtual_bash) normalize paths by stripping/adding the `/workspace` prefix when interfacing with the workspace file store.
+**Rationale:** `/workspace` is a common convention (similar to VS Code DevContainers, GitHub Codespaces) and clearly indicates agent work area. All capabilities (file_system, bashkit_shell) normalize paths by stripping/adding the `/workspace` prefix when interfacing with the workspace file store.
 Generated media can also be written here as base64-encoded binary files. The `gpt_image_gen` capability uses `/workspace/.outputs/images/` by default when the caller requests filesystem persistence.
 
 ## Requirements
@@ -107,7 +107,7 @@ Workspace files are exposed to agents at `/workspace`:
 - **Store view**: Files stored with normalized paths (e.g., `/src/main.rs`)
 - **Path translation**: Capabilities strip `/workspace` prefix before storage, add it back for display
 
-This enables both the file_system capability (tools) and virtual_bash capability to share the same file store seamlessly.
+This enables both the file_system capability (tools) and bashkit_shell capability to share the same file store seamlessly.
 
 ### Path Validation
 

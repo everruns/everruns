@@ -1,11 +1,11 @@
 ---
-title: Virtual Bash
+title: Bashkit Shell
 description: Sandboxed Bash command execution in an isolated environment. Agents can run shell commands safely with process isolation, timeouts, and output capture.
 ---
 
 | | |
 |---|---|
-| **ID** | `virtual_bash` |
+| **ID** | `bashkit_shell` (legacy alias: `virtual_bash`) |
 | **Category** | Execution |
 | **Features** | `file_system` (unlocks Workspace tab) |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |

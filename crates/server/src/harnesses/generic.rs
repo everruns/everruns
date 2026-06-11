@@ -14,7 +14,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_capabilities([
         BuiltInCapabilityDefinition::new("human_intent"),
         BuiltInCapabilityDefinition::new("session_file_system"),
-        BuiltInCapabilityDefinition::new("virtual_bash"),
+        BuiltInCapabilityDefinition::new("bashkit_shell"),
         BuiltInCapabilityDefinition::with_config(
             "web_fetch",
             serde_json::json!({"enable_file_download": true}),

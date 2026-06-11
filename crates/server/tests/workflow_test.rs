@@ -864,7 +864,7 @@ async fn test_session_filesystem() {
 
 /// Test that filesystem API handles /workspace prefix correctly
 ///
-/// The file_system and virtual_bash capabilities present files to users with
+/// The file_system and bashkit_shell capabilities present files to users with
 /// a /workspace prefix (e.g., /workspace/demo/a.txt), but internally store
 /// them without the prefix (e.g., /demo/a.txt). The API should handle both
 /// formats transparently.
@@ -995,10 +995,10 @@ async fn test_session_filesystem_workspace_prefix() {
     println!("Filesystem workspace prefix test passed!");
 }
 
-/// Test agent with file_system and virtual_bash capabilities share /workspace paths
+/// Test agent with file_system and bashkit_shell capabilities share /workspace paths
 ///
 /// This test verifies:
-/// 1. An agent with both session_file_system and virtual_bash capabilities can use them
+/// 1. An agent with both session_file_system and bashkit_shell capabilities can use them
 /// 2. Files created via write_file are accessible at /workspace via API
 /// 3. The /workspace prefix transformation works correctly in agent workflows
 ///
@@ -1013,7 +1013,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         .build()
         .expect("Failed to create client");
 
-    println!("Testing agent with file_system and virtual_bash capabilities...");
+    println!("Testing agent with file_system and bashkit_shell capabilities...");
 
     // Check if Anthropic API key is available
     let api_key = match std::env::var("ANTHROPIC_API_KEY") {
@@ -1078,8 +1078,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     let model: LlmModel = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
-    // Step 2: Create agent with both session_file_system and virtual_bash capabilities
-    println!("\nStep 2: Creating agent with file_system and virtual_bash capabilities...");
+    // Step 2: Create agent with both session_file_system and bashkit_shell capabilities
+    println!("\nStep 2: Creating agent with file_system and bashkit_shell capabilities...");
     let agent_response = client
         .post(format!("{}/v1/agents", API_BASE_URL))
         .json(&json!({
@@ -1088,7 +1088,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             "system_prompt": "You are a file system assistant. When asked to create a file, use the write_file tool to create it. Always confirm what you did.",
             "capabilities": [
                 {"ref": "session_file_system", "config": {}},
-                {"ref": "virtual_bash", "config": {}}
+                {"ref": "bashkit_shell", "config": {}}
             ],
             "default_model_id": model.id
         }))

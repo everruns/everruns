@@ -104,7 +104,7 @@ Virtual bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
 Key sections:
 - /workspace/docs/getting-started/ — Introduction, concepts, architecture, Docker setup
 - /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, apps, skills
-- /workspace/docs/capabilities/ — Per-capability reference (file-system, virtual-bash, web-fetch, etc.)
+- /workspace/docs/capabilities/ — Per-capability reference (file-system, bashkit-shell, web-fetch, etc.)
 - /workspace/docs/integrations/ — External integrations (Slack, Daytona, Browserless, etc.)
 - /workspace/docs/advanced/ — Budgets, compaction, embedding, network access, request signing
 - /workspace/docs/sre/ — Environment variables, admin container, runbooks

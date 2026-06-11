@@ -458,7 +458,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
    - Total decompressed size limit (10 MB)
 
 2. **Script Execution**: Skills may contain scripts. Execution should be:
-   - Sandboxed (via virtual_bash capability)
+   - Sandboxed (via bashkit_shell capability)
    - Logged for auditing
    - Subject to existing session filesystem permissions
 

@@ -2,10 +2,10 @@
 //!
 //! Provides a sandboxed Lua interpreter over the session virtual filesystem.
 //! See `specs/lua-execution.md` for motivation, sandbox model, threat model
-//! (TM-LUA-*), and the phased roadmap (the goal is to supersede `virtual_bash`).
+//! (TM-LUA-*), and the phased roadmap (the goal is to supersede `bashkit_shell`).
 //!
-//! Design (parallels `virtual_bash`):
-//! - `LuaCapability` is `High` risk and admin-gated, exactly like `virtual_bash`.
+//! Design (parallels `bashkit_shell`):
+//! - `LuaCapability` is `High` risk and admin-gated, exactly like `bashkit_shell`.
 //! - `LuaVfs` owns the `/workspace` <-> session-store path translation and is the
 //!   single seam to the (already session-scoped) `SessionFileSystem`. Tenant
 //!   isolation falls out of routing every path through that store.
@@ -16,7 +16,7 @@
 //!
 //! Trust boundary (TM-LUA-001..008): `risk_level()` returns `High`; assigning
 //! this capability requires `OrgRole::Admin` via the same gates as
-//! `virtual_bash` (`check_high_risk_caps` / `require_admin_for_high_risk`).
+//! `bashkit_shell` (`check_high_risk_caps` / `require_admin_for_high_risk`).
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::exec_tool_result::ExecToolResultPayload;
@@ -120,7 +120,7 @@ impl Capability for LuaCapability {
 
     fn risk_level(&self) -> RiskLevel {
         // Scripted code execution + LLM-driven invocation: same trust elevation
-        // as virtual_bash. Admin-gated assignment (TM-LUA-001).
+        // as bashkit_shell. Admin-gated assignment (TM-LUA-001).
         RiskLevel::High
     }
 

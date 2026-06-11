@@ -1,5 +1,5 @@
 ---
-title: Bashkit Virtual Bash Sandbox for Agents
+title: Bashkit Bashkit Shell Sandbox for Agents
 description: Use Bashkit to run agent shell commands inside a virtual Bash interpreter with sandboxed filesystems, resource limits, network controls, and async execution.
 sidebar:
   label: Bashkit
