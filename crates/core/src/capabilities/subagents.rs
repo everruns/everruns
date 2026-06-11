@@ -307,19 +307,10 @@ impl Tool for SpawnSubagentTool {
         if let (Some(spawn_store), Some(tool_call_id)) =
             (&context.subagent_spawn_store, &context.tool_call_id)
         {
-            // Pre-generate IDs so we can pass child_session_id to the claim CAS.
-            let prospective_child_id = crate::typed_id::SessionId::from(uuid::Uuid::new_v4());
             let claim_token = uuid::Uuid::new_v4();
 
             let claim = match spawn_store
-                .try_claim_spawn(
-                    context.session_id,
-                    tool_call_id,
-                    prospective_child_id,
-                    &name,
-                    &task,
-                    claim_token,
-                )
+                .try_claim_spawn(context.session_id, tool_call_id, &name, &task, claim_token)
                 .await
             {
                 Ok(c) => c,
@@ -327,24 +318,26 @@ impl Tool for SpawnSubagentTool {
             };
 
             match claim {
-                SpawnClaimResult::AlreadySpawned {
+                SpawnClaimResult::AlreadySettled {
                     child_session_id,
-                    terminal_result: Some(result_text),
+                    terminal_status,
+                    terminal_result,
                 } => {
                     // Already settled on a previous execution: return stored result.
                     return ToolExecutionResult::success(json!({
                         "subagent_id": child_session_id.to_string(),
                         "name": name,
-                        "status": "completed",
-                        "result": result_text,
+                        "status": terminal_status,
+                        "result": terminal_result,
                         "blueprint": blueprint_param,
                     }));
                 }
-                SpawnClaimResult::AlreadySpawned {
+                SpawnClaimResult::AlreadyRunning {
                     child_session_id,
-                    terminal_result: None,
+                    claim_token: stored_claim_token,
                 } => {
                     // Child was spawned before but hasn't settled yet — reattach.
+                    // Use the stored claim_token so settle succeeds on this replay.
                     return run_subagent_wait_and_settle(
                         store,
                         context,
@@ -352,16 +345,24 @@ impl Tool for SpawnSubagentTool {
                         &name,
                         &task,
                         &blueprint_param,
-                        Some((spawn_store.as_ref(), tool_call_id.as_str(), claim_token)),
+                        Some((
+                            spawn_store.as_ref(),
+                            tool_call_id.as_str(),
+                            stored_claim_token,
+                        )),
                     )
                     .await;
                 }
                 SpawnClaimResult::Claimed {
+                    spawn_handle_id,
                     claim_token: actual_claim_token,
-                    ..
+                }
+                | SpawnClaimResult::ClaimedPendingChild {
+                    spawn_handle_id,
+                    claim_token: actual_claim_token,
                 } => {
-                    // First claim: proceed to create the child session below, then
-                    // settle after completion.
+                    // First claim (or re-claim after crash before register):
+                    // create child and register it durably before waiting.
                     return spawn_create_and_wait(
                         store,
                         context,
@@ -373,6 +374,7 @@ impl Tool for SpawnSubagentTool {
                         Some((
                             spawn_store.as_ref(),
                             tool_call_id.as_str(),
+                            spawn_handle_id,
                             actual_claim_token,
                         )),
                     )
@@ -406,6 +408,9 @@ impl Tool for SpawnSubagentTool {
 
 /// Create a new child session, send the task, wait for completion, and settle
 /// the spawn handle (if a settle context is supplied).
+///
+/// `settle_ctx` = (spawn_store, tool_call_id, spawn_handle_id, claim_token).
+/// `spawn_handle_id` is used to call `register_child_session` after child creation.
 async fn spawn_create_and_wait(
     store: &dyn PlatformStore,
     context: &ToolContext,
@@ -414,7 +419,12 @@ async fn spawn_create_and_wait(
     task: &str,
     blueprint_param: &Option<String>,
     config_param: &Option<Value>,
-    settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
+    settle_ctx: Option<(
+        &dyn crate::traits::SubagentSpawnStore,
+        &str,
+        uuid::Uuid,
+        uuid::Uuid,
+    )>,
 ) -> ToolExecutionResult {
     // Create child session
     let child_session = match store
@@ -466,6 +476,27 @@ async fn spawn_create_and_wait(
             .await;
     }
 
+    // Register child session ID durably BEFORE waiting.
+    // This is the durability boundary: once registered, a reclaim/replay can
+    // reattach to this child instead of spawning another.
+    let wait_settle_ctx = if let Some((spawn_store, tool_call_id, spawn_handle_id, claim_token)) =
+        settle_ctx
+    {
+        if let Err(e) = spawn_store
+            .register_child_session(spawn_handle_id, claim_token, child_session.id)
+            .await
+        {
+            tracing::warn!(
+                tool_call_id,
+                error = %e,
+                "Failed to register child session in spawn handle; proceeding without durable reattach"
+            );
+        }
+        Some((spawn_store, tool_call_id, claim_token))
+    } else {
+        None
+    };
+
     // Send the task as the first message
     if let Err(e) = store.send_message(child_session.id, task).await {
         return ToolExecutionResult::internal_error(e);
@@ -478,7 +509,7 @@ async fn spawn_create_and_wait(
         name,
         task,
         blueprint_param,
-        settle_ctx,
+        wait_settle_ctx,
     )
     .await
 }
@@ -530,7 +561,13 @@ async fn run_subagent_wait_and_settle(
     // Settle the spawn handle if we have a durable store.
     if let Some((spawn_store, tool_call_id, claim_token)) = settle_ctx {
         if let Err(e) = spawn_store
-            .settle_spawn(context.session_id, tool_call_id, claim_token, &result_text)
+            .settle_spawn(
+                context.session_id,
+                tool_call_id,
+                claim_token,
+                &status,
+                &result_text,
+            )
             .await
         {
             // Best-effort: log but don't fail the tool execution.
@@ -946,11 +983,10 @@ mod tests {
     async fn noop_spawn_store_always_claims() {
         let store = NoopSubagentSpawnStore;
         let parent = crate::typed_id::SessionId::new();
-        let child = crate::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
         let result = store
-            .try_claim_spawn(parent, "call-1", child, "Worker", "do work", token)
+            .try_claim_spawn(parent, "call-1", "Worker", "do work", token)
             .await
             .expect("noop should not error");
 
@@ -960,15 +996,22 @@ mod tests {
         );
     }
 
-    /// NoopSubagentSpawnStore settle is always successful.
+    /// NoopSubagentSpawnStore register and settle are always successful.
     #[tokio::test]
-    async fn noop_spawn_store_settle_is_noop() {
+    async fn noop_spawn_store_register_and_settle_are_noops() {
         let store = NoopSubagentSpawnStore;
         let parent = crate::typed_id::SessionId::new();
+        let child = crate::typed_id::SessionId::new();
+        let handle_id = uuid::Uuid::new_v4();
         let token = uuid::Uuid::new_v4();
 
         store
-            .settle_spawn(parent, "call-1", token, "result text")
+            .register_child_session(handle_id, token, child)
+            .await
+            .expect("noop register should not error");
+
+        store
+            .settle_spawn(parent, "call-1", token, "idle", "result text")
             .await
             .expect("noop settle should not error");
     }
@@ -978,11 +1021,10 @@ mod tests {
     async fn arc_spawn_store_delegates() {
         let store: Arc<dyn SubagentSpawnStore> = Arc::new(NoopSubagentSpawnStore);
         let parent = crate::typed_id::SessionId::new();
-        let child = crate::typed_id::SessionId::new();
         let token = uuid::Uuid::new_v4();
 
         let result = store
-            .try_claim_spawn(parent, "call-arc", child, "ArcWorker", "arc task", token)
+            .try_claim_spawn(parent, "call-arc", "ArcWorker", "arc task", token)
             .await
             .expect("arc delegation should not error");
 

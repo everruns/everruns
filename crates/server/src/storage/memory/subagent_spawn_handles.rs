@@ -8,20 +8,28 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use uuid::Uuid;
 
-/// Entry stored in the in-memory spawn handles map.
 #[derive(Clone)]
 struct SpawnHandleEntry {
-    child_session_id: SessionId,
+    spawn_handle_id: Uuid,
+    child_session_id: Option<SessionId>,
     claim_token: Uuid,
+    terminal_status: Option<String>,
     terminal_result: Option<String>,
-    settled: bool,
+    status: SpawnStatus,
+}
+
+#[derive(Clone, PartialEq)]
+enum SpawnStatus {
+    Pending,
+    Running,
+    Settled,
 }
 
 /// In-memory SubagentSpawnStore — mirrors `subagent_spawn_handles` table logic.
 ///
 /// Thread-safe via `Mutex`. CAS semantics are identical to the Postgres impl:
 /// first `try_claim_spawn` call for a given `(parent, tool_call_id)` pair wins;
-/// subsequent calls return `AlreadySpawned`.
+/// subsequent calls return the appropriate reattach variant.
 pub struct InMemorySubagentSpawnStore {
     handles: Mutex<HashMap<(SessionId, String), SpawnHandleEntry>>,
 }
@@ -46,7 +54,6 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         &self,
         parent_session_id: SessionId,
         tool_call_id: &str,
-        child_session_id: SessionId,
         _subagent_name: &str,
         _subagent_task: &str,
         claim_token: Uuid,
@@ -55,14 +62,27 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         let mut handles = self.handles.lock();
 
         if let Some(entry) = handles.get(&key) {
-            let terminal_result = if entry.settled {
-                entry.terminal_result.clone()
-            } else {
-                None
-            };
-            return Ok(SpawnClaimResult::AlreadySpawned {
-                child_session_id: entry.child_session_id,
-                terminal_result,
+            return Ok(match &entry.status {
+                SpawnStatus::Pending => SpawnClaimResult::ClaimedPendingChild {
+                    spawn_handle_id: entry.spawn_handle_id,
+                    claim_token: entry.claim_token,
+                },
+                SpawnStatus::Running => SpawnClaimResult::AlreadyRunning {
+                    child_session_id: entry
+                        .child_session_id
+                        .expect("running entry must have child"),
+                    claim_token: entry.claim_token,
+                },
+                SpawnStatus::Settled => SpawnClaimResult::AlreadySettled {
+                    child_session_id: entry
+                        .child_session_id
+                        .expect("settled entry must have child"),
+                    terminal_status: entry
+                        .terminal_status
+                        .clone()
+                        .unwrap_or_else(|| "idle".to_string()),
+                    terminal_result: entry.terminal_result.clone().unwrap_or_default(),
+                },
             });
         }
 
@@ -70,10 +90,12 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         handles.insert(
             key,
             SpawnHandleEntry {
-                child_session_id,
+                spawn_handle_id,
+                child_session_id: None,
                 claim_token,
+                terminal_status: None,
                 terminal_result: None,
-                settled: false,
+                status: SpawnStatus::Pending,
             },
         );
 
@@ -83,19 +105,40 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         })
     }
 
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: Uuid,
+        claim_token: Uuid,
+        child_session_id: SessionId,
+    ) -> Result<(), AgentLoopError> {
+        let mut handles = self.handles.lock();
+        if let Some(entry) = handles
+            .values_mut()
+            .find(|e| e.spawn_handle_id == spawn_handle_id && e.claim_token == claim_token)
+        {
+            if entry.status == SpawnStatus::Pending {
+                entry.child_session_id = Some(child_session_id);
+                entry.status = SpawnStatus::Running;
+            }
+        }
+        Ok(())
+    }
+
     async fn settle_spawn(
         &self,
         parent_session_id: SessionId,
         tool_call_id: &str,
         claim_token: Uuid,
+        terminal_status: &str,
         terminal_result: &str,
     ) -> Result<(), AgentLoopError> {
         let key = (parent_session_id, tool_call_id.to_string());
         let mut handles = self.handles.lock();
 
         if let Some(entry) = handles.get_mut(&key) {
-            if entry.claim_token == claim_token && !entry.settled {
-                entry.settled = true;
+            if entry.claim_token == claim_token && entry.status == SpawnStatus::Running {
+                entry.status = SpawnStatus::Settled;
+                entry.terminal_status = Some(terminal_status.to_string());
                 entry.terminal_result = Some(terminal_result.to_string());
             }
         }

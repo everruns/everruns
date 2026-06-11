@@ -5,18 +5,24 @@
 -- subsequent ones conflict and reveal the existing child_session_id so
 -- callers can reattach instead of spawning a duplicate.
 --
--- status values:
---   'running'  — child is active; terminal_result is NULL
---   'settled'  — child finished; terminal_result holds the last assistant message
+-- Lifecycle:
+--   pending  — claimed; child session not yet created (register_child_session pending)
+--   running  — child session exists; waiting for completion
+--   settled  — child finished; terminal_result and terminal_status are populated
+--
+-- child_session_id is nullable and has NO FK: the claim INSERT happens before
+-- the child session row exists. register_child_session sets it after creation.
 CREATE TABLE subagent_spawn_handles (
     id                 UUID        PRIMARY KEY DEFAULT uuidv7(),
     parent_session_id  UUID        NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
     tool_call_id       TEXT        NOT NULL,
-    child_session_id   UUID        NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    status             TEXT        NOT NULL DEFAULT 'running'
-                       CHECK (status IN ('running', 'settled')),
+    child_session_id   UUID,
+    status             TEXT        NOT NULL DEFAULT 'pending'
+                       CHECK (status IN ('pending', 'running', 'settled')),
     -- Last assistant message from child, stored as a JSON-encoded string.
     terminal_result    TEXT,
+    -- wait_for_idle return value ("idle", "error", "timeout", etc.)
+    terminal_status    TEXT,
     subagent_name      TEXT        NOT NULL,
     subagent_task      TEXT        NOT NULL,
     -- Opaque token generated at claim time; settle CAS verifies this matches.
@@ -35,4 +41,5 @@ CREATE INDEX idx_spawn_handles_parent
     ON subagent_spawn_handles (parent_session_id);
 
 CREATE INDEX idx_spawn_handles_child
-    ON subagent_spawn_handles (child_session_id);
+    ON subagent_spawn_handles (child_session_id)
+    WHERE child_session_id IS NOT NULL;

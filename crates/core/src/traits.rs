@@ -1732,17 +1732,33 @@ pub trait ImageResolver: Send + Sync {
 /// Result of attempting to claim a subagent spawn slot.
 #[derive(Debug)]
 pub enum SpawnClaimResult {
-    /// Slot claimed: proceed to create child session. Carry claim_token for settle.
+    /// First claim — child session does not yet exist.
+    /// Proceed to create the child, then call `register_child_session`.
     Claimed {
         spawn_handle_id: uuid::Uuid,
         claim_token: uuid::Uuid,
     },
-    /// A child already exists for this (parent_session_id, tool_call_id).
-    /// Reattach: wait for the existing child and settle from its result.
-    AlreadySpawned {
+    /// Row exists but `child_session_id` was never registered (crash between
+    /// claim and `register_child_session`). Re-create the child and call
+    /// `register_child_session` — same flow as `Claimed`.
+    ClaimedPendingChild {
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+    },
+    /// Child session was created and is still running.
+    /// Reattach: wait for the existing child and settle with the stored claim_token.
+    AlreadyRunning {
         child_session_id: crate::typed_id::SessionId,
-        /// `Some` if the child already finished; `None` if still running.
-        terminal_result: Option<String>,
+        /// Stored claim token — must be used for `settle_spawn` on this replay.
+        claim_token: uuid::Uuid,
+    },
+    /// Child already finished on a previous execution.
+    /// Fast-path: return the stored result immediately without waiting.
+    AlreadySettled {
+        child_session_id: crate::typed_id::SessionId,
+        /// The `wait_for_idle` return value from the original execution.
+        terminal_status: String,
+        terminal_result: String,
     },
 }
 
@@ -1751,31 +1767,45 @@ pub enum SpawnClaimResult {
 /// Maps `(parent_session_id, tool_call_id) → child_session_id` so that when
 /// a parent's `act` is reclaimed mid-`wait_for_idle`, the tool can reattach
 /// to the existing child instead of spawning a duplicate.
+///
+/// Lifecycle: claim → register_child_session → settle_spawn.
 #[async_trait]
 pub trait SubagentSpawnStore: Send + Sync + 'static {
     /// Attempt to claim a spawn slot for `(parent_session_id, tool_call_id)`.
     ///
-    /// - Inserts a `running` row if none exists → `Claimed`.
-    /// - Finds an existing row → `AlreadySpawned` (with `terminal_result` if
-    ///   already settled, `None` if still running).
+    /// Does NOT accept `child_session_id` — the child session does not exist yet.
+    /// Call `register_child_session` with the actual child ID after creating it.
     async fn try_claim_spawn(
         &self,
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
-        child_session_id: crate::typed_id::SessionId,
         subagent_name: &str,
         subagent_task: &str,
         claim_token: uuid::Uuid,
     ) -> Result<SpawnClaimResult>;
 
+    /// Register the actual child session ID after it has been created.
+    ///
+    /// Must be called after `try_claim_spawn` returns `Claimed` or
+    /// `ClaimedPendingChild`, before waiting for the child to complete.
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()>;
+
     /// Record the terminal result once the child has completed.
     ///
-    /// `claim_token` must match the token returned by `try_claim_spawn`.
+    /// `claim_token` must match the stored token. `terminal_status` is the
+    /// `wait_for_idle` return value ("idle", "error", "timeout", etc.) and
+    /// `terminal_result` is the last agent message.
     async fn settle_spawn(
         &self,
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
         claim_token: uuid::Uuid,
+        terminal_status: &str,
         terminal_result: &str,
     ) -> Result<()>;
 }
@@ -1787,7 +1817,6 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
         &self,
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
-        child_session_id: crate::typed_id::SessionId,
         subagent_name: &str,
         subagent_task: &str,
         claim_token: uuid::Uuid,
@@ -1796,11 +1825,21 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
             .try_claim_spawn(
                 parent_session_id,
                 tool_call_id,
-                child_session_id,
                 subagent_name,
                 subagent_task,
                 claim_token,
             )
+            .await
+    }
+
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        (**self)
+            .register_child_session(spawn_handle_id, claim_token, child_session_id)
             .await
     }
 
@@ -1809,6 +1848,7 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
         claim_token: uuid::Uuid,
+        terminal_status: &str,
         terminal_result: &str,
     ) -> Result<()> {
         (**self)
@@ -1816,6 +1856,7 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
                 parent_session_id,
                 tool_call_id,
                 claim_token,
+                terminal_status,
                 terminal_result,
             )
             .await
@@ -1824,7 +1865,7 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
 
 /// No-op spawn store — used when no durable store is configured (dev/test).
 ///
-/// Always claims (no dedup); settle is a no-op.
+/// Always claims (no dedup); settle and register are no-ops.
 pub struct NoopSubagentSpawnStore;
 
 #[async_trait]
@@ -1833,7 +1874,6 @@ impl SubagentSpawnStore for NoopSubagentSpawnStore {
         &self,
         _parent_session_id: crate::typed_id::SessionId,
         _tool_call_id: &str,
-        _child_session_id: crate::typed_id::SessionId,
         _subagent_name: &str,
         _subagent_task: &str,
         claim_token: uuid::Uuid,
@@ -1844,11 +1884,21 @@ impl SubagentSpawnStore for NoopSubagentSpawnStore {
         })
     }
 
+    async fn register_child_session(
+        &self,
+        _spawn_handle_id: uuid::Uuid,
+        _claim_token: uuid::Uuid,
+        _child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     async fn settle_spawn(
         &self,
         _parent_session_id: crate::typed_id::SessionId,
         _tool_call_id: &str,
         _claim_token: uuid::Uuid,
+        _terminal_status: &str,
         _terminal_result: &str,
     ) -> Result<()> {
         Ok(())
