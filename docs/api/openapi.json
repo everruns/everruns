@@ -6286,7 +6286,7 @@
     "/v1/memories": {
       "get": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "List workspace memories.",
         "operationId": "list_memories",
@@ -6329,7 +6329,7 @@
       },
       "post": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "Create a new workspace memory.",
         "operationId": "create_memory",
@@ -6380,7 +6380,7 @@
     "/v1/memories/{memory_id}": {
       "get": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "Get a workspace memory by ID.",
         "operationId": "get_memory",
@@ -6420,7 +6420,7 @@
       },
       "delete": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "Delete a workspace memory.",
         "operationId": "delete_memory",
@@ -6453,7 +6453,7 @@
       },
       "patch": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "Update a workspace memory. Only provided fields are modified.",
         "operationId": "update_memory",
@@ -6525,7 +6525,7 @@
     "/v1/memories/{memory_id}/sync": {
       "post": {
         "tags": [
-          "memories"
+          "memory"
         ],
         "description": "Trigger a synchronous sync of a memory now.",
         "operationId": "sync_memory_now",
