@@ -9,7 +9,7 @@ use uuid::Uuid;
 
 /// PostgreSQL-backed durable subagent spawn handle store.
 ///
-/// Uses the `subagent_spawn_handles` table (migration 051) to record
+/// Uses the `subagent_spawn_handles` table (migration 052) to record
 /// `(parent_session_id, tool_call_id) → child_session_id` mappings so that a
 /// parent worker can reattach to an existing child on reclaim instead of
 /// spawning a duplicate (EVE-535).
