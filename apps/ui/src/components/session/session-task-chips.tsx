@@ -78,9 +78,7 @@ function TaskChip({ task, tasksHref }: TaskChipProps) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>{chip}</TooltipTrigger>
-          <TooltipContent className="max-w-xs text-xs">
-            {task.state_detail}
-          </TooltipContent>
+          <TooltipContent className="max-w-xs text-xs">{task.state_detail}</TooltipContent>
         </Tooltip>
       </TooltipProvider>
     );
