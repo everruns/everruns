@@ -33,9 +33,9 @@ use crate::events::{
     LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo, LlmRequestOptions, LlmRetryInfo,
     LlmToolSearchInfo, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonItemData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary, TranscriptRepairAction,
-    TranscriptRepairedData,
+    ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
+    TranscriptRepairAction, TranscriptRepairedData,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -54,7 +54,8 @@ use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage, SessionStore,
+    ImageResolver, LlmProviderStore, ModelWithProvider, PartialStreamStore, ResolvedImage,
+    SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{UserFacingErrorContext, user_facing_error_codes};
@@ -533,6 +534,8 @@ pub struct ReasonAtom {
     provider_stall_timeout: Option<std::time::Duration>,
     /// Optional durable tool result store for transcript repair (EVE-533).
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    /// Optional partial-stream store for ContinuePartial recovery (EVE-532).
+    partial_stream_store: Option<Arc<dyn PartialStreamStore>>,
 }
 
 impl ReasonAtom {
@@ -562,6 +565,7 @@ impl ReasonAtom {
             stream_heartbeater: None,
             provider_stall_timeout: None,
             durable_tool_result_store: None,
+            partial_stream_store: None,
         }
     }
 
@@ -622,6 +626,12 @@ impl ReasonAtom {
         store: Arc<dyn DurableToolResultStore>,
     ) -> Self {
         self.durable_tool_result_store = Some(store);
+        self
+    }
+
+    /// Set the partial-stream store for ContinuePartial recovery (EVE-532).
+    pub fn with_partial_stream_store(mut self, store: Arc<dyn PartialStreamStore>) -> Self {
+        self.partial_stream_store = Some(store);
         self
     }
 }
@@ -1031,7 +1041,61 @@ impl ReasonAtom {
                 }
             });
 
-        // 9. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
+        // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
+        // If found, apply the ContinuePartial recovery policy: finalize from accumulated
+        // text (if non-empty) or restart clean (if empty/usable partial only).
+        if let Some(ref store) = self.partial_stream_store {
+            let turn_id_str = context.turn_id.to_string();
+            match store.get_partial_stream(session_id, &turn_id_str).await {
+                Ok(Some(partial)) if !partial.accumulated.is_empty() => {
+                    // Finalize: emit completed from persisted accumulated text.
+                    return self
+                        .finalize_partial_stream(
+                            session_id,
+                            context,
+                            partial.accumulated,
+                            iteration,
+                            runtime_agent.max_iterations,
+                            &runtime_agent.tools,
+                        )
+                        .await;
+                }
+                Ok(Some(_)) => {
+                    // Empty accumulated: restart clean — fall through to normal LLM call.
+                    // Emit reason.recovered { mode: Restart } for observability.
+                    let recovery_ctx = EventContext::from_atom_context(context);
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            session_id,
+                            recovery_ctx,
+                            ReasonRecoveredData {
+                                turn_id: context.turn_id,
+                                mode: RecoveryMode::Restart,
+                                accumulated_len: 0,
+                            },
+                        ))
+                        .await;
+                    tracing::info!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        "ReasonAtom: partial stream detected with empty accumulated; restarting clean"
+                    );
+                }
+                Ok(None) => {} // No partial; normal first-run execution.
+                Err(e) => {
+                    // Best-effort: log and continue with normal execution.
+                    tracing::warn!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        error = %e,
+                        "ReasonAtom: partial-stream store error; proceeding with normal execution"
+                    );
+                }
+            }
+        }
+
+        // 10. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
         // has a matching ToolResult before the LLM call. Consults durable_tool_results
         // when available to replay settled results or synthesize interrupted placeholders.
         let repair_event_context = EventContext::from_atom_context(context);
@@ -2380,6 +2444,86 @@ impl ReasonAtom {
         })
     }
 
+    /// Finalize a partial assistant stream without making a new provider call (EVE-532).
+    ///
+    /// Emits `output.message.started`, `output.message.completed` from the persisted
+    /// `accumulated` text, and `reason.recovered { mode: Finalize }`.
+    async fn finalize_partial_stream(
+        &self,
+        session_id: SessionId,
+        context: &AtomContext,
+        accumulated: String,
+        iteration: u32,
+        max_iterations: usize,
+        tool_definitions: &[ToolDefinition],
+    ) -> Result<ReasonResult> {
+        let event_context = EventContext::from_atom_context(context);
+        let turn_id = context.turn_id;
+
+        // Signal that output is starting (keeps the streaming protocol intact).
+        let _ = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                OutputMessageStartedData {
+                    turn_id,
+                    model: None,
+                    iteration: Some(iteration),
+                },
+            ))
+            .await;
+
+        // Build the assistant message from accumulated text and persist via event.
+        let assistant_message = Message::assistant(&accumulated);
+        let output_message_id = assistant_message.id;
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                OutputMessageCompletedData::new(assistant_message),
+            ))
+            .await?;
+
+        // Emit observability event.
+        let accumulated_len = accumulated.len();
+        let _ = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                ReasonRecoveredData {
+                    turn_id,
+                    mode: RecoveryMode::Finalize,
+                    accumulated_len,
+                },
+            ))
+            .await;
+
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %turn_id,
+            accumulated_len,
+            "ReasonAtom: finalized partial stream from persisted accumulated text"
+        );
+
+        Ok(ReasonResult {
+            success: true,
+            text: accumulated,
+            tool_calls: vec![],
+            has_tool_calls: false,
+            tool_definitions: tool_definitions.to_vec(),
+            max_iterations,
+            error: None,
+            usage: None,
+            output_message_id: Some(output_message_id),
+            time_to_first_token_ms: None,
+            response_id: None,
+            locale: None,
+            network_access: None,
+        })
+    }
+
     /// Resolve model using priority chain: controls > session > agent > harness > system default
     /// Create LLM driver using the driver registry
     fn create_llm_driver(
@@ -3064,5 +3208,56 @@ mod tests {
         };
 
         assert!(build_request_options(&config, "gemini").is_none());
+    }
+
+    // =========================================================================
+    // ContinuePartial recovery tests (EVE-532)
+    // =========================================================================
+
+    use crate::traits::{NoopPartialStreamStore, PartialStreamState, PartialStreamStore};
+
+    struct MockPartialStore(Option<String>);
+
+    #[async_trait::async_trait]
+    impl PartialStreamStore for MockPartialStore {
+        async fn get_partial_stream(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _turn_id: &str,
+        ) -> crate::error::Result<Option<PartialStreamState>> {
+            Ok(self.0.as_deref().map(|s| PartialStreamState {
+                accumulated: s.to_string(),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_noop_partial_stream_store_returns_none() {
+        let store = NoopPartialStreamStore;
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
+        let store = MockPartialStore(Some("partial text so far".to_string()));
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert_eq!(result.unwrap().accumulated, "partial text so far");
+    }
+
+    #[tokio::test]
+    async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
+        let store = MockPartialStore(Some(String::new()));
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert!(result.unwrap().accumulated.is_empty());
     }
 }

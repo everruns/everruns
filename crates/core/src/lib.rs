@@ -189,11 +189,12 @@ pub use runtime_context::{
 pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
     ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
-    NoopDurableToolResultStore, NoopEventEmitter, NoopStreamHeartbeater, OutboundToolRateLimiter,
-    ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, StreamHeartbeater, StreamProgress, ToolCallClaimResult,
-    ToolContext, ToolExecutor, UserConnectionResolver,
+    NoopDurableToolResultStore, NoopEventEmitter, NoopPartialStreamStore, NoopStreamHeartbeater,
+    OutboundToolRateLimiter, PartialStreamState, PartialStreamStore, ResolvedImage, SecretInfo,
+    SessionFileStore, SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef, SessionStorageStore,
+    SessionStore, StreamHeartbeater, StreamProgress, ToolCallClaimResult, ToolContext,
+    ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
@@ -377,14 +378,15 @@ pub use events::{
     ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
     OUTPUT_MESSAGE_STARTED, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageReplacedData, OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM,
-    REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
-    ReasonCompletedData, ReasonItemData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED,
-    SESSION_STARTED, SessionActivatedData, SessionIdledData, SessionStartedData,
-    TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED,
-    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData,
-    ToolCallSummary, ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData,
-    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_RECOVERED, REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA,
+    REASON_THINKING_STARTED, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
+    SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
