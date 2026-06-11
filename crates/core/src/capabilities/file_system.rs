@@ -12,7 +12,7 @@
 //! - `delete_file`: Delete a file or directory
 //! - `stat_file`: Get file metadata
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::ToolHints;
@@ -450,6 +450,20 @@ impl Capability for FileSystemCapability {
 
 > [!TIP]
 > Use `list_directory` to explore the workspace structure before reading or writing files."#
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Файлова система",
+            r#"Інструменти для доступу до файлів у робочому просторі сесії та роботи з ними — читання, запис, перегляд, пошук grep тощо.
+
+> [!NOTE]
+> Кожна сесія має власний ізольований робочий простір у `/workspace`. Файли зберігаються протягом усієї сесії.
+
+> [!TIP]
+> Використовуйте `list_directory`, щоб дослідити структуру робочого простору перед читанням або записом файлів."#,
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -3055,5 +3069,11 @@ mod tests {
     fn test_effective_read_defaults_binary() {
         let (_, mode) = effective_read_defaults("/app.wasm", false, false);
         assert_eq!(mode, ReadMode::MetadataOnly);
+    }
+
+    #[test]
+    fn localized_name_differs_from_default() {
+        let cap = FileSystemCapability;
+        assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
 }

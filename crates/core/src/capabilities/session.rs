@@ -4,7 +4,7 @@
 //! - `write_session_title`: update session title
 //! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::events::TokenUsage;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -26,6 +26,14 @@ impl Capability for SessionCapability {
 
     fn description(&self) -> &str {
         "Read and update current session metadata like title and agent info."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Сесія",
+            "Читання та оновлення метаданих поточної сесії, як-от назви й інформації про агента.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

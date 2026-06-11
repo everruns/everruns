@@ -40,7 +40,7 @@
 // filesystem, not the worker host. Adding provenance alone would still be RCE
 // against the worker. See threat-model TM-TOOL-020 step 6.
 
-use super::{Capability, CapabilityStatus, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -121,6 +121,19 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
 
 > [!TIP]
 > Use the `list_skills` tool to see available skills, then `activate_skill` to load one."#
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Навички агента",
+            r#"Виявляйте та активуйте навички з файлової системи сесії.
+
+Навички — це пакети інструкцій (файли SKILL.md), які навчають агента нових умінь. Завантажте навички до `/workspace/.agents/skills/{name}/SKILL.md`, і агент виявить їх автоматично.
+
+> [!TIP]
+> Використовуйте інструмент `list_skills`, щоб переглянути доступні навички, а потім `activate_skill`, щоб завантажити потрібну."#,
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -2366,5 +2379,11 @@ mod tests {
         assert!(!result.contains(&long_desc));
         // Should contain truncated version with ellipsis
         assert!(result.contains('…'));
+    }
+
+    #[test]
+    fn localized_name_differs_from_default() {
+        let cap = SkillsCapability;
+        assert_ne!(cap.localized_name(Some("uk")), cap.name());
     }
 }

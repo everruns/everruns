@@ -32,7 +32,7 @@
 //!   single-purpose tools. Org admins are the only principals expected to
 //!   accept that surface for shared agents.
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
@@ -143,6 +143,23 @@ impl Capability for VirtualBashCapability {
 > Use standard Unix commands like `ls`, `cat`, `grep`, `echo`, and shell features
 > like pipes, redirections, and command substitution. Built-in commands support
 > `<command> --help`, and many also support `<command> --version`."#
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Віртуальний Bash",
+            r#"Виконуйте bash-команди в ізольованому середовищі-пісочниці.
+
+> [!NOTE]
+> Команди виконуються у віртуальному середовищі без доступу до хост-системи.
+> Файлова система сесії змонтована в корені, тож можна читати й записувати файли сесії.
+
+> [!TIP]
+> Використовуйте стандартні Unix-команди, як-от `ls`, `cat`, `grep`, `echo`, і можливості оболонки
+> на кшталт конвеєрів, перенаправлень і підстановки команд. Вбудовані команди підтримують
+> `<command> --help`, а багато з них також `<command> --version`."#,
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

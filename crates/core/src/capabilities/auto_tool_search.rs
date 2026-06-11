@@ -22,7 +22,7 @@
 
 use super::openai_tool_search::{OpenAiToolSearchCapability, model_supports_native_tool_search};
 use super::tool_search::ToolSearchCapability;
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
@@ -72,6 +72,14 @@ impl Capability for AutoToolSearchCapability {
          on models that support it (GPT-5.4 and newer) and a provider-agnostic \
          client-side fallback on every other model. Reduces token usage for \
          agents with many tools, regardless of provider."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Автоматичний пошук інструментів",
+            "Відкладене завантаження інструментів, що адаптується до моделі. Використовує хостований tool_search від OpenAI на моделях, які його підтримують (GPT-5.4 і новіші), та незалежний від провайдера клієнтський резервний механізм на всіх інших моделях. Зменшує використання токенів для агентів із багатьма інструментами незалежно від провайдера.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

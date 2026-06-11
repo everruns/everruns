@@ -11,7 +11,9 @@ pub mod client;
 pub mod connection;
 mod tools;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -90,6 +92,16 @@ impl Capability for BraveSearchCapability {
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "[Експериментально] Brave Search",
+            "Шукайте в інтернеті через Brave Search API. Агенти можуть виконувати пошукові \
+             запити й отримувати релевантні результати із заголовками, URL-адресами та \
+             описами. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+        )]
     }
 }
 

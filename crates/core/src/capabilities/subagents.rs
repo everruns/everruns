@@ -15,7 +15,7 @@
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
 // Nesting prevention: rejects spawn if current session has parent_session_id set.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
@@ -43,6 +43,14 @@ impl Capability for SubagentCapability {
 
     fn description(&self) -> &str {
         "Spawn and manage subagents for parallel task execution in isolated context windows."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Субагенти",
+            "Запускайте субагентів і керуйте ними для паралельного виконання завдань в ізольованих контекстних вікнах.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

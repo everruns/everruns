@@ -13,7 +13,7 @@
 //! - `finance_get_revenue_report`: Generate revenue report
 //! - `finance_forecast_cash_flow`: Forecast cash flow
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -35,6 +35,14 @@ impl Capability for FakeFinancialCapability {
 
     fn description(&self) -> &str {
         "Demo capability: financial management tools (transactions, budgets, reports, forecasting). State stored in session filesystem."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Демо-інструменти фінансів",
+            "Демонстраційна можливість: інструменти керування фінансами (транзакції, бюджети, звіти, прогнозування). Стан зберігається у файловій системі сесії.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

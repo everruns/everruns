@@ -7,7 +7,7 @@
 //! - `kv_store`: Key/value storage operations (set, get, delete, list)
 //! - `secret_store`: Encrypted secret storage operations (set, get, delete, list)
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -42,6 +42,20 @@ impl Capability for SessionStorageCapability {
 
 > [!TIP]
 > Use key/value storage for general data. Use secrets for sensitive information like API keys or tokens."#
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Сховище",
+            r#"Інструменти для збереження та отримання пар ключ-значення і зашифрованих секретів у межах сесії.
+
+> [!NOTE]
+> Дані зберігаються протягом усієї сесії. Секрети шифруються при зберіганні.
+
+> [!TIP]
+> Використовуйте сховище ключ-значення для загальних даних. Використовуйте секрети для чутливої інформації, як-от API-ключі чи токени."#,
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

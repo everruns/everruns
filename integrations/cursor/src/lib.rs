@@ -13,7 +13,8 @@ mod tools;
 use std::sync::Arc;
 
 use everruns_core::capabilities::{
-    Capability, CapabilityStatus, IntegrationPlugin, RiskLevel, ToolCallHook,
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+    ToolCallHook,
 };
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tool_narration::ToolNarrationPhase;
@@ -60,6 +61,15 @@ impl Capability for CursorCapability {
 
     fn description(&self) -> &str {
         "Create and manage Cursor Cloud Agents that work asynchronously on GitHub repositories."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Cursor",
+            "Створюйте агентів Cursor Cloud Agents, що асинхронно працюють із репозиторіями \
+             GitHub, і керуйте ними.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

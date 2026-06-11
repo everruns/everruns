@@ -10,7 +10,9 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
-use super::{Capability, CapabilityStatus, MountPoint, is_declarative_capability};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
+};
 use crate::app::{App, AppChannel, ChannelType};
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
@@ -127,6 +129,14 @@ impl Capability for PlatformManagementCapability {
 
     fn description(&self) -> &str {
         "Tools to manage harnesses, agents, apps, channels, and sessions. Create, list, update, delete entities and interact with sessions programmatically."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Керування платформою",
+            "Інструменти для керування harness-ами, агентами, застосунками, каналами та сесіями. Створюйте, переглядайте, оновлюйте й видаляйте сутності та взаємодійте із сесіями програмно.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

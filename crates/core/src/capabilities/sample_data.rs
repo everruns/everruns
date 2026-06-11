@@ -9,7 +9,9 @@
 //! - `/samples/config.yaml` - Sample configuration
 //! - `/samples/README.md` - Documentation about the sample files
 
-use super::{Capability, CapabilityStatus, MountDirectoryBuilder, MountPoint};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
+};
 
 /// Sample Data capability - demonstrates capability mounting
 pub struct SampleDataCapability;
@@ -108,6 +110,14 @@ impl Capability for SampleDataCapability {
 
     fn description(&self) -> &str {
         "Mounts sample data files in the session filesystem for demonstration and testing. Includes example JSON, YAML, and documentation files."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Зразкові дані",
+            "Монтує файли зі зразковими даними у файлову систему сесії для демонстрації та тестування. Містить приклади JSON, YAML і файлів документації.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

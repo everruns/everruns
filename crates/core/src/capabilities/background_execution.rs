@@ -10,7 +10,7 @@
 //! See `specs/background-execution.md` for the cross-cutting / meta-tool
 //! capability contract this implements.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tools::{SpawnBackgroundTool, Tool};
 
 /// Capability id used by the auto-activator in
@@ -38,6 +38,14 @@ impl Capability for BackgroundExecutionCapability {
         "Run any background-capable built-in tool asynchronously via \
          `spawn_background`. Auto-activated whenever the agent has a tool \
          that declares `supports_background=true`."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Фонове виконання",
+            "Запускайте будь-який вбудований інструмент із підтримкою фонового режиму асинхронно через `spawn_background`. Активується автоматично, щойно агент має інструмент, який оголошує `supports_background=true`.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

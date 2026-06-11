@@ -10,7 +10,7 @@
 //
 // See specs/budgeting.md (Self-Managed vs Platform-Enforced Budgets).
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 pub const SELF_BUDGET_CAPABILITY_ID: &str = "self_budget";
 
@@ -31,6 +31,14 @@ impl Capability for SelfBudgetCapability {
          The agent self-manages the target using session usage data; no tools are added \
          and no platform enforcement is performed. Use alongside `budgeting` for \
          authoritative platform budgets."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Самокерований бюджет",
+            "Лише промптові настанови для міркування про орієнтовний бюджет, заданий користувачем. Агент самостійно керує цільовим показником на основі даних про використання сесії; жодних інструментів не додається, і платформа нічого примусово не обмежує. Використовуйте разом із `budgeting` для авторитетних платформних бюджетів.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

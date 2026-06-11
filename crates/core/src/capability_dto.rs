@@ -130,7 +130,6 @@ pub struct CapabilityInfo {
     #[cfg_attr(
         feature = "openapi",
         schema(
-            value_type = Object,
             example = json!({
                 "uk": {"name": "Пам'ять", "description": "Монтує спільні файли пам'яті в сесії."}
             })

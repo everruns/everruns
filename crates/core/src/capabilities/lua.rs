@@ -18,7 +18,7 @@
 //! this capability requires `OrgRole::Admin` via the same gates as
 //! `virtual_bash` (`check_high_risk_caps` / `require_admin_for_high_risk`).
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
@@ -99,6 +99,19 @@ impl Capability for LuaCapability {
 > Scripts run in a virtual environment with no host or network access. The
 > session filesystem is available via the `fs` table and `json` is available
 > for structured data."#
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Lua",
+            r#"Виконуйте Lua-скрипти в ізольованому середовищі-пісочниці.
+
+> [!NOTE]
+> Скрипти виконуються у віртуальному середовищі без доступу до хоста чи мережі.
+> Файлова система сесії доступна через таблицю `fs`, а для структурованих даних
+> доступний `json`."#,
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
