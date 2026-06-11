@@ -1,5 +1,5 @@
 //! MessageMetadata Capability — annotates user/agent messages with metadata
-//! (currently the message sent time) in the prompt-facing model view.
+//! (currently the message timestamp) in the prompt-facing model view.
 //!
 //! Annotations are applied via [`ModelViewProvider`] at LLM message
 //! construction time; stored messages are never modified. Timestamps come from
@@ -24,15 +24,17 @@ pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageMetadataField {
-    /// Message creation time, rendered as `[sent <RFC3339 UTC>]`.
-    SentTime,
+    /// Message timestamp (`Message::created_at`), rendered as
+    /// `[time <RFC3339 UTC>]`. For user messages this is when the message was
+    /// received; for agent messages, when the reply was generated.
+    Timestamp,
 }
 
 impl MessageMetadataField {
     fn render(&self, msg: &Message) -> Option<String> {
         match self {
-            Self::SentTime => Some(format!(
-                "[sent {}]",
+            Self::Timestamp => Some(format!(
+                "[time {}]",
                 msg.created_at.to_rfc3339_opts(SecondsFormat::Secs, true)
             )),
         }
@@ -43,10 +45,10 @@ impl MessageMetadataField {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MessageMetadataConfig {
-    /// Annotate user messages with their sent time.
+    /// Annotate user messages.
     #[serde(default = "default_true")]
     pub user_messages: bool,
-    /// Annotate agent messages with their sent time.
+    /// Annotate agent messages.
     #[serde(default = "default_true")]
     pub agent_messages: bool,
     /// Which metadata fields to annotate, in render order.
@@ -69,7 +71,7 @@ fn default_true() -> bool {
 }
 
 fn default_fields() -> Vec<MessageMetadataField> {
-    vec![MessageMetadataField::SentTime]
+    vec![MessageMetadataField::Timestamp]
 }
 
 impl MessageMetadataConfig {
@@ -79,8 +81,8 @@ impl MessageMetadataConfig {
     }
 }
 
-/// MessageMetadata capability — annotates conversation messages with sent-time
-/// metadata when they are sent to the LLM.
+/// MessageMetadata capability — annotates conversation messages with metadata
+/// (e.g. their timestamp) when they are sent to the LLM.
 pub struct MessageMetadataCapability;
 
 impl Capability for MessageMetadataCapability {
@@ -93,7 +95,7 @@ impl Capability for MessageMetadataCapability {
     }
 
     fn description(&self) -> &str {
-        "Annotates user and agent messages with metadata (sent time, UTC) when building the LLM request, so the model can reason about timing and gaps between messages. Stored messages are unchanged."
+        "Annotates user and agent messages with metadata (message timestamp, UTC) when building the LLM request, so the model can reason about timing and gaps between messages. Stored messages are unchanged."
     }
 
     fn icon(&self) -> Option<&str> {
@@ -106,7 +108,7 @@ impl Capability for MessageMetadataCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Conversation messages carry a bracketed annotation added by the system, e.g. `[sent 2026-06-11T09:15:42Z]` (UTC). Use it to reason about timing and gaps between messages. It is not part of what the author wrote; never emit such annotations in your replies.",
+            "Conversation messages carry a bracketed annotation added by the system, e.g. `[time 2026-06-11T09:15:42Z]` — the message's timestamp (UTC). Use it to reason about timing and gaps between messages. It is not part of what the author wrote; never emit such annotations in your replies.",
         )
     }
 
@@ -128,9 +130,9 @@ impl Capability for MessageMetadataCapability {
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["sent_time"]
+                        "enum": ["timestamp"]
                     },
-                    "default": ["sent_time"],
+                    "default": ["timestamp"],
                     "title": "Metadata fields to annotate"
                 }
             },
@@ -182,7 +184,7 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
 }
 
 /// Render the combined metadata annotation for a message, e.g.
-/// `[sent 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
+/// `[time 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
 pub fn render_annotation(msg: &Message, fields: &[MessageMetadataField]) -> Option<String> {
     let segments: Vec<String> = fields.iter().filter_map(|f| f.render(msg)).collect();
     if segments.is_empty() {
@@ -227,8 +229,8 @@ mod tests {
         MessageMetadataModelViewProvider.apply_model_view(messages, &config, &ctx())
     }
 
-    fn sent_annotation(msg: &Message) -> String {
-        render_annotation(msg, &[MessageMetadataField::SentTime]).unwrap()
+    fn time_annotation(msg: &Message) -> String {
+        render_annotation(msg, &[MessageMetadataField::Timestamp]).unwrap()
     }
 
     #[test]
@@ -252,15 +254,15 @@ mod tests {
     fn test_annotates_user_and_agent_messages() {
         let user = Message::user("hello");
         let agent = Message::assistant("hi there");
-        let expected_user = sent_annotation(&user);
-        let expected_agent = sent_annotation(&agent);
+        let expected_user = time_annotation(&user);
+        let expected_agent = time_annotation(&agent);
 
         let out = apply(vec![user, agent], serde_json::json!({}));
 
         assert_eq!(
             out[0].text().unwrap(),
             format!("{expected_user} hello"),
-            "user message gets sent-time prefix"
+            "user message gets timestamp prefix"
         );
         assert_eq!(out[1].text().unwrap(), format!("{expected_agent} hi there"));
     }
@@ -279,8 +281,8 @@ mod tests {
     #[test]
     fn test_explicit_fields_config() {
         let user = Message::user("hello");
-        let expected = sent_annotation(&user);
-        let out = apply(vec![user], serde_json::json!({"fields": ["sent_time"]}));
+        let expected = time_annotation(&user);
+        let out = apply(vec![user], serde_json::json!({"fields": ["timestamp"]}));
         assert_eq!(out[0].text().unwrap(), format!("{expected} hello"));
     }
 
@@ -296,7 +298,7 @@ mod tests {
     fn test_config_disables_roles() {
         let user = Message::user("hello");
         let agent = Message::assistant("hi");
-        let expected_agent = sent_annotation(&agent);
+        let expected_agent = time_annotation(&agent);
 
         let out = apply(
             vec![user, agent],
@@ -315,7 +317,7 @@ mod tests {
             "get_weather",
             serde_json::json!({}),
         ))];
-        let expected = sent_annotation(&agent);
+        let expected = time_annotation(&agent);
 
         let out = apply(vec![agent], serde_json::json!({}));
 
@@ -329,7 +331,7 @@ mod tests {
         let user = Message::user("hello");
         let out = apply(vec![user], serde_json::json!({}));
         let text = out[0].text().unwrap();
-        assert!(text.starts_with("[sent 2"), "got: {text}");
+        assert!(text.starts_with("[time 2"), "got: {text}");
         assert!(text.contains("Z] hello"), "got: {text}");
     }
 
@@ -347,7 +349,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            cap.validate_config(&serde_json::json!({"fields": ["sent_time"]}))
+            cap.validate_config(&serde_json::json!({"fields": ["timestamp"]}))
                 .is_ok()
         );
         assert!(

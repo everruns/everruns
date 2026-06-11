@@ -1,6 +1,6 @@
 ---
 title: Message Metadata
-description: Annotate user and agent messages with metadata such as sent time when they are sent to the LLM, so agents can reason about timing and gaps between messages.
+description: Annotate user and agent messages with metadata such as their timestamp when they are sent to the LLM, so agents can reason about timing and gaps between messages.
 ---
 
 | | |
@@ -10,11 +10,13 @@ description: Annotate user and agent messages with metadata such as sent time wh
 | **Features** | None |
 | **Dependencies** | None |
 
-Annotates user and agent messages with metadata — currently the time each message was sent (UTC) — when building the LLM request. The model sees each message prefixed with an annotation like:
+Annotates user and agent messages with metadata — currently each message's timestamp (UTC) — when building the LLM request. The model sees each message prefixed with an annotation like:
 
 ```
-[sent 2026-06-11T09:15:42Z] What changed since yesterday?
+[time 2026-06-11T09:15:42Z] What changed since yesterday?
 ```
+
+For user messages the timestamp is when the message was received; for agent messages, when the reply was generated.
 
 This lets agents reason about timing: how long ago something was said, gaps between messages, and whether earlier statements are stale.
 
@@ -30,7 +32,7 @@ None.
 |---|---|---|---|
 | `user_messages` | boolean | `true` | Annotate user messages |
 | `agent_messages` | boolean | `true` | Annotate agent messages |
-| `fields` | array | `["sent_time"]` | Metadata fields to render, in order. Supported: `sent_time`. More fields (e.g. the LLM model) will be added over time. |
+| `fields` | array | `["timestamp"]` | Metadata fields to render, in order. Supported: `timestamp`. More fields (e.g. the LLM model) will be added over time. |
 
 ## See Also
 
