@@ -88,9 +88,12 @@ describe("capability localization", () => {
 
   it("resolves config description with en fallback", () => {
     expect(localizedConfigDescription(capability, "uk")).toBe("Визначає, які Пам'яті монтуються.");
-    expect(localizedConfigDescription({ ...capability, localizations: { en: { config_description: "Only en." } } }, "uk")).toBe(
-      "Only en.",
-    );
+    expect(
+      localizedConfigDescription(
+        { ...capability, localizations: { en: { config_description: "Only en." } } },
+        "uk",
+      ),
+    ).toBe("Only en.");
     expect(localizedConfigDescription({}, "uk")).toBeUndefined();
   });
 

@@ -62,7 +62,9 @@ describe("CapabilitySettingsEditor with uk locale", () => {
       />,
     );
 
-    expect(screen.getByText("Визначає, чи можна зберігати отримані відповіді.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Визначає, чи можна зберігати отримані відповіді."),
+    ).toBeInTheDocument();
     expect(screen.getByText("Дозволити збереження файлів")).toBeInTheDocument();
     expect(screen.getByText("Дозволяє зберігати відповіді у робочий простір.")).toBeInTheDocument();
     // Base English labels are replaced by the overlay.

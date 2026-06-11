@@ -21,10 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
-import {
-  localizedConfigDescription,
-  localizedConfigSchema,
-} from "@/lib/capability-localization";
+import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
 import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
 import { useLocale } from "@/providers/locale-provider";
 import { MemoryConfigEditor } from "./memory-config-editor";

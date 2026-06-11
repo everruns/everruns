@@ -44,6 +44,11 @@ import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
+import {
   getDisplayName,
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
@@ -60,6 +65,7 @@ function totalTokens(usage: TokenUsage): number {
 
 export default function AgentDetailPage({ params }: { params: Promise<{ agentId: string }> }) {
   const { agentId } = use(params);
+  const { locale } = useLocale();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
@@ -318,8 +324,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                           >
                             <IconComponent className="w-4 h-4" />
                             <div className="flex-1">
-                              <p className="text-sm font-medium">{cap.name}</p>
-                              <p className="text-xs text-muted-foreground">{cap.description}</p>
+                              <p className="text-sm font-medium">
+                                {localizedCapabilityName(cap, locale)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {localizedCapabilityDescription(cap, locale)}
+                              </p>
                             </div>
                           </div>
                         );
