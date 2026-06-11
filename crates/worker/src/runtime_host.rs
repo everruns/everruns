@@ -271,6 +271,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.durable_tool_result_store()
     }
 
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        self.adapters.subagent_spawn_store()
+    }
+
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
         self.adapters.stream_heartbeater()
     }

@@ -1547,6 +1547,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         })
     }
 
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        self.db.pool().map(|pool| {
+            Arc::new(crate::storage::PgSubagentSpawnStore::new(pool.clone()))
+                as Arc<dyn everruns_core::SubagentSpawnStore>
+        })
+    }
+
     async fn invoke_scheduled_app_channel(
         &self,
         org_id: i64,

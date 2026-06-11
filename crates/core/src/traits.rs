@@ -1180,6 +1180,11 @@ pub struct ToolContext {
 
     /// Optional internal payment authority for paid capability tools.
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
+
+    /// Optional durable spawn handle store for subagent reattach (EVE-535).
+    /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
+    /// on parent worker reclaim.
+    pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
 }
 
 impl ToolContext {
@@ -1214,6 +1219,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1248,6 +1254,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1285,6 +1292,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1323,6 +1331,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1399,6 +1408,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1483,6 +1493,12 @@ impl ToolContext {
     /// Set the internal payment authority for paid capability operations.
     pub fn with_payment_authority(mut self, authority: Arc<dyn PaymentAuthority>) -> Self {
         self.payment_authority = Some(authority);
+        self
+    }
+
+    /// Set the durable subagent spawn handle store (EVE-535).
+    pub fn with_subagent_spawn_store(mut self, store: Arc<dyn SubagentSpawnStore>) -> Self {
+        self.subagent_spawn_store = Some(store);
         self
     }
 
@@ -1579,6 +1595,7 @@ impl std::fmt::Debug for ToolContext {
             .field("event_emitter", &self.event_emitter.is_some())
             .field("tool_registry", &self.tool_registry.is_some())
             .field("payment_authority", &self.payment_authority.is_some())
+            .field("subagent_spawn_store", &self.subagent_spawn_store.is_some())
             .field("org_id", &self.org_id)
             .finish()
     }
@@ -1706,6 +1723,186 @@ pub trait ImageResolver: Send + Sync {
     ///
     /// Returns `None` if the image is not found.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
+}
+
+// ============================================================================
+// SubagentSpawnStore — durable spawn handles for subagent reattach (EVE-535)
+// ============================================================================
+
+/// Result of attempting to claim a subagent spawn slot.
+#[derive(Debug)]
+pub enum SpawnClaimResult {
+    /// First claim — child session does not yet exist.
+    /// Proceed to create the child, then call `register_child_session`.
+    Claimed {
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+    },
+    /// Row exists but `child_session_id` was never registered (crash between
+    /// claim and `register_child_session`). Re-create the child and call
+    /// `register_child_session` — same flow as `Claimed`.
+    ClaimedPendingChild {
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+    },
+    /// Child session was created and is still running.
+    /// Reattach: wait for the existing child and settle with the stored claim_token.
+    AlreadyRunning {
+        child_session_id: crate::typed_id::SessionId,
+        /// Stored claim token — must be used for `settle_spawn` on this replay.
+        claim_token: uuid::Uuid,
+    },
+    /// Child already finished on a previous execution.
+    /// Fast-path: return the stored result immediately without waiting.
+    AlreadySettled {
+        child_session_id: crate::typed_id::SessionId,
+        /// The `wait_for_idle` return value from the original execution.
+        terminal_status: String,
+        terminal_result: String,
+    },
+}
+
+/// Durable spawn handle store for subagent idempotency (EVE-535).
+///
+/// Maps `(parent_session_id, tool_call_id) → child_session_id` so that when
+/// a parent's `act` is reclaimed mid-`wait_for_idle`, the tool can reattach
+/// to the existing child instead of spawning a duplicate.
+///
+/// Lifecycle: claim → register_child_session → settle_spawn.
+#[async_trait]
+pub trait SubagentSpawnStore: Send + Sync + 'static {
+    /// Attempt to claim a spawn slot for `(parent_session_id, tool_call_id)`.
+    ///
+    /// Does NOT accept `child_session_id` — the child session does not exist yet.
+    /// Call `register_child_session` with the actual child ID after creating it.
+    async fn try_claim_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        subagent_name: &str,
+        subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult>;
+
+    /// Register the actual child session ID after it has been created.
+    ///
+    /// Must be called after `try_claim_spawn` returns `Claimed` or
+    /// `ClaimedPendingChild`, before waiting for the child to complete.
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()>;
+
+    /// Record the terminal result once the child has completed.
+    ///
+    /// `claim_token` must match the stored token. `terminal_status` is the
+    /// `wait_for_idle` return value ("idle", "error", "timeout", etc.) and
+    /// `terminal_result` is the last agent message.
+    async fn settle_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        claim_token: uuid::Uuid,
+        terminal_status: &str,
+        terminal_result: &str,
+    ) -> Result<()>;
+}
+
+/// Blanket impl: `Arc<S>` delegates to the inner store.
+#[async_trait]
+impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
+    async fn try_claim_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        subagent_name: &str,
+        subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult> {
+        (**self)
+            .try_claim_spawn(
+                parent_session_id,
+                tool_call_id,
+                subagent_name,
+                subagent_task,
+                claim_token,
+            )
+            .await
+    }
+
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        (**self)
+            .register_child_session(spawn_handle_id, claim_token, child_session_id)
+            .await
+    }
+
+    async fn settle_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        claim_token: uuid::Uuid,
+        terminal_status: &str,
+        terminal_result: &str,
+    ) -> Result<()> {
+        (**self)
+            .settle_spawn(
+                parent_session_id,
+                tool_call_id,
+                claim_token,
+                terminal_status,
+                terminal_result,
+            )
+            .await
+    }
+}
+
+/// No-op spawn store — used when no durable store is configured (dev/test).
+///
+/// Always claims (no dedup); settle and register are no-ops.
+pub struct NoopSubagentSpawnStore;
+
+#[async_trait]
+impl SubagentSpawnStore for NoopSubagentSpawnStore {
+    async fn try_claim_spawn(
+        &self,
+        _parent_session_id: crate::typed_id::SessionId,
+        _tool_call_id: &str,
+        _subagent_name: &str,
+        _subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult> {
+        Ok(SpawnClaimResult::Claimed {
+            spawn_handle_id: uuid::Uuid::new_v4(),
+            claim_token,
+        })
+    }
+
+    async fn register_child_session(
+        &self,
+        _spawn_handle_id: uuid::Uuid,
+        _claim_token: uuid::Uuid,
+        _child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn settle_spawn(
+        &self,
+        _parent_session_id: crate::typed_id::SessionId,
+        _tool_call_id: &str,
+        _claim_token: uuid::Uuid,
+        _terminal_status: &str,
+        _terminal_result: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 // ============================================================================

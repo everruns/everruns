@@ -182,6 +182,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
+    /// Default: `None` (no spawn dedup — dev/test mode or hosts without durable execution).
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        None
+    }
+
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
@@ -1152,6 +1158,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
+    }
+    if let Some(store) = adapter.subagent_spawn_store() {
+        atom = atom.with_subagent_spawn_store(store);
     }
 
     atom.execute(input).await

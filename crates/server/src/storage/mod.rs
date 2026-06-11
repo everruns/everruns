@@ -29,6 +29,7 @@ pub mod session_resource_store;
 pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;
+pub mod subagent_spawn_handles;
 
 #[cfg(test)]
 mod event_tests;
@@ -59,3 +60,4 @@ pub use session_storage_store::{
     create_db_session_storage_store_without_encryption,
 };
 pub use session_store::{DbSessionStore, create_db_session_store};
+pub use subagent_spawn_handles::PgSubagentSpawnStore;
