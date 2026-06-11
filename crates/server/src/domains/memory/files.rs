@@ -168,7 +168,7 @@ impl MemoryFileService {
         let content_bytes = if input.is_directory {
             None
         } else {
-            Some(input.content.clone().unwrap_or_default().into_bytes())
+            Some(input.content.unwrap_or_default())
         };
         let row = self
             .db
@@ -257,6 +257,14 @@ impl MemoryFileService {
         if pattern.is_empty() {
             return Err(MemoryFsError::InvalidPattern("empty pattern".into()));
         }
+        // Validate regex up-front so client errors surface as 400 rather than
+        // bubbling up from Postgres as a generic 500.
+        regex::Regex::new(pattern)
+            .map_err(|e| MemoryFsError::InvalidPattern(format!("pattern: {e}")))?;
+        if let Some(pp) = path_pattern {
+            regex::Regex::new(pp)
+                .map_err(|e| MemoryFsError::InvalidPattern(format!("path_pattern: {e}")))?;
+        }
         let rows = self
             .db
             .grep_memory_files(memory_id, pattern, path_pattern, GREP_MAX_FILE_BYTES)
@@ -290,8 +298,13 @@ impl MemoryFileService {
                     )));
                 }
                 None => {
-                    // auto-create the directory
-                    self.db
+                    // Auto-create the directory. Race-safe: a concurrent
+                    // request may have inserted the same parent between our
+                    // get_info check and this insert. On insert failure,
+                    // re-fetch and treat "already exists as directory" as
+                    // success; "already exists as file" surfaces as Conflict.
+                    if let Err(e) = self
+                        .db
                         .create_memory_file(
                             memory_id,
                             CreateMemoryFileRow {
@@ -301,7 +314,18 @@ impl MemoryFileService {
                                 content_hash: None,
                             },
                         )
-                        .await?;
+                        .await
+                    {
+                        match self.db.get_memory_file_info(memory_id, &current).await? {
+                            Some(row) if row.is_directory => continue,
+                            Some(_) => {
+                                return Err(MemoryFsError::Conflict(format!(
+                                    "parent {current} is a file, not a directory"
+                                )));
+                            }
+                            None => return Err(MemoryFsError::Other(e)),
+                        }
+                    }
                 }
             }
         }
@@ -309,11 +333,12 @@ impl MemoryFileService {
     }
 }
 
-/// Input for create_file.
+/// Input for create_file. `content` is raw bytes so binary uploads round-trip
+/// without lossy UTF-8 conversion at the service layer.
 #[derive(Debug, Clone)]
 pub struct NewFileInput {
     pub path: String,
-    pub content: Option<String>,
+    pub content: Option<Vec<u8>>,
     pub is_directory: bool,
 }
 
@@ -335,6 +360,15 @@ fn normalize_path(path: &str) -> Result<String, MemoryFsError> {
         return Err(MemoryFsError::InvalidPath(format!(
             "path must start with '/', got '{path}'"
         )));
+    }
+    // Reserve underscore-prefixed segments for fs/_ action routes.
+    if path
+        .split('/')
+        .any(|segment| segment.starts_with('_') && !segment.is_empty())
+    {
+        return Err(MemoryFsError::InvalidPath(
+            "path segments starting with '_' are reserved".into(),
+        ));
     }
     let trimmed = if path.len() > 1 && path.ends_with('/') {
         path.trim_end_matches('/').to_string()

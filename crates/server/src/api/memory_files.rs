@@ -214,7 +214,15 @@ fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
         MemoryFsError::IsDirectory | MemoryFsError::NotDirectory => {
             (StatusCode::BAD_REQUEST, e.to_string())
         }
-        MemoryFsError::Other(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
+        MemoryFsError::Other(inner) => {
+            // Internal errors (e.g. SQL failures) may carry sensitive context.
+            // Log server-side and surface a generic 500 to the caller.
+            tracing::error!(error = %inner, "memory_files: internal error");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal server error".to_string(),
+            )
+        }
     };
     (code, Json(ErrorResponse::new(msg)))
 }
@@ -277,7 +285,16 @@ pub async fn get_file(
         .resolve_memory(org.org_id, &memory_id)
         .await
         .map_err(err_to_response)?;
-    let normalized = ensure_leading_slash(&path);
+    // Normalize trailing slashes so `/foo/` and `/foo` resolve identically
+    // before the directory pre-check.
+    let normalized = {
+        let with_slash = ensure_leading_slash(&path);
+        if with_slash.len() > 1 && with_slash.ends_with('/') {
+            with_slash.trim_end_matches('/').to_string()
+        } else {
+            with_slash
+        }
+    };
     if let Some(info) = state
         .db
         .get_memory_file_info(mem.id, &normalized)
@@ -301,20 +318,9 @@ pub async fn get_file(
     Ok(Json(read_to_dto(read)).into_response())
 }
 
-#[utoipa::path(
-    description = "Create a file or directory at the Memory root.",
-    post,
-    path = "/v1/memories/{memory_id}/fs",
-    params(("memory_id" = String, Path, description = "Memory ID")),
-    request_body = CreateMemoryFileRequest,
-    responses(
-        (status = 201, description = "Created", body = MemoryFileInfo),
-        (status = 400, description = "Invalid input", body = ErrorResponse),
-        (status = 403, description = "Source-backed Memory is read-only", body = ErrorResponse),
-        (status = 409, description = "Path already exists", body = ErrorResponse)
-    ),
-    tag = "memory"
-)]
+// `POST /v1/memories/{id}/fs` is intentionally unsupported and not
+// documented in OpenAPI — clients must include a path. The handler exists
+// so the router method returns 400 rather than 405.
 pub async fn create_at_root(
     _org: ResolvedOrg,
     State(_state): State<AppState>,
@@ -358,12 +364,12 @@ pub async fn create_file(
         .await
         .map_err(err_to_response)?;
     let is_directory = req.is_directory.unwrap_or(false);
-    // For files we pass the decoded bytes through; for directories the content is ignored.
+    // Pass raw bytes through to the service; binary content must not be lossily
+    // converted to UTF-8 here.
     let content = if is_directory {
         None
     } else {
-        let decoded = decode_request_content(req.content, req.encoding)?;
-        Some(String::from_utf8(decoded.clone()).unwrap_or_else(|_| base64_encode(&decoded)))
+        Some(decode_request_content(req.content, req.encoding)?)
     };
     let row = svc
         .create_file(
@@ -584,8 +590,9 @@ fn ensure_leading_slash(path: &str) -> String {
 }
 
 fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, Json<ErrorResponse>) {
+    tracing::error!(error = %e, "memory_files: internal error");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse::new(e.to_string())),
+        Json(ErrorResponse::new("internal server error")),
     )
 }

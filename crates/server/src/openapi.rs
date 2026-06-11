@@ -215,7 +215,6 @@ use utoipa::OpenApi;
         // Memory virtual filesystem
         api::memory_files::list_root,
         api::memory_files::get_file,
-        api::memory_files::create_at_root,
         api::memory_files::create_file,
         api::memory_files::update_file,
         api::memory_files::delete_file,

@@ -443,8 +443,14 @@ impl InMemoryDatabase {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<MemoryFileInfoRow>> {
-        let needle = pattern.to_string();
-        let path_pat = path_pattern.map(|s| s.to_string());
+        // Use regex for both the content pattern and the optional path filter
+        // so dev/in-memory behavior matches the Postgres `~` semantics.
+        let content_re =
+            regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid pattern: {e}"))?;
+        let path_re = path_pattern
+            .map(regex::Regex::new)
+            .transpose()
+            .map_err(|e| anyhow::anyhow!("invalid path_pattern: {e}"))?;
         let mut rows: Vec<MemoryFileInfoRow> = self
             .memory_files
             .read()
@@ -453,8 +459,8 @@ impl InMemoryDatabase {
                 if f.memory_id != memory_id || f.is_directory || f.size_bytes > max_file_bytes {
                     return false;
                 }
-                if let Some(ref pp) = path_pat
-                    && !matches_search_tokens(Some(pp), &[&f.path])
+                if let Some(ref pr) = path_re
+                    && !pr.is_match(&f.path)
                 {
                     return false;
                 }
@@ -464,7 +470,7 @@ impl InMemoryDatabase {
                 let Ok(text) = std::str::from_utf8(content) else {
                     return false;
                 };
-                text.contains(&needle)
+                content_re.is_match(text)
             })
             .map(file_to_info)
             .collect();
