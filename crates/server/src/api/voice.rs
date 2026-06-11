@@ -57,6 +57,7 @@ const DEFAULT_MODEL: &str = "gpt-realtime-2";
 const DEFAULT_VOICE: &str = "marin";
 const DEFAULT_REASONING_EFFORT: &str = "low";
 const LEASE_SECONDS: u32 = 15 * 60;
+const PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 pub struct AppState {
@@ -585,13 +586,10 @@ async fn bootstrap_call(
         .map_err(provider_error)?;
     if !response.status().is_success() {
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .unwrap_or_else(|_| "<unreadable>".to_string());
+        let content_length = response.content_length();
         tracing::error!(
             provider_status = %status,
-            provider_body = %truncate_provider_error_body(&body),
+            provider_body = %redacted_provider_error_body(content_length),
             "Realtime voice provider returned an error"
         );
         emit_voice_failed(state, session_id, &voice_connection_id, "provider_error").await;
@@ -642,7 +640,10 @@ async fn bootstrap_call(
 
 impl AppState {
     fn http_client(&self) -> reqwest::Client {
-        reqwest::Client::new()
+        reqwest::Client::builder()
+            .timeout(PROVIDER_REQUEST_TIMEOUT)
+            .build()
+            .expect("voice provider HTTP client configuration is valid")
     }
 }
 
@@ -774,13 +775,11 @@ fn provider_error(error: impl std::fmt::Display) -> (StatusCode, Json<ErrorRespo
     ErrorResponse::bad_gateway()
 }
 
-fn truncate_provider_error_body(body: &str) -> String {
-    const LIMIT: usize = 2048;
-    let trimmed = body.trim();
-    if trimmed.chars().count() <= LIMIT {
-        return trimmed.to_string();
+fn redacted_provider_error_body(content_length: Option<u64>) -> String {
+    match content_length {
+        Some(bytes) => format!("<redacted; content_length={bytes} bytes>"),
+        None => "<redacted; content_length=unknown>".to_string(),
     }
-    format!("{}…", trimmed.chars().take(LIMIT).collect::<String>())
 }
 
 fn new_voice_connection_id() -> String {
@@ -1692,12 +1691,15 @@ mod tests {
     }
 
     #[test]
-    fn truncates_provider_error_bodies_for_logs() {
-        let body = "x".repeat(3000);
-        let truncated = truncate_provider_error_body(&body);
-
-        assert_eq!(truncated.chars().count(), 2049);
-        assert!(truncated.ends_with('…'));
+    fn redacts_provider_error_bodies_for_logs() {
+        assert_eq!(
+            redacted_provider_error_body(Some(3000)),
+            "<redacted; content_length=3000 bytes>"
+        );
+        assert_eq!(
+            redacted_provider_error_body(None),
+            "<redacted; content_length=unknown>"
+        );
     }
 
     #[tokio::test]
