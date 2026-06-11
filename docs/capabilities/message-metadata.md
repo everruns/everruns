@@ -28,8 +28,9 @@ None.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `user_messages` | boolean | `true` | Annotate user messages with sent time |
-| `agent_messages` | boolean | `true` | Annotate agent messages with sent time |
+| `user_messages` | boolean | `true` | Annotate user messages |
+| `agent_messages` | boolean | `true` | Annotate agent messages |
+| `fields` | array | `["sent_time"]` | Metadata fields to render, in order. Supported: `sent_time`. More fields (e.g. the LLM model) will be added over time. |
 
 ## See Also
 

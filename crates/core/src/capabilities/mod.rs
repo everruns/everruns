@@ -223,6 +223,7 @@ pub use mcp::{
 pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
+    MessageMetadataField, render_annotation,
 };
 pub use noop::NoopCapability;
 pub use openai_tool_search::{

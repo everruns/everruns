@@ -16,6 +16,29 @@ use crate::message::{ContentPart, Message, MessageRole};
 
 pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
 
+/// A metadata field that can be annotated onto a message.
+///
+/// New fields (e.g. the LLM model that produced an agent message, once stored
+/// messages record it) are added as variants here; each variant renders its
+/// own bracketed segment and may return `None` when the message lacks the data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MessageMetadataField {
+    /// Message creation time, rendered as `[sent <RFC3339 UTC>]`.
+    SentTime,
+}
+
+impl MessageMetadataField {
+    fn render(&self, msg: &Message) -> Option<String> {
+        match self {
+            Self::SentTime => Some(format!(
+                "[sent {}]",
+                msg.created_at.to_rfc3339_opts(SecondsFormat::Secs, true)
+            )),
+        }
+    }
+}
+
 /// Per-agent configuration for message metadata annotations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -26,6 +49,9 @@ pub struct MessageMetadataConfig {
     /// Annotate agent messages with their sent time.
     #[serde(default = "default_true")]
     pub agent_messages: bool,
+    /// Which metadata fields to annotate, in render order.
+    #[serde(default = "default_fields")]
+    pub fields: Vec<MessageMetadataField>,
 }
 
 impl Default for MessageMetadataConfig {
@@ -33,12 +59,17 @@ impl Default for MessageMetadataConfig {
         Self {
             user_messages: default_true(),
             agent_messages: default_true(),
+            fields: default_fields(),
         }
     }
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_fields() -> Vec<MessageMetadataField> {
+    vec![MessageMetadataField::SentTime]
 }
 
 impl MessageMetadataConfig {
@@ -92,6 +123,15 @@ impl Capability for MessageMetadataCapability {
                     "type": "boolean",
                     "default": true,
                     "title": "Annotate agent messages"
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["sent_time"]
+                    },
+                    "default": ["sent_time"],
+                    "title": "Metadata fields to annotate"
                 }
             },
             "additionalProperties": false
@@ -129,7 +169,7 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
                 MessageRole::System | MessageRole::ToolResult => false,
             };
             if annotate {
-                annotate_message(msg);
+                annotate_message(msg, &config.fields);
             }
         }
         messages
@@ -141,16 +181,21 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
     }
 }
 
-/// Render the metadata annotation for a message.
-pub fn sent_annotation(msg: &Message) -> String {
-    format!(
-        "[sent {}]",
-        msg.created_at.to_rfc3339_opts(SecondsFormat::Secs, true)
-    )
+/// Render the combined metadata annotation for a message, e.g.
+/// `[sent 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
+pub fn render_annotation(msg: &Message, fields: &[MessageMetadataField]) -> Option<String> {
+    let segments: Vec<String> = fields.iter().filter_map(|f| f.render(msg)).collect();
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments.join(" "))
+    }
 }
 
-fn annotate_message(msg: &mut Message) {
-    let annotation = sent_annotation(msg);
+fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
+    let Some(annotation) = render_annotation(msg, fields) else {
+        return;
+    };
     if let Some(ContentPart::Text(t)) = msg
         .content
         .iter_mut()
@@ -180,6 +225,10 @@ mod tests {
 
     fn apply(messages: Vec<Message>, config: serde_json::Value) -> Vec<Message> {
         MessageMetadataModelViewProvider.apply_model_view(messages, &config, &ctx())
+    }
+
+    fn sent_annotation(msg: &Message) -> String {
+        render_annotation(msg, &[MessageMetadataField::SentTime]).unwrap()
     }
 
     #[test]
@@ -225,6 +274,22 @@ mod tests {
 
         assert_eq!(out[0].text().unwrap(), "you are a bot");
         assert!(out[1].text().is_none());
+    }
+
+    #[test]
+    fn test_explicit_fields_config() {
+        let user = Message::user("hello");
+        let expected = sent_annotation(&user);
+        let out = apply(vec![user], serde_json::json!({"fields": ["sent_time"]}));
+        assert_eq!(out[0].text().unwrap(), format!("{expected} hello"));
+    }
+
+    #[test]
+    fn test_empty_fields_disable_annotations() {
+        let user = Message::user("hello");
+        let out = apply(vec![user], serde_json::json!({"fields": []}));
+        assert_eq!(out[0].text().unwrap(), "hello");
+        assert_eq!(out[0].content.len(), 1);
     }
 
     #[test]
@@ -280,6 +345,15 @@ mod tests {
         assert!(
             cap.validate_config(&serde_json::json!({"user_messages": "nope"}))
                 .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"fields": ["sent_time"]}))
+                .is_ok()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"fields": ["llm_model"]}))
+                .is_err(),
+            "unknown metadata fields are rejected until implemented"
         );
         assert!(
             cap.validate_config(&serde_json::json!({"unknown": true}))
