@@ -130,6 +130,7 @@ async fn fetch_via_egress_with_limit(
             content_type: meta.content_type,
             last_modified: meta.last_modified,
             etag: meta.etag,
+            redirect_chain,
             ..Default::default()
         });
     }
@@ -291,7 +292,7 @@ async fn send_following_redirects(
         let (validated_url, resolved_addrs) =
             crate::url_validation::validate_url_dns_pinned(&current_url)
                 .await
-                .map_err(|_| FetchError::BlockedUrl)?;
+                .map_err(map_url_validation_error)?;
         let pin_host = validated_url.host_str().unwrap_or("").to_string();
 
         let mut egress_request = EgressRequest::new(
@@ -346,6 +347,21 @@ async fn send_following_redirects(
     Err(FetchError::RequestError(format!(
         "too many redirects (more than {MAX_REDIRECTS})"
     )))
+}
+
+/// Map URL validation failures to fetch errors, keeping parity with the
+/// legacy path: malformed URLs and bad schemes surface as "Invalid URL…"
+/// rather than a generic policy block, which is reserved for SSRF denials.
+fn map_url_validation_error(error: crate::url_validation::UrlValidationError) -> FetchError {
+    use crate::url_validation::UrlValidationError;
+    match error {
+        UrlValidationError::InvalidUrl(_) | UrlValidationError::DisallowedScheme(_) => {
+            FetchError::InvalidUrlScheme
+        }
+        UrlValidationError::MissingHostname | UrlValidationError::BlockedHost(_) => {
+            FetchError::BlockedUrl
+        }
+    }
 }
 
 /// Map egress failures to fetch errors.
@@ -795,6 +811,22 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, FetchError::BlockedUrl), "got: {error}");
+    }
+
+    #[tokio::test]
+    async fn invalid_scheme_and_malformed_urls_report_invalid_url() {
+        let egress = MockEgress::with_responses(vec![]);
+
+        for url in ["ftp://93.184.216.34/file", "not a url"] {
+            let request = FetchRequest::new(url);
+            let error = fetch_via_egress(&request, &egress, allow_all().as_ref(), None)
+                .await
+                .unwrap_err();
+            assert!(
+                matches!(error, FetchError::InvalidUrlScheme),
+                "{url}: got {error}"
+            );
+        }
     }
 
     #[tokio::test]

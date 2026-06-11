@@ -13,7 +13,12 @@ export function parseNetworkAccessPatterns(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Patterns must be a domain, `*.domain`, or an http(s) URL prefix — never contain spaces. */
+/**
+ * Lightweight client-side sanity check: rejects patterns containing whitespace
+ * and URL prefixes with a non-http(s) scheme. Full pattern matching semantics
+ * (domain, `*.domain`, URL prefix) live server-side; anything passing here is
+ * still validated by the API.
+ */
 export function findInvalidPatterns(patterns: string[]): string[] {
   return patterns.filter((p) => /\s/.test(p) || (p.includes("://") && !/^https?:\/\//.test(p)));
 }

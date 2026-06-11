@@ -494,6 +494,16 @@ impl Tool for WebFetchTool {
             );
         }
 
+        // Legacy direct path only: the host-wide system allowlist is enforced
+        // here, before the per-session access list, so the operator-level
+        // policy yields a clear, distinct error when both would deny. On the
+        // egress path the boundary owns this check instead.
+        if context.egress_service.is_none()
+            && let Some(blocked) = self.system_policy_block(&request.url)
+        {
+            return blocked;
+        }
+
         // THREAT[TM-AGENT-018]: Enforce network access list. This is the
         // user-facing pre-check; on the egress path the boundary re-checks it.
         if let Some(ref acl) = context.network_access
@@ -543,11 +553,8 @@ impl Tool for WebFetchTool {
         }
 
         // Legacy direct path (no egress service in context, e.g. embedded
-        // hosts): fetchkit owns transport, so the host-wide system allowlist
-        // is enforced here as a pre-flight check.
-        if let Some(blocked) = self.system_policy_block(&request.url) {
-            return blocked;
-        }
+        // hosts): fetchkit owns transport; the system allowlist was already
+        // pre-checked above.
 
         // If no save_to_file, use the simple path (no saver needed)
         if request.save_to_file.is_none() {
@@ -640,6 +647,38 @@ mod tests {
         assert!(
             message.contains("blocked.example.com"),
             "error should include the URL, got: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_path_system_policy_error_wins_when_both_policies_deny() {
+        use crate::system_allowlist::SystemAllowlist;
+
+        let mut tool = tool_for_wiremock();
+        tool.system_allowlist = Some(
+            SystemAllowlist::from_toml("[groups.test]\nallowed = [\"allowed.example.com\"]\n")
+                .map(Arc::new)
+                .unwrap(),
+        );
+        // No egress service → legacy path; ACL denies the URL too.
+        let mut context = ToolContext::new(SessionId::new());
+        context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+            "allowed.example.com",
+        ]));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "https://blocked.example.com/x" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &result,
+                ToolExecutionResult::ToolError(msg) if msg.contains("blocked by system policy")
+            ),
+            "operator-level system policy error should take precedence, got: {result:?}"
         );
     }
 
