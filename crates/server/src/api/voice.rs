@@ -40,7 +40,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 use tokio::sync::mpsc;
@@ -58,6 +58,8 @@ const DEFAULT_VOICE: &str = "marin";
 const DEFAULT_REASONING_EFFORT: &str = "low";
 const LEASE_SECONDS: u32 = 15 * 60;
 const PROVIDER_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+static VOICE_HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
 #[derive(Clone)]
 pub struct AppState {
@@ -640,10 +642,14 @@ async fn bootstrap_call(
 
 impl AppState {
     fn http_client(&self) -> reqwest::Client {
-        reqwest::Client::builder()
-            .timeout(PROVIDER_REQUEST_TIMEOUT)
-            .build()
-            .expect("voice provider HTTP client configuration is valid")
+        VOICE_HTTP_CLIENT
+            .get_or_init(|| {
+                reqwest::Client::builder()
+                    .timeout(PROVIDER_REQUEST_TIMEOUT)
+                    .build()
+                    .expect("voice provider HTTP client configuration is valid")
+            })
+            .clone()
     }
 }
 
