@@ -411,6 +411,7 @@ impl Tool for SpawnSubagentTool {
 ///
 /// `settle_ctx` = (spawn_store, tool_call_id, spawn_handle_id, claim_token).
 /// `spawn_handle_id` is used to call `register_child_session` after child creation.
+#[allow(clippy::too_many_arguments)]
 async fn spawn_create_and_wait(
     store: &dyn PlatformStore,
     context: &ToolContext,
@@ -559,8 +560,8 @@ async fn run_subagent_wait_and_settle(
         .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
     // Settle the spawn handle if we have a durable store.
-    if let Some((spawn_store, tool_call_id, claim_token)) = settle_ctx {
-        if let Err(e) = spawn_store
+    if let Some((spawn_store, tool_call_id, claim_token)) = settle_ctx
+        && let Err(e) = spawn_store
             .settle_spawn(
                 context.session_id,
                 tool_call_id,
@@ -569,14 +570,13 @@ async fn run_subagent_wait_and_settle(
                 &result_text,
             )
             .await
-        {
-            // Best-effort: log but don't fail the tool execution.
-            tracing::warn!(
-                tool_call_id,
-                error = %e,
-                "Failed to settle subagent spawn handle"
-            );
-        }
+    {
+        // Best-effort: log but don't fail the tool execution.
+        tracing::warn!(
+            tool_call_id,
+            error = %e,
+            "Failed to settle subagent spawn handle"
+        );
     }
 
     // Update registry and persist metadata only when the child reached a
