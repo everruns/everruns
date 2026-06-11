@@ -903,6 +903,19 @@ pub enum ToolCallClaimResult {
     },
 }
 
+/// Read-only status of a tool call in durable storage (EVE-533).
+#[derive(Debug, Clone)]
+pub enum DurableToolCallStatus {
+    /// Tool completed successfully or with an error; result is stored.
+    Settled { result_json: serde_json::Value },
+    /// Tool was settled with `interrupted` status; result may contain error details.
+    Interrupted {
+        result_json: Option<serde_json::Value>,
+    },
+    /// A claim exists but the tool never finished.
+    Running,
+}
+
 /// Durable per-tool-call idempotency store (EVE-530).
 ///
 /// Implements the claim/settle CAS that prevents double-execution of
@@ -937,6 +950,16 @@ pub trait DurableToolResultStore: Send + Sync + 'static {
         status: &str,
         claim_token: uuid::Uuid,
     ) -> Result<bool>;
+
+    /// Read-only lookup of a tool call's current status in durable storage (EVE-533).
+    ///
+    /// Used by transcript repair to decide whether to replay a stored result or
+    /// synthesize an interrupted placeholder. Returns `None` if no row exists.
+    async fn get_tool_call_status(
+        &self,
+        turn_id: &str,
+        tool_call_id: &str,
+    ) -> Result<Option<DurableToolCallStatus>>;
 }
 
 /// No-op implementation — used when no durable store is configured (dev/test).
@@ -966,6 +989,14 @@ impl DurableToolResultStore for NoopDurableToolResultStore {
         _claim_token: uuid::Uuid,
     ) -> Result<bool> {
         Ok(true)
+    }
+
+    async fn get_tool_call_status(
+        &self,
+        _turn_id: &str,
+        _tool_call_id: &str,
+    ) -> Result<Option<DurableToolCallStatus>> {
+        Ok(None)
     }
 }
 

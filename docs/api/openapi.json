@@ -15690,6 +15690,9 @@
             "$ref": "#/components/schemas/ToolCallRequestedData"
           },
           {
+            "$ref": "#/components/schemas/TranscriptRepairedData"
+          },
+          {
             "$ref": "#/components/schemas/LlmGenerationData"
           },
           {
@@ -27790,6 +27793,39 @@
               "null"
             ],
             "description": "Stable fingerprint of tool name + normalized arguments."
+          }
+        }
+      },
+      "TranscriptRepairAction": {
+        "type": "string",
+        "description": "Action taken during transcript repair for a dangling tool call.",
+        "enum": [
+          "replay",
+          "synthesize"
+        ]
+      },
+      "TranscriptRepairedData": {
+        "type": "object",
+        "description": "Data for transcript.repaired event (EVE-533).\n\nEmitted once per dangling tool call when transcript repair runs before a `reason` call.\nA dangling call is an assistant `tool_call` with no matching `ToolResult` in the\nmessage history. Repair makes the transcript well-formed so the next LLM call succeeds.",
+        "required": [
+          "tool_call_id",
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/TranscriptRepairAction",
+            "description": "Action taken: `replay` (settled result reused) or `synthesize` (interrupted placeholder added)."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The tool call ID that was repaired."
+          },
+          "tool_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The tool name, if known."
           }
         }
       },

@@ -65,6 +65,7 @@ pub const TOOL_COMPLETED: &str = "tool.completed";
 pub const TOOL_PROGRESS: &str = "tool.progress";
 pub const TOOL_OUTPUT_DELTA: &str = "tool.output.delta";
 pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
+pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -464,6 +465,7 @@ impl Event {
                 | TOOL_COMPLETED
                 | TOOL_PROGRESS
                 | TOOL_CALL_REQUESTED
+                | TRANSCRIPT_REPAIRED
         )
     }
 
@@ -1242,6 +1244,36 @@ pub struct ToolOutputDeltaData {
 
     /// Output stream identifier (e.g., "stdout", "stderr")
     pub stream: String,
+}
+
+/// Action taken during transcript repair for a dangling tool call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRepairAction {
+    /// A settled result was found in durable storage and replayed into the transcript.
+    Replay,
+    /// A synthetic interrupted result was synthesized to make the transcript well-formed.
+    Synthesize,
+}
+
+/// Data for transcript.repaired event (EVE-533).
+///
+/// Emitted once per dangling tool call when transcript repair runs before a `reason` call.
+/// A dangling call is an assistant `tool_call` with no matching `ToolResult` in the
+/// message history. Repair makes the transcript well-formed so the next LLM call succeeds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TranscriptRepairedData {
+    /// The tool call ID that was repaired.
+    pub tool_call_id: String,
+
+    /// The tool name, if known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+
+    /// Action taken: `replay` (settled result reused) or `synthesize` (interrupted placeholder added).
+    pub action: TranscriptRepairAction,
 }
 
 /// Data for tool.call_requested event
@@ -2264,6 +2296,9 @@ pub enum EventData {
     ToolOutputDelta(ToolOutputDeltaData),
     ToolCallRequested(ToolCallRequestedData),
 
+    // Recovery / repair events
+    TranscriptRepaired(TranscriptRepairedData),
+
     // LLM events
     LlmGeneration(LlmGenerationData),
 
@@ -2357,6 +2392,7 @@ impl EventData {
             EventData::ToolProgress(_) => TOOL_PROGRESS,
             EventData::ToolOutputDelta(_) => TOOL_OUTPUT_DELTA,
             EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
+            EventData::TranscriptRepaired(_) => TRANSCRIPT_REPAIRED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
@@ -2468,6 +2504,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ToolOutputDelta),
             TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
                 .map(EventData::ToolCallRequested),
+            TRANSCRIPT_REPAIRED => serde_json::from_value::<TranscriptRepairedData>(data.clone())
+                .map(EventData::TranscriptRepaired),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
                 .map(EventData::LlmGeneration),
             REASON_THINKING_STARTED => {
@@ -2595,6 +2633,7 @@ impl_from_event_data! {
     ToolProgressData => ToolProgress,
     ToolOutputDeltaData => ToolOutputDelta,
     ToolCallRequestedData => ToolCallRequested,
+    TranscriptRepairedData => TranscriptRepaired,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

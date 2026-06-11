@@ -2864,6 +2864,24 @@ mod tests {
             }
             Ok(false)
         }
+
+        async fn get_tool_call_status(
+            &self,
+            turn_id: &str,
+            tool_call_id: &str,
+        ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+            let key = (turn_id.to_string(), tool_call_id.to_string());
+            let rows = self.rows.lock().unwrap();
+            Ok(rows.get(&key).map(|row| match row.status.as_str() {
+                "settled" => crate::traits::DurableToolCallStatus::Settled {
+                    result_json: row.result_json.clone(),
+                },
+                "interrupted" => crate::traits::DurableToolCallStatus::Interrupted {
+                    result_json: Some(row.result_json.clone()),
+                },
+                _ => crate::traits::DurableToolCallStatus::Running,
+            }))
+        }
     }
 
     fn make_act_input_with_store(
