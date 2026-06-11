@@ -7,6 +7,17 @@ cloud-based sandboxed code execution backed by the
 [Daytona](https://www.daytona.io) REST API, letting agents create sandboxes,
 run commands, and read or write files inside an isolated environment.
 
+## Quick Example
+
+```rust
+use everruns_core::capabilities::Capability;
+use everruns_integrations_daytona::DaytonaCapability;
+
+let capability = DaytonaCapability;
+
+assert_eq!(capability.id(), "daytona");
+```
+
 ## What It Provides
 
 - Per-session Daytona sandbox lifecycle (create, reuse, dispose)

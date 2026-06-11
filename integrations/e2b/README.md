@@ -7,6 +7,17 @@ cloud sandboxes backed by [E2B](https://e2b.dev), letting agents create
 sandboxes, run processes, and read or write files inside an isolated
 environment.
 
+## Quick Example
+
+```rust
+use everruns_core::capabilities::Capability;
+use everruns_integrations_e2b::E2BCapability;
+
+let capability = E2BCapability;
+
+assert_eq!(capability.id(), "e2b");
+```
+
 ## What It Provides
 
 - Per-session E2B sandbox lifecycle with leased-resource cleanup

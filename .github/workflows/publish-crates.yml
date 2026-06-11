@@ -160,6 +160,9 @@ jobs:
               "integrations/e2b/Cargo.toml": [
                   "everruns-core",
               ],
+              "integrations/parallel/Cargo.toml": [
+                  "everruns-core",
+              ],
           }
 
           for manifest_path, dependency_names in dependency_versions.items():
@@ -201,6 +204,7 @@ jobs:
             everruns-integrations-github
             everruns-integrations-daytona
             everruns-integrations-e2b
+            everruns-integrations-parallel
             everruns-runtime
           )
 
