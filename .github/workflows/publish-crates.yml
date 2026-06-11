@@ -154,6 +154,12 @@ jobs:
               "integrations/github/Cargo.toml": [
                   "everruns-core",
               ],
+              "integrations/daytona/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/e2b/Cargo.toml": [
+                  "everruns-core",
+              ],
           }
 
           for manifest_path, dependency_names in dependency_versions.items():
@@ -193,6 +199,8 @@ jobs:
             everruns-anthropic
             everruns-integrations-duckduckgo
             everruns-integrations-github
+            everruns-integrations-daytona
+            everruns-integrations-e2b
             everruns-runtime
           )
 

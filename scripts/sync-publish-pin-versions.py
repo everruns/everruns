@@ -37,6 +37,8 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/anthropic/Cargo.toml": ["everruns-core"],
     "integrations/duckduckgo/Cargo.toml": ["everruns-core"],
     "integrations/github/Cargo.toml": ["everruns-core"],
+    "integrations/daytona/Cargo.toml": ["everruns-core"],
+    "integrations/e2b/Cargo.toml": ["everruns-core"],
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
