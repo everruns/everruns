@@ -677,6 +677,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn relative_redirect_location_is_resolved_against_base() {
+        let egress = MockEgress::with_responses(vec![
+            MockEgress::ok(301, &[("location", "/moved/here")], ""),
+            MockEgress::ok(200, &[("content-type", "text/plain")], "moved"),
+        ]);
+        let request = FetchRequest::new("http://93.184.216.34/start");
+
+        let response = fetch_via_egress(&request, &egress, allow_all().as_ref(), None)
+            .await
+            .unwrap();
+
+        assert_eq!(response.url, "http://93.184.216.34/moved/here");
+        assert_eq!(
+            egress.requested_urls(),
+            vec![
+                "http://93.184.216.34/start",
+                "http://93.184.216.34/moved/here"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn redirect_to_non_http_scheme_is_rejected() {
+        let egress = MockEgress::with_responses(vec![MockEgress::ok(
+            302,
+            &[("location", "ftp://93.184.216.34/file")],
+            "",
+        )]);
+        let request = FetchRequest::new("http://93.184.216.34/start");
+
+        let error = fetch_via_egress(&request, &egress, allow_all().as_ref(), None)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, FetchError::InvalidUrlScheme),
+            "got: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn redirect_loop_stops_after_max_redirects() {
+        // Every hop redirects back to itself; the loop must terminate.
+        let hop = || MockEgress::ok(302, &[("location", "http://93.184.216.34/loop")], "");
+        let egress = MockEgress::with_responses((0..=MAX_REDIRECTS + 1).map(|_| hop()).collect());
+        let request = FetchRequest::new("http://93.184.216.34/loop");
+
+        let error = fetch_via_egress(&request, &egress, allow_all().as_ref(), None)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error.to_string().contains("too many redirects"),
+            "got: {error}"
+        );
+        assert_eq!(egress.requested_urls().len(), MAX_REDIRECTS + 1);
+    }
+
+    #[tokio::test]
+    async fn network_access_list_is_attached_to_every_egress_request() {
+        // The egress boundary is the final enforcement point, so the merged
+        // list must ride on each hop's EgressRequest, not just the first.
+        let egress = MockEgress::with_responses(vec![
+            MockEgress::ok(302, &[("location", "http://93.184.216.35/final")], ""),
+            MockEgress::ok(200, &[("content-type", "text/plain")], "done"),
+        ]);
+        let acl = NetworkAccessList::allow_only(["93.184.216.34", "93.184.216.35"]);
+        let request = FetchRequest::new("http://93.184.216.34/start");
+
+        fetch_via_egress(&request, &egress, Some(&acl), None)
+            .await
+            .unwrap();
+
+        let requests = egress.requests.lock().unwrap();
+        assert_eq!(requests.len(), 2);
+        for sent in requests.iter() {
+            assert_eq!(sent.network_access.as_ref(), Some(&acl));
+        }
+    }
+
+    #[tokio::test]
     async fn redirect_to_host_outside_access_list_is_blocked() {
         let egress = MockEgress::with_responses(vec![MockEgress::ok(
             302,

@@ -724,7 +724,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
-| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
+| TM-AGENT-018 | Outbound URL filtering on web_fetch | Medium | Per-layer `NetworkAccessList` (harness ∩ agent ∩ session, narrow-only merge) plus optional deployment-wide system allowlist, both enforced at the `EgressService` boundary; web_fetch routes through egress with per-redirect-hop re-validation | MITIGATED |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
 | TM-AGENT-021 | System prompt regurgitation | Medium | Opt-in `prompt_canary_guardrail` capability runs a streaming output guardrail that replaces the assistant message when the first sentence of the system prompt appears verbatim in the model output; original tokens are dropped and never persisted. Catches verbatim leaks only — paraphrased or partial leaks pass through. See `specs/capabilities.md` § Output Guardrails | MITIGATED (partial, opt-in) |
@@ -799,17 +799,13 @@ Agents with the `platform_management` capability can create, update, and delete 
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
 
-**TM-AGENT-018 — No Outbound URL Filtering on web_fetch (OPEN):**
+**TM-AGENT-018 — Outbound URL Filtering on web_fetch (MITIGATED):**
 An agent influenced by prompt injection (via tool results or user messages) could chain data access tools with `web_fetch` to exfiltrate sensitive session data. While TM-AGENT-013 accepts this risk for legitimate use by trusted org members, prompt injection (TM-AGENT-001, TM-AGENT-002) can cause the agent to act against the user's intent.
 
 - **Attack chain:** Injected instruction in tool result → agent reads sensitive file → agent calls `web_fetch` with file contents to attacker-controlled URL
-- **Impact:** Data exfiltration of session files, environment variables, or conversation history
-- **Recommendation:** Add configurable URL allowlist/blocklist to `web_fetch` capability. Options:
-  1. Per-agent allowlist of permitted outbound domains (strictest)
-  2. Global blocklist of known-bad patterns (e.g., webhook.site, requestbin)
-  3. Block outbound POST/PUT by default; require explicit opt-in
-  4. Log all outbound `web_fetch` calls with URL + payload size for audit
-- **Complements:** fetchkit's DnsPolicy already blocks private IPs (TM-API-008). This adds application-layer URL policy on top.
+- **Current mitigations:** (1) Per-layer `NetworkAccessList` (allowed/blocked patterns) on harness, agent, and session, merged narrow-only (intersection on `allowed`, union on `blocked`) — see `specs/network-access.md`; configurable via API and the agent/harness edit UI. (2) Optional deployment-wide system allowlist of curated public hosts, AND-ed as a hard ceiling — see `specs/system-allowlist.md`. (3) Both are enforced at the `EgressService` boundary; `web_fetch` routes through egress (`crates/core/src/capabilities/web_fetch_egress.rs`) with the list re-checked on every redirect hop.
+- **Residual risk:** Defaults are open — with no `NetworkAccessList` configured and the system allowlist disabled, outbound destinations are unrestricted (TM-AGENT-013 ACCEPTED). Outbound calls are not yet audit-logged with URL + payload size.
+- **Complements:** SSRF protection blocks private IPs with DNS pinning on the egress path (`validate_url_dns_pinned`, TM-API-008/TM-TOOL-018).
 - **Priority:** Medium
 
 **TM-AGENT-019 — Internal Network Probing via High-Risk Execution Capabilities (ACCEPTED):**
@@ -1356,7 +1352,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |
-| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Add URL allowlist/blocklist to web_fetch capability; audit outbound calls |
+| ~~TM-AGENT-018~~ | ~~No outbound URL filtering on web_fetch~~ | ~~Medium~~ | Mitigated: `NetworkAccessList` layers + system allowlist enforced at the egress boundary; outbound call audit logging still open |
 
 ### Accepted Risks
 
