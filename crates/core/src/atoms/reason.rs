@@ -39,7 +39,7 @@ use crate::events::{
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
+    LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
 use crate::llm_retry::is_transient_error_message;
 use crate::message::{Message, MessageRole};
@@ -2530,28 +2530,8 @@ impl ReasonAtom {
         &self,
         model: &ModelWithProvider,
     ) -> Result<crate::llm_driver_registry::BoxedLlmDriver> {
-        let provider_type = match model.provider_type {
-            crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
-            crate::llm_models::LlmProviderType::Openrouter => ProviderType::OpenRouter,
-            crate::llm_models::LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
-            crate::llm_models::LlmProviderType::OpenaiCompletions => {
-                ProviderType::OpenAICompletions
-            }
-            crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
-            crate::llm_models::LlmProviderType::Gemini => ProviderType::Gemini,
-            crate::llm_models::LlmProviderType::LlmSim => ProviderType::LlmSim,
-            crate::llm_models::LlmProviderType::Bedrock => ProviderType::Bedrock,
-        };
-
-        let mut config = ProviderConfig::new(provider_type);
-        if let Some(ref api_key) = model.api_key {
-            config = config.with_api_key(api_key);
-        }
-        if let Some(ref base_url) = model.base_url {
-            config = config.with_base_url(base_url);
-        }
-
-        self.driver_registry.create_driver(&config)
+        self.driver_registry
+            .create_driver(&ProviderConfig::from(model))
     }
 
     /// Resolve image_file references to actual image data

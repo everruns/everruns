@@ -930,6 +930,32 @@ impl ProviderConfig {
     }
 }
 
+impl From<crate::llm_models::LlmProviderType> for ProviderType {
+    fn from(provider_type: crate::llm_models::LlmProviderType) -> Self {
+        use crate::llm_models::LlmProviderType;
+        match provider_type {
+            LlmProviderType::Openai => ProviderType::OpenAI,
+            LlmProviderType::Openrouter => ProviderType::OpenRouter,
+            LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
+            LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
+            LlmProviderType::Anthropic => ProviderType::Anthropic,
+            LlmProviderType::Gemini => ProviderType::Gemini,
+            LlmProviderType::LlmSim => ProviderType::LlmSim,
+            LlmProviderType::Bedrock => ProviderType::Bedrock,
+        }
+    }
+}
+
+impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
+    fn from(model: &crate::traits::ModelWithProvider) -> Self {
+        Self {
+            provider_type: model.provider_type.clone().into(),
+            api_key: model.api_key.clone(),
+            base_url: model.base_url.clone(),
+        }
+    }
+}
+
 /// Boxed LLM driver for dynamic dispatch
 pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 

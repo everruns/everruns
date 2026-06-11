@@ -619,3 +619,76 @@ async fn execute_command_dispatches_to_capability_handler() {
         .await;
     assert!(unknown.is_err());
 }
+
+// EVE-543: /btw executes end to end through the core capability and the
+// store-backed command host — no host-specific executor.
+#[tokio::test]
+async fn execute_btw_command_returns_ephemeral_answer() {
+    use everruns_core::capabilities::BtwCapability;
+    use everruns_core::command::ExecuteCommandRequest;
+
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(BtwCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(LlmSimConfig::sequence(vec![
+            "main answer".to_string(),
+            "the side answer".to_string(),
+        ]))
+        .single_session(|s| {
+            s.harness("h", "You are a helpful assistant.")
+                .with_capability("btw")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+
+    // Establish history with a normal turn, then ask the side question.
+    let turn = runtime
+        .run_text_turn(session_id, "hello there")
+        .await
+        .unwrap();
+    assert!(turn.success);
+    let messages_before = runtime.messages(session_id).await.unwrap();
+
+    let result = runtime
+        .execute_command(
+            session_id,
+            ExecuteCommandRequest {
+                name: "btw".to_string(),
+                arguments: Some("what are you doing?".to_string()),
+                controls: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(result.success);
+    assert_eq!(result.message, "the side answer");
+
+    // Ephemeral: the side question/answer never reach the session history.
+    let messages_after = runtime.messages(session_id).await.unwrap();
+    assert_eq!(messages_before.len(), messages_after.len());
+
+    // Missing question is a capability-level validation error.
+    let missing = runtime
+        .execute_command(
+            session_id,
+            ExecuteCommandRequest {
+                name: "btw".to_string(),
+                arguments: None,
+                controls: None,
+            },
+        )
+        .await;
+    assert!(
+        missing
+            .unwrap_err()
+            .to_string()
+            .contains("requires a question")
+    );
+}

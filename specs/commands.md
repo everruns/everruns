@@ -17,9 +17,36 @@ See `crates/core/src/command.rs` for `CommandDescriptor`, `CommandSource`, `Comm
 
 ## Capability Trait Extension
 
-`Capability::commands()` returns `Vec<CommandDescriptor>` (default: empty). Capabilities that provide commands override this method.
+`Capability::commands()` returns `Vec<CommandDescriptor>` (default: empty). Capabilities that provide commands override this method. `Capability::execute_command()` executes a declared command; capabilities that declare commands must override it.
 
 See `crates/core/src/capabilities/btw.rs` for the built-in `/btw` capability.
+
+## Command Host (EVE-543)
+
+Some commands need an out-of-band LLM call over the session's assembled context — `/btw` is the canonical case. Historically the server intercepted `/btw` with a bespoke executor before capability dispatch, so every other host (`InProcessRuntime` embedders) either got a broken `/btw` or vendored a reimplementation. The contract is instead extended so this class of command is implementable once, inside the capability.
+
+### Contract
+
+`CommandExecutionContext` carries, in addition to `session_id`, a host handle implementing `CommandHost` with two facilities:
+
+1. **Turn-context access** — `turn_context()` assembles the same merged view a main turn would see (capability message filters applied, merged harness/agent/session system prompt, resolved model identity). The returned view is credential-free: it exposes the model name and provider type for error classification but never API keys or base URLs.
+2. **Session completion** — `completion(request)` runs a tool-less completion against the session's resolved model (or a per-invocation `Controls` model override, resolved through the same org-scoped store as a main turn). The capability supplies the system prompt stack and core `Message`s; the host owns provider conversion (image resolution, external-actor prefixes, dangling-tool-call patching), driver creation, and credentials. Completion errors carry the resolved provider/model identity so callers can classify them into stable user-facing error codes.
+
+Command execution stays out-of-band by construction: the host facilities persist nothing (no messages, no events). A future facility for explicit persistence can be added if a command needs it.
+
+Decisions:
+
+- Two composable facilities rather than one "run /btw" helper, so future commands can reshape the context (different system prompt, truncated history) without new contract surface.
+- The completion facility is deliberately tool-less, mirroring `UtilityLlmService`'s request conventions, but it is a distinct abstraction: the utility LLM is a deployment-fixed model with host credentials; session completion uses the session's resolved, org-scoped model.
+- Credentials never cross the trait boundary (same posture as TM-LLM-021 for the utility LLM).
+- Hosts that cannot provide the facilities pass a disabled host whose methods fail with a clear "host does not support context-aware commands" error, so misconfiguration surfaces at invocation, not silently.
+
+### One implementation, three hosts
+
+Core provides a store-backed `CommandHost` implementation built from the existing store traits (`HarnessStore`, `AgentStore`, `SessionStore`, `MessageRetriever`, `LlmProviderStore`, optional `ImageResolver`/`SessionFileSystem`) plus the capability and driver registries. It reuses `inspect_turn_context` and the reason-path message-building helpers, so the side answer sees exactly what a main turn would.
+
+- **Server (full and dev mode)** — `SessionCommandService` wires the store-backed host from its worker adapters and dispatches every system command through `Capability::execute_command`; the bespoke `/btw` executor and its command-name special case are gone.
+- **In-process runtime** — `InProcessRuntime::execute_command` wires the same host from its runtime stores, so embedders get working context-aware commands just by registering the capability.
 
 Current built-in system command:
 

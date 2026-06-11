@@ -716,10 +716,10 @@ pub trait Capability: Send + Sync {
     /// references they captured at construction time to mutate any external
     /// state (provider store, file system, etc.).
     ///
-    /// The server's `/btw` flow does not route through this method — it has
-    /// its own bespoke executor because it needs to construct an out-of-band
-    /// LLM call with the session's prompt context. This hook is for
-    /// commands that can execute purely from the capability's own state.
+    /// Commands that need the session's assembled context or an out-of-band
+    /// LLM call (e.g. `/btw`) use the host facilities on
+    /// [`CommandExecutionContext::host`] — see
+    /// [`crate::command_host::CommandHost`] and specs/commands.md.
     async fn execute_command(
         &self,
         request: &ExecuteCommandRequest,
