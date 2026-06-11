@@ -35,6 +35,7 @@ mod session_resources;
 mod session_storage;
 mod sessions;
 mod skills;
+pub mod subagent_spawn_handles;
 mod user_connections;
 mod users;
 

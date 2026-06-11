@@ -19,7 +19,7 @@ use super::{Capability, CapabilityStatus};
 use crate::platform_store::PlatformStore;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{SpawnClaimResult, ToolContext};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -299,138 +299,288 @@ impl Tool for SpawnSubagentTool {
             }
         }
 
-        // Create child session
-        let child_session = match store
-            .create_session(
-                parent_session.harness_id,
-                if blueprint_param.is_some() {
-                    None // Blueprint sessions don't inherit agent
-                } else {
-                    parent_session.agent_id
-                },
-                Some(&name),
-                parent_session.locale.as_deref(),
-                blueprint_param.as_deref(),
-                config_param.as_ref(),
-            )
-            .await
+        // --- Durable spawn handle claim (EVE-535) ---
+        //
+        // When a spawn store and tool_call_id are available, attempt to claim a
+        // spawn slot before creating the child session.  On reclaim, this lets us
+        // reattach to the existing child instead of spawning a duplicate.
+        if let (Some(spawn_store), Some(tool_call_id)) =
+            (&context.subagent_spawn_store, &context.tool_call_id)
         {
-            Ok(s) => s,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-        let child_session = match store
-            .set_subagent_metadata(
-                child_session.id,
-                context.session_id,
-                &name,
-                &task,
-                crate::session::SubagentStatus::Running,
-            )
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
+            // Pre-generate IDs so we can pass child_session_id to the claim CAS.
+            let prospective_child_id = crate::typed_id::SessionId::from(uuid::Uuid::new_v4());
+            let claim_token = uuid::Uuid::new_v4();
 
-        // Register subagent in session resource registry.
-        if let Some(ref registry) = context.session_resource_registry {
-            let _ = registry
-                .register(crate::session_resource::RegisterSessionResource {
-                    session_id: context.session_id,
-                    resource_id: child_session.id.to_string(),
-                    kind: "subagent".to_string(),
-                    display_name: name.clone(),
-                    status: crate::session_resource::SessionResourceStatus::Active,
-                    metadata: json!({
-                        "task": &task,
-                        "blueprint_id": &blueprint_param,
-                    }),
-                })
-                .await;
-        }
-
-        // Send the task as the first message
-        if let Err(e) = store.send_message(child_session.id, &task).await {
-            return ToolExecutionResult::internal_error(e);
-        }
-
-        // Foreground mode: wait for completion
-        let status = match store.wait_for_idle(child_session.id, Some(300)).await {
-            Ok(s) => s,
-            Err(e) => {
-                // Mark as failed in registry.
-                if let Some(ref registry) = context.session_resource_registry {
-                    let _ = registry
-                        .update_status(
-                            context.session_id,
-                            &child_session.id.to_string(),
-                            crate::session_resource::SessionResourceStatus::Failed,
-                        )
-                        .await;
-                }
-                return ToolExecutionResult::success(json!({
-                    "subagent_id": child_session.id.to_string(),
-                    "name": name,
-                    "status": "failed",
-                    "error": e.to_string(),
-                    "blueprint": blueprint_param,
-                }));
-            }
-        };
-
-        // Get the subagent's response messages
-        let messages = match store.get_messages(child_session.id, Some(5)).await {
-            Ok(m) => m,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        let result_text = last_agent_message(&messages)
-            .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
-
-        // Update registry and persist metadata only when the child reached a
-        // terminal state.  Non-terminal results from wait_for_idle (paused,
-        // waiting_for_tool_results, timeout) leave the child Active.
-        if status == "idle" {
-            if let Some(ref registry) = context.session_resource_registry {
-                let _ = registry
-                    .update_status(
-                        context.session_id,
-                        &child_session.id.to_string(),
-                        crate::session_resource::SessionResourceStatus::Completed,
-                    )
-                    .await;
-            }
-            if let Err(e) = store
-                .set_subagent_metadata(
-                    child_session.id,
+            let claim = match spawn_store
+                .try_claim_spawn(
                     context.session_id,
+                    tool_call_id,
+                    prospective_child_id,
                     &name,
                     &task,
-                    crate::session::SubagentStatus::Completed,
+                    claim_token,
                 )
                 .await
             {
-                tracing::warn!(
-                    session_id = %context.session_id,
-                    child_session_id = %child_session.id,
-                    error = %e,
-                    "failed to persist subagent completed metadata"
-                );
+                Ok(c) => c,
+                Err(e) => return ToolExecutionResult::internal_error(e),
+            };
+
+            match claim {
+                SpawnClaimResult::AlreadySpawned {
+                    child_session_id,
+                    terminal_result: Some(result_text),
+                } => {
+                    // Already settled on a previous execution: return stored result.
+                    return ToolExecutionResult::success(json!({
+                        "subagent_id": child_session_id.to_string(),
+                        "name": name,
+                        "status": "completed",
+                        "result": result_text,
+                        "blueprint": blueprint_param,
+                    }));
+                }
+                SpawnClaimResult::AlreadySpawned {
+                    child_session_id,
+                    terminal_result: None,
+                } => {
+                    // Child was spawned before but hasn't settled yet — reattach.
+                    return run_subagent_wait_and_settle(
+                        store,
+                        context,
+                        child_session_id,
+                        &name,
+                        &task,
+                        &blueprint_param,
+                        Some((spawn_store.as_ref(), tool_call_id.as_str(), claim_token)),
+                    )
+                    .await;
+                }
+                SpawnClaimResult::Claimed {
+                    claim_token: actual_claim_token,
+                    ..
+                } => {
+                    // First claim: proceed to create the child session below, then
+                    // settle after completion.
+                    return spawn_create_and_wait(
+                        store,
+                        context,
+                        &parent_session,
+                        &name,
+                        &task,
+                        &blueprint_param,
+                        &config_param,
+                        Some((
+                            spawn_store.as_ref(),
+                            tool_call_id.as_str(),
+                            actual_claim_token,
+                        )),
+                    )
+                    .await;
+                }
             }
         }
 
-        ToolExecutionResult::success(json!({
-            "subagent_id": child_session.id.to_string(),
-            "name": name,
-            "status": status,
-            "result": result_text,
-            "blueprint": blueprint_param,
-        }))
+        // --- No-spawn-store path (dev / noop) ---
+        spawn_create_and_wait(
+            store,
+            context,
+            &parent_session,
+            &name,
+            &task,
+            &blueprint_param,
+            &config_param,
+            None,
+        )
+        .await
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+// =============================================================================
+// Helpers for SpawnSubagentTool
+// =============================================================================
+
+/// Create a new child session, send the task, wait for completion, and settle
+/// the spawn handle (if a settle context is supplied).
+async fn spawn_create_and_wait(
+    store: &dyn PlatformStore,
+    context: &ToolContext,
+    parent_session: &crate::session::Session,
+    name: &str,
+    task: &str,
+    blueprint_param: &Option<String>,
+    config_param: &Option<Value>,
+    settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
+) -> ToolExecutionResult {
+    // Create child session
+    let child_session = match store
+        .create_session(
+            parent_session.harness_id,
+            if blueprint_param.is_some() {
+                None // Blueprint sessions don't inherit agent
+            } else {
+                parent_session.agent_id
+            },
+            Some(name),
+            parent_session.locale.as_deref(),
+            blueprint_param.as_deref(),
+            config_param.as_ref(),
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => return ToolExecutionResult::internal_error(e),
+    };
+    let child_session = match store
+        .set_subagent_metadata(
+            child_session.id,
+            context.session_id,
+            name,
+            task,
+            crate::session::SubagentStatus::Running,
+        )
+        .await
+    {
+        Ok(s) => s,
+        Err(e) => return ToolExecutionResult::internal_error(e),
+    };
+
+    // Register subagent in session resource registry.
+    if let Some(ref registry) = context.session_resource_registry {
+        let _ = registry
+            .register(crate::session_resource::RegisterSessionResource {
+                session_id: context.session_id,
+                resource_id: child_session.id.to_string(),
+                kind: "subagent".to_string(),
+                display_name: name.to_string(),
+                status: crate::session_resource::SessionResourceStatus::Active,
+                metadata: json!({
+                    "task": task,
+                    "blueprint_id": blueprint_param,
+                }),
+            })
+            .await;
+    }
+
+    // Send the task as the first message
+    if let Err(e) = store.send_message(child_session.id, task).await {
+        return ToolExecutionResult::internal_error(e);
+    }
+
+    run_subagent_wait_and_settle(
+        store,
+        context,
+        child_session.id,
+        name,
+        task,
+        blueprint_param,
+        settle_ctx,
+    )
+    .await
+}
+
+/// Wait for a child session to reach idle, collect its result, update the
+/// registry, and settle the spawn handle (if a settle context is supplied).
+async fn run_subagent_wait_and_settle(
+    store: &dyn PlatformStore,
+    context: &ToolContext,
+    child_id: crate::typed_id::SessionId,
+    name: &str,
+    task: &str,
+    blueprint_param: &Option<String>,
+    settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
+) -> ToolExecutionResult {
+    // Foreground mode: wait for completion
+    let status = match store.wait_for_idle(child_id, Some(300)).await {
+        Ok(s) => s,
+        Err(e) => {
+            // Mark as failed in registry.
+            if let Some(ref registry) = context.session_resource_registry {
+                let _ = registry
+                    .update_status(
+                        context.session_id,
+                        &child_id.to_string(),
+                        crate::session_resource::SessionResourceStatus::Failed,
+                    )
+                    .await;
+            }
+            return ToolExecutionResult::success(json!({
+                "subagent_id": child_id.to_string(),
+                "name": name,
+                "status": "failed",
+                "error": e.to_string(),
+                "blueprint": blueprint_param,
+            }));
+        }
+    };
+
+    // Get the subagent's response messages
+    let messages = match store.get_messages(child_id, Some(5)).await {
+        Ok(m) => m,
+        Err(e) => return ToolExecutionResult::internal_error(e),
+    };
+
+    let result_text = last_agent_message(&messages)
+        .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
+
+    // Settle the spawn handle if we have a durable store.
+    if let Some((spawn_store, tool_call_id, claim_token)) = settle_ctx {
+        if let Err(e) = spawn_store
+            .settle_spawn(context.session_id, tool_call_id, claim_token, &result_text)
+            .await
+        {
+            // Best-effort: log but don't fail the tool execution.
+            tracing::warn!(
+                tool_call_id,
+                error = %e,
+                "Failed to settle subagent spawn handle"
+            );
+        }
+    }
+
+    // Update registry and persist metadata only when the child reached a
+    // terminal state.  Non-terminal results from wait_for_idle (paused,
+    // waiting_for_tool_results, timeout) leave the child Active.
+    if status == "idle" {
+        if let Some(ref registry) = context.session_resource_registry {
+            let _ = registry
+                .update_status(
+                    context.session_id,
+                    &child_id.to_string(),
+                    crate::session_resource::SessionResourceStatus::Completed,
+                )
+                .await;
+        }
+        if let Err(e) = store
+            .set_subagent_metadata(
+                child_id,
+                context.session_id,
+                name,
+                task,
+                crate::session::SubagentStatus::Completed,
+            )
+            .await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                child_session_id = %child_id,
+                error = %e,
+                "failed to persist subagent completed metadata"
+            );
+        }
+    }
+
+    ToolExecutionResult::success(json!({
+        "subagent_id": child_id.to_string(),
+        "name": name,
+        "status": status,
+        "result": result_text,
+        "blueprint": blueprint_param,
+    }))
 }
 
 // =============================================================================
@@ -782,5 +932,60 @@ mod tests {
             .execute(json!({"name_or_id": "Test", "message": "hello"}))
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+    }
+
+    // =========================================================================
+    // Spawn handle tests (EVE-535)
+    // =========================================================================
+
+    use crate::traits::{NoopSubagentSpawnStore, SpawnClaimResult, SubagentSpawnStore};
+    use std::sync::Arc;
+
+    /// NoopSubagentSpawnStore always returns Claimed with a fresh token.
+    #[tokio::test]
+    async fn noop_spawn_store_always_claims() {
+        let store = NoopSubagentSpawnStore;
+        let parent = crate::typed_id::SessionId::new();
+        let child = crate::typed_id::SessionId::new();
+        let token = uuid::Uuid::new_v4();
+
+        let result = store
+            .try_claim_spawn(parent, "call-1", child, "Worker", "do work", token)
+            .await
+            .expect("noop should not error");
+
+        assert!(
+            matches!(result, SpawnClaimResult::Claimed { claim_token, .. } if claim_token == token),
+            "noop store should return Claimed with the supplied token"
+        );
+    }
+
+    /// NoopSubagentSpawnStore settle is always successful.
+    #[tokio::test]
+    async fn noop_spawn_store_settle_is_noop() {
+        let store = NoopSubagentSpawnStore;
+        let parent = crate::typed_id::SessionId::new();
+        let token = uuid::Uuid::new_v4();
+
+        store
+            .settle_spawn(parent, "call-1", token, "result text")
+            .await
+            .expect("noop settle should not error");
+    }
+
+    /// Arc<dyn SubagentSpawnStore> blanket impl delegates correctly.
+    #[tokio::test]
+    async fn arc_spawn_store_delegates() {
+        let store: Arc<dyn SubagentSpawnStore> = Arc::new(NoopSubagentSpawnStore);
+        let parent = crate::typed_id::SessionId::new();
+        let child = crate::typed_id::SessionId::new();
+        let token = uuid::Uuid::new_v4();
+
+        let result = store
+            .try_claim_spawn(parent, "call-arc", child, "ArcWorker", "arc task", token)
+            .await
+            .expect("arc delegation should not error");
+
+        assert!(matches!(result, SpawnClaimResult::Claimed { .. }));
     }
 }

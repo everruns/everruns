@@ -257,6 +257,10 @@ where
     /// workers can skip already-settled calls and avoid double side-effects for
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    /// Durable spawn handle store for subagent reattach (EVE-535). When present,
+    /// `spawn_subagent` claims a slot before creating the child and settles after
+    /// completion, enabling reattach on reclaim.
+    subagent_spawn_store: Option<Arc<dyn crate::traits::SubagentSpawnStore>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -310,6 +314,7 @@ where
             payment_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            subagent_spawn_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -350,6 +355,7 @@ where
             payment_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            subagent_spawn_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -573,6 +579,15 @@ where
         store: Arc<dyn DurableToolResultStore>,
     ) -> Self {
         self.durable_tool_result_store = Some(store);
+        self
+    }
+
+    /// Set the durable subagent spawn handle store (EVE-535).
+    pub fn with_subagent_spawn_store(
+        mut self,
+        store: Arc<dyn crate::traits::SubagentSpawnStore>,
+    ) -> Self {
+        self.subagent_spawn_store = Some(store);
         self
     }
 }
@@ -1490,6 +1505,9 @@ where
         }
         if let Some(ref authority) = self.payment_authority {
             tool_context.payment_authority = Some(authority.clone());
+        }
+        if let Some(ref store) = self.subagent_spawn_store {
+            tool_context.subagent_spawn_store = Some(store.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence

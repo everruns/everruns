@@ -312,6 +312,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
+    /// Default: `None` (no spawn dedup — suitable for dev/test environments).
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        None
+    }
+
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
