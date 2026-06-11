@@ -96,12 +96,22 @@ interface SessionTaskChipsProps {
 }
 
 export function SessionTaskChips({ sessionId, basePath, hasTasksFeature }: SessionTaskChipsProps) {
-  const { data: tasks } = useSessionTasks(hasTasksFeature ? sessionId : undefined);
+  // Gate before mounting the inner component: useSessionTasks requires org
+  // context and opens an SSE subscription, so it must not run at all when the
+  // feature is off or no session exists.
+  if (!hasTasksFeature || !sessionId) {
+    return null;
+  }
+  return <ActiveTaskChips sessionId={sessionId} basePath={basePath} />;
+}
+
+function ActiveTaskChips({ sessionId, basePath }: { sessionId: string; basePath: string }) {
+  const { data: tasks } = useSessionTasks(sessionId);
 
   const activeTasks = tasks ? tasks.filter((t) => isActiveState(t.state)) : [];
 
-  // Render nothing (zero vertical space) when gated or no active tasks.
-  if (!hasTasksFeature || activeTasks.length === 0) {
+  // Render nothing (zero vertical space) when there are no active tasks.
+  if (activeTasks.length === 0) {
     return null;
   }
 
