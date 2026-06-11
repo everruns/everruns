@@ -115,11 +115,10 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         if let Some(entry) = handles
             .values_mut()
             .find(|e| e.spawn_handle_id == spawn_handle_id && e.claim_token == claim_token)
+            && entry.status == SpawnStatus::Pending
         {
-            if entry.status == SpawnStatus::Pending {
-                entry.child_session_id = Some(child_session_id);
-                entry.status = SpawnStatus::Running;
-            }
+            entry.child_session_id = Some(child_session_id);
+            entry.status = SpawnStatus::Running;
         }
         Ok(())
     }
@@ -135,12 +134,13 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         let key = (parent_session_id, tool_call_id.to_string());
         let mut handles = self.handles.lock();
 
-        if let Some(entry) = handles.get_mut(&key) {
-            if entry.claim_token == claim_token && entry.status == SpawnStatus::Running {
-                entry.status = SpawnStatus::Settled;
-                entry.terminal_status = Some(terminal_status.to_string());
-                entry.terminal_result = Some(terminal_result.to_string());
-            }
+        if let Some(entry) = handles.get_mut(&key)
+            && entry.claim_token == claim_token
+            && entry.status == SpawnStatus::Running
+        {
+            entry.status = SpawnStatus::Settled;
+            entry.terminal_status = Some(terminal_status.to_string());
+            entry.terminal_result = Some(terminal_result.to_string());
         }
 
         Ok(())
