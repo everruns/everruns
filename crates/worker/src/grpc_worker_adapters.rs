@@ -541,7 +541,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         _stale_after: chrono::Duration,
         _limit: i64,
     ) -> Result<Vec<(everruns_core::SessionId, String)>> {
-        Ok(vec![])
+        // Fail fast instead of silently masking orphans: remote workers have
+        // no orphan-listing RPC yet, and session_task_reaper is excluded from
+        // their default activity types. A misconfigured opt-in surfaces here.
+        Err(everruns_core::AgentLoopError::store(
+            "session_task_reaper is not supported on gRPC workers (no orphan-listing RPC);              run it on the in-process worker",
+        ))
     }
 
     fn reaper_session_task_registry(

@@ -244,18 +244,18 @@ impl Database {
     ///
     /// Tasks with NULL heartbeat_at are excluded (foreground tasks without
     /// liveness probes; EVE-535 spawn-handle coverage applies instead).
-    /// Runs inside a transaction with `FOR UPDATE SKIP LOCKED` so concurrent
-    /// reapers claim disjoint sets.
+    ///
+    /// This is a plain snapshot read — no transaction is held across the
+    /// reaper's subsequent per-task updates, so concurrent reapers may pick
+    /// overlapping sets. That is safe: failing a task is applied through
+    /// `apply_task_update`, where terminal states are final, so a second
+    /// reaper's update is an idempotent no-op.
     pub async fn list_orphaned_session_task_ids(
         &self,
         stale_after: chrono::Duration,
         limit: i64,
     ) -> Result<Vec<(SessionId, String)>> {
         let stale_secs = stale_after.num_seconds();
-        // Transaction is necessary for FOR UPDATE to take effect for the
-        // caller's subsequent updates; the reaper calls update_session_task
-        // for each row in its own transaction, so we open and commit here
-        // just to get a consistent, lock-free snapshot.
         let rows = sqlx::query_as::<_, (SessionId, String)>(
             r#"
             SELECT session_id, id
@@ -265,7 +265,6 @@ impl Database {
               AND heartbeat_at < NOW() - ($1::bigint * INTERVAL '1 second')
             ORDER BY id
             LIMIT $2
-            FOR UPDATE SKIP LOCKED
             "#,
         )
         .bind(stale_secs)

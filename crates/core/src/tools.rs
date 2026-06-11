@@ -1276,7 +1276,9 @@ impl Tool for SpawnBackgroundTool {
                         result = tool_fut => result,
                         () = watch_fut => {
                             // Cancel was requested; the tool future is dropped.
-                            Err(ToolExecutionResult::ToolError("canceled".to_string()))
+                            Err(ToolExecutionResult::ToolError(
+                                BACKGROUND_CANCEL_SENTINEL.to_string(),
+                            ))
                         }
                     }
                 }
@@ -1674,13 +1676,18 @@ impl SessionBackgroundSink {
     }
 }
 
+/// Internal sentinel injected by the cancel-watch select branch. Namespaced
+/// so a background tool that legitimately fails with "canceled" is never
+/// misclassified as a cooperative cancel.
+const BACKGROUND_CANCEL_SENTINEL: &str = "__everruns_background_cancel__";
+
 /// Returns true when an outcome from the cancel-watch select is the sentinel
-/// cancel signal (Err(ToolError("canceled"))).  Factored out so the condition
-/// is testable without a running async runtime.
+/// cancel signal.  Factored out so the condition is testable without a
+/// running async runtime.
 fn is_canceled_outcome(
     outcome: &std::result::Result<BackgroundOutcome, ToolExecutionResult>,
 ) -> bool {
-    matches!(outcome, Err(ToolExecutionResult::ToolError(msg)) if msg == "canceled")
+    matches!(outcome, Err(ToolExecutionResult::ToolError(msg)) if msg == BACKGROUND_CANCEL_SENTINEL)
 }
 
 async fn ensure_directory(
@@ -3359,8 +3366,9 @@ mod tests {
     #[test]
     fn test_is_canceled_outcome_detects_sentinel() {
         // The sentinel produced by the cancel-watcher branch.
-        let sentinel: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
-            Err(ToolExecutionResult::ToolError("canceled".to_string()));
+        let sentinel: std::result::Result<BackgroundOutcome, ToolExecutionResult> = Err(
+            ToolExecutionResult::ToolError(BACKGROUND_CANCEL_SENTINEL.to_string()),
+        );
         assert!(is_canceled_outcome(&sentinel));
     }
 

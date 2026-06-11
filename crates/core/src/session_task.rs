@@ -310,6 +310,19 @@ pub struct SessionTaskFilter {
 pub fn apply_task_update(task: &mut SessionTask, update: SessionTaskUpdate, now: DateTime<Utc>) {
     let was_terminal = task.state.is_terminal();
 
+    // Terminal states are final. An update that asks for a *different* state
+    // on an already-terminal task lost a race (e.g. the reaper marking a task
+    // orphaned after it succeeded) — ignore it entirely so its content fields
+    // (error, summary) cannot corrupt the terminal record. Updates that carry
+    // the same terminal state (idempotent re-mirrors) or no state at all
+    // (content enrichment) still apply below.
+    if was_terminal
+        && let Some(state) = update.state
+        && state != task.state
+    {
+        return;
+    }
+
     let mut next_state = update.state;
     if update.input_request.is_some() && !was_terminal {
         next_state = Some(SessionTaskState::AwaitingInput);
@@ -834,18 +847,47 @@ mod tests {
         assert_eq!(t.state, SessionTaskState::Succeeded);
         assert_eq!(t.finished_at, Some(now));
 
-        // State changes after terminal are ignored; content still applies.
+        // An update carrying a *different* state lost a race against the
+        // terminal transition — it is ignored entirely, content included
+        // (e.g. the reaper must not stamp an orphaned error on a task that
+        // succeeded meanwhile).
         apply_task_update(
             &mut t,
             SessionTaskUpdate {
-                state: Some(SessionTaskState::Running),
-                result_path: Some("/.tasks/x/result.json".to_string()),
+                state: Some(SessionTaskState::Failed),
+                error: Some(TaskError {
+                    kind: "orphaned".to_string(),
+                    message: "stale".to_string(),
+                }),
                 ..Default::default()
             },
             Utc::now(),
         );
         assert_eq!(t.state, SessionTaskState::Succeeded);
+        assert!(t.error.is_none());
+
+        // Idempotent re-mirrors with the SAME terminal state still enrich.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some("/.tasks/x/result.json".to_string()),
+                ..Default::default()
+            },
+            Utc::now(),
+        );
         assert_eq!(t.result_path.as_deref(), Some("/.tasks/x/result.json"));
+
+        // Content-only updates (no state) also still apply.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                summary: Some("enriched".to_string()),
+                ..Default::default()
+            },
+            Utc::now(),
+        );
+        assert_eq!(t.summary.as_deref(), Some("enriched"));
     }
 
     #[test]

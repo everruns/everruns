@@ -199,9 +199,16 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
         task_id: &str,
         update: SessionTaskUpdate,
     ) -> Result<Option<SessionTask>> {
-        // Read prior state so we can decide whether to wake after the update.
+        // Only THIS update's intent can trigger a wake: an unrelated update
+        // (heartbeat/progress) racing with another worker's transition must
+        // not observe prior=non-terminal/new=terminal and wake on its behalf.
+        let wants_terminal_wake = update.state.is_some_and(|s| s.is_terminal());
+        let wants_awaiting_input_wake =
+            update.input_request.is_some() || update.state == Some(SessionTaskState::AwaitingInput);
+
+        // Read prior state so we can detect the transition this update makes.
         // Best-effort: if the read fails we still proceed with the update.
-        let prior = if self.waker.is_some() {
+        let prior = if self.waker.is_some() && (wants_terminal_wake || wants_awaiting_input_wake) {
             self.get(session_id, task_id).await.ok().flatten()
         } else {
             None
@@ -220,10 +227,15 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
         if let Some(task) = &task {
             self.emit_task_snapshot(task, false).await;
 
-            // Wake enforcement: fire at most one wake per transition.
+            // Wake enforcement: fire at most one wake per transition, gated
+            // on the intent of this specific update.
             if let Some(prior) = &prior {
-                self.maybe_wake_on_terminal(prior, task).await;
-                self.maybe_wake_on_awaiting_input(prior, task).await;
+                if wants_terminal_wake {
+                    self.maybe_wake_on_terminal(prior, task).await;
+                }
+                if wants_awaiting_input_wake {
+                    self.maybe_wake_on_awaiting_input(prior, task).await;
+                }
             }
         }
         Ok(task)

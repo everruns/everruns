@@ -302,8 +302,9 @@ No backward compatibility is required; data migrates forward once:
   `awaiting_input` entry and outbound messages. `Silent` never wakes.
   A2A's legacy `wake_parent` call is gated on `session_task_registry.is_none()`
   (backward compat for sessions without a registry).
-- Background tool cancel reports unsupported (no cancel token exists for
-  background runs yet).
+- Background tool cancellation is cooperative: runs with a task record
+  heartbeat every ~2s and poll `cancel_requested_at`, winding down to
+  `canceled` when set (works across worker processes).
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
   key (see `crates/core/src/llmsim_driver.rs`).
 
