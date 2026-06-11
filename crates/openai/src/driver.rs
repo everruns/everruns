@@ -176,6 +176,8 @@ impl std::fmt::Debug for OpenAILlmDriver {
 #[derive(Clone)]
 pub struct OpenRouterLlmDriver {
     inner: OpenResponsesProtocolLlmDriver,
+    /// Whether using a custom base URL (not OpenRouter's API).
+    uses_custom_url: bool,
 }
 
 impl OpenRouterLlmDriver {
@@ -184,6 +186,7 @@ impl OpenRouterLlmDriver {
         Self {
             inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, OPENROUTER_RESPONSES_URL)
                 .with_provider_type(LlmProviderType::Openrouter),
+            uses_custom_url: false,
         }
     }
 
@@ -193,6 +196,7 @@ impl OpenRouterLlmDriver {
         Self {
             inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, api_url)
                 .with_provider_type(LlmProviderType::Openrouter),
+            uses_custom_url: true,
         }
     }
 
@@ -204,6 +208,11 @@ impl OpenRouterLlmDriver {
     /// Get the provider type used for model profile lookup.
     pub fn provider_type(&self) -> &LlmProviderType {
         self.inner.provider_type()
+    }
+
+    /// Check if using a custom base URL.
+    pub fn uses_custom_url(&self) -> bool {
+        self.uses_custom_url
     }
 }
 
@@ -218,6 +227,12 @@ impl LlmDriver for OpenRouterLlmDriver {
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
+        // OpenRouter discovery is only safe against OpenRouter's own host.
+        // Custom proxy URLs may resolve to private infrastructure at request time.
+        if self.uses_custom_url && !is_openrouter_api_url(self.api_url()) {
+            return Ok(None);
+        }
+
         let models_url = models_url_for_api_url(self.api_url());
         list_models_for_url(self.inner.client(), self.inner.api_key(), &models_url).await
     }
@@ -369,11 +384,7 @@ async fn list_openrouter_models(
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(AgentLoopError::llm(format!(
-            "Models API returned {}: {}",
-            status, body
-        )));
+        return Err(models_api_status_error(status));
     }
 
     let models_response: OpenRouterModelsResponse = response
@@ -415,11 +426,7 @@ async fn list_openai_models(
 
     if !response.status().is_success() {
         let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(AgentLoopError::llm(format!(
-            "Models API returned {}: {}",
-            status, body
-        )));
+        return Err(models_api_status_error(status));
     }
 
     let models_response: OpenAiModelsResponse = response
@@ -442,6 +449,10 @@ async fn list_openai_models(
         .collect();
 
     Ok(Some(discovered))
+}
+
+fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
+    AgentLoopError::llm(format!("Models API returned status {status}"))
 }
 
 fn normalize_api_url(base_url: &str, endpoint_suffix: &str) -> String {
