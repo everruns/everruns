@@ -39,6 +39,7 @@ INNER_PINS: dict[str, list[str]] = {
     "integrations/github/Cargo.toml": ["everruns-core"],
     "integrations/daytona/Cargo.toml": ["everruns-core"],
     "integrations/e2b/Cargo.toml": ["everruns-core"],
+    "integrations/parallel/Cargo.toml": ["everruns-core"],
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
