@@ -283,6 +283,18 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn create_rejects_id_reuse_across_sessions() {
+        let registry = registry();
+        let mut input = create_input(SessionId::new());
+        input.id = Some("task_shared".to_string());
+        registry.create(input.clone()).await.unwrap();
+
+        let mut other = create_input(SessionId::new());
+        other.id = Some("task_shared".to_string());
+        assert!(registry.create(other).await.is_err());
+    }
+
+    #[tokio::test]
     async fn update_applies_lifecycle_invariants() {
         let registry = registry();
         let session_id = SessionId::new();

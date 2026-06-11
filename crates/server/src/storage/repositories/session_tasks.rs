@@ -67,12 +67,21 @@ impl Database {
             return Ok((inserted, true));
         }
 
+        // Idempotency is scoped to the owning session: an id that exists under
+        // a different session is a caller bug, not a replay.
         let existing = sqlx::query_as::<_, SessionTaskRow>(sqlx::AssertSqlSafe(format!(
-            "SELECT {TASK_COLUMNS} FROM session_tasks WHERE id = $1"
+            "SELECT {TASK_COLUMNS} FROM session_tasks WHERE id = $1 AND session_id = $2"
         )))
         .bind(&row.id)
-        .fetch_one(&self.pool)
-        .await?;
+        .bind(row.session_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "session task id {} already exists in a different session",
+                row.id
+            )
+        })?;
         Ok((existing, false))
     }
 

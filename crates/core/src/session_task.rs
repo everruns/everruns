@@ -63,6 +63,22 @@ impl SessionTaskState {
     pub fn is_terminal(&self) -> bool {
         matches!(self, Self::Succeeded | Self::Failed | Self::Canceled)
     }
+
+    /// Strict parser for caller-supplied state strings (API filters, tool
+    /// arguments). Unlike `From<&str>` — which exists for trusted,
+    /// CHECK-constrained storage values and defaults to `Queued` — this
+    /// returns None for unknown input so callers can reject it.
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "queued" => Some(Self::Queued),
+            "running" => Some(Self::Running),
+            "awaiting_input" => Some(Self::AwaitingInput),
+            "succeeded" => Some(Self::Succeeded),
+            "failed" => Some(Self::Failed),
+            "canceled" => Some(Self::Canceled),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for SessionTaskState {

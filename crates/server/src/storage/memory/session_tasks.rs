@@ -16,6 +16,14 @@ impl InMemoryDatabase {
         let row = SessionTaskRow::from_task(task)?;
         let mut tasks = self.session_tasks.write();
         if let Some(existing) = tasks.get(&row.id) {
+            // Idempotency is scoped to the owning session: an id that exists
+            // under a different session is a caller bug, not a replay.
+            if existing.session_id != row.session_id {
+                anyhow::bail!(
+                    "session task id {} already exists in a different session",
+                    row.id
+                );
+            }
             return Ok((existing.clone(), false));
         }
         tasks.insert(row.id.clone(), row.clone());

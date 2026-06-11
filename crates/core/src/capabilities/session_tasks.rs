@@ -198,6 +198,18 @@ impl Tool for ListTasksTool {
             Ok(r) => r,
             Err(e) => return e,
         };
+        let state = match arguments.get("state").and_then(Value::as_str) {
+            Some(raw) => match SessionTaskState::parse(raw) {
+                Some(state) => Some(state),
+                None => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Unknown state filter \"{raw}\". Valid states: queued, running, \
+                         awaiting_input, succeeded, failed, canceled."
+                    ));
+                }
+            },
+            None => None,
+        };
         let filter = SessionTaskFilter {
             kind: arguments
                 .get("kind")
@@ -205,10 +217,7 @@ impl Tool for ListTasksTool {
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(ToString::to_string),
-            state: arguments
-                .get("state")
-                .and_then(Value::as_str)
-                .map(SessionTaskState::from),
+            state,
         };
         let tasks = match registry.list(context.session_id, Some(&filter)).await {
             Ok(tasks) => tasks,
@@ -1115,15 +1124,15 @@ pub(crate) mod tests {
         )
         .await;
 
-        let before = TEST_CANCELED.load(Ordering::SeqCst);
         let result = CancelTaskTool
             .execute_with_context(json!({"task_id": task.id}), &context)
             .await;
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success: {result:?}");
         };
+        // The executor reply proves the skip; the shared TEST_CANCELED counter
+        // is not asserted here because parallel cancel tests also bump it.
         assert_eq!(value["executor"], "task already terminal");
-        assert_eq!(TEST_CANCELED.load(Ordering::SeqCst), before);
     }
 
     #[tokio::test]

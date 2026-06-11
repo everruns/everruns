@@ -49,9 +49,18 @@ impl Command for ListSessionTasks {
         {
             return Err(CommandError::not_found("Session"));
         }
+        let state = match self.state.as_deref().filter(|s| !s.is_empty()) {
+            Some(raw) => Some(SessionTaskState::parse(raw).ok_or_else(|| {
+                CommandError::bad_request(format!(
+                    "Unknown state filter \"{raw}\". Valid states: queued, running, \
+                     awaiting_input, succeeded, failed, canceled."
+                ))
+            })?),
+            None => None,
+        };
         let filter = SessionTaskFilter {
             kind: self.kind,
-            state: self.state.as_deref().map(SessionTaskState::from),
+            state,
         };
         q::registry_for_ctx(ctx)
             .list(session_id, Some(&filter))

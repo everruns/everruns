@@ -280,7 +280,7 @@ No backward compatibility is required; data migrates forward once:
 
 ## Implementation notes (v1)
 
-- Storage: `session_tasks` + `session_task_messages` (migration 051);
+- Storage: `session_tasks` + `session_task_messages` (migration 053);
   PostgreSQL and in-memory backends both route updates through
   `apply_task_update` in `crates/core/src/session_task.rs`. gRPC workers get
   the registry via task RPCs in the internal worker protocol (payloads travel
