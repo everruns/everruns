@@ -169,7 +169,7 @@ pub mod turn;
 // Re-exports for convenience
 pub use command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
-    SessionCompletionError, SessionCompletionRequest, StoreCommandHost,
+    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream, StoreCommandHost,
 };
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
