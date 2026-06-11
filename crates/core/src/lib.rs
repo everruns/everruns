@@ -123,6 +123,7 @@ pub mod url_validation;
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
+pub mod command_host;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
@@ -166,6 +167,10 @@ pub mod turn;
 // This enables dependency inversion - provider crates register their drivers at startup.
 
 // Re-exports for convenience
+pub use command_host::{
+    CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
+    SessionCompletionError, SessionCompletionRequest, StoreCommandHost,
+};
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };

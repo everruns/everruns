@@ -81,13 +81,45 @@ pub struct ExecuteCommandRequest {
 
 /// Context handed to [`crate::capabilities::Capability::execute_command`] when a
 /// system command is dispatched. Carries only data that is safe to expose
-/// across the trait surface; capabilities that need handles to runtime state
-/// (provider store, file system, etc.) own those references directly via the
-/// capability's constructor.
-#[derive(Debug, Clone)]
+/// across the trait surface; capabilities that need handles to host-internal
+/// state (provider store, file system, etc.) own those references directly via
+/// the capability's constructor. Context-aware commands (out-of-band LLM call
+/// over the session's context, e.g. `/btw`) use the host facilities instead —
+/// see [`crate::command_host::CommandHost`].
+#[derive(Clone)]
 pub struct CommandExecutionContext {
     /// Session the command is being executed against.
     pub session_id: SessionId,
+    /// Host facilities: turn-context assembly and tool-less session
+    /// completions. Hosts that cannot provide them use
+    /// [`crate::command_host::DisabledCommandHost`].
+    pub host: std::sync::Arc<dyn crate::command_host::CommandHost>,
+}
+
+impl CommandExecutionContext {
+    pub fn new(
+        session_id: SessionId,
+        host: std::sync::Arc<dyn crate::command_host::CommandHost>,
+    ) -> Self {
+        Self { session_id, host }
+    }
+
+    /// Context for hosts that dispatch commands without turn-context/LLM
+    /// facilities; context-aware commands then fail with a clear error.
+    pub fn without_host(session_id: SessionId) -> Self {
+        Self {
+            session_id,
+            host: std::sync::Arc::new(crate::command_host::DisabledCommandHost),
+        }
+    }
+}
+
+impl std::fmt::Debug for CommandExecutionContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CommandExecutionContext")
+            .field("session_id", &self.session_id)
+            .finish()
+    }
 }
 
 /// Result of executing a system command

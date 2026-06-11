@@ -701,7 +701,23 @@ impl InProcessRuntime {
     ) -> Result<everruns_core::command::CommandResult> {
         let ctx = self.load_context(session_id).await?;
         let registry = self.platform_definition.capability_registry();
-        let exec_ctx = everruns_core::command::CommandExecutionContext { session_id };
+        // Context-aware commands (e.g. /btw) get the same store-backed host
+        // facilities the server provides; the already-assembled context seeds
+        // the host so dispatch and execution assemble it once.
+        let host = everruns_core::command_host::StoreCommandHost::new(
+            session_id,
+            self.harness_store.clone(),
+            self.agent_store.clone(),
+            self.session_store.clone(),
+            self.message_store.clone(),
+            self.provider_store.clone(),
+            registry.clone(),
+            self.platform_definition.driver_registry().clone(),
+        )
+        .with_file_store(self.file_store.clone())
+        .with_assembled_context(ctx.clone());
+        let exec_ctx =
+            everruns_core::command::CommandExecutionContext::new(session_id, Arc::new(host));
         for config in &ctx.resolved_capability_configs {
             let Some(capability) = registry.get(config.capability_id()) else {
                 continue;
