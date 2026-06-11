@@ -3005,10 +3005,20 @@ mod tests {
         .await
         .expect("blocking background runs should complete after release");
 
-        assert!(
-            !has_session_background_permits(session_id),
-            "completed background runs should prune their per-session permit cache entry"
-        );
+        // The permit drop is enqueued in the spawned task after it marks the
+        // resource Completed, so the cache entry may still exist briefly once
+        // we observe Completed status.  Poll until pruned rather than asserting
+        // immediately to avoid a race.
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if !has_session_background_permits(session_id) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("completed background runs should prune their per-session permit cache entry");
     }
 
     #[tokio::test]
