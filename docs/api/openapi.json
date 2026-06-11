@@ -15666,6 +15666,9 @@
             "$ref": "#/components/schemas/ReasonCompletedData"
           },
           {
+            "$ref": "#/components/schemas/ReasonRecoveredData"
+          },
+          {
             "$ref": "#/components/schemas/CapabilityUsageData"
           },
           {
@@ -24662,6 +24665,31 @@
           }
         }
       },
+      "ReasonRecoveredData": {
+        "type": "object",
+        "description": "Data for the `reason.recovered` event (EVE-532).\n\nEmitted by `ReasonAtom` when it detects an in-flight partial assistant\nmessage from a previous worker execution and applies the ContinuePartial\nrecovery policy.",
+        "required": [
+          "turn_id",
+          "mode",
+          "accumulated_len"
+        ],
+        "properties": {
+          "accumulated_len": {
+            "type": "integer",
+            "description": "Character length of the persisted accumulated text.",
+            "minimum": 0
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RecoveryMode",
+            "description": "Recovery action taken."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID the partial belonged to.",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
       "ReasonStartedData": {
         "type": "object",
         "description": "Data for reason.started event",
@@ -24824,6 +24852,14 @@
             "description": "The API value (e.g., \"low\", \"medium\")"
           }
         }
+      },
+      "RecoveryMode": {
+        "type": "string",
+        "description": "Recovery mode chosen by the ContinuePartial classifier (EVE-532).",
+        "enum": [
+          "finalize",
+          "restart"
+        ]
       },
       "RegenerateA2aApiKeyOutput": {
         "type": "object",
