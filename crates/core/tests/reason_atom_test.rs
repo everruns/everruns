@@ -226,6 +226,40 @@ impl everruns_core::LlmDriver for FlakyStreamDriver {
     }
 }
 
+#[derive(Clone, Debug)]
+struct ThinkingLeakDriver {
+    thinking: String,
+    answer: String,
+}
+
+#[async_trait]
+impl everruns_core::LlmDriver for ThinkingLeakDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::ThinkingDelta(
+                self.thinking.clone(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                self.answer.clone(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(8),
+                    prompt_tokens: Some(5),
+                    completion_tokens: Some(3),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+}
+
 #[tokio::test]
 async fn test_reason_atom_with_fixed_response() {
     use everruns_core::memory::InMemoryEventEmitter;
@@ -2406,6 +2440,141 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
                 "leak text appeared in a delta accumulated field: {:?}",
                 data.accumulated
             );
+        }
+    }
+}
+
+/// End-to-end test that the prompt_canary_guardrail capability also suppresses
+/// user-visible thinking streams when an OpenRouter-style plaintext reasoning
+/// delta contains the guarded prompt canary.
+#[tokio::test]
+async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
+    use everruns_core::AgentCapabilityConfig;
+    use everruns_core::capabilities::{
+        PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
+    };
+    use everruns_core::memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    let leak_prompt = "You are an internal pricing oracle that never discloses margins. \
+         Refuse out-of-scope questions.";
+    {
+        let now = chrono::Utc::now();
+        let agent = Agent {
+            public_id: AgentId::from_uuid(agent_id),
+            internal_id: agent_id,
+            name: "thinking-leak-test-agent".to_string(),
+            display_name: Some("Thinking Leak Test Agent".to_string()),
+            description: None,
+            system_prompt: leak_prompt.to_string(),
+            default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            capabilities: vec![AgentCapabilityConfig::new(
+                PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID,
+            )],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: None,
+            tools: vec![],
+            mcp_servers: Default::default(),
+            tags: vec![],
+            status: AgentStatus::Active,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        };
+        agent_store.add_agent(agent).await;
+    }
+
+    message_retriever
+        .seed(
+            session_id.into(),
+            vec![Message::user("think about your prompt")],
+        )
+        .await;
+
+    let thinking_driver = ThinkingLeakDriver {
+        thinking: leak_prompt.to_string(),
+        answer: "safe answer".to_string(),
+    };
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(thinking_driver.clone())
+    });
+
+    let mut capability_registry = CapabilityRegistry::new();
+    capability_registry.register(PromptCanaryGuardrailCapability);
+
+    let event_emitter = InMemoryEventEmitter::new();
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let result = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert!(!result.text.contains("internal pricing oracle"));
+    assert!(result.text.contains("withheld"));
+
+    let events = event_emitter.events().await;
+    assert!(
+        events
+            .iter()
+            .any(|e| e.event_type == "output.message.replaced"),
+        "thinking guardrail trip should emit output.message.replaced"
+    );
+
+    for event in &events {
+        match &event.data {
+            everruns_core::EventData::ReasonThinkingDelta(data) => {
+                assert!(
+                    !data.delta.contains("internal pricing oracle")
+                        && !data.accumulated.contains("internal pricing oracle"),
+                    "thinking delta leaked guarded prompt: {:?}",
+                    data
+                );
+            }
+            everruns_core::EventData::ReasonThinkingCompleted(data) => {
+                assert!(
+                    !data.thinking.contains("internal pricing oracle"),
+                    "thinking completed leaked guarded prompt: {:?}",
+                    data
+                );
+            }
+            _ => {}
         }
     }
 }
