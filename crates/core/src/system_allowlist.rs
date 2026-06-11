@@ -168,6 +168,17 @@ mod tests {
     }
 
     #[test]
+    fn embedded_allowlist_permits_azure_openai_hosts() {
+        let allowlist = SystemAllowlist::embedded();
+        for url in [
+            "https://my-resource.openai.azure.com/openai/deployments/gpt-4/chat/completions",
+            "https://my-resource.services.ai.azure.com/openai/v1/responses",
+        ] {
+            assert!(allowlist.is_url_allowed(url), "should permit {url}");
+        }
+    }
+
+    #[test]
     fn embedded_allowlist_denies_attacker_controlled_provider_hosts() {
         let allowlist = SystemAllowlist::embedded();
         for url in [

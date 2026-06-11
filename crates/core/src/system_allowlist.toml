@@ -96,6 +96,7 @@ allowed = [
     "login.microsoftonline.com",
     "graph.microsoft.com",
     "*.openai.azure.com",
+    "*.services.ai.azure.com",
     "*.googleapis.com",
     "*.cloud.google.com",
     "api.cloudflare.com",
