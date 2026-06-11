@@ -106,6 +106,7 @@ pub mod session_resource;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
+pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
 
@@ -419,6 +420,12 @@ pub use session_resource::{
 pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
+};
+pub use session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
+    SessionTaskState, SessionTaskUpdate, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
+    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
+    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
 };
 pub use skill::{
     ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,

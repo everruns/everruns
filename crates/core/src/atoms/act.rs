@@ -236,6 +236,7 @@ where
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional session resource registry
     session_resource_registry: Option<Arc<dyn crate::traits::SessionResourceRegistry>>,
+    session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
@@ -306,6 +307,7 @@ where
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             capability_registry: None,
             tool_registry: None,
             org_id: None,
@@ -347,6 +349,7 @@ where
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             capability_registry: None,
             tool_registry: None,
             org_id: None,
@@ -490,6 +493,15 @@ where
         registry: Arc<dyn crate::traits::SessionResourceRegistry>,
     ) -> Self {
         self.session_resource_registry = Some(registry);
+        self
+    }
+
+    /// Add a session task registry passed to tool contexts.
+    pub fn with_session_task_registry(
+        mut self,
+        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
+    ) -> Self {
+        self.session_task_registry = Some(registry);
         self
     }
 
@@ -1492,6 +1504,9 @@ where
         }
         if let Some(ref registry) = self.session_resource_registry {
             tool_context.session_resource_registry = Some(registry.clone());
+        }
+        if let Some(ref registry) = self.session_task_registry {
+            tool_context.session_task_registry = Some(registry.clone());
         }
         if let Some(ref registry) = self.capability_registry {
             tool_context.capability_registry = Some(registry.clone());
