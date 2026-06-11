@@ -36,6 +36,7 @@ pub mod llm_providers;
 pub mod mcp_endpoint;
 pub mod mcp_servers;
 pub mod memory;
+pub mod memory_files;
 pub mod messages;
 pub mod notifications;
 pub mod org_feature_flags;
