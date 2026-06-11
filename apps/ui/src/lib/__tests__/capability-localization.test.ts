@@ -98,7 +98,19 @@ describe("capability localization", () => {
   });
 
   it("merges uk overlay into the schema without touching validation keywords", () => {
-    const merged = localizedConfigSchema(capability, "uk") as any;
+    interface MergedSchema {
+      properties: {
+        mounts: {
+          title: string;
+          description: string;
+          type: string;
+          items: { properties: { mode: { title: string; default: string; oneOf: unknown } } };
+        };
+        flavor: { oneOf: unknown; enum?: unknown };
+        unknown_field?: unknown;
+      };
+    }
+    const merged = localizedConfigSchema(capability, "uk") as unknown as MergedSchema;
 
     const mounts = merged.properties.mounts;
     expect(mounts.title).toBe("Монтування");
