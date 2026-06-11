@@ -39,7 +39,6 @@ description = "Source code hosting and collaboration platforms."
 allowed = [
     "*.github.com",
     "*.githubusercontent.com",
-    "*.github.io",
     "*.gitlab.com",
     "*.bitbucket.org",
     "*.codeberg.org",
@@ -90,16 +89,16 @@ allowed = [
 [groups.cloud_providers]
 description = "Major cloud provider APIs and service endpoints."
 allowed = [
-    "*.amazonaws.com",
-    "*.azure.com",
-    "*.azureedge.net",
-    "*.windows.net",
-    "*.microsoftonline.com",
+    "sts.amazonaws.com",
+    "iam.amazonaws.com",
+    "ecr-public.amazonaws.com",
+    "management.azure.com",
+    "login.microsoftonline.com",
+    "graph.microsoft.com",
     "*.openai.azure.com",
     "*.googleapis.com",
     "*.cloud.google.com",
-    "*.cloudflare.com",
-    "*.digitaloceanspaces.com",
+    "api.cloudflare.com",
     "api.digitalocean.com",
 ]
 

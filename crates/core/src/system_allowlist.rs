@@ -168,6 +168,22 @@ mod tests {
     }
 
     #[test]
+    fn embedded_allowlist_denies_attacker_controlled_provider_hosts() {
+        let allowlist = SystemAllowlist::embedded();
+        for url in [
+            "https://attacker123.execute-api.us-east-1.amazonaws.com/collect?data=secret",
+            "https://evil-bucket.s3.us-west-2.amazonaws.com/collect?data=secret",
+            "https://evil-bucket.s3-website-us-west-2.amazonaws.com/collect?data=secret",
+            "https://attacker-org.github.io/collect?data=secret",
+            "https://evil.z13.web.core.windows.net/collect?data=secret",
+            "https://evil.azureedge.net/collect?data=secret",
+            "https://evil-bucket.nyc3.digitaloceanspaces.com/collect?data=secret",
+        ] {
+            assert!(!allowlist.is_url_allowed(url), "should deny {url}");
+        }
+    }
+
+    #[test]
     fn empty_allowlist_fails_closed() {
         // No groups, empty groups, and groups with no patterns must all deny
         // every URL rather than silently allowing all traffic.
