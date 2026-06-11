@@ -3,7 +3,7 @@ use super::types::{
     GitMemorySourceRequest, ListMemoriesQuery, MemoryResponse, UpdateMemory, UpdateMemoryRequest,
     memory_response,
 };
-use super::{VOLUME_MANAGE, VOLUME_VIEW};
+use super::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::domains::common::*;
 use everruns_core::Policy;
 use everruns_core::typed_id::MemoryId;
@@ -232,7 +232,7 @@ impl Command for ListMemories {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_VIEW)
+        Some(&MEMORY_VIEW)
     }
 
     fn output_schema() -> serde_json::Value {
@@ -292,7 +292,7 @@ impl Command for CreateMemory {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_MANAGE)
+        Some(&MEMORY_MANAGE)
     }
 
     fn output_schema() -> serde_json::Value {
@@ -349,7 +349,7 @@ impl Command for GetMemory {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_VIEW)
+        Some(&MEMORY_VIEW)
     }
 
     fn output_schema() -> serde_json::Value {
@@ -392,7 +392,7 @@ impl Command for UpdateMemoryCmd {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_MANAGE)
+        Some(&MEMORY_MANAGE)
     }
 
     fn output_schema() -> serde_json::Value {
@@ -476,7 +476,7 @@ impl Command for SyncMemoryNow {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_MANAGE)
+        Some(&MEMORY_MANAGE)
     }
 
     fn output_schema() -> serde_json::Value {
@@ -541,7 +541,7 @@ impl Command for DeleteMemory {
     }
 
     fn policy() -> Option<&'static Policy> {
-        Some(&VOLUME_MANAGE)
+        Some(&MEMORY_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
@@ -554,7 +554,7 @@ impl Command for DeleteMemory {
             .ok_or_else(|| CommandError::not_found("Memory"))?;
         let archived = ctx
             .db
-            .archive_volume(ctx.org_id(), existing.id)
+            .archive_memory(ctx.org_id(), existing.id)
             .await
             .map_err(classify_anyhow)?;
         if archived {

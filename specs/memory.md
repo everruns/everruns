@@ -282,9 +282,11 @@ OpenAPI exposure):
 * `POST   /v1/memories/{memory_id}/fs/...`
 * `PUT    /v1/memories/{memory_id}/fs/...`
 * `DELETE /v1/memories/{memory_id}/fs/...`
-* `POST   /v1/memories/{memory_id}/fs/_/{stat,move,copy,grep}`
+* `POST   /v1/memories/{memory_id}/fs/_/{stat,grep}`
 * `GET    /v1/memories/{memory_id}/fs/_/download/{path}`
 
+`move` and `copy` actions are deferred — the spec leaves room for them but
+the file CRUD ships first; clients can compose them with create + delete.
 Filesystem sub-routes mirror `specs/workspace.md` request/response shapes so
 DTOs and UI components can be reused.
 

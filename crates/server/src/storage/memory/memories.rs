@@ -176,7 +176,7 @@ impl InMemoryDatabase {
         Ok(Some(memory.clone()))
     }
 
-    pub async fn archive_volume(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn archive_memory(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let mut memories = self.memories.write();
         let Some(memory) = memories.get_mut(&id) else {
             return Ok(false);
@@ -294,6 +294,218 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|file| file.path.clone());
         Ok(result)
+    }
+
+    // ============================================
+    // Memory Files CRUD (virtual filesystem under a Memory)
+    // ============================================
+
+    pub async fn create_memory_file(
+        &self,
+        memory_id: Uuid,
+        input: CreateMemoryFileRow,
+    ) -> Result<MemoryFileRow> {
+        let now = Self::now();
+        let size_bytes = input.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+        let mut files = self.memory_files.write();
+        if files
+            .values()
+            .any(|f| f.memory_id == memory_id && f.path == input.path)
+        {
+            bail!("memory file already exists at path");
+        }
+        let id = Uuid::now_v7();
+        let row = MemoryFileRow {
+            id,
+            memory_id,
+            path: input.path,
+            content: input.content,
+            is_directory: input.is_directory,
+            size_bytes,
+            content_hash: input.content_hash,
+            created_at: now,
+            updated_at: now,
+        };
+        files.insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileRow>> {
+        Ok(self
+            .memory_files
+            .read()
+            .values()
+            .find(|f| f.memory_id == memory_id && f.path == path)
+            .cloned())
+    }
+
+    pub async fn get_memory_file_info(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileInfoRow>> {
+        Ok(self
+            .memory_files
+            .read()
+            .values()
+            .find(|f| f.memory_id == memory_id && f.path == path)
+            .map(file_to_info))
+    }
+
+    pub async fn list_memory_files(
+        &self,
+        memory_id: Uuid,
+        parent_path: &str,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        let prefix = if parent_path == "/" {
+            String::from("/")
+        } else {
+            format!("{}/", parent_path)
+        };
+        let mut rows: Vec<MemoryFileInfoRow> = self
+            .memory_files
+            .read()
+            .values()
+            .filter(|f| {
+                if f.memory_id != memory_id || !f.path.starts_with(&prefix) {
+                    return false;
+                }
+                let tail = &f.path[prefix.len()..];
+                !tail.is_empty() && !tail.contains('/')
+            })
+            .map(file_to_info)
+            .collect();
+        rows.sort_by(|a, b| {
+            b.is_directory
+                .cmp(&a.is_directory)
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        Ok(rows)
+    }
+
+    pub async fn update_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+        input: UpdateMemoryFile,
+    ) -> Result<Option<MemoryFileRow>> {
+        let mut files = self.memory_files.write();
+        let Some(file) = files
+            .values_mut()
+            .find(|f| f.memory_id == memory_id && f.path == path && !f.is_directory)
+        else {
+            return Ok(None);
+        };
+        if let Some(content) = input.content {
+            file.size_bytes = content.len() as i64;
+            file.content = Some(content);
+        }
+        if let Some(hash_set) = input.content_hash {
+            file.content_hash = hash_set;
+        }
+        file.updated_at = Self::now();
+        Ok(Some(file.clone()))
+    }
+
+    pub async fn delete_memory_file(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        let mut files = self.memory_files.write();
+        let before = files.len();
+        files.retain(|_, f| !(f.memory_id == memory_id && f.path == path));
+        Ok(files.len() < before)
+    }
+
+    pub async fn delete_memory_file_recursive(&self, memory_id: Uuid, path: &str) -> Result<u64> {
+        let prefix = if path == "/" {
+            String::from("/")
+        } else {
+            format!("{}/", path)
+        };
+        let path_owned = path.to_string();
+        let mut files = self.memory_files.write();
+        let before = files.len();
+        files.retain(|_, f| {
+            if f.memory_id != memory_id {
+                return true;
+            }
+            !(f.path == path_owned || f.path.starts_with(&prefix))
+        });
+        Ok((before - files.len()) as u64)
+    }
+
+    pub async fn grep_memory_files(
+        &self,
+        memory_id: Uuid,
+        pattern: &str,
+        path_pattern: Option<&str>,
+        max_file_bytes: i64,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        let needle = pattern.to_string();
+        let path_pat = path_pattern.map(|s| s.to_string());
+        let mut rows: Vec<MemoryFileInfoRow> = self
+            .memory_files
+            .read()
+            .values()
+            .filter(|f| {
+                if f.memory_id != memory_id || f.is_directory || f.size_bytes > max_file_bytes {
+                    return false;
+                }
+                if let Some(ref pp) = path_pat
+                    && !matches_search_tokens(Some(pp), &[&f.path])
+                {
+                    return false;
+                }
+                let Some(ref content) = f.content else {
+                    return false;
+                };
+                let Ok(text) = std::str::from_utf8(content) else {
+                    return false;
+                };
+                text.contains(&needle)
+            })
+            .map(file_to_info)
+            .collect();
+        rows.sort_by(|a, b| a.path.cmp(&b.path));
+        Ok(rows)
+    }
+
+    pub async fn memory_file_exists(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        Ok(self
+            .memory_files
+            .read()
+            .values()
+            .any(|f| f.memory_id == memory_id && f.path == path))
+    }
+
+    pub async fn memory_directory_has_children(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        let prefix = if path == "/" {
+            String::from("/")
+        } else {
+            format!("{}/", path)
+        };
+        Ok(self.memory_files.read().values().any(|f| {
+            if f.memory_id != memory_id || !f.path.starts_with(&prefix) {
+                return false;
+            }
+            let tail = &f.path[prefix.len()..];
+            !tail.is_empty()
+        }))
+    }
+}
+
+fn file_to_info(file: &MemoryFileRow) -> MemoryFileInfoRow {
+    MemoryFileInfoRow {
+        id: file.id,
+        memory_id: file.memory_id,
+        path: file.path.clone(),
+        is_directory: file.is_directory,
+        size_bytes: file.size_bytes,
+        content_hash: file.content_hash.clone(),
+        created_at: file.created_at,
+        updated_at: file.updated_at,
     }
 }
 

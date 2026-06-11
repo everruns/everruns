@@ -168,7 +168,7 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn archive_volume(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn archive_memory(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let result = sqlx::query(
             r#"
             UPDATE memories
@@ -319,5 +319,241 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    // ============================================
+    // Memory Files CRUD (virtual filesystem under a Memory)
+    // ============================================
+
+    pub async fn create_memory_file(
+        &self,
+        memory_id: Uuid,
+        input: CreateMemoryFileRow,
+    ) -> Result<MemoryFileRow> {
+        let size_bytes = input.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+
+        let row = sqlx::query_as::<_, MemoryFileRow>(
+            r#"
+            INSERT INTO memory_files (memory_id, path, content, is_directory, size_bytes, content_hash)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            "#,
+        )
+        .bind(memory_id)
+        .bind(&input.path)
+        .bind(&input.content)
+        .bind(input.is_directory)
+        .bind(size_bytes)
+        .bind(&input.content_hash)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileRow>> {
+        let row = sqlx::query_as::<_, MemoryFileRow>(
+            r#"
+            SELECT id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            FROM memory_files
+            WHERE memory_id = $1 AND path = $2
+            "#,
+        )
+        .bind(memory_id)
+        .bind(path)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn get_memory_file_info(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileInfoRow>> {
+        let row = sqlx::query_as::<_, MemoryFileInfoRow>(
+            r#"
+            SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+            FROM memory_files
+            WHERE memory_id = $1 AND path = $2
+            "#,
+        )
+        .bind(memory_id)
+        .bind(path)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_memory_files(
+        &self,
+        memory_id: Uuid,
+        parent_path: &str,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        let pattern = if parent_path == "/" {
+            "^/[^/]+$".to_string()
+        } else {
+            format!("^{}/[^/]+$", regex::escape(parent_path))
+        };
+
+        let rows = sqlx::query_as::<_, MemoryFileInfoRow>(
+            r#"
+            SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+            FROM memory_files
+            WHERE memory_id = $1 AND path ~ $2
+            ORDER BY is_directory DESC, path ASC
+            "#,
+        )
+        .bind(memory_id)
+        .bind(&pattern)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
+    pub async fn update_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+        input: UpdateMemoryFile,
+    ) -> Result<Option<MemoryFileRow>> {
+        let size_bytes = input.content.as_ref().map(|c| c.len() as i64);
+        let (hash_set_explicit, hash_value): (bool, Option<String>) = match input.content_hash {
+            Some(inner) => (true, inner),
+            None => (false, None),
+        };
+
+        let row = sqlx::query_as::<_, MemoryFileRow>(
+            r#"
+            UPDATE memory_files
+            SET
+                content = COALESCE($3, content),
+                size_bytes = COALESCE($4, size_bytes),
+                content_hash = CASE WHEN $5 THEN $6 ELSE content_hash END,
+                updated_at = NOW()
+            WHERE memory_id = $1 AND path = $2 AND is_directory = FALSE
+            RETURNING id, memory_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            "#,
+        )
+        .bind(memory_id)
+        .bind(path)
+        .bind(&input.content)
+        .bind(size_bytes)
+        .bind(hash_set_explicit)
+        .bind(hash_value)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn delete_memory_file(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM memory_files WHERE memory_id = $1 AND path = $2")
+            .bind(memory_id)
+            .bind(path)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    pub async fn delete_memory_file_recursive(&self, memory_id: Uuid, path: &str) -> Result<u64> {
+        let pattern = if path == "/" {
+            "^/".to_string()
+        } else {
+            format!("^{}(/|$)", regex::escape(path))
+        };
+
+        let result = sqlx::query("DELETE FROM memory_files WHERE memory_id = $1 AND path ~ $2")
+            .bind(memory_id)
+            .bind(&pattern)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    pub async fn grep_memory_files(
+        &self,
+        memory_id: Uuid,
+        pattern: &str,
+        path_pattern: Option<&str>,
+        max_file_bytes: i64,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        let rows = if let Some(path_pat) = path_pattern {
+            sqlx::query_as::<_, MemoryFileInfoRow>(
+                r#"
+                SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+                FROM memory_files
+                WHERE memory_id = $1
+                    AND is_directory = FALSE
+                    AND size_bytes <= $2
+                    AND path ~ $3
+                    AND convert_from(content, 'UTF8') ~ $4
+                ORDER BY path ASC
+                "#,
+            )
+            .bind(memory_id)
+            .bind(max_file_bytes)
+            .bind(path_pat)
+            .bind(pattern)
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query_as::<_, MemoryFileInfoRow>(
+                r#"
+                SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
+                FROM memory_files
+                WHERE memory_id = $1
+                    AND is_directory = FALSE
+                    AND size_bytes <= $2
+                    AND convert_from(content, 'UTF8') ~ $3
+                ORDER BY path ASC
+                "#,
+            )
+            .bind(memory_id)
+            .bind(max_file_bytes)
+            .bind(pattern)
+            .fetch_all(&self.pool)
+            .await?
+        };
+
+        Ok(rows)
+    }
+
+    pub async fn memory_file_exists(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        let result: Option<(bool,)> =
+            sqlx::query_as("SELECT TRUE FROM memory_files WHERE memory_id = $1 AND path = $2")
+                .bind(memory_id)
+                .bind(path)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        Ok(result.is_some())
+    }
+
+    pub async fn memory_directory_has_children(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        let pattern = if path == "/" {
+            "^/[^/]+".to_string()
+        } else {
+            format!("^{}/[^/]+", regex::escape(path))
+        };
+
+        let result: Option<(bool,)> = sqlx::query_as(
+            "SELECT TRUE FROM memory_files WHERE memory_id = $1 AND path ~ $2 LIMIT 1",
+        )
+        .bind(memory_id)
+        .bind(&pattern)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(result.is_some())
     }
 }

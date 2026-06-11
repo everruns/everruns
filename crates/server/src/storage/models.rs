@@ -1088,6 +1088,26 @@ pub struct CreateMemoryFileRow {
     pub content_hash: Option<String>,
 }
 
+/// Input for updating a memory file. Optional fields are left unchanged when None.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateMemoryFile {
+    pub content: Option<Vec<u8>>,
+    pub content_hash: Option<Option<String>>,
+}
+
+/// Lightweight memory file info for listings (no content).
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct MemoryFileInfoRow {
+    pub id: Uuid,
+    pub memory_id: Uuid,
+    pub path: String,
+    pub is_directory: bool,
+    pub size_bytes: i64,
+    pub content_hash: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
 // ============================================
 // Knowledge Base models (curated org knowledge — see specs/knowledge-bases.md)
 // ============================================

@@ -821,8 +821,8 @@ impl StorageBackend {
         dispatch!(self, update_memory, org_id, id, input)
     }
 
-    pub async fn archive_volume(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        dispatch!(self, archive_volume, org_id, id)
+    pub async fn archive_memory(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_memory, org_id, id)
     }
 
     pub async fn claim_next_memory_sync(&self) -> Result<Option<MemoryRow>> {
@@ -849,6 +849,80 @@ impl StorageBackend {
 
     pub async fn list_all_memory_files(&self, memory_id: Uuid) -> Result<Vec<MemoryFileRow>> {
         dispatch!(self, list_all_memory_files, memory_id)
+    }
+
+    pub async fn create_memory_file(
+        &self,
+        memory_id: Uuid,
+        input: CreateMemoryFileRow,
+    ) -> Result<MemoryFileRow> {
+        dispatch!(self, create_memory_file, memory_id, input)
+    }
+
+    pub async fn get_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileRow>> {
+        dispatch!(self, get_memory_file, memory_id, path)
+    }
+
+    pub async fn get_memory_file_info(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileInfoRow>> {
+        dispatch!(self, get_memory_file_info, memory_id, path)
+    }
+
+    pub async fn list_memory_files(
+        &self,
+        memory_id: Uuid,
+        parent_path: &str,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        dispatch!(self, list_memory_files, memory_id, parent_path)
+    }
+
+    pub async fn update_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+        input: UpdateMemoryFile,
+    ) -> Result<Option<MemoryFileRow>> {
+        dispatch!(self, update_memory_file, memory_id, path, input)
+    }
+
+    pub async fn delete_memory_file(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, delete_memory_file, memory_id, path)
+    }
+
+    pub async fn delete_memory_file_recursive(&self, memory_id: Uuid, path: &str) -> Result<u64> {
+        dispatch!(self, delete_memory_file_recursive, memory_id, path)
+    }
+
+    pub async fn grep_memory_files(
+        &self,
+        memory_id: Uuid,
+        pattern: &str,
+        path_pattern: Option<&str>,
+        max_file_bytes: i64,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        dispatch!(
+            self,
+            grep_memory_files,
+            memory_id,
+            pattern,
+            path_pattern,
+            max_file_bytes
+        )
+    }
+
+    pub async fn memory_file_exists(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, memory_file_exists, memory_id, path)
+    }
+
+    pub async fn memory_directory_has_children(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, memory_directory_has_children, memory_id, path)
     }
 
     // ============================================
