@@ -34,7 +34,7 @@ use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
-    SessionStorageStore, SessionStore,
+    SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
@@ -403,6 +403,7 @@ impl InProcessRuntimeBuilder {
             persisting_emitter,
             file_store,
             storage_store: backends.storage_store,
+            connection_resolver: backends.connection_resolver,
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
@@ -442,6 +443,7 @@ pub struct InProcessRuntime {
     persisting_emitter: PersistingEventEmitter,
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
+    connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
 }
 
@@ -907,6 +909,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
         Some(self.storage_store.clone())
+    }
+
+    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+        self.connection_resolver.clone()
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
