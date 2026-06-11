@@ -179,7 +179,11 @@ fn annotate_message(msg: &mut Message, fields: &[MessageMetadataField]) {
         .iter_mut()
         .find(|p| matches!(p, ContentPart::Text(_)))
     {
-        t.text = format!("{annotation} {}", t.text);
+        t.text = if t.text.is_empty() {
+            annotation
+        } else {
+            format!("{annotation} {}", t.text)
+        };
     } else {
         // No text part (e.g. tool-call-only agent message): carry the
         // annotation as its own leading text part.
@@ -285,6 +289,16 @@ mod tests {
         assert_eq!(out[0].content.len(), 2);
         assert_eq!(out[0].text().unwrap(), expected);
         assert!(matches!(out[0].content[1], ContentPart::ToolCall(_)));
+    }
+
+    #[test]
+    fn test_empty_text_part_gets_annotation_without_trailing_space() {
+        let agent = Message::assistant("");
+        let expected = time_annotation(&agent);
+
+        let out = apply(vec![agent], serde_json::json!({}));
+
+        assert_eq!(out[0].text().unwrap(), expected);
     }
 
     #[test]
