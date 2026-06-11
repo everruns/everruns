@@ -324,8 +324,8 @@ impl WebFetchTool {
         match &self.system_allowlist {
             Some(allowlist) if !allowlist.is_url_allowed(url) => {
                 Some(ToolExecutionResult::tool_error(format!(
-                    "Endpoint blocked by system policy: {url} is not on the deployment's \
-                     system allowlist of permitted public resources."
+                    "Endpoint blocked by system policy: {url} is not on the allowlist \
+                     of permitted public resources."
                 )))
             }
             _ => None,
