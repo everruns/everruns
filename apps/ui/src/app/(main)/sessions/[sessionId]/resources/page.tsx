@@ -178,12 +178,27 @@ function TaskCard({ task, sessionId }: { task: SessionTask; sessionId: string | 
             {task.error.kind}: {task.error.message}
           </div>
         ) : null}
-        {task.result_path ? <div className="truncate">Result: {task.result_path}</div> : null}
+        {task.result_path ? (
+          <div className="truncate">
+            Result:{" "}
+            {sessionId ? (
+              // Link to the session Files tab; no query-param deep-link to a
+              // specific path exists yet — add ?path= support when available.
+              <Link
+                href={`/sessions/${sessionId}/files`}
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                {task.result_path}
+              </Link>
+            ) : (
+              task.result_path
+            )}
+          </div>
+        ) : null}
         {artifacts.length > 0 ? (
           <div className="grid gap-1">
             {artifacts.map((artifact, index) => (
               <div key={`${artifact.name}-${index}`} className="truncate">
-                {/* No VFS deep-link route exists; paths render as plain text. */}
                 {artifact.url ? (
                   <a
                     href={artifact.url}
@@ -193,6 +208,17 @@ function TaskCard({ task, sessionId }: { task: SessionTask; sessionId: string | 
                   >
                     {artifact.name}
                   </a>
+                ) : artifact.type === "file" && artifact.path && sessionId ? (
+                  // File artifacts with a VFS path link to the session Files
+                  // tab. No query-param deep-link to a specific path exists
+                  // yet — add ?path= support when available.
+                  <Link
+                    href={`/sessions/${sessionId}/files`}
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {artifact.name}
+                    {` (${artifact.path})`}
+                  </Link>
                 ) : (
                   <span>
                     {artifact.name}
