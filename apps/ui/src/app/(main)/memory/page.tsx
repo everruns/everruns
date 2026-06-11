@@ -277,9 +277,7 @@ function EmptyState({ hasSearch, onCreate }: { hasSearch: boolean; onCreate: () 
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <HardDrive className="mb-4 h-12 w-12 text-muted-foreground" />
-      <h3 className="mb-2 text-lg font-semibold">
-        {hasSearch ? "No memory found" : "No memory"}
-      </h3>
+      <h3 className="mb-2 text-lg font-semibold">{hasSearch ? "No memory found" : "No memory"}</h3>
       {!hasSearch && (
         <Button variant="accent" onClick={onCreate}>
           <Plus className="h-4 w-4" />

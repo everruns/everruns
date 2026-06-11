@@ -26,7 +26,6 @@ import {
   ChartColumn,
   ClipboardCheck,
   FlaskConical,
-  HardDrive,
   LayoutDashboard,
   ListTodo,
   MessageCircle,

@@ -140,11 +140,7 @@ function writeMounts(mounts: MemoryMountEntry[]): Record<string, unknown> {
   };
 }
 
-export function MemoryConfigEditor({
-  config,
-  onChange,
-  disabled,
-}: MemoryConfigEditorProps) {
+export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigEditorProps) {
   const mounts = readMounts(config);
   const { data: memory, isLoading, error } = useMemories({ includeArchived: false });
 
