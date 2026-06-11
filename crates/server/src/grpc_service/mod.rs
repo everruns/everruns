@@ -253,6 +253,8 @@ use everruns_internal_protocol::proto::{
     SetSessionStatusResponse,
     SetSessionTitleRequest,
     SetSessionTitleResponse,
+    SetSubagentMetadataRequest,
+    SetSubagentMetadataResponse,
     SubscribeTaskNotificationsRequest,
     TaskNotification,
     TaskNotificationType,

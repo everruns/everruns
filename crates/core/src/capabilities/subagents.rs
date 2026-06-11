@@ -387,16 +387,36 @@ impl Tool for SpawnSubagentTool {
         let result_text = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
-        // Update registry with terminal status.
-        if let Some(ref registry) = context.session_resource_registry {
-            let terminal = if status == "error" {
-                crate::session_resource::SessionResourceStatus::Failed
-            } else {
-                crate::session_resource::SessionResourceStatus::Completed
-            };
-            let _ = registry
-                .update_status(context.session_id, &child_session.id.to_string(), terminal)
-                .await;
+        // Update registry and persist metadata only when the child reached a
+        // terminal state.  Non-terminal results from wait_for_idle (paused,
+        // waiting_for_tool_results, timeout) leave the child Active.
+        if status == "idle" {
+            if let Some(ref registry) = context.session_resource_registry {
+                let _ = registry
+                    .update_status(
+                        context.session_id,
+                        &child_session.id.to_string(),
+                        crate::session_resource::SessionResourceStatus::Completed,
+                    )
+                    .await;
+            }
+            if let Err(e) = store
+                .set_subagent_metadata(
+                    child_session.id,
+                    context.session_id,
+                    &name,
+                    &task,
+                    crate::session::SubagentStatus::Completed,
+                )
+                .await
+            {
+                tracing::warn!(
+                    session_id = %context.session_id,
+                    child_session_id = %child_session.id,
+                    error = %e,
+                    "failed to persist subagent completed metadata"
+                );
+            }
         }
 
         ToolExecutionResult::success(json!({

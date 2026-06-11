@@ -33,6 +33,7 @@ service WorkerService {
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
     rpc SetSessionStatus(SetSessionStatusRequest) returns (SetSessionStatusResponse);
     rpc SetSessionTitle(SetSessionTitleRequest) returns (SetSessionTitleResponse);
+    rpc SetSubagentMetadata(SetSubagentMetadataRequest) returns (SetSubagentMetadataResponse);
 
     // Message operations
     rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
@@ -421,6 +422,13 @@ message Session {
     optional Uuid resolved_owner_user_id = 17;
     // Captured immutable agent version for runtime provenance
     optional Uuid agent_version_id = 18;
+    // Parent/child metadata for subagent and agent handoff sessions.
+    optional Uuid parent_session_id = 19;
+    optional string subagent_name = 20;
+    optional string subagent_task = 21;
+    optional string subagent_status = 22;
+    optional string blueprint_id = 23;
+    optional string blueprint_config_json = 24;
 }
 
 message GetSessionRequest {
@@ -452,6 +460,19 @@ message SetSessionTitleRequest {
 }
 
 message SetSessionTitleResponse {
+    Session session = 1;
+}
+
+message SetSubagentMetadataRequest {
+    int64 org_id = 1;
+    Uuid session_id = 2;
+    Uuid parent_session_id = 3;
+    string subagent_name = 4;
+    string subagent_task = 5;
+    string subagent_status = 6;
+}
+
+message SetSubagentMetadataResponse {
     Session session = 1;
 }
 
