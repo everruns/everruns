@@ -692,3 +692,245 @@ async fn execute_btw_command_returns_ephemeral_answer() {
             .contains("requires a question")
     );
 }
+
+// ---------------------------------------------------------------------------
+// Connection resolver injection
+//
+// Proves embedders can supply their own `UserConnectionResolver` through
+// `RuntimeBackends` and have it reach connection-aware tools via
+// `ToolContext.connection_resolver` (the seam used by integrations such as
+// Daytona). See specs/runtime.md and crates/server/specs/user-connections.md.
+// ---------------------------------------------------------------------------
+
+struct StaticTokenResolver {
+    provider: String,
+    token: String,
+}
+
+#[async_trait]
+impl everruns_core::traits::UserConnectionResolver for StaticTokenResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: everruns_core::SessionId,
+        provider: &str,
+    ) -> everruns_core::Result<Option<String>> {
+        Ok((provider == self.provider).then(|| self.token.clone()))
+    }
+}
+
+struct ConnectionEchoCapability;
+
+impl everruns_core::capabilities::Capability for ConnectionEchoCapability {
+    fn id(&self) -> &str {
+        "connection_echo"
+    }
+    fn name(&self) -> &str {
+        "Connection Echo"
+    }
+    fn description(&self) -> &str {
+        "Testing capability: echoes a resolved connection token via ToolContext."
+    }
+    fn status(&self) -> everruns_core::capabilities::CapabilityStatus {
+        everruns_core::capabilities::CapabilityStatus::Available
+    }
+    fn tools(&self) -> Vec<Box<dyn everruns_core::tools::Tool>> {
+        vec![Box::new(ConnectionEchoTool)]
+    }
+}
+
+struct ConnectionEchoTool;
+
+#[async_trait]
+impl everruns_core::tools::Tool for ConnectionEchoTool {
+    fn name(&self) -> &str {
+        "echo_connection_token"
+    }
+    fn description(&self) -> &str {
+        "Resolve the connection token for a provider and return it."
+    }
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "provider": { "type": "string", "description": "Provider id, e.g. daytona" }
+            },
+            "required": ["provider"],
+            "additionalProperties": false
+        })
+    }
+    fn requires_context(&self) -> bool {
+        true
+    }
+    async fn execute(
+        &self,
+        _arguments: serde_json::Value,
+    ) -> everruns_core::tools::ToolExecutionResult {
+        everruns_core::tools::ToolExecutionResult::tool_error("requires context")
+    }
+    async fn execute_with_context(
+        &self,
+        arguments: serde_json::Value,
+        context: &everruns_core::traits::ToolContext,
+    ) -> everruns_core::tools::ToolExecutionResult {
+        // Fail fast on broken argument plumbing rather than defaulting — a
+        // missing/empty `provider` means the tool call did not arrive intact,
+        // which must surface as an error, not a "no connection" false pass.
+        let provider = match arguments.get("provider").and_then(|v| v.as_str()) {
+            Some(provider) if !provider.is_empty() => provider,
+            _ => {
+                return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                    "echo_connection_token: missing or empty `provider` argument",
+                );
+            }
+        };
+        // A missing resolver is a distinct wiring failure from "user has no
+        // connection" — keep them separable so the test catches each.
+        let Some(resolver) = context.connection_resolver.as_ref() else {
+            return everruns_core::tools::ToolExecutionResult::internal_error_msg(
+                "echo_connection_token: no connection resolver in ToolContext",
+            );
+        };
+        // Surface resolver failures as internal errors instead of swallowing
+        // them; only a clean `Ok(None)` is the legitimate "not connected" case.
+        match resolver
+            .get_connection_token(context.session_id, provider)
+            .await
+        {
+            Ok(Some(token)) => everruns_core::tools::ToolExecutionResult::success(
+                serde_json::json!({ "token": token }),
+            ),
+            Ok(None) => everruns_core::tools::ToolExecutionResult::tool_error("no connection"),
+            Err(err) => everruns_core::tools::ToolExecutionResult::internal_error_msg(format!(
+                "echo_connection_token: resolver failed: {err}"
+            )),
+        }
+    }
+}
+
+fn connection_platform() -> PlatformDefinition {
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(ConnectionEchoCapability);
+    PlatformDefinition::new(capabilities, DriverRegistry::new())
+}
+
+#[tokio::test]
+async fn runtime_exposes_injected_connection_resolver_to_host_adapter() {
+    use everruns_runtime::RuntimeHostAdapter;
+
+    let resolver = Arc::new(StaticTokenResolver {
+        provider: "daytona".to_string(),
+        token: "tok-host-adapter".to_string(),
+    });
+    let backends = RuntimeBackends::in_memory().with_connection_resolver(resolver);
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(connection_platform())
+        .backends(backends)
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| s.harness("h", "h").agent("a", "a"))
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let resolver = runtime
+        .connection_resolver()
+        .expect("connection resolver should be wired into the host adapter");
+    let token = resolver
+        .get_connection_token(session_id, "daytona")
+        .await
+        .unwrap();
+    assert_eq!(token.as_deref(), Some("tok-host-adapter"));
+
+    // Unknown providers resolve to None rather than erroring.
+    let missing = resolver
+        .get_connection_token(session_id, "github")
+        .await
+        .unwrap();
+    assert_eq!(missing, None);
+}
+
+#[tokio::test]
+async fn runtime_without_resolver_leaves_connection_resolver_unset() {
+    use everruns_runtime::RuntimeHostAdapter;
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(connection_platform())
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| s.harness("h", "h").agent("a", "a"))
+        .build()
+        .await
+        .unwrap();
+
+    assert!(
+        runtime.connection_resolver().is_none(),
+        "no resolver should be wired unless the embedder supplies one",
+    );
+}
+
+#[tokio::test]
+async fn injected_resolver_reaches_tool_context_during_a_turn() {
+    let harness_id = "harness_00000000000000000000000000000061".parse().unwrap();
+    let agent_id = "agent_00000000000000000000000000000061".parse().unwrap();
+    let session_id: everruns_core::SessionId =
+        "session_00000000000000000000000000000061".parse().unwrap();
+
+    let resolver = Arc::new(StaticTokenResolver {
+        provider: "daytona".to_string(),
+        token: "tok-tool-context".to_string(),
+    });
+    let backends = RuntimeBackends::in_memory().with_connection_resolver(resolver);
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(connection_platform())
+        .backends(backends)
+        .llm_sim(
+            LlmSimConfig::fixed("resolving token").with_tool_call_sequence(vec![
+                vec![ToolCall {
+                    id: "call_echo_1".into(),
+                    name: "echo_connection_token".into(),
+                    arguments: serde_json::json!({ "provider": "daytona" }),
+                }],
+                vec![],
+            ]),
+        )
+        .default_model(ModelWithProvider {
+            model: "llmsim-model".into(),
+            provider_type: LlmProviderType::LlmSim,
+            api_key: Some("fake-key".into()),
+            base_url: None,
+        })
+        .harness(
+            HarnessBuilder::new("conn", "You resolve connection tokens.")
+                .id(harness_id)
+                .capability("connection_echo")
+                .build(),
+        )
+        .agent(
+            AgentBuilder::new("conn-agent", "Use the tool.")
+                .id(agent_id)
+                .max_iterations(8)
+                .build(),
+        )
+        .session(session(session_id, harness_id, Some(agent_id)))
+        .build()
+        .await
+        .unwrap();
+
+    let result = runtime
+        .run_text_turn(session_id, "Resolve the daytona token.")
+        .await
+        .unwrap();
+    assert!(result.success);
+
+    let messages = runtime.messages(session_id).await.unwrap();
+    let tool_result = messages
+        .iter()
+        .find(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some("call_echo_1"))
+        .expect("tool result message");
+    let serialized = serde_json::to_string(tool_result).expect("serialize tool result");
+    assert!(
+        serialized.contains("tok-tool-context"),
+        "resolved token must reach the tool via ToolContext; got: {serialized}",
+    );
+}
