@@ -255,6 +255,39 @@ capabilities. The backend remains authoritative for config semantics through
 `validate_config(config)`, which is called on capability write paths before
 config is persisted.
 
+Readability rules for schemas:
+
+- Every exposed property carries an English `title` and `description`.
+- Labeled enums use standard `oneOf` `const`/`title` entries (not bare
+  `enum`), so clients render human labels without RJSF-specific extensions.
+- Only user-meaningful fields are exposed. Advanced or internal tuning fields
+  may be consumed by the capability without appearing in the schema, but
+  `validate_config` must still tolerate them. Secrets and API keys never go
+  through capability config — they flow through user connections and the
+  session secret store.
+
+##### Localization
+
+Display strings are localized through additive overlays, keeping
+`name()` / `description()` / schema strings as the canonical English base (see
+[localization.md](localization.md) for product-wide locale rules):
+
+- `localizations()` returns `CapabilityLocalization` entries per locale
+  (lowercase language tags such as `uk`): localized `name`, `description`,
+  a one-line `config_description`, and a `config_overlay` that mirrors the
+  JSON Schema structure (`properties`/`items`) with `title`/`description`/
+  `enum_labels` leaves. The `en` entry carries only `config_description`.
+- `localized_name(locale)` / `localized_description(locale)` /
+  `describe_schema(locale)` resolve with the standard fallback chain
+  exact tag → language family → `en` → unlocalized trait values.
+- The overlay map is copied to `CapabilityInfo.localizations`; clients pick
+  the locale and merge the overlay into `config_schema` before rendering, so
+  the generic editor stays capability-agnostic. Server-side
+  `validate_config` errors remain canonical English; clients localize their
+  own pre-submit validation messages.
+- Localization affects display only. Prompt building and LLM-facing
+  descriptions always use the canonical English strings.
+
 ##### Outbound Network Calls
 
 Capabilities that call external HTTP/API endpoints must use `ToolContext`'s

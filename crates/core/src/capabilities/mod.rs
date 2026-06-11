@@ -366,6 +366,80 @@ impl SystemPromptContext {
 ///     }
 /// }
 /// ```
+/// Localized display strings for one locale.
+///
+/// Base English strings stay in `name()` / `description()` / `config_schema()`;
+/// localizations are additive overlays, so adding a locale never changes the
+/// `Capability` trait contract for existing implementations.
+#[derive(Debug, Clone)]
+pub struct CapabilityLocalization {
+    /// Language tag this entry applies to, lowercase (e.g. `"uk"` or `"uk-ua"`).
+    pub locale: &'static str,
+    /// Localized display name; `None` falls back to `name()`.
+    pub name: Option<&'static str>,
+    /// Localized description; `None` falls back to `description()`.
+    pub description: Option<&'static str>,
+    /// One-line summary of what this capability's config controls.
+    ///
+    /// Provide an `"en"` entry for the base locale; capabilities without
+    /// config leave this `None` everywhere.
+    pub config_description: Option<&'static str>,
+    /// Overlay merged into `config_schema()` by clients before rendering.
+    ///
+    /// Mirrors JSON Schema structure (`properties` / `items` nesting); nodes
+    /// carry `title`, `description`, and `enum_labels` (map from enum value
+    /// to localized label, applied to `oneOf` `const`/`title` entries).
+    pub config_overlay: Option<serde_json::Value>,
+}
+
+impl CapabilityLocalization {
+    /// Entry with only display strings (no config).
+    pub fn text(locale: &'static str, name: &'static str, description: &'static str) -> Self {
+        Self {
+            locale,
+            name: Some(name),
+            description: Some(description),
+            config_description: None,
+            config_overlay: None,
+        }
+    }
+}
+
+/// Resolve a localized field with the standard fallback chain:
+/// exact tag → language family → `"en"`. Returns `None` when no entry
+/// provides the field; callers fall back to the unlocalized trait values.
+pub fn resolve_localized_field<T>(
+    localizations: &[CapabilityLocalization],
+    locale: Option<&str>,
+    field: impl Fn(&CapabilityLocalization) -> Option<T>,
+) -> Option<T> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(raw) = locale {
+        let normalized = raw.trim().replace('_', "-").to_lowercase();
+        if !normalized.is_empty() {
+            if let Some((language, _)) = normalized.split_once('-') {
+                let language = language.to_string();
+                candidates.push(normalized);
+                candidates.push(language);
+            } else {
+                candidates.push(normalized);
+            }
+        }
+    }
+    candidates.push("en".to_string());
+
+    for candidate in candidates {
+        let hit = localizations
+            .iter()
+            .find(|entry| entry.locale.eq_ignore_ascii_case(&candidate))
+            .and_then(&field);
+        if hit.is_some() {
+            return hit;
+        }
+    }
+    None
+}
+
 #[async_trait]
 pub trait Capability: Send + Sync {
     /// Returns the unique capability identifier as a string
@@ -376,6 +450,39 @@ pub trait Capability: Send + Sync {
 
     /// Returns a description of what this capability provides
     fn description(&self) -> &str;
+
+    /// Returns localization overlays for this capability's display strings.
+    ///
+    /// Include an `"en"` entry when providing `config_description` for the
+    /// base locale. Lookup follows `resolve_localized_field` fallback rules.
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![]
+    }
+
+    /// Display name resolved for `locale`; `None` or unknown locales fall
+    /// back to `name()`.
+    fn localized_name(&self, locale: Option<&str>) -> String {
+        resolve_localized_field(&self.localizations(), locale, |entry| entry.name)
+            .unwrap_or_else(|| self.name())
+            .to_string()
+    }
+
+    /// Description resolved for `locale`; falls back to `description()`.
+    fn localized_description(&self, locale: Option<&str>) -> String {
+        resolve_localized_field(&self.localizations(), locale, |entry| entry.description)
+            .unwrap_or_else(|| self.description())
+            .to_string()
+    }
+
+    /// One-line human-readable summary of what this capability's config
+    /// controls, resolved for `locale`. `None` when the capability exposes
+    /// no per-agent config.
+    fn describe_schema(&self, locale: Option<&str>) -> Option<String> {
+        resolve_localized_field(&self.localizations(), locale, |entry| {
+            entry.config_description
+        })
+        .map(str::to_string)
+    }
 
     /// Returns the current status of this capability
     fn status(&self) -> CapabilityStatus {
@@ -4475,5 +4582,72 @@ mod tests {
                 .iter()
                 .all(|m| !m.path.starts_with("/.agents/skills/"))
         );
+    }
+
+    struct LocalizedCapability;
+
+    impl Capability for LocalizedCapability {
+        fn id(&self) -> &str {
+            "localized"
+        }
+        fn name(&self) -> &str {
+            "Localized"
+        }
+        fn description(&self) -> &str {
+            "English description"
+        }
+        fn localizations(&self) -> Vec<CapabilityLocalization> {
+            vec![
+                CapabilityLocalization {
+                    locale: "en",
+                    name: None,
+                    description: None,
+                    config_description: Some("Controls things."),
+                    config_overlay: None,
+                },
+                CapabilityLocalization {
+                    locale: "uk",
+                    name: Some("Локалізована"),
+                    description: Some("Український опис"),
+                    config_description: Some("Керує налаштуваннями."),
+                    config_overlay: None,
+                },
+            ]
+        }
+    }
+
+    #[test]
+    fn localized_name_falls_back_exact_language_then_base() {
+        let cap = LocalizedCapability;
+        // Region tag resolves through the language family.
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Локалізована");
+        assert_eq!(cap.localized_name(Some("uk")), "Локалізована");
+        // Underscore-separated tags are normalized.
+        assert_eq!(cap.localized_name(Some("uk_UA")), "Локалізована");
+        // Unsupported locales and None fall back to the base name.
+        assert_eq!(cap.localized_name(Some("fr-FR")), "Localized");
+        assert_eq!(cap.localized_name(None), "Localized");
+        assert_eq!(cap.localized_description(Some("uk")), "Український опис");
+        assert_eq!(cap.localized_description(Some("de")), "English description");
+    }
+
+    #[test]
+    fn describe_schema_resolves_config_description_per_locale() {
+        let cap = LocalizedCapability;
+        assert_eq!(
+            cap.describe_schema(Some("uk-UA")).as_deref(),
+            Some("Керує налаштуваннями.")
+        );
+        // Unsupported locales fall back to the "en" entry.
+        assert_eq!(
+            cap.describe_schema(Some("pl")).as_deref(),
+            Some("Controls things.")
+        );
+        assert_eq!(
+            cap.describe_schema(None).as_deref(),
+            Some("Controls things.")
+        );
+        // Capabilities without localizations have no config description.
+        assert_eq!(NoopCapability.describe_schema(Some("uk")), None);
     }
 }

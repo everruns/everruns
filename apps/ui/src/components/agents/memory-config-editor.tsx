@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { useMemories } from "@/hooks/use-memory";
 import type { Memory } from "@/lib/api/types";
+import type { MessageKey } from "@/lib/i18n";
+import { useLocale } from "@/providers/locale-provider";
 
 // Mirrors crates/core/src/memory.rs: MemoryConfig wire shape.
 export interface MemoryMountEntry {
@@ -38,24 +40,25 @@ const PATH_PREFIX = "/workspace";
 
 // Validate the structural shape of a mount path. Mirrors
 // validate_mount_config_shape in crates/core/src/memory.rs so that errors
-// surface client-side with the same semantics as the server.
+// surface client-side with the same semantics as the server. Returns a
+// message key so the caller renders it in the active locale.
 //
 // Returns null for empty paths so freshly-added rows render without an
 // immediate error; the empty path is still rejected at save time because the
 // row is filtered from the overlap check and the server validates the final
 // config.
-export function validateMountPath(path: string): string | null {
+export function validateMountPath(path: string): MessageKey | null {
   if (!path) return null;
   if (path !== PATH_PREFIX && !path.startsWith(`${PATH_PREFIX}/`)) {
-    return `Path must be ${PATH_PREFIX} or start with ${PATH_PREFIX}/`;
+    return "mount_path_must_start";
   }
-  if (path.includes("//")) return "Path must not contain '//'";
-  if (path.includes("\0")) return "Path must not contain null bytes";
+  if (path.includes("//")) return "mount_path_double_slash";
+  if (path.includes("\0")) return "mount_path_null";
   if (path.split("/").some((segment) => segment === "..")) {
-    return "Path must not contain '..'";
+    return "mount_path_dotdot";
   }
   if (path.length > 1 && path.endsWith("/")) {
-    return "Path must not end with a trailing slash";
+    return "mount_path_trailing_slash";
   }
   return null;
 }
@@ -75,21 +78,26 @@ export function pathsOverlap(a: string, b: string): boolean {
   return true;
 }
 
+interface LocalizedError {
+  key: MessageKey;
+  values?: Record<string, string | number>;
+}
+
 interface MountValidation {
-  pathError?: string;
-  memoryError?: string;
-  overlapError?: string;
+  pathError?: LocalizedError;
+  memoryError?: LocalizedError;
+  overlapError?: LocalizedError;
 }
 
 function validateMounts(mounts: MemoryMountEntry[]): MountValidation[] {
   const validations: MountValidation[] = mounts.map((mount) => {
     const validation: MountValidation = {};
     const pathErr = validateMountPath(mount.path);
-    if (pathErr) validation.pathError = pathErr;
+    if (pathErr) validation.pathError = { key: pathErr };
     if (!mount.memory) {
-      validation.memoryError = "Memory is required";
+      validation.memoryError = { key: "memory_required" };
     } else if (!VOLUME_ID_PATTERN.test(mount.memory)) {
-      validation.memoryError = "Invalid memory ID";
+      validation.memoryError = { key: "memory_invalid_id" };
     }
     return validation;
   });
@@ -103,10 +111,10 @@ function validateMounts(mounts: MemoryMountEntry[]): MountValidation[] {
       const b = mounts[j];
       if (!b.path || validations[j].pathError) continue;
       if (pathsOverlap(a.path, b.path)) {
-        const message =
+        const message: LocalizedError =
           a.path === b.path
-            ? `Duplicate mount path '${a.path}'`
-            : `Path '${a.path}' overlaps with '${b.path}'`;
+            ? { key: "mount_path_duplicate", values: { value: a.path } }
+            : { key: "mount_path_overlap", values: { value: a.path, other: b.path } };
         if (!validations[i].overlapError) validations[i].overlapError = message;
         if (!validations[j].overlapError) validations[j].overlapError = message;
       }
@@ -141,6 +149,7 @@ function writeMounts(mounts: MemoryMountEntry[]): Record<string, unknown> {
 }
 
 export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigEditorProps) {
+  const { t } = useLocale();
   const mounts = readMounts(config);
   const { data: memory, isLoading, error } = useMemories({ includeArchived: false });
 
@@ -182,18 +191,14 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
   return (
     <div className="space-y-3 pt-2">
       <div className="space-y-1">
-        <Label className="text-xs font-normal text-muted-foreground">Mounts</Label>
-        <p className="text-xs text-muted-foreground">
-          Mount org memory into <code>/workspace</code> for sessions using this capability.
-        </p>
+        <Label className="text-xs font-normal text-muted-foreground">{t("memory_mounts")}</Label>
+        <p className="text-xs text-muted-foreground">{t("memory_mounts_help")}</p>
       </div>
 
-      {error && <p className="text-xs text-destructive">Failed to load memory. Try again.</p>}
+      {error && <p className="text-xs text-destructive">{t("memory_load_failed")}</p>}
 
       {!isLoading && activeMemories.length === 0 && mounts.length === 0 && (
-        <p className="text-xs text-muted-foreground">
-          No active memory found in this org. Create a memory first to add a mount.
-        </p>
+        <p className="text-xs text-muted-foreground">{t("memory_none_active")}</p>
       )}
 
       {mounts.length > 0 && (
@@ -212,7 +217,7 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
               !activeMemories.some((v) => v.id === mount.memory);
             const memoryError =
               validation.memoryError ??
-              (isUnknownMemory ? "Memory is unavailable or archived" : undefined);
+              (isUnknownMemory ? ({ key: "memory_unavailable" } as LocalizedError) : undefined);
 
             return (
               <div
@@ -222,19 +227,27 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
               >
                 <div className="flex items-start gap-2">
                   <div className="flex-1 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">Memory</Label>
+                    <Label className="text-xs font-normal text-muted-foreground">
+                      {t("memory_label")}
+                    </Label>
                     <Combobox
                       options={memoryOptions}
                       value={mount.memory}
                       onValueChange={(value) => updateRow(index, { memory: value })}
-                      placeholder={isLoading ? "Loading..." : "Select a memory"}
-                      searchPlaceholder="Search memory..."
+                      placeholder={isLoading ? t("memory_loading") : t("memory_select")}
+                      searchPlaceholder={t("memory_search")}
                       disabled={disabled || isLoading}
                     />
-                    {memoryError && <p className="text-xs text-destructive">{memoryError}</p>}
+                    {memoryError && (
+                      <p className="text-xs text-destructive">
+                        {t(memoryError.key, memoryError.values)}
+                      </p>
+                    )}
                   </div>
                   <div className="flex-1 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">Mount path</Label>
+                    <Label className="text-xs font-normal text-muted-foreground">
+                      {t("mount_path_label")}
+                    </Label>
                     <Input
                       value={mount.path}
                       placeholder="/workspace/research"
@@ -244,12 +257,17 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
                     />
                     {(validation.pathError || validation.overlapError) && (
                       <p className="text-xs text-destructive">
-                        {validation.pathError ?? validation.overlapError}
+                        {(() => {
+                          const err = validation.pathError ?? validation.overlapError;
+                          return err ? t(err.key, err.values) : null;
+                        })()}
                       </p>
                     )}
                   </div>
                   <div className="w-32 space-y-1">
-                    <Label className="text-xs font-normal text-muted-foreground">Mode</Label>
+                    <Label className="text-xs font-normal text-muted-foreground">
+                      {t("mount_mode_label")}
+                    </Label>
                     <Select
                       value={mount.mode ?? "readonly"}
                       onValueChange={(value) =>
@@ -261,8 +279,8 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="readonly">Read only</SelectItem>
-                        <SelectItem value="readwrite">Read / write</SelectItem>
+                        <SelectItem value="readonly">{t("mount_mode_readonly")}</SelectItem>
+                        <SelectItem value="readwrite">{t("mount_mode_readwrite")}</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -270,7 +288,7 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
                     type="button"
                     variant="ghost"
                     size="icon"
-                    aria-label="Remove mount"
+                    aria-label={t("mount_remove")}
                     disabled={disabled}
                     className="mt-5 h-8 w-8 text-muted-foreground hover:text-destructive"
                     onClick={() => removeRow(index)}
@@ -286,7 +304,7 @@ export function MemoryConfigEditor({ config, onChange, disabled }: MemoryConfigE
 
       <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={addRow}>
         <Plus className="mr-1 h-3.5 w-3.5" />
-        Add mount
+        {t("mount_add")}
       </Button>
     </div>
   );
