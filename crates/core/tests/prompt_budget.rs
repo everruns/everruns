@@ -13,9 +13,9 @@
 
 use everruns_core::capabilities::{
     BudgetingCapability, Capability, DataKnowledgeCapability, FileSystemCapability,
-    InfinityContextCapability, MemoryCapability, SampleDataCapability, SelfBudgetCapability,
-    SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability, SubagentCapability,
-    SystemPromptContext, WebFetchCapability,
+    InfinityContextCapability, MemoryCapability, MessageMetadataCapability, SampleDataCapability,
+    SelfBudgetCapability, SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability,
+    SubagentCapability, SystemPromptContext, WebFetchCapability,
 };
 use everruns_core::typed_id::SessionId;
 
@@ -72,6 +72,11 @@ async fn memory_prompt_is_empty() {
 #[tokio::test]
 async fn subagents_prompt_within_budget() {
     assert_contribution_under(&SubagentCapability, 350).await;
+}
+
+#[tokio::test]
+async fn message_metadata_prompt_within_budget() {
+    assert_contribution_under(&MessageMetadataCapability, 350).await;
 }
 
 #[tokio::test]

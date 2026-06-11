@@ -36,6 +36,7 @@ Structured data, time awareness, task tracking, and scheduling.
 |---|---|---|
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
+| [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 
