@@ -27,3 +27,4 @@ export * from "./use-name-availability";
 export * from "./use-page-title";
 export * from "./use-memory";
 export * from "./use-reporting";
+export * from "./use-plugins";
