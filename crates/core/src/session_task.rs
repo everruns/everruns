@@ -645,7 +645,22 @@ pub trait SessionTaskRegistry: Send + Sync {
 pub trait TaskExecutor: Send + Sync {
     fn kind(&self) -> &str;
 
+    /// Whether this executor can re-attach to a running task after worker loss.
+    ///
+    /// Kinds returning `true` must implement `start` such that calling it with
+    /// a re-attached task snapshot (attempt already bumped by the reaper)
+    /// resumes the work idempotently and heartbeats with the new attempt.
+    /// Kinds returning `false` (the default) are failed as orphaned immediately
+    /// by the reaper.
+    fn can_reattach(&self) -> bool {
+        false
+    }
+
     /// Begin execution, or re-attach after worker loss.
+    ///
+    /// Called by the reaper when re-attaching a task (attempt already bumped).
+    /// Implementations must heartbeat using `task.attempt` so stale writes from
+    /// the previous executor are rejected by the fence.
     async fn start(&self, task: &SessionTask, context: &crate::traits::ToolContext) -> Result<()> {
         let _ = (task, context);
         Err(crate::error::AgentLoopError::tool(format!(
