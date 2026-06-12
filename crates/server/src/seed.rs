@@ -2934,7 +2934,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 19);
+        assert_eq!(cap_ids.len(), 20);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"bashkit_shell"));
