@@ -6,8 +6,16 @@ import { Label } from "@/components/ui/label";
 import { Plus, X } from "lucide-react";
 
 export interface KeyValuePair {
+  id: string;
   key: string;
   value: string;
+}
+
+let pairCounter = 0;
+// Stable per-row id so React keys survive insertion/removal; never persisted.
+export function newKeyValuePair(): KeyValuePair {
+  pairCounter += 1;
+  return { id: `kv-${pairCounter}-${Date.now()}`, key: "", value: "" };
 }
 
 export function KeyValueEditor({
@@ -34,7 +42,7 @@ export function KeyValueEditor({
           variant="ghost"
           size="sm"
           className="h-7 text-xs"
-          onClick={() => onChange([...pairs, { key: "", value: "" }])}
+          onClick={() => onChange([...pairs, newKeyValuePair()])}
         >
           <Plus className="h-3 w-3 mr-1" />
           {addLabel}
@@ -43,7 +51,7 @@ export function KeyValueEditor({
       {pairs.length > 0 && (
         <div className="space-y-2">
           {pairs.map((pair, index) => (
-            <div key={index} className="flex items-center gap-2">
+            <div key={pair.id} className="flex items-center gap-2">
               <Input
                 placeholder={keyPlaceholder}
                 value={pair.key}
@@ -66,6 +74,7 @@ export function KeyValueEditor({
                 size="sm"
                 className="h-9 w-9 p-0 shrink-0"
                 onClick={() => onChange(pairs.filter((_, i) => i !== index))}
+                aria-label={`Remove ${keyPlaceholder.toLowerCase()}`}
               >
                 <X className="h-4 w-4" />
               </Button>

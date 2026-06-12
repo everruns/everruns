@@ -89,9 +89,15 @@ export function useDeclarativeCapability(id: string | undefined) {
     enabled: !!org && !!id,
   });
 
+  const fallback = useResourceOrgFallback({
+    resourceId: id,
+    error: query.error,
+    isLoading: orgLoading || query.isLoading,
+  });
+
   return {
     ...query,
-    isLoading: orgLoading || query.isLoading,
+    isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
   };
 }
 

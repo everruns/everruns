@@ -27,8 +27,8 @@ describe("declarative capability form conversions", () => {
       transportType: "http",
       url: " https://mcp.example.com/v1 ",
       headers: [
-        { key: "X-Env", value: "prod" },
-        { key: "", value: "ignored" },
+        { id: "h1", key: "X-Env", value: "prod" },
+        { id: "h2", key: "  ", value: "ignored" },
       ],
       authMode: "oauth",
       oauthProviderId: "atlassian",
@@ -54,7 +54,7 @@ describe("declarative capability form conversions", () => {
       transportType: "stdio",
       command: "npx",
       args: "-y\n@modelcontextprotocol/server-filesystem\n",
-      env: [{ key: "ROOT", value: "/tmp" }],
+      env: [{ id: "e1", key: "ROOT", value: "/tmp" }],
     };
 
     expect(entriesToMcpServers([entry])).toEqual({

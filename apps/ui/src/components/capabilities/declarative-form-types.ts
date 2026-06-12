@@ -79,12 +79,18 @@ export function newFileEntry(): FileEntry {
 }
 
 function pairsToRecord(pairs: KeyValuePair[]): Record<string, string> {
-  return Object.fromEntries(pairs.filter((p) => p.key).map((p) => [p.key, p.value]));
+  return Object.fromEntries(
+    pairs.map((p) => [p.key.trim(), p.value] as const).filter(([key]) => key),
+  );
 }
 
 function recordToPairs(record: Record<string, string> | undefined): KeyValuePair[] {
   if (!record) return [];
-  return Object.entries(record).map(([key, value]) => ({ key, value: String(value) }));
+  return Object.entries(record).map(([key, value]) => ({
+    id: localId(),
+    key,
+    value: String(value),
+  }));
 }
 
 // --- MCP conversions -------------------------------------------------------
