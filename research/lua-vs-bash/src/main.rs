@@ -250,6 +250,7 @@ async fn main() -> anyhow::Result<()> {
         provider_type: LlmProviderType::Anthropic,
         api_key: Some(api_key),
         base_url: None,
+        provider_metadata: None,
     };
 
     // `--dump-prompts` prints the assembled prompts and exits (no model call).

@@ -604,6 +604,7 @@ impl ProviderChoice {
                     provider_type: LlmProviderType::Anthropic,
                     api_key: Some(key),
                     base_url: None,
+                    provider_metadata: None,
                 })
             }
             ProviderChoice::OpenAi { model, .. } => {
@@ -614,6 +615,7 @@ impl ProviderChoice {
                     provider_type: LlmProviderType::Openai,
                     api_key: Some(key),
                     base_url: None,
+                    provider_metadata: None,
                 })
             }
             ProviderChoice::OpenRouter { model, base_url } => {
@@ -624,6 +626,7 @@ impl ProviderChoice {
                     provider_type: LlmProviderType::Openai,
                     api_key: Some(key),
                     base_url: Some(base_url.clone()),
+                    provider_metadata: None,
                 })
             }
             ProviderChoice::Ollama { model, base_url } => Ok(ModelWithProvider {
@@ -631,12 +634,14 @@ impl ProviderChoice {
                 provider_type: LlmProviderType::Openai,
                 api_key: Some(env_or_default("OLLAMA_API_KEY", DEFAULT_OLLAMA_API_KEY)),
                 base_url: Some(base_url.clone()),
+                provider_metadata: None,
             }),
             ProviderChoice::Sim => Ok(ModelWithProvider {
                 model: "llmsim-coding-cli".into(),
                 provider_type: LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             }),
         }
     }
@@ -893,6 +898,7 @@ pub async fn build(
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         },
     };
 

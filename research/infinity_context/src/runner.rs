@@ -215,6 +215,8 @@ fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
         LlmProviderType::Anthropic => "ANTHROPIC_API_KEY",
         LlmProviderType::Openai | LlmProviderType::OpenaiCompletions => "OPENAI_API_KEY",
         LlmProviderType::LlmSim => return Ok(String::new()),
+        // This research harness only drives the providers above.
+        other => anyhow::bail!("unsupported provider for eval harness: {other}"),
     };
     std::env::var(key_name).map_err(|_| anyhow::anyhow!("{} not set", key_name))
 }
@@ -407,6 +409,7 @@ async fn execute_with_agentic_loop(
             provider_type: provider_type.clone(),
             api_key: Some(api_key.clone()),
             base_url: None,
+            provider_metadata: None,
         };
 
         // Build the agentic loop with seed events
