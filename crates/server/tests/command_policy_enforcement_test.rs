@@ -28,6 +28,9 @@ use everruns_server::domains::common::{
 };
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
+use everruns_server::domains::session_tasks::{
+    CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
+};
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
 use uuid::Uuid;
@@ -161,6 +164,66 @@ async fn run_honors_custom_resolver_denying_owner_write() {
         .run(&ctx)
         .await
         .expect_err("Custom resolver must block Owner write");
+    assert!(
+        matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
+        "expected Forbidden, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn session_task_commands_honor_session_permissions_before_access() {
+    // Regression coverage for session-task REST/MCP commands: a custom resolver
+    // denying OrgSessionsManage must block before any session/task lookup or mutation.
+    let ctx = make_ctx(caller_with_role(OrgRole::Owner), Arc::new(DenyAllResolver));
+
+    let list_err = ListSessionTasks {
+        session_id: "not-a-session-id".to_string(),
+        state: None,
+        kind: None,
+    }
+    .run(&ctx)
+    .await
+    .expect_err("list must require the session view policy");
+    assert_forbidden(list_err);
+
+    let get_err = GetSessionTask {
+        session_id: "not-a-session-id".to_string(),
+        task_id: "task_test".to_string(),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("get must require the session view policy");
+    assert_forbidden(get_err);
+
+    let post_err = PostSessionTaskMessage {
+        session_id: "not-a-session-id".to_string(),
+        task_id: "task_test".to_string(),
+        text: Some("answer".to_string()),
+        content: None,
+        in_reply_to: None,
+    }
+    .run(&ctx)
+    .await
+    .expect_err("post message must require the session manage policy");
+    assert_forbidden(post_err);
+
+    let cancel_err = CancelSessionTask {
+        session_id: "not-a-session-id".to_string(),
+        task_id: "task_test".to_string(),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("cancel must require the session manage policy");
+    assert_forbidden(cancel_err);
+}
+
+fn assert_forbidden(err: CommandError) {
     assert!(
         matches!(
             err,

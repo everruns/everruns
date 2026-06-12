@@ -1,5 +1,6 @@
 use super::queries as q;
 use crate::domains::common::*;
+use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use everruns_core::SessionTask;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TaskMessage,
@@ -39,6 +40,10 @@ impl Command for ListSessionTasks {
 
     fn positional_arg() -> Option<&'static str> {
         Some("session_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionTask>, CommandError> {
@@ -99,6 +104,10 @@ impl Command for GetSessionTask {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<SessionTaskDetail, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let task = q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
@@ -142,6 +151,10 @@ impl Command for PostSessionTaskMessage {
             method: "POST",
             path: "/v1/sessions/{session_id}/tasks/{task_id}/messages",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<TaskMessage, CommandError> {
@@ -194,6 +207,10 @@ impl Command for CancelSessionTask {
             method: "POST",
             path: "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionTask, CommandError> {
