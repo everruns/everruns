@@ -21,7 +21,7 @@ Enable the `github_scout` capability on an agent or harness. Then spawn the blue
   "name": "spawn_subagent",
   "arguments": {
     "name": "Scout",
-    "task": "Find where authentication middleware is implemented.",
+    "instructions": "Find where authentication middleware is implemented.",
     "blueprint": "github_scout",
     "config": {
       "repos": ["fastify/fastify"]

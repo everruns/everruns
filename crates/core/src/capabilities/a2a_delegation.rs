@@ -514,7 +514,7 @@ struct AgentRunRecord {
     kind: String,
     external_agent_id: String,
     external_agent_name: String,
-    task: String,
+    instructions: String,
     mode: AgentRunMode,
     status: AgentRunStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -547,7 +547,7 @@ impl AgentRunRecord {
     fn new(
         run_id: String,
         agent: &ExternalA2aAgentConfig,
-        task: String,
+        instructions: String,
         mode: AgentRunMode,
         wake_on_completion: bool,
     ) -> Self {
@@ -556,7 +556,7 @@ impl AgentRunRecord {
             kind: "external_a2a".to_string(),
             external_agent_id: agent.id.clone(),
             external_agent_name: agent.name.clone(),
-            task,
+            instructions,
             mode,
             status: AgentRunStatus::Submitted,
             remote_task_id: None,
@@ -577,7 +577,7 @@ impl AgentRunRecord {
             "kind": self.kind,
             "external_agent_id": self.external_agent_id,
             "external_agent_name": self.external_agent_name,
-            "task": self.task,
+            "instructions": self.instructions,
             "mode": self.mode,
             "status": self.status,
             "remote_task_id": self.remote_task_id,
@@ -1152,7 +1152,7 @@ impl Tool for SpawnAgentTool {
         json!({
             "type": "object",
             "properties": {
-                "task": {"type": "string", "description": "Task to send to the external agent."},
+                "instructions": {"type": "string", "description": "Instructions to send to the external agent."},
                 "target": {
                     "type": "object",
                     "properties": {
@@ -1166,7 +1166,7 @@ impl Tool for SpawnAgentTool {
                 "wait_timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400},
                 "wake_on_completion": {"type": "boolean", "default": true}
             },
-            "required": ["task", "target"],
+            "required": ["instructions", "target"],
             "additionalProperties": false
         })
     }
@@ -1189,8 +1189,8 @@ impl Tool for SpawnAgentTool {
         if let Err(e) = require_storage(context) {
             return e;
         }
-        let task = match require_str(&arguments, "task") {
-            Ok(task) => task.to_string(),
+        let instructions = match require_str(&arguments, "instructions") {
+            Ok(instructions) => instructions.to_string(),
             Err(e) => return e,
         };
         let target = arguments.get("target").unwrap_or(&Value::Null);
@@ -1233,7 +1233,7 @@ impl Tool for SpawnAgentTool {
         let mut record = AgentRunRecord::new(
             run_id.clone(),
             &agent,
-            task.clone(),
+            instructions.clone(),
             mode.clone(),
             wake_on_completion,
         );
@@ -1249,7 +1249,7 @@ impl Tool for SpawnAgentTool {
                     spec: json!({
                         "run_id": &run_id,
                         "external_agent_id": agent.id,
-                        "instructions": &task,
+                        "instructions": &instructions,
                         "mode": &mode,
                     }),
                     state: SessionTaskState::Queued,
@@ -1266,7 +1266,9 @@ impl Tool for SpawnAgentTool {
         if let Err(e) = save_run(context, &record).await {
             return ToolExecutionResult::internal_error(e);
         }
-        if let Err(error) = submit_run(context, &agent, &mut record, &task, None, None).await {
+        if let Err(error) =
+            submit_run(context, &agent, &mut record, &instructions, None, None).await
+        {
             record.status = AgentRunStatus::Failed;
             set_error(&mut record, error);
             let _ = save_run(context, &record).await;
@@ -2140,7 +2142,7 @@ mod tests {
         let result = tool
             .execute_with_context(
                 json!({
-                    "task": "hello",
+                    "instructions": "hello",
                     "target": {"type": "external_a2a", "external_agent_id": "echo"},
                     "mode": "wait",
                     "wait_timeout_secs": 5
@@ -2170,7 +2172,7 @@ mod tests {
         let result = spawn
             .execute_with_context(
                 json!({
-                    "task": "background",
+                    "instructions": "background",
                     "target": {"type": "external_a2a", "external_agent_id": "echo"},
                     "mode": "background",
                     "wait_timeout_secs": 5,

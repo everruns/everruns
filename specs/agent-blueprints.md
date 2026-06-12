@@ -216,7 +216,7 @@ The `AgentBlueprint` definition is stateless (code template). The session instan
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name (same as today) |
-| `task` | string | Yes | Task description (same as today) |
+| `instructions` | string | Yes | Instructions for the subagent (renamed from `task`) |
 | `blueprint` | string | No | Blueprint ID. When set, child uses blueprint's RuntimeAgent. |
 | `config` | object | No | Blueprint-specific config. Validated against `config_schema`. |
 
@@ -315,7 +315,7 @@ These use the GitHub token from User Connections. They are private to the bluepr
   "name": "spawn_subagent",
   "arguments": {
     "name": "Scout",
-    "task": "Find how authentication middleware is implemented in the fastify repo.",
+    "instructions": "Find how authentication middleware is implemented in the fastify repo.",
     "blueprint": "github_scout",
     "config": { "repos": ["fastify/fastify"] }
   }
