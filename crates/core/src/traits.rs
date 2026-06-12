@@ -1442,6 +1442,24 @@ impl ToolContext {
         self
     }
 
+    /// Set the outbound egress service on this context when available.
+    /// Preserves any already-set service when `service` is `None`.
+    pub fn with_egress_service_opt(
+        mut self,
+        service: Option<Arc<dyn crate::EgressService>>,
+    ) -> Self {
+        if let Some(service) = service {
+            self.egress_service = Some(service);
+        }
+        self
+    }
+
+    /// Set the session storage store on this context (builder method).
+    pub fn with_storage_store_arc(mut self, store: Arc<dyn SessionStorageStore>) -> Self {
+        self.storage_store = Some(store);
+        self
+    }
+
     /// Add a session schedule store to this context.
     pub fn with_schedule_store(mut self, store: Arc<dyn SessionScheduleStore>) -> Self {
         self.schedule_store = Some(store);

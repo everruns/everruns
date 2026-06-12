@@ -316,20 +316,37 @@ No backward compatibility is required; data migrates forward once:
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
   reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
   with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -
-  5m`) and fails them via the registry using `FOR UPDATE SKIP LOCKED` on the
-  PG backend. Tasks with `NULL heartbeat_at` (foreground subagent tasks) are
-  excluded (covered by EVE-535 spawn handles). The reconciler now runs on gRPC
-  workers via the `ListOrphanedSessionTasks` RPC (added to the internal worker
-  protocol); `session_task_reaper` is included in the gRPC DurableWorker's
-  default activity types. Stale-attempt fencing is built: `SessionTaskUpdate`
-  carries an optional `expected_attempt` field; `apply_task_update` silently
-  drops any update where `expected_attempt` is set but does not match
-  `task.attempt`. When the reaper fails an orphan it sets `increment_attempt`,
-  bumping `task.attempt` so the superseded executor's heartbeats, state writes,
-  and message posts (`NewTaskMessage.expected_attempt`, enforced in
+  5m`) and, for re-attachable kinds, re-attaches them; otherwise fails them via
+  the registry using `FOR UPDATE SKIP LOCKED` on the PG backend. Tasks with
+  `NULL heartbeat_at` (foreground subagent tasks) are excluded (covered by
+  EVE-535 spawn handles). The reconciler now runs on gRPC workers via the
+  `ListOrphanedSessionTasks` RPC (added to the internal worker protocol);
+  `session_task_reaper` is included in the gRPC DurableWorker's default
+  activity types. Stale-attempt fencing is built: `SessionTaskUpdate` carries
+  an optional `expected_attempt` field; `apply_task_update` silently drops any
+  update where `expected_attempt` is set but does not match `task.attempt`.
+  When the reaper fails an orphan it sets `increment_attempt`, bumping
+  `task.attempt` so the superseded executor's heartbeats, state writes, and
+  message posts (`NewTaskMessage.expected_attempt`, enforced in
   `record_message`) are rejected. Writers that do not track attempts
   (e.g. `cancel_task` from the API) leave `expected_attempt: None` and are
-  unaffected. Re-attach (attempt+1 restart) remains deferred.
+  unaffected.
+- Re-attach: `TaskExecutor` now has `fn can_reattach(&self) -> bool` (default
+  `false`). Kinds returning `true` must implement `start` to resume idempotently
+  with the new attempt. The reaper re-attaches up to `max_attempts` (default 3,
+  configurable in `SessionTaskReaperInput`): it atomically supersedes with
+  `increment_attempt` + `expected_attempt` fence, builds a minimal `ToolContext`
+  (storage_store + registry + egress), calls `executor.start(&updated_task,
+  &ctx)`, and on `start` error falls back to orphaned-fail with the attempt
+  already bumped. On attempt ≥ max_attempts the task is failed as orphaned
+  immediately. `ExternalAgentTaskExecutor` (`external_agent` kind) implements
+  `can_reattach → true`: loads the `AgentRunRecord` from session storage; if
+  terminal mirrors the state and returns; if `remote_task_id` is absent returns
+  an error (caller falls back to orphaned); otherwise rebuilds the A2A client
+  and resumes `background_monitor` with `heartbeat_attempt = task.attempt`.
+  The background poll loop now heartbeats the registry on every poll iteration
+  when `heartbeat_attempt` is provided, fencing stale writes from superseded
+  executors. All other kinds still fail immediately as orphaned.
 - Wake-ups: `wake_policy` is enforced at the registry level
   (`DbSessionTaskRegistry`). `OnTerminal` wakes on any transition into
   `succeeded`/`failed`/`canceled`. `OnActivity` additionally wakes on

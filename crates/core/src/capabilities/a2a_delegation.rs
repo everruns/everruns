@@ -37,6 +37,11 @@ use url::Url;
 pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
+
+/// Error prefix returned by `wait_for_run` when the attempt fence reveals the
+/// executor was superseded (reaper re-attached the task elsewhere). The
+/// background monitor exits without writing failure state on this error.
+const SUPERSEDED_ERROR_PREFIX: &str = "Superseded external agent poll for";
 const MAX_RESULT_CHARS: usize = 8_192;
 
 /// Outbound A2A delegation capability.
@@ -1008,11 +1013,18 @@ async fn submit_run(
     save_run(context, record).await.map_err(|e| e.to_string())
 }
 
+/// Poll a remote A2A task until it reaches a terminal state or the deadline
+/// expires. Sends a registry heartbeat on every poll iteration when
+/// `heartbeat_attempt` is provided, so the reaper knows the worker is alive
+/// and stale writes from a superseded executor are rejected.
 async fn wait_for_run(
     context: &ToolContext,
     agent: &ExternalA2aAgentConfig,
     mut record: AgentRunRecord,
     timeout_secs: u64,
+    // When Some, write a heartbeat on every poll with this attempt fence so
+    // a superseded executor's stale writes are rejected.
+    heartbeat_attempt: Option<i32>,
 ) -> std::result::Result<AgentRunRecord, String> {
     if record.status.is_terminal() {
         write_result_artifact(context, &mut record)
@@ -1036,6 +1048,36 @@ async fn wait_for_run(
     );
 
     while Instant::now() < deadline {
+        // Heartbeat through the registry so the reaper sees a live worker.
+        // A fence miss (returned attempt differs from ours) means the reaper
+        // superseded this executor — stop polling immediately so we never
+        // write failure state over the new attempt's work.
+        if let (Some(attempt), Some(registry), Some(task_id)) = (
+            heartbeat_attempt,
+            &context.session_task_registry,
+            record.task_id.as_deref(),
+        ) {
+            let heartbeat = registry
+                .update(
+                    context.session_id,
+                    task_id,
+                    SessionTaskUpdate {
+                        heartbeat_at: Some(chrono::Utc::now()),
+                        expected_attempt: Some(attempt),
+                        ..Default::default()
+                    },
+                )
+                .await;
+            if let Ok(Some(task)) = heartbeat
+                && task.attempt != attempt
+            {
+                return Err(format!(
+                    "{SUPERSEDED_ERROR_PREFIX} run {} (attempt {attempt} superseded by {})",
+                    record.run_id, task.attempt
+                ));
+            }
+        }
+
         let task = client
             .get_task(&GetTaskRequest {
                 id: remote_task_id.clone(),
@@ -1087,16 +1129,28 @@ async fn timeout_or_error_result(
     ToolExecutionResult::tool_error(error)
 }
 
+/// Background poll loop for an A2A run. `heartbeat_attempt` is the task
+/// attempt number captured at spawn/re-attach time; heartbeats carry this so
+/// the fence rejects writes from a previously superseded attempt.
 async fn background_monitor(
     context: ToolContext,
     agent: ExternalA2aAgentConfig,
     record: AgentRunRecord,
     timeout_secs: u64,
+    heartbeat_attempt: Option<i32>,
 ) {
     let run_id = record.run_id.clone();
     let fallback_record = record.clone();
-    let record = match wait_for_run(&context, &agent, record, timeout_secs).await {
+    let record = match wait_for_run(&context, &agent, record, timeout_secs, heartbeat_attempt).await
+    {
         Ok(record) => record,
+        // Superseded by a newer attempt (reaper re-attached the task to
+        // another executor): exit silently — the new owner reports state;
+        // writing failure here would overwrite its work.
+        Err(error) if error.starts_with(SUPERSEDED_ERROR_PREFIX) => {
+            tracing::info!(run_id = %run_id, "A2A background monitor superseded; exiting");
+            return;
+        }
         Err(error) => {
             let mut failed = load_run(&context, &run_id).await.unwrap_or(fallback_record);
             failed.status = AgentRunStatus::Failed;
@@ -1277,16 +1331,31 @@ impl Tool for SpawnAgentTool {
         match mode {
             AgentRunMode::Background => {
                 let context = context.clone();
+                // Capture the attempt at spawn time (1 for a fresh spawn).
+                // The heartbeat loop uses this to fence stale writes from any
+                // future superseded attempt.
+                let heartbeat_attempt = record.task_id.is_some().then_some(1i32);
                 let background_record = record.clone();
                 tokio::spawn(async move {
-                    background_monitor(context, agent, background_record, timeout_secs).await;
+                    background_monitor(
+                        context,
+                        agent,
+                        background_record,
+                        timeout_secs,
+                        heartbeat_attempt,
+                    )
+                    .await;
                 });
                 ToolExecutionResult::success(record.public_json())
             }
-            AgentRunMode::Wait => match wait_for_run(context, &agent, record, timeout_secs).await {
-                Ok(record) => ToolExecutionResult::success(record.public_json()),
-                Err(error) => timeout_or_error_result(context, &run_id, error).await,
-            },
+            AgentRunMode::Wait => {
+                // Foreground wait: the tool executor owns the call stack so no
+                // separate heartbeat thread is needed; pass None.
+                match wait_for_run(context, &agent, record, timeout_secs, None).await {
+                    Ok(record) => ToolExecutionResult::success(record.public_json()),
+                    Err(error) => timeout_or_error_result(context, &run_id, error).await,
+                }
+            }
         }
     }
 
@@ -1454,7 +1523,8 @@ impl Tool for WaitAgentTool {
             .get("timeout_secs")
             .and_then(Value::as_u64)
             .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
-        match wait_for_run(context, &agent, record, timeout_secs).await {
+        // wait_agent is foreground; no separate heartbeat thread needed.
+        match wait_for_run(context, &agent, record, timeout_secs, None).await {
             Ok(record) => ToolExecutionResult::success(record.public_json()),
             Err(error) => timeout_or_error_result(context, run_id, error).await,
         }
@@ -1557,7 +1627,8 @@ impl Tool for MessageAgentTool {
             .get("wait_timeout_secs")
             .and_then(Value::as_u64)
             .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
-        match wait_for_run(context, &agent, record, timeout_secs).await {
+        // message_agent is foreground; no separate heartbeat thread needed.
+        match wait_for_run(context, &agent, record, timeout_secs, None).await {
             Ok(record) => ToolExecutionResult::success(record.public_json()),
             Err(error) => timeout_or_error_result(context, run_id, error).await,
         }
@@ -1714,6 +1785,61 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         TASK_KIND_EXTERNAL_AGENT
     }
 
+    fn can_reattach(&self) -> bool {
+        true
+    }
+
+    /// Re-attach to a running external A2A task after worker loss.
+    ///
+    /// Loads the persisted `AgentRunRecord` from session storage, then:
+    /// - If already terminal: mirrors the terminal state to the registry and
+    ///   returns (idempotent reconcile).
+    /// - If `remote_task_id` or `agent_config` is absent: returns an error so
+    ///   the reaper falls back to failing the task as orphaned.
+    /// - Otherwise: rebuilds the A2A client from the stored config snapshot and
+    ///   resumes the background poll loop with `heartbeat_attempt = task.attempt`
+    ///   (the NEW attempt number after the reaper bumped it) so stale writes from
+    ///   the superseded executor are rejected.
+    async fn start(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+        let record = load_run_for_task(context, task)
+            .await
+            .map_err(crate::error::AgentLoopError::tool)?;
+
+        // If the run is already terminal, just mirror and return.
+        if record.status.is_terminal() {
+            mirror_run_to_task(context, &record).await;
+            return Ok(());
+        }
+
+        // Missing remote_task_id means we never sent to the remote agent —
+        // there is nothing to poll; caller will fail this as orphaned.
+        if record.remote_task_id.is_none() {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "external_agent task {} has no remote_task_id; cannot re-attach",
+                task.id
+            )));
+        }
+
+        let agent = agent_snapshot(&record).map_err(crate::error::AgentLoopError::tool)?;
+
+        // Resume the background poll loop. Use the NEW attempt (bumped by the
+        // reaper) for heartbeating so the superseded executor's stale writes
+        // are rejected by the fence.
+        let heartbeat_attempt = Some(task.attempt);
+        let context = context.clone();
+        tokio::spawn(async move {
+            background_monitor(
+                context,
+                agent,
+                record,
+                DEFAULT_WAIT_TIMEOUT_SECS,
+                heartbeat_attempt,
+            )
+            .await;
+        });
+        Ok(())
+    }
+
     async fn deliver(
         &self,
         task: &SessionTask,
@@ -1818,6 +1944,7 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+    use crate::session_task::SessionTaskRegistry;
     use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use a2a::StreamResponse;
@@ -2408,6 +2535,348 @@ mod tests {
         config.agents[0].preferred_binding = Some("JSONRPC".to_string());
         config.agents[0].poll_interval_ms = Some(99);
         assert!(config.agents[0].validate().is_err());
+    }
+
+    // -------------------------------------------------------------------------
+    // ExternalAgentTaskExecutor::start() tests
+    // -------------------------------------------------------------------------
+
+    /// Minimal in-memory task registry for executor tests.
+    #[derive(Default, Clone)]
+    struct InMemRegistry {
+        tasks: Arc<Mutex<HashMap<String, crate::session_task::SessionTask>>>,
+    }
+
+    #[async_trait]
+    impl crate::session_task::SessionTaskRegistry for InMemRegistry {
+        async fn create(
+            &self,
+            input: crate::session_task::CreateSessionTask,
+        ) -> crate::error::Result<crate::session_task::SessionTask> {
+            let task = crate::session_task::new_session_task(input, chrono::Utc::now());
+            self.tasks
+                .lock()
+                .unwrap()
+                .insert(task.id.clone(), task.clone());
+            Ok(task)
+        }
+
+        async fn get(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            task_id: &str,
+        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+            Ok(self.tasks.lock().unwrap().get(task_id).cloned())
+        }
+
+        async fn list(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _filter: Option<&crate::session_task::SessionTaskFilter>,
+        ) -> crate::error::Result<Vec<crate::session_task::SessionTask>> {
+            Ok(self.tasks.lock().unwrap().values().cloned().collect())
+        }
+
+        async fn update(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            task_id: &str,
+            update: crate::session_task::SessionTaskUpdate,
+        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+            let mut tasks = self.tasks.lock().unwrap();
+            let Some(task) = tasks.get_mut(task_id) else {
+                return Ok(None);
+            };
+            crate::session_task::apply_task_update(task, update, chrono::Utc::now());
+            Ok(Some(task.clone()))
+        }
+
+        async fn request_cancel(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _task_id: &str,
+        ) -> crate::error::Result<Option<crate::session_task::SessionTask>> {
+            Ok(None)
+        }
+
+        async fn record_message(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _task_id: &str,
+            _message: crate::session_task::NewTaskMessage,
+        ) -> crate::error::Result<crate::session_task::TaskMessage> {
+            Err(crate::error::AgentLoopError::tool("not implemented"))
+        }
+
+        async fn list_messages(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _task_id: &str,
+            _limit: Option<u32>,
+        ) -> crate::error::Result<Vec<crate::session_task::TaskMessage>> {
+            Ok(vec![])
+        }
+    }
+
+    /// Build a SessionTask snapshot for testing (not persisted in any store).
+    fn fake_task_with_spec(
+        session_id: crate::typed_id::SessionId,
+        run_id: &str,
+        attempt: i32,
+    ) -> crate::session_task::SessionTask {
+        let now = chrono::Utc::now();
+        crate::session_task::SessionTask {
+            id: format!("task_{run_id}"),
+            session_id,
+            kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+            display_name: "Test external agent".to_string(),
+            spec: json!({ "run_id": run_id }),
+            state: SessionTaskState::Running,
+            state_detail: None,
+            progress: None,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+            input_request: None,
+            cancel_requested_at: None,
+            summary: None,
+            result_path: None,
+            artifacts: vec![],
+            error: None,
+            attempt,
+            worker_id: None,
+            heartbeat_at: None,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    /// start() with a terminal run record should mirror state and return Ok.
+    #[tokio::test]
+    async fn external_agent_executor_start_mirrors_terminal_run() {
+        let storage = Arc::new(TestStorageStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let session_id = crate::typed_id::SessionId::new();
+
+        let run_id = "run-terminal".to_string();
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: None,
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let task_id = format!("task_{run_id}");
+
+        // Create a completed run record.
+        let mut record = AgentRunRecord::new(
+            run_id.clone(),
+            &config,
+            "instructions".to_string(),
+            AgentRunMode::Background,
+            false,
+        );
+        record.status = AgentRunStatus::Completed;
+        record.result = Some("done".to_string());
+        record.remote_task_id = Some("remote-xyz".to_string());
+        record.task_id = Some(task_id.clone());
+
+        // Persist the run record.
+        let serialized = serde_json::to_string(&record).unwrap();
+        storage
+            .set_value(session_id, &run_key(&run_id), &serialized)
+            .await
+            .unwrap();
+
+        // Create the session task in the registry so mirror_run_to_task can update it.
+        registry
+            .create(crate::session_task::CreateSessionTask {
+                session_id,
+                id: Some(task_id.clone()),
+                kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+                display_name: "Echo".to_string(),
+                spec: json!({ "run_id": &run_id }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let ctx = ToolContext::new(session_id)
+            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>)
+            .with_session_task_registry(registry.clone());
+
+        let task = fake_task_with_spec(session_id, &run_id, 2);
+        let executor = ExternalAgentTaskExecutor;
+        executor
+            .start(&task, &ctx)
+            .await
+            .expect("start should succeed");
+
+        // The registry task should now reflect the terminal state.
+        let updated = registry.get(session_id, &task_id).await.unwrap().unwrap();
+        assert_eq!(
+            updated.state,
+            SessionTaskState::Succeeded,
+            "terminal run should mirror to succeeded"
+        );
+    }
+
+    /// A heartbeat fence miss (task attempt moved past ours) must abort the
+    /// poll loop with the superseded error before any remote call or write.
+    #[tokio::test]
+    async fn wait_for_run_exits_superseded_on_fence_miss() {
+        let storage = Arc::new(TestStorageStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let session_id = crate::typed_id::SessionId::new();
+
+        let run_id = "run-superseded".to_string();
+        // Inline card so build_client performs no network discovery; the
+        // heartbeat fence check fires before any remote get_task call.
+        let inline_card = AgentCard {
+            name: "Echo".to_string(),
+            description: "Echo".to_string(),
+            version: "1".to_string(),
+            supported_interfaces: vec![AgentInterface::new(
+                "https://agent.example.com/api".to_string(),
+                "JSONRPC",
+            )],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extensions: None,
+                extended_agent_card: None,
+            },
+            default_input_modes: vec![],
+            default_output_modes: vec![],
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security_requirements: None,
+            signatures: None,
+        };
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: Some("https://agent.example.com".to_string()),
+            agent_card: Some(inline_card),
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let task_id = format!("task_{run_id}");
+
+        let mut record = AgentRunRecord::new(
+            run_id.clone(),
+            &config,
+            "instructions".to_string(),
+            AgentRunMode::Background,
+            false,
+        );
+        record.remote_task_id = Some("remote-xyz".to_string());
+        record.task_id = Some(task_id.clone());
+
+        // Task in the registry already at attempt 2 (reaper superseded us).
+        registry
+            .create(crate::session_task::CreateSessionTask {
+                session_id,
+                id: Some(task_id.clone()),
+                kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+                display_name: "Echo".to_string(),
+                spec: json!({ "run_id": &run_id }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &task_id,
+                crate::session_task::SessionTaskUpdate {
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let ctx = ToolContext::new(session_id)
+            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>)
+            .with_session_task_registry(registry.clone());
+
+        // Poll as the old executor (attempt 1): the first heartbeat reveals
+        // the supersession and the loop exits before any remote call.
+        let err = wait_for_run(&ctx, &config, record, 30, Some(1))
+            .await
+            .expect_err("superseded poll must error");
+        assert!(
+            err.starts_with(SUPERSEDED_ERROR_PREFIX),
+            "expected superseded error, got: {err}"
+        );
+    }
+
+    /// start() with a run that has no remote_task_id should return an error.
+    #[tokio::test]
+    async fn external_agent_executor_start_errors_on_missing_remote_task_id() {
+        let storage = Arc::new(TestStorageStore::default());
+        let session_id = crate::typed_id::SessionId::new();
+
+        let run_id = "run-no-remote".to_string();
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: None,
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+
+        // Create a run record without a remote_task_id (never reached the remote agent).
+        let record = AgentRunRecord::new(
+            run_id.clone(),
+            &config,
+            "instructions".to_string(),
+            AgentRunMode::Background,
+            false,
+        );
+        assert!(record.remote_task_id.is_none());
+
+        let serialized = serde_json::to_string(&record).unwrap();
+        storage
+            .set_value(session_id, &run_key(&run_id), &serialized)
+            .await
+            .unwrap();
+
+        let ctx = ToolContext::new(session_id)
+            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>);
+
+        let task = fake_task_with_spec(session_id, &run_id, 2);
+        let executor = ExternalAgentTaskExecutor;
+        let result = executor.start(&task, &ctx).await;
+        assert!(
+            result.is_err(),
+            "start() should error when remote_task_id is absent"
+        );
+        let err = result.unwrap_err();
+        assert!(
+            err.to_string().contains("remote_task_id"),
+            "error should mention remote_task_id: {err}"
+        );
     }
 
     /// Roundtrip: save_run → load_run → load_run_for_task all resolve consistently.
