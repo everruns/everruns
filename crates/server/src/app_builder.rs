@@ -1042,6 +1042,9 @@ impl ServerAppBuilder {
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
         let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
         let workspaces_state = api::workspaces::AppState::new(db.clone(), auth_state.clone());
+        let workspace_files_state =
+            api::workspace_files::AppState::new(db.clone(), auth_state.clone())
+                .with_virtual_registry(virtual_registry.clone());
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
@@ -1189,6 +1192,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::memory::routes(memory_state))
             .merge(api::workspaces::routes(workspaces_state))
+            .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(memory_files_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
             .merge(api::payments::routes(payments_state))

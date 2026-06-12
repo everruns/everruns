@@ -11615,6 +11615,371 @@
           }
         }
       }
+    },
+    "/v1/workspaces/{workspace_id}/fs": {
+      "get": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "GET /v1/workspaces/{workspace_id}/fs - Workspace root listing",
+        "operationId": "get_root",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Directory listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_FileInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workspace not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/grep": {
+      "post": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/grep - Search files",
+        "operationId": "grep_files",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrepRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_GrepResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid regex pattern"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/stat": {
+      "post": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/stat - File metadata",
+        "operationId": "stat_file",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "File metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileStat"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/{path}": {
+      "get": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "GET /v1/workspaces/{workspace_id}/fs/{path} - Read file or list directory",
+        "operationId": "get_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "List recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "File content or directory listing"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "PUT /v1/workspaces/{workspace_id}/fs/{path} - Update file content",
+        "operationId": "update_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "POST /v1/workspaces/{workspace_id}/fs/{path} - Create file or directory",
+        "operationId": "create_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "409": {
+            "description": "Already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "DELETE /v1/workspaces/{workspace_id}/fs/{path} - Delete file or directory",
+        "operationId": "delete_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File or directory path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "recursive",
+            "in": "query",
+            "description": "Delete recursively",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "403": {
+            "description": "Cannot delete readonly content"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -14168,6 +14533,44 @@
           }
         }
       },
+      "CreateFileRequest": {
+        "type": "object",
+        "description": "Request to create a file",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "File content (text or base64-encoded). Must match `encoding`.",
+            "example": "# Project notes\n\nDraft outline of the migration plan.\n"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
+            "example": "text"
+          },
+          "is_directory": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether to create a directory instead of a file (ignores `content`/`encoding`).",
+            "example": false
+          },
+          "is_readonly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether file is read-only",
+            "example": false
+          }
+        }
+      },
       "CreateHarnessRequest": {
         "type": "object",
         "description": "Request to create a new harness",
@@ -15356,6 +15759,18 @@
           }
         }
       },
+      "DeleteResponse": {
+        "type": "object",
+        "description": "Response for delete operation",
+        "required": [
+          "deleted"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
       "DiffQuery": {
         "type": "object",
         "description": "Query for diff endpoint",
@@ -16524,6 +16939,27 @@
             "description": "Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`)."
           }
         }
+      },
+      "GetQuery": {
+        "type": "object",
+        "description": "Query parameters for GET requests",
+        "properties": {
+          "recursive": {
+            "type": "boolean",
+            "description": "For directories: whether to list recursively"
+          }
+        }
+      },
+      "GetResponse": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SessionFile"
+          },
+          {
+            "$ref": "#/components/schemas/ListResponse_FileInfo"
+          }
+        ],
+        "description": "Unified response for GET that can be file or directory listing"
       },
       "GetSessionSandboxResponse": {
         "type": "object",
@@ -29065,6 +29501,36 @@
             ],
             "description": "Optional lifecycle state update. Use `disabled` to hide from runtime selection without archiving.",
             "example": "disabled"
+          }
+        }
+      },
+      "UpdateFileRequest": {
+        "type": "object",
+        "description": "Request to update a file",
+        "properties": {
+          "content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New file content",
+            "example": "# Project notes (rev 2)\n\nUpdated migration plan with rollback steps.\n"
+          },
+          "encoding": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
+            "example": "text"
+          },
+          "is_readonly": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether file is read-only",
+            "example": false
           }
         }
       },
