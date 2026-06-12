@@ -301,8 +301,11 @@ jobs:
             # ~11 minutes to clear the window before re-trying.
             local crate="$1"
             for attempt in 1 2 3; do
+              # Verification already ran above without registry credentials. Keep
+              # the token-bearing publish step upload-only so build scripts and
+              # build-dependencies cannot inherit the crates.io token.
               if CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" \
-                cargo publish --locked -p "$crate"; then
+                cargo publish --locked --no-verify -p "$crate"; then
                 return 0
               fi
               if [ "$attempt" -lt 3 ]; then
