@@ -218,10 +218,19 @@ Tools are discovered from MCP servers via the `tools/list` JSON-RPC method:
 
 ### Tool Caching
 
-Tools are cached with hybrid TTL strategy:
-- Tools are fetched on first access or when cache is stale (24h TTL)
-- Background refresh for commonly used servers
-- Force refresh available via API
+Tools are cached per server (`cached_tools` + `tools_cached_at`) and served with
+a stale-while-revalidate strategy so agent tool resolution never blocks on an
+upstream `tools/list`:
+
+- **Fresh** (within the 1h TTL): cached tools are returned directly.
+- **Stale** (older than the TTL, with a prior successful fetch): the cached tools
+  are returned immediately and a refresh is kicked off in the background. OAuth
+  servers are excluded — they cannot self-refresh without a user connection
+  token, so they serve cached tools without spawning a no-op background refresh.
+- **Cold** (never fetched) or **forced**: the caller blocks on a refresh.
+- Concurrent refreshes for the same server are coalesced (single-flight), so a
+  burst of agent runs triggers at most one upstream fetch rather than a herd.
+- Force refresh is available via API.
 
 ### Tool Execution
 

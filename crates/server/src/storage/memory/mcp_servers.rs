@@ -303,4 +303,18 @@ impl InMemoryDatabase {
         }
         Ok(None)
     }
+
+    /// Test-only: backdate a server's tool-cache timestamp so staleness paths
+    /// can be exercised without waiting for the TTL to elapse.
+    #[cfg(test)]
+    pub(crate) fn set_tools_cached_at_for_test(
+        &self,
+        id: Uuid,
+        cached_at: chrono::DateTime<chrono::Utc>,
+    ) {
+        let id = McpServerId::from_uuid(id);
+        if let Some(server) = self.mcp_servers.write().get_mut(&id) {
+            server.tools_cached_at = Some(cached_at);
+        }
+    }
 }
