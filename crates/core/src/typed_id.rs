@@ -448,6 +448,13 @@ impl IdMarker for MemoryIdMarker {
     const PREFIX: &'static str = "mem";
 }
 
+/// Marker for Workspace IDs (org-scoped named working areas — see `specs/workspace.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorkspaceIdMarker;
+impl IdMarker for WorkspaceIdMarker {
+    const PREFIX: &'static str = "wsp";
+}
+
 /// Marker for Eval IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EvalIdMarker;
@@ -596,6 +603,8 @@ pub type AppChannelId = TypedId<AppChannelIdMarker>;
 pub type NotificationId = TypedId<NotificationIdMarker>;
 /// Memory ID (org-scoped named Memory — see `specs/memory.md`)
 pub type MemoryId = TypedId<MemoryIdMarker>;
+/// Workspace ID (org-scoped named Workspace — see `specs/workspace.md`)
+pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
 /// Eval ID
 pub type EvalId = TypedId<EvalIdMarker>;
 /// Eval Case ID

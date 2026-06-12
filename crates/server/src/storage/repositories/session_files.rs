@@ -16,9 +16,9 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            INSERT INTO session_files (session_id, path, content, is_directory, is_readonly, size_bytes)
+            INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             "#,
         )
         .bind(input.session_id)
@@ -41,9 +41,9 @@ impl Database {
     ) -> Result<Option<SessionFileRow>> {
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            SELECT id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1 AND path = $2
+            SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1 AND path = $2
             "#,
         )
         .bind(session_id)
@@ -62,9 +62,9 @@ impl Database {
     ) -> Result<Option<SessionFileInfoRow>> {
         let row = sqlx::query_as::<_, SessionFileInfoRow>(
             r#"
-            SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1 AND path = $2
+            SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1 AND path = $2
             "#,
         )
         .bind(session_id)
@@ -79,8 +79,8 @@ impl Database {
     pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            SELECT id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
+            SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
             WHERE id = $1
             "#,
         )
@@ -106,9 +106,9 @@ impl Database {
 
         let rows = sqlx::query_as::<_, SessionFileInfoRow>(
             r#"
-            SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1 AND path ~ $2
+            SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1 AND path ~ $2
             ORDER BY is_directory DESC, path ASC
             "#,
         )
@@ -127,9 +127,9 @@ impl Database {
     ) -> Result<Vec<SessionFileInfoRow>> {
         let rows = sqlx::query_as::<_, SessionFileInfoRow>(
             r#"
-            SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1
+            SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1
             ORDER BY path ASC
             "#,
         )
@@ -152,13 +152,13 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            UPDATE session_files
+            UPDATE workspace_files
             SET
                 content = COALESCE($3, content),
                 is_readonly = COALESCE($4, is_readonly),
                 size_bytes = COALESCE($5, size_bytes)
-            WHERE session_id = $1 AND path = $2 AND is_directory = FALSE
-            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             "#,
         )
         .bind(session_id)
@@ -183,17 +183,17 @@ impl Database {
 
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            UPDATE session_files
+            UPDATE workspace_files
             SET
                 content = COALESCE($4, content),
                 is_readonly = COALESCE($5, is_readonly),
                 size_bytes = COALESCE($6, size_bytes)
-            WHERE session_id = $1
+            WHERE workspace_id = $1
               AND path = $2
               AND is_directory = FALSE
               AND is_readonly = FALSE
               AND COALESCE(content, '\x'::bytea) = $3
-            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             "#,
         )
         .bind(session_id)
@@ -210,11 +210,12 @@ impl Database {
 
     /// Delete a file or directory (directories must be empty)
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM session_files WHERE session_id = $1 AND path = $2")
-            .bind(session_id)
-            .bind(path)
-            .execute(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path = $2")
+                .bind(session_id)
+                .bind(path)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -229,11 +230,12 @@ impl Database {
             format!("^{}(/|$)", regex::escape(path))
         };
 
-        let result = sqlx::query("DELETE FROM session_files WHERE session_id = $1 AND path ~ $2")
-            .bind(session_id)
-            .bind(&pattern)
-            .execute(&self.pool)
-            .await?;
+        let result =
+            sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path ~ $2")
+                .bind(session_id)
+                .bind(&pattern)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected())
     }
@@ -251,9 +253,9 @@ impl Database {
         // First, check if source exists and is a directory
         let source = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            SELECT id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1 AND path = $2
+            SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1 AND path = $2
             "#,
         )
         .bind(session_id)
@@ -272,9 +274,9 @@ impl Database {
 
             sqlx::query(
                 r#"
-                UPDATE session_files
+                UPDATE workspace_files
                 SET path = $3 || substring(path from $4)
-                WHERE session_id = $1 AND path LIKE $2
+                WHERE workspace_id = $1 AND path LIKE $2
                 "#,
             )
             .bind(session_id)
@@ -288,10 +290,10 @@ impl Database {
         // Move the file/directory itself
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            UPDATE session_files
+            UPDATE workspace_files
             SET path = $3
-            WHERE session_id = $1 AND path = $2
-            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            WHERE workspace_id = $1 AND path = $2
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             "#,
         )
         .bind(session_id)
@@ -314,11 +316,11 @@ impl Database {
     ) -> Result<Option<SessionFileRow>> {
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            INSERT INTO session_files (session_id, path, content, is_directory, is_readonly, size_bytes)
-            SELECT session_id, $3, content, is_directory, is_readonly, size_bytes
-            FROM session_files
-            WHERE session_id = $1 AND path = $2 AND is_directory = FALSE
-            RETURNING id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
+            SELECT workspace_id, $3, content, is_directory, is_readonly, size_bytes
+            FROM workspace_files
+            WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE
+            RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             "#,
         )
         .bind(session_id)
@@ -342,9 +344,9 @@ impl Database {
         let rows = if let Some(path_pat) = path_pattern {
             sqlx::query_as::<_, SessionFileInfoRow>(
                 r#"
-                SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-                FROM session_files
-                WHERE session_id = $1
+                SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                FROM workspace_files
+                WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
                     AND path ~ $3
@@ -361,9 +363,9 @@ impl Database {
         } else {
             sqlx::query_as::<_, SessionFileInfoRow>(
                 r#"
-                SELECT id, session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-                FROM session_files
-                WHERE session_id = $1
+                SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                FROM workspace_files
+                WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
                     AND convert_from(content, 'UTF8') ~ $3
@@ -382,12 +384,13 @@ impl Database {
 
     /// Check if a path exists
     pub async fn session_file_exists(&self, session_id: Uuid, path: &str) -> Result<bool> {
-        let result: Option<(bool,)> =
-            sqlx::query_as("SELECT TRUE FROM session_files WHERE session_id = $1 AND path = $2")
-                .bind(session_id)
-                .bind(path)
-                .fetch_optional(&self.pool)
-                .await?;
+        let result: Option<(bool,)> = sqlx::query_as(
+            "SELECT TRUE FROM workspace_files WHERE workspace_id = $1 AND path = $2",
+        )
+        .bind(session_id)
+        .bind(path)
+        .fetch_optional(&self.pool)
+        .await?;
 
         Ok(result.is_some())
     }
@@ -405,7 +408,7 @@ impl Database {
         };
 
         let result: Option<(bool,)> = sqlx::query_as(
-            "SELECT TRUE FROM session_files WHERE session_id = $1 AND path ~ $2 LIMIT 1",
+            "SELECT TRUE FROM workspace_files WHERE workspace_id = $1 AND path ~ $2 LIMIT 1",
         )
         .bind(session_id)
         .bind(&pattern)
@@ -424,7 +427,7 @@ impl Database {
         };
 
         let result: Option<(bool,)> = sqlx::query_as(
-            "SELECT TRUE FROM session_files WHERE session_id = $1 AND path ~ $2 AND is_readonly = true LIMIT 1",
+            "SELECT TRUE FROM workspace_files WHERE workspace_id = $1 AND path ~ $2 AND is_readonly = true LIMIT 1",
         )
         .bind(session_id)
         .bind(&pattern)
@@ -437,7 +440,7 @@ impl Database {
     /// Sum of size_bytes across all non-directory files in a session.
     pub async fn total_session_file_bytes(&self, session_id: Uuid) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM session_files WHERE session_id = $1 AND is_directory = false",
+            "SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM workspace_files WHERE workspace_id = $1 AND is_directory = false",
         )
         .bind(session_id)
         .fetch_one(&self.pool)
@@ -452,9 +455,9 @@ impl Database {
     ) -> Result<Vec<SessionFileRow>> {
         let rows = sqlx::query_as::<_, SessionFileRow>(
             r#"
-            SELECT id, session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM session_files
-            WHERE session_id = $1 AND is_directory = false
+            SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+            FROM workspace_files
+            WHERE workspace_id = $1 AND is_directory = false
             ORDER BY path ASC
             "#,
         )

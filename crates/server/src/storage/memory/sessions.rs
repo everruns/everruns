@@ -16,6 +16,31 @@ impl InMemoryDatabase {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let now = Self::now();
         let id = SessionId::new();
+
+        // Auto-create a default workspace whose UUID equals the session id —
+        // matches the Postgres path and the migration's equality invariant
+        // (see specs/workspace.md, Decision 3).
+        let session_uuid = id.uuid();
+        let ws_id_hex = session_uuid.simple().to_string();
+        let ws_name = format!("session-{}", &ws_id_hex[..8]);
+        let public_id = format!("wsp_{ws_id_hex}");
+        self.workspaces.write().insert(
+            session_uuid,
+            crate::storage::models::WorkspaceRow {
+                id: session_uuid,
+                org_id: input.org_id,
+                public_id,
+                name: ws_name.clone(),
+                description: Some(format!("Default workspace for session {session_uuid}")),
+                owner_principal_id: None,
+                resolved_owner_user_id: input.resolved_owner_user_id,
+                status: "active".to_string(),
+                created_at: now,
+                updated_at: now,
+                archived_at: None,
+                deleted_at: None,
+            },
+        );
         let row = SessionRow {
             id,
             org_id: input.org_id,

@@ -1,4 +1,10 @@
-// Session Files (Virtual Filesystem) HTTP routes
+// Session Files (Virtual Filesystem) HTTP routes — DEPRECATED.
+//
+// These `/v1/sessions/{session_id}/fs/*` routes are retained as aliases for
+// backwards compatibility. New clients should use the equivalent
+// `/v1/workspaces/{workspace_id}/fs/*` endpoints instead. The routes are
+// intentionally delisted from the published OpenAPI surface (see
+// `crates/server/src/openapi.rs`) so they do not appear in `docs/api/openapi.json`.
 //
 // RESTful API design:
 // - GET    /fs/*path  - Read file content or list directory
