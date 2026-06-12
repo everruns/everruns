@@ -24,7 +24,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::Caller;
+use everruns_core::{Caller, DirectEgressService, EgressService};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::IntoParams;
@@ -53,6 +53,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
+    pub egress_service: Arc<dyn EgressService>,
 }
 
 impl AppState {
@@ -65,7 +66,14 @@ impl AppState {
             db,
             capability_service,
             auth,
+            egress_service: Arc::new(DirectEgressService::from_env()),
         }
+    }
+
+    /// Override the egress service (e.g., in tests with a wiremock-backed service).
+    pub fn with_egress_service(mut self, service: Arc<dyn EgressService>) -> Self {
+        self.egress_service = service;
+        self
     }
 
     pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
@@ -76,6 +84,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        .with_egress_service(self.egress_service.clone())
     }
 }
 

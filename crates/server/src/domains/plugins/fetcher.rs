@@ -3,18 +3,34 @@
 //
 // v1 supports:
 //   local_path  — reads a directory on disk (dev/test only)
-//   github      — stub (tar/gzip deps not yet available) → returns an error
-//   url         — stub (requires additional review of egress layer for binary fetch)
-//
-// The `PluginSourceFetcher` trait is the extension seam: implement for GitHub
-// tarball fetch when the `tar` / `flate2` workspace deps are confirmed.
+//   github      — downloads a pinned tarball from codeload.github.com,
+//                 extracts the plugin subdirectory in-memory
+//   url         — direct git URL plugin sources are not supported in v1;
+//                 marketplace sync from a URL source is handled in commands.rs
 
-#[cfg(test)]
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use everruns_core::plugins::PluginFileSet;
+use everruns_core::plugins::{MAX_PLUGIN_FILE_BYTES, MAX_PLUGIN_FILES, MAX_PLUGIN_TOTAL_BYTES};
+use everruns_core::{
+    EgressRequest, EgressRequestKind, EgressService, url_validation::validate_url_dns_pinned,
+};
+
+/// Cap on the total unpacked tarball bytes before applying plugin limits.
+/// Extra headroom so the extraction loop does not blow up on large repos
+/// where the *plugin subdirectory* itself is within limits.
+const MAX_TARBALL_UNPACK_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+
+/// Cap on the compressed tarball download itself (TM-PLUGIN-004). Enforced
+/// while streaming so a hostile endpoint cannot buffer unbounded bytes.
+const MAX_TARBALL_DOWNLOAD_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+
+/// 30-second timeout for tarball downloads.
+const TARBALL_TIMEOUT_MS: u64 = 30_000;
 
 /// A resolved plugin file set ready for compilation.
+#[derive(Debug)]
 pub struct FetchedPluginFileSet {
     pub file_set: PluginFileSet,
     /// SHA or version string representing what was fetched, if known.
@@ -29,6 +45,10 @@ pub struct PluginSource {
     pub marketplace_source_type: String,
     /// Absolute local path to the marketplace root (only for `local_path`).
     pub marketplace_local_path: Option<String>,
+    /// Owner/repo for the marketplace (only for `github`).
+    pub marketplace_github_repo: Option<String>,
+    /// Pinned SHA from the marketplace's last sync (set for `github` marketplaces).
+    pub marketplace_last_synced_sha: Option<String>,
 }
 
 /// Fetch a plugin's file set from its resolved source.
@@ -36,15 +56,16 @@ pub struct PluginSource {
 /// # Errors
 ///
 /// Returns an error string when fetching is not supported for the source type
-/// or when the local path cannot be read.
-pub fn fetch_plugin(source: &PluginSource) -> Result<FetchedPluginFileSet, String> {
+/// or when the source cannot be read.
+pub async fn fetch_plugin(
+    source: &PluginSource,
+    egress: &Arc<dyn EgressService>,
+) -> Result<FetchedPluginFileSet, String> {
     match source.marketplace_source_type.as_str() {
         "local_path" => fetch_local_path(source),
-        "github" => Err("github source type is not yet supported in v1; \
-             use a local_path marketplace for development"
-            .to_string()),
-        "url" => Err("url source type is not yet supported in v1; \
-             use a local_path marketplace for development"
+        "github" => fetch_github(source, egress).await,
+        "url" => Err("url marketplace plugin sources are not supported in v1; \
+             only github and local_path marketplaces support plugin fetch"
             .to_string()),
         other => Err(format!("unknown marketplace source type: {other}")),
     }
@@ -70,6 +91,263 @@ fn fetch_local_path(source: &PluginSource) -> Result<FetchedPluginFileSet, Strin
         file_set,
         resolved_sha: None, // local_path has no SHA
     })
+}
+
+/// Fetch a plugin from a GitHub marketplace.
+///
+/// For `./subdir` (relative) sources: download the repo tarball pinned at the
+/// marketplace's `last_synced_sha`, extract the plugin subdirectory.
+/// For absolute `github:owner/repo` sources (future): not yet supported.
+async fn fetch_github(
+    source: &PluginSource,
+    egress: &Arc<dyn EgressService>,
+) -> Result<FetchedPluginFileSet, String> {
+    let repo = source
+        .marketplace_github_repo
+        .as_deref()
+        .ok_or("github marketplace is missing repo configuration")?;
+
+    let sha = source
+        .marketplace_last_synced_sha
+        .as_deref()
+        .ok_or("github marketplace has not been synced yet; run POST .../sync first")?;
+
+    // Validate repo format.
+    validate_github_repo_slug(repo)?;
+
+    let (owner, repo_name) = split_repo(repo)?;
+
+    // Determine the plugin subdirectory within the tarball.
+    // Catalog `source` values are relative paths like `./my-plugin` or `my-plugin`.
+    let plugin_subdir = source
+        .source_value
+        .trim_start_matches("./")
+        .trim_start_matches('/');
+
+    // Download the tarball pinned at the synced SHA.
+    let tarball_url = format!("https://codeload.github.com/{owner}/{repo_name}/tar.gz/{sha}");
+
+    let tarball_bytes = download_bytes(
+        &tarball_url,
+        egress,
+        TARBALL_TIMEOUT_MS,
+        MAX_TARBALL_DOWNLOAD_BYTES,
+        &[],
+    )
+    .await?;
+
+    // Extract the plugin subdirectory from the tarball.
+    // GitHub tarball entries are prefixed `{repo_name}-{sha}/`.
+    let tarball_prefix = format!("{repo_name}-{sha}/");
+    let plugin_prefix = if plugin_subdir.is_empty() {
+        tarball_prefix.clone()
+    } else {
+        format!("{tarball_prefix}{plugin_subdir}/")
+    };
+
+    let dir_name = if plugin_subdir.is_empty() {
+        repo_name.to_string()
+    } else {
+        // Use the last path component as the dir name.
+        plugin_subdir
+            .split('/')
+            .next_back()
+            .unwrap_or(plugin_subdir)
+            .to_string()
+    };
+
+    let file_map = extract_tarball_subdir(&tarball_bytes, &plugin_prefix, &tarball_prefix)?;
+
+    let file_set = PluginFileSet::from_map(dir_name, file_map)
+        .map_err(|e| format!("tarball extraction produced an invalid plugin file set: {e}"))?;
+
+    Ok(FetchedPluginFileSet {
+        file_set,
+        resolved_sha: Some(sha.to_string()),
+    })
+}
+
+/// Download raw bytes via the egress service with a timeout.
+///
+/// `max_bytes` is enforced while streaming (TM-PLUGIN-004): the body is
+/// dropped and an error returned as soon as the cap is crossed, so a hostile
+/// endpoint cannot buffer unbounded bytes into server memory.
+pub(crate) async fn download_bytes(
+    url: &str,
+    egress: &Arc<dyn EgressService>,
+    timeout_ms: u64,
+    max_bytes: usize,
+    headers: &[(&str, String)],
+) -> Result<Vec<u8>, String> {
+    use futures::StreamExt;
+
+    // DNS-pin the connection to close the TOCTOU window (TM-TOOL-018).
+    let (parsed_url, pinned_addrs) = validate_url_dns_pinned(url)
+        .await
+        .map_err(|e| format!("URL validation failed for '{url}': {e}"))?;
+
+    let host = parsed_url.host_str().unwrap_or("").to_string();
+
+    let mut req = EgressRequest::new("GET", url, EgressRequestKind::Other("plugin_fetch".into()))
+        .timeout_ms(timeout_ms);
+
+    for (name, value) in headers {
+        req = req.header(*name, value.clone());
+    }
+
+    if !pinned_addrs.is_empty() {
+        req = req.pinned_addrs(host, pinned_addrs);
+    }
+
+    let resp = egress
+        .send_stream(req)
+        .await
+        .map_err(|e| format!("HTTP fetch failed for '{url}': {e}"))?;
+
+    if resp.status < 200 || resp.status >= 300 {
+        return Err(format!(
+            "HTTP fetch for '{url}' returned status {}",
+            resp.status
+        ));
+    }
+
+    let mut body: Vec<u8> = Vec::new();
+    let mut stream = resp.body;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("HTTP body read failed for '{url}': {e}"))?;
+        if body.len() + chunk.len() > max_bytes {
+            return Err(format!(
+                "response from '{url}' exceeds the {max_bytes}-byte limit"
+            ));
+        }
+        body.extend_from_slice(&chunk);
+    }
+
+    Ok(body)
+}
+
+/// Extract files under `plugin_prefix` from a `.tar.gz` byte slice.
+///
+/// Returns a map of relative path → bytes (relative to `plugin_prefix`).
+/// `tarball_prefix` is the top-level directory prefix in the archive
+/// (e.g. `{repo}-{sha}/`) used to scope containment checks.
+fn extract_tarball_subdir(
+    tarball_bytes: &[u8],
+    plugin_prefix: &str,
+    tarball_prefix: &str,
+) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    use flate2::read::GzDecoder;
+    use tar::Archive;
+
+    let decoder = GzDecoder::new(tarball_bytes);
+    let mut archive = Archive::new(decoder);
+
+    let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
+    let mut total_bytes: usize = 0;
+
+    let entries = archive
+        .entries()
+        .map_err(|e| format!("failed to read tarball entries: {e}"))?;
+
+    for entry_result in entries {
+        let mut entry = entry_result.map_err(|e| format!("failed to read tarball entry: {e}"))?;
+
+        let header = entry.header();
+
+        // Reject symlinks and hard links.
+        let entry_type = header.entry_type();
+        if entry_type.is_symlink() || entry_type.is_hard_link() {
+            // Silently skip — do not error, just drop the entry.
+            continue;
+        }
+
+        // Only process regular files.
+        if !entry_type.is_file() {
+            continue;
+        }
+
+        let raw_path = entry
+            .path()
+            .map_err(|e| format!("invalid entry path in tarball: {e}"))?;
+        let path_str = raw_path
+            .to_str()
+            .ok_or("tarball entry path is not valid UTF-8")?
+            .to_string();
+
+        // Only include files inside the plugin subdirectory.
+        let relative_path = match path_str.strip_prefix(plugin_prefix) {
+            Some(rel) => rel.to_string(),
+            None => continue,
+        };
+
+        if relative_path.is_empty() {
+            continue; // Skip the directory entry itself.
+        }
+
+        // Reject path traversal.
+        for component in std::path::Path::new(&relative_path).components() {
+            if component == std::path::Component::ParentDir {
+                return Err(format!(
+                    "path traversal detected in tarball: '{relative_path}'"
+                ));
+            }
+        }
+
+        // Reject paths escaping the tarball top-level prefix.
+        let full_path = format!("{tarball_prefix}{relative_path}");
+        if !full_path.starts_with(tarball_prefix) {
+            return Err(format!(
+                "tarball entry '{full_path}' escapes expected prefix — rejected for security"
+            ));
+        }
+
+        // File count cap.
+        if files.len() >= MAX_PLUGIN_FILES {
+            return Err(format!(
+                "plugin directory in tarball contains more than {MAX_PLUGIN_FILES} files"
+            ));
+        }
+
+        // Read the file content.
+        let file_size = header
+            .size()
+            .map_err(|e| format!("cannot read entry size: {e}"))? as usize;
+
+        if file_size > MAX_PLUGIN_FILE_BYTES {
+            return Err(format!(
+                "plugin file '{relative_path}' is {file_size} bytes, exceeding the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+            ));
+        }
+
+        total_bytes += file_size;
+        if total_bytes > MAX_PLUGIN_TOTAL_BYTES {
+            return Err(format!(
+                "plugin total size from tarball exceeds {MAX_PLUGIN_TOTAL_BYTES} bytes"
+            ));
+        }
+
+        // Sanity cap on unpacked total (separate from plugin limits — catches
+        // zip-bomb style attacks where many small files accumulate).
+        if total_bytes > MAX_TARBALL_UNPACK_BYTES {
+            return Err(format!(
+                "tarball unpacked size exceeds {MAX_TARBALL_UNPACK_BYTES} bytes (extraction limit)"
+            ));
+        }
+
+        let mut content = Vec::with_capacity(file_size);
+        std::io::Read::read_to_end(&mut entry, &mut content)
+            .map_err(|e| format!("failed to read tarball entry '{relative_path}': {e}"))?;
+
+        files.insert(relative_path, content);
+    }
+
+    if files.is_empty() {
+        return Err(format!(
+            "no files found under plugin path '{plugin_prefix}' in tarball"
+        ));
+    }
+
+    Ok(files)
 }
 
 fn resolve_local_plugin_path(
@@ -106,13 +384,171 @@ fn resolve_local_plugin_path(
     Ok(canonical_plugin)
 }
 
-/// Build an in-memory `PluginFileSet` from a raw byte map.
-///
-/// Useful for unit tests that construct plugin directories programmatically.
+/// Validate `owner/repo` slug format.
+pub(crate) fn validate_github_repo_slug(repo: &str) -> Result<(), String> {
+    let re =
+        regex::Regex::new(r"^[A-Za-z0-9_.\-]+/[A-Za-z0-9_.\-]+$").expect("static regex is valid");
+    if !re.is_match(repo) {
+        return Err(format!(
+            "invalid GitHub repo slug '{repo}'; expected 'owner/repo' with alphanumeric, hyphens, underscores, or dots"
+        ));
+    }
+    Ok(())
+}
+
+fn split_repo(repo: &str) -> Result<(&str, &str), String> {
+    let parts: Vec<&str> = repo.splitn(2, '/').collect();
+    if parts.len() != 2 {
+        return Err(format!("invalid repo slug '{repo}': expected 'owner/repo'"));
+    }
+    Ok((parts[0], parts[1]))
+}
+
 #[cfg(test)]
-pub fn file_set_from_map(dir_name: &str, files: BTreeMap<String, Vec<u8>>) -> PluginFileSet {
-    PluginFileSet {
-        files,
-        dir_name: dir_name.to_string(),
+mod tests {
+    use super::*;
+
+    // ---------------------------------------------------------------------------
+    // Helper: build an in-memory .tar.gz with the given file map.
+    // `root_prefix` is the top-level directory prefix (e.g. `myrepo-abc123/`).
+    // ---------------------------------------------------------------------------
+    pub fn build_tarball(
+        root_prefix: &str,
+        files: &[(&str, &[u8])],
+        symlinks: &[(&str, &str)], // (name, target)
+    ) -> Vec<u8> {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use tar::{Builder, EntryType, Header};
+
+        let buf = Vec::new();
+        let enc = GzEncoder::new(buf, Compression::fast());
+        let mut ar = Builder::new(enc);
+
+        for (path, content) in files {
+            let full_path = format!("{root_prefix}{path}");
+            let mut header = Header::new_gnu();
+            header.set_path(&full_path).unwrap();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_cksum();
+            ar.append(&header, *content).unwrap();
+        }
+
+        for (name, target) in symlinks {
+            let full_path = format!("{root_prefix}{name}");
+            let mut header = Header::new_gnu();
+            header.set_entry_type(EntryType::Symlink);
+            header.set_path(&full_path).unwrap();
+            header.set_link_name(target).unwrap();
+            header.set_size(0);
+            header.set_mode(0o777);
+            header.set_cksum();
+            ar.append(&header, &b""[..]).unwrap();
+        }
+
+        let encoder = ar.into_inner().unwrap();
+        encoder.finish().unwrap()
+    }
+
+    #[test]
+    fn extract_tarball_basic() {
+        let tarball = build_tarball(
+            "myrepo-abc123/",
+            &[
+                (
+                    "plugins/my-plugin/.claude-plugin/plugin.json",
+                    br#"{"name":"my-plugin","version":"1.0.0"}"#,
+                ),
+                ("plugins/my-plugin/README.md", b"# My Plugin"),
+            ],
+            &[],
+        );
+
+        let files = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap();
+
+        assert!(files.contains_key(".claude-plugin/plugin.json"));
+        assert!(files.contains_key("README.md"));
+    }
+
+    #[test]
+    fn extract_tarball_rejects_symlinks() {
+        let tarball = build_tarball(
+            "myrepo-abc123/",
+            &[("plugins/my-plugin/hello.md", b"hello")],
+            &[("plugins/my-plugin/link.md", "/etc/passwd")],
+        );
+
+        // Symlinks are silently skipped — they should NOT appear in the result.
+        let files = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap();
+
+        assert!(!files.contains_key("link.md"), "symlink should be skipped");
+        assert!(files.contains_key("hello.md"));
+    }
+
+    #[test]
+    fn extract_tarball_rejects_oversized_file() {
+        let big = vec![b'x'; MAX_PLUGIN_FILE_BYTES + 1];
+        let tarball = build_tarball(
+            "myrepo-abc123/",
+            &[("plugins/my-plugin/big.bin", big.as_slice())],
+            &[],
+        );
+
+        let err = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("exceeding the"),
+            "expected size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn extract_tarball_empty_subdir_returns_error() {
+        // Tarball exists but has nothing under the plugin prefix.
+        let tarball = build_tarball(
+            "myrepo-abc123/",
+            &[("other-dir/README.md", b"unrelated")],
+            &[],
+        );
+
+        let err = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/missing-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap_err();
+
+        assert!(err.contains("no files found"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_github_repo_slug_valid() {
+        assert!(validate_github_repo_slug("owner/repo").is_ok());
+        assert!(validate_github_repo_slug("My-Org/my.repo_2").is_ok());
+        assert!(validate_github_repo_slug("a/b").is_ok());
+    }
+
+    #[test]
+    fn validate_github_repo_slug_invalid() {
+        assert!(validate_github_repo_slug("no-slash").is_err());
+        assert!(validate_github_repo_slug("bad/repo/extra").is_err());
+        assert!(validate_github_repo_slug("../etc/passwd").is_err());
+        assert!(validate_github_repo_slug("owner/repo;drop").is_err());
     }
 }

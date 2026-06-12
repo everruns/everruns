@@ -4,16 +4,25 @@
 //   PLUGIN_VIEW   — list/get (OrgAgentsManage)
 //   PLUGIN_MANAGE — write (OrgAgentsManage + OrgPluginsManage = Admin+ only)
 
-use super::fetcher::{FetchedPluginFileSet, PluginSource, fetch_plugin};
+use super::fetcher::{
+    FetchedPluginFileSet, PluginSource, download_bytes, fetch_plugin, validate_github_repo_slug,
+};
 use super::queries as q;
 use super::types::*;
 use super::{PLUGIN_MANAGE, PLUGIN_VIEW};
 use crate::domains::common::*;
 use everruns_core::plugins::compile_plugin;
+use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{DeploymentGrade, PluginInstallId, PluginMarketplaceId, Policy};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+/// Response size cap for URL marketplace.json fetches: 1 MB.
+const URL_MARKETPLACE_RESPONSE_CAP: usize = 1024 * 1024;
+
+/// Timeout for GitHub API and raw-content requests.
+const GITHUB_TIMEOUT_MS: u64 = 30_000;
 
 // ============================================================================
 // Input validation
@@ -145,6 +154,114 @@ fn read_local_marketplace_json(path: &str) -> Result<(String, Option<String>), C
     Ok((content, None)) // no SHA for local_path
 }
 
+/// Sync a GitHub-hosted marketplace: resolve the HEAD SHA and fetch
+/// `.claude-plugin/marketplace.json` at that commit.
+async fn sync_github(
+    source: &serde_json::Value,
+    egress: &std::sync::Arc<dyn everruns_core::EgressService>,
+) -> Result<(String, Option<String>), CommandError> {
+    let repo = source
+        .get("repo")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| CommandError::bad_request("github source requires a 'repo' field"))?;
+
+    validate_github_repo_slug(repo).map_err(CommandError::bad_request)?;
+
+    let parts: Vec<&str> = repo.splitn(2, '/').collect();
+    let (owner, repo_name) = (parts[0], parts[1]);
+
+    // Resolve the default-branch HEAD SHA via the GitHub REST API.
+    let commits_url = format!("https://api.github.com/repos/{owner}/{repo_name}/commits/HEAD");
+    let mut headers: Vec<(&str, String)> = vec![
+        ("Accept", "application/vnd.github+json".to_string()),
+        ("User-Agent", "everruns-plugin-sync/1.0".to_string()),
+    ];
+
+    // Attach GITHUB_TOKEN from environment if available (unauthenticated rate
+    // limit is 60 req/hr; authenticated is 5000).
+    if let Ok(token) = std::env::var("GITHUB_TOKEN")
+        && !token.is_empty()
+    {
+        headers.push(("Authorization", format!("Bearer {token}")));
+    }
+
+    let api_body = download_bytes(
+        &commits_url,
+        egress,
+        GITHUB_TIMEOUT_MS,
+        URL_MARKETPLACE_RESPONSE_CAP,
+        &headers,
+    )
+    .await
+    .map_err(|e| CommandError::bad_request(format!("GitHub API request failed: {e}")))?;
+
+    let api_json: serde_json::Value = serde_json::from_slice(&api_body).map_err(|e| {
+        CommandError::bad_request(format!("GitHub API response is not valid JSON: {e}"))
+    })?;
+
+    let sha = api_json
+        .get("sha")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            CommandError::bad_request("GitHub API response missing 'sha' field".to_string())
+        })?
+        .to_string();
+
+    // Fetch marketplace.json at the resolved SHA.
+    let raw_url = format!(
+        "https://raw.githubusercontent.com/{owner}/{repo_name}/{sha}/.claude-plugin/marketplace.json"
+    );
+
+    // Size cap enforced while streaming inside download_bytes.
+    let catalog_bytes = download_bytes(
+        &raw_url,
+        egress,
+        GITHUB_TIMEOUT_MS,
+        URL_MARKETPLACE_RESPONSE_CAP,
+        &[],
+    )
+    .await
+    .map_err(CommandError::bad_request)?;
+
+    let catalog_str = String::from_utf8(catalog_bytes).map_err(|_| {
+        CommandError::bad_request("marketplace.json from GitHub is not valid UTF-8")
+    })?;
+
+    Ok((catalog_str, Some(sha)))
+}
+
+/// Sync a URL-hosted marketplace: GET the URL and expect marketplace.json content.
+async fn sync_url(
+    source: &serde_json::Value,
+    egress: &std::sync::Arc<dyn everruns_core::EgressService>,
+) -> Result<(String, Option<String>), CommandError> {
+    let url = source
+        .get("url")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| CommandError::bad_request("url source requires a 'url' field"))?;
+
+    // Static SSRF check at sync time (DNS-pinned check happens in download_bytes).
+    validate_safe_url(url)
+        .map_err(|e| CommandError::bad_request(format!("marketplace URL is not safe: {e}")))?;
+
+    // Size cap enforced while streaming inside download_bytes.
+    let content_bytes = download_bytes(
+        url,
+        egress,
+        GITHUB_TIMEOUT_MS,
+        URL_MARKETPLACE_RESPONSE_CAP,
+        &[],
+    )
+    .await
+    .map_err(CommandError::bad_request)?;
+
+    let catalog_str = String::from_utf8(content_bytes)
+        .map_err(|_| CommandError::bad_request("marketplace.json from URL is not valid UTF-8"))?;
+
+    // last_synced_sha stays null for url sources.
+    Ok((catalog_str, None))
+}
+
 /// Resolve the marketplace catalog for a sync operation.
 fn sync_local_path(source: &serde_json::Value) -> Result<(String, Option<String>), CommandError> {
     let path = source
@@ -269,6 +386,17 @@ impl Command for CreatePluginMarketplaceCmd {
         validate_marketplace_name(&req.name)?;
         validate_source_type(&req.source_type, ctx)?;
 
+        // For url sources: apply static SSRF check at registration time.
+        if req.source_type == "url" {
+            validate_safe_url(&req.source)
+                .map_err(|e| CommandError::bad_request(format!("url source is not safe: {e}")))?;
+        }
+
+        // For github sources: validate repo slug format.
+        if req.source_type == "github" {
+            validate_github_repo_slug(&req.source).map_err(CommandError::bad_request)?;
+        }
+
         // Build source JSONB.
         let source = build_source_json(&req.source_type, &req.source);
 
@@ -306,6 +434,25 @@ impl Command for CreatePluginMarketplaceCmd {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreatePluginMarketplaceCmd>() }
+
+/// Return the egress service from `ctx` for source types that need it
+/// (`github`, `url`). For `local_path`, returns a no-op disabled service
+/// because the fetcher never calls egress for local sources.
+fn require_egress_for_source(
+    ctx: &Ctx,
+    source_type: &str,
+) -> Result<std::sync::Arc<dyn everruns_core::EgressService>, CommandError> {
+    match source_type {
+        "local_path" => {
+            // local_path fetch never makes outbound calls; return a disabled
+            // service as a placeholder so fetch_plugin receives something valid.
+            Ok(std::sync::Arc::new(everruns_core::DisabledEgressService))
+        }
+        _ => ctx.egress_service.clone().ok_or_else(|| {
+            CommandError::bad_request("no egress service configured for remote fetch")
+        }),
+    }
+}
 
 fn build_source_json(source_type: &str, source_value: &str) -> serde_json::Value {
     match source_type {
@@ -476,15 +623,15 @@ impl Command for SyncPluginMarketplace {
 
         let (catalog_str, resolved_sha) = match marketplace_row.source_type.as_str() {
             "local_path" => sync_local_path(&marketplace_row.source)?,
-            "github" => {
-                return Err(CommandError::bad_request(
-                    "github sync is not yet implemented in v1; use local_path for development",
-                ));
-            }
-            "url" => {
-                return Err(CommandError::bad_request(
-                    "url sync is not yet implemented in v1; use local_path for development",
-                ));
+            "github" | "url" => {
+                let egress = ctx.egress_service.as_ref().ok_or_else(|| {
+                    CommandError::bad_request("no egress service configured for remote sync")
+                })?;
+                if marketplace_row.source_type == "github" {
+                    sync_github(&marketplace_row.source, egress).await?
+                } else {
+                    sync_url(&marketplace_row.source, egress).await?
+                }
             }
             other => {
                 return Err(CommandError::bad_request(format!(
@@ -834,16 +981,28 @@ impl Command for InstallPluginCmd {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        let github_repo = marketplace_row
+            .source
+            .get("repo")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let plugin_source = PluginSource {
             source_value,
             marketplace_source_type: marketplace_row.source_type.clone(),
             marketplace_local_path: local_path,
+            marketplace_github_repo: github_repo,
+            marketplace_last_synced_sha: marketplace_row.last_synced_sha.clone(),
         };
+
+        let egress = require_egress_for_source(ctx, &marketplace_row.source_type)?;
 
         let FetchedPluginFileSet {
             file_set,
             resolved_sha,
-        } = fetch_plugin(&plugin_source).map_err(CommandError::bad_request)?;
+        } = fetch_plugin(&plugin_source, &egress)
+            .await
+            .map_err(CommandError::bad_request)?;
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
@@ -1103,16 +1262,28 @@ impl Command for UpdatePlugin {
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        let github_repo = marketplace_row
+            .source
+            .get("repo")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let plugin_source = PluginSource {
             source_value,
             marketplace_source_type: marketplace_row.source_type.clone(),
             marketplace_local_path: local_path,
+            marketplace_github_repo: github_repo,
+            marketplace_last_synced_sha: marketplace_row.last_synced_sha.clone(),
         };
+
+        let egress = require_egress_for_source(ctx, &marketplace_row.source_type)?;
 
         let FetchedPluginFileSet {
             file_set,
             resolved_sha,
-        } = fetch_plugin(&plugin_source).map_err(CommandError::bad_request)?;
+        } = fetch_plugin(&plugin_source, &egress)
+            .await
+            .map_err(CommandError::bad_request)?;
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;

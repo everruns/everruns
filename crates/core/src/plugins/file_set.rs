@@ -38,6 +38,53 @@ pub struct PluginFileSet {
 }
 
 impl PluginFileSet {
+    /// Build a `PluginFileSet` from an in-memory map of relative path → bytes.
+    ///
+    /// Applies the same per-file, total-size, and count limits as `from_dir`.
+    /// Rejects any path that contains `..` components or an absolute leading `/`.
+    /// This is the seam for tarball extraction and tests — no disk access required.
+    pub fn from_map(
+        dir_name: impl Into<String>,
+        files: BTreeMap<String, Vec<u8>>,
+    ) -> Result<Self, String> {
+        let mut total_bytes: usize = 0;
+        if files.len() > MAX_PLUGIN_FILES {
+            return Err(format!(
+                "plugin contains {} files, exceeding the {MAX_PLUGIN_FILES}-file limit",
+                files.len()
+            ));
+        }
+        for (path, bytes) in &files {
+            // Reject absolute paths and traversals.
+            if path.starts_with('/') {
+                return Err(format!("plugin file path '{path}' must be relative"));
+            }
+            for component in std::path::Path::new(path).components() {
+                if component == Component::ParentDir {
+                    return Err(format!(
+                        "path traversal detected in plugin file map: '{path}'"
+                    ));
+                }
+            }
+            let file_size = bytes.len();
+            if file_size > MAX_PLUGIN_FILE_BYTES {
+                return Err(format!(
+                    "plugin file '{path}' is {file_size} bytes, exceeding the {MAX_PLUGIN_FILE_BYTES}-byte limit"
+                ));
+            }
+            total_bytes += file_size;
+            if total_bytes > MAX_PLUGIN_TOTAL_BYTES {
+                return Err(format!(
+                    "plugin total size exceeds {MAX_PLUGIN_TOTAL_BYTES} bytes"
+                ));
+            }
+        }
+        Ok(Self {
+            files,
+            dir_name: dir_name.into(),
+        })
+    }
+
     /// Load a plugin directory from disk.
     ///
     /// - Rejects `..` components and symlinks that escape the root.

@@ -8,7 +8,7 @@ use axum::Json;
 use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
-use everruns_core::{Caller, FeatureFlags, PermissionResolver, Policy, PolicyError};
+use everruns_core::{Caller, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError};
 use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -322,6 +322,9 @@ pub struct Ctx {
     pub fallback_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
+    /// Outbound HTTP boundary. Used by commands that make sanctioned egress
+    /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
+    pub egress_service: Option<Arc<dyn EgressService>>,
 }
 
 impl Ctx {
@@ -372,6 +375,7 @@ impl Ctx {
             fallback_harness_name: None,
             chat_harness_name: None,
             chat_session_title: None,
+            egress_service: None,
         }
     }
 
@@ -540,6 +544,11 @@ impl Ctx {
 
     pub fn with_chat_session_title(mut self, title: Option<String>) -> Self {
         self.chat_session_title = title;
+        self
+    }
+
+    pub fn with_egress_service(mut self, service: Arc<dyn EgressService>) -> Self {
+        self.egress_service = Some(service);
         self
     }
 }

@@ -910,8 +910,8 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 20);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 14);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 21);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 15);
         assert_eq!(role_permissions(OrgRole::Member).len(), 7);
         assert!(role_has_permission(
             OrgRole::Owner,
