@@ -50,6 +50,19 @@ The `tool_search` tool itself is never deferred.
 
 Allowlisted tools behave exactly like `DeferrablePolicy::Never` tools — their full schema is always sent — so the agent is never forced through a `tool_search` round-trip before its first read/edit/shell call.
 
+### Search ranking and result bounding
+
+Because there is no hosted semantic index, `tool_search` ranks matches client-side with a deliberately simple, predictable scheme:
+
+- **Field-weighted keyword overlap** — each whitespace-separated query term scores **3** if it appears in a tool's *name* and **1** if it only appears in the *description*. A name hit is a far stronger signal of intent than an incidental word in prose, so it dominates.
+- **Exact-name bonus** — a query that is exactly a tool name gets a large bonus (**+100**), so "load this specific tool" always ranks that tool first. The deferred stub tells the model to query the exact tool name, so this is the common path. Wrapping punctuation is stripped first, so a quoted or backticked name (`"read_file"`, `` `read_file` ``) still matches.
+- **Top-band cutoff** — only results scoring at least **half the top score** are returned, trimming weak tail matches so a loose query does not drag in loosely related tools.
+- **Result cap** — at most **8** tools are returned per call. Every returned tool is also *revealed* (its full schema is un-deferred for the rest of the session), so the cap bounds both the response payload and how much of the catalogue a single search can permanently un-defer.
+- **Visible-tool scoping** — the search only considers tools visible in the current turn (the turn-scoped allowlist), so it never reveals a tool the agent could not otherwise call.
+- **No-match fallback** — if nothing matches, the tool returns the catalogue of available tool *names* (not schemas) so the model can refine its query instead of dead-ending. An empty query lists tools so the model can browse.
+
+The session reveal set that drives progressive disclosure is itself bounded: it is keyed per session and evicts the oldest sessions past a fixed cap, so reveals never leak across sessions or grow without limit (an evicted session simply re-runs `tool_search`).
+
 ### Model Support
 
 None required. Because deferral and search are implemented client-side, every model works the same way. For GPT-5.4+ you may prefer [OpenAI Tool Search](/capabilities/openai-tool-search/), which uses the provider's hosted index; use this capability for all other models.
@@ -74,6 +87,27 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
   }
 }
 ```
+
+## Benchmarks
+
+Deferral only touches how tool *parameter schemas* reach the model — names and descriptions still go out in full — so the savings scale with how many tools an agent carries and how rich their schemas are.
+
+Measured on a representative 19-tool generic-agent surface (file, shell, web-fetch, session, storage, todo, time, and subagent tools, plus `tool_search` itself), comparing the serialized tool list the driver sends to the model **with and without** deferral on the first turn:
+
+| Metric | Full schemas | Deferred (first turn) | Saving |
+|---|---|---|---|
+| Tool list sent to model | ~11.6 KB (~2,900 tokens) | ~7.0 KB (~1,760 tokens) | **39% smaller** |
+| Parameter-schema bytes only | ~8.3 KB | ~3.7 KB | **55% smaller** |
+
+Token figures use the ~4-chars-per-token rule of thumb for JSON. 18 of the 19 tools were deferred (`tool_search` keeps its schema). Net savings grow with tool count: an agent with dozens of MCP tools defers proportionally more.
+
+These numbers come from the `benchmark_prompt_size_reduction` test in `crates/core/src/capabilities/tool_search.rs`, which also guards the reduction against regressions. Reproduce them with:
+
+```bash
+cargo test -p everruns-core --lib benchmark_prompt_size_reduction -- --nocapture
+```
+
+The trade-off is one extra `tool_search` round-trip per deferred tool before its first use; for many-tool agents the upfront token savings dominate.
 
 ## Limitations
 

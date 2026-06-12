@@ -188,7 +188,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "infinity_context" => Some("infinity-context"),
         "openai_image_generation" => Some("openai-image-generation"),
         "openai_tool_search" => Some("openai-tool-search"),
-        "tool_search" => Some("generic-tool-search"),
+        "tool_search" => Some("tool-search"),
         "auto_tool_search" => Some("auto-tool-search"),
         "platform_management" => Some("platform-management"),
         "prompt_canary_guardrail" => Some("prompt-canary-guardrail"),

@@ -1164,6 +1164,104 @@ mod tests {
         }
     }
 
+    /// Measure the prompt-size reduction from deferral on a realistic agent
+    /// surface built from production capabilities. Prints a breakdown (run with
+    /// `--nocapture`) and guards that deferral keeps cutting the tool-list size
+    /// by a wide margin. The printed numbers back the benchmark table in
+    /// `docs/capabilities/tool-search.md`; re-run this test to refresh them.
+    #[test]
+    fn benchmark_prompt_size_reduction() {
+        use crate::capabilities::{
+            BashkitShellCapability, Capability, CurrentTimeCapability, FileSystemCapability,
+            SessionCapability, SessionStorageCapability, StatelessTodoListCapability,
+            SubagentCapability, WebFetchCapability,
+        };
+
+        // A representative generic-agent surface: file, shell, fetch, session,
+        // storage, todo, time, and subagent tools.
+        let caps: Vec<Box<dyn Capability>> = vec![
+            Box::new(CurrentTimeCapability),
+            Box::new(FileSystemCapability),
+            Box::new(BashkitShellCapability),
+            Box::new(WebFetchCapability::from_env()),
+            Box::new(SessionCapability),
+            Box::new(SessionStorageCapability),
+            Box::new(StatelessTodoListCapability),
+            Box::new(SubagentCapability),
+        ];
+
+        let mut defs: Vec<ToolDefinition> = caps
+            .iter()
+            .flat_map(|c| c.tools())
+            .map(|t| t.to_definition())
+            .collect();
+        // Add the search tool itself, as the live capability does.
+        defs.push(ToolSearchTool::default().to_definition());
+
+        // What the driver serializes per tool: name + description + parameters.
+        let llm_view = |defs: &[ToolDefinition]| -> usize {
+            defs.iter()
+                .map(|d| {
+                    json!({
+                        "name": d.name(),
+                        "description": d.description(),
+                        "parameters": d.parameters(),
+                    })
+                    .to_string()
+                    .len()
+                })
+                .sum()
+        };
+
+        let total = defs.len();
+        let full_bytes = llm_view(&defs);
+
+        // Raw parameter-schema bytes (what stripping actually compresses) on the
+        // full surface, before deferral.
+        let params_full: usize = defs.iter().map(|d| d.parameters().to_string().len()).sum();
+
+        // First model turn: every deferrable schema is stubbed.
+        let deferred = hook(1).transform(defs);
+        let deferred_count = deferred.iter().filter(|d| is_stubbed(d)).count();
+        let deferred_bytes = llm_view(&deferred);
+        let params_deferred: usize = deferred
+            .iter()
+            .map(|d| d.parameters().to_string().len())
+            .sum();
+
+        let saved = full_bytes - deferred_bytes;
+        let pct = (saved as f64 / full_bytes as f64) * 100.0;
+        let params_pct = ((params_full - params_deferred) as f64 / params_full as f64) * 100.0;
+        // ~4 chars/token is the usual rule of thumb for JSON tool schemas.
+        let approx_tokens_full = full_bytes / 4;
+        let approx_tokens_deferred = deferred_bytes / 4;
+
+        eprintln!("tool-search prompt-size benchmark");
+        eprintln!("  tools on surface .......... {total}");
+        eprintln!("  schemas deferred .......... {deferred_count}");
+        eprintln!(
+            "  full tool list ............ {full_bytes} bytes (~{approx_tokens_full} tokens)"
+        );
+        eprintln!(
+            "  deferred tool list ........ {deferred_bytes} bytes (~{approx_tokens_deferred} tokens)"
+        );
+        eprintln!("  tool-list saved ........... {saved} bytes ({pct:.0}%)");
+        eprintln!(
+            "  parameter schemas ......... {params_full} -> {params_deferred} bytes ({params_pct:.0}% smaller)"
+        );
+
+        // Sanity guard: a many-tool surface must shrink substantially.
+        assert!(total >= 15, "surface should exceed the default threshold");
+        assert!(
+            pct > 30.0,
+            "deferral should cut the whole tool list by a wide margin (was {pct:.0}%)"
+        );
+        assert!(
+            params_pct > 45.0,
+            "parameter schemas should compress substantially (was {params_pct:.0}%)"
+        );
+    }
+
     #[tokio::test]
     async fn test_execute_filters_registry_to_visible_tools() {
         use crate::tools::ToolRegistry;
