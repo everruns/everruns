@@ -2790,6 +2790,7 @@ dependencies = [
  "chrono",
  "everruns-core",
  "everruns-mcp",
+ "futures",
  "ignore",
  "serde",
  "serde_json",
