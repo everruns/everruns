@@ -14,6 +14,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/domains.md` - Domain modules: Command trait, feature-oriented structure, MCP catalog generation
 - `specs/runtime.md` - Public in-process runtime contract for embedded execution
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
+- `specs/providers.md` - Providers domain model: drivers, services, providers, models, model profiles
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/cli.md` - CLI specification
 
