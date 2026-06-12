@@ -38,4 +38,44 @@ describe("runtime error localization", () => {
     expect(text).toContain("9 с");
     expect(text).not.toContain("backend fallback changed");
   });
+
+  it("localizes provider quota exhaustion distinctly from misconfiguration", () => {
+    const text = localizeRuntimeError(
+      "en",
+      { code: "provider_quota_exhausted", fields: { provider: "openai" } },
+      "backend fallback",
+    );
+
+    expect(text).toContain("out of credits or quota");
+    expect(text).not.toContain("misconfiguration");
+  });
+
+  it("appends the detail field from detailed disclosure mode to localized copy", () => {
+    const text = localizeRuntimeError(
+      "en",
+      {
+        code: "provider_quota_exhausted",
+        fields: { detail: "OpenAI API error (429): insufficient_quota" },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("out of credits or quota");
+    expect(text).toContain("Details: OpenAI API error (429): insufficient_quota");
+  });
+
+  it("localizes the detail label for non-English locales", () => {
+    const text = localizeRuntimeError(
+      "uk",
+      {
+        code: "provider_quota_exhausted",
+        fields: { detail: "OpenAI API error (429): insufficient_quota" },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("кредити або квота");
+    expect(text).toContain("Деталі: OpenAI API error (429): insufficient_quota");
+    expect(text).not.toContain("Details:");
+  });
 });

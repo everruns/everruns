@@ -123,6 +123,13 @@ impl RuntimeTurnState {
 }
 
 fn classify_reason_failure(reason_result: &ReasonResult) -> UserFacingError {
+    // The reason atom already classified and disclosure-filtered the failure.
+    // Reuse it so the turn.failed event matches what the session message
+    // showed; re-classifying strings here could leak past a generic mode.
+    if let Some(user_error) = &reason_result.user_facing_error {
+        return user_error.clone();
+    }
+
     let from_text =
         classify_runtime_error_message(&reason_result.text, &UserFacingErrorContext::default());
 
@@ -277,11 +284,12 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
             } else {
                 let user_error = classify_reason_failure(&reason_result);
                 lifecycle
-                    .turn_failed(
+                    .turn_failed_with_disclosure(
                         turn_id,
                         state.input_message_id,
                         &reason_result.text,
                         Some(&user_error),
+                        reason_result.error_disclosure,
                     )
                     .await;
             }

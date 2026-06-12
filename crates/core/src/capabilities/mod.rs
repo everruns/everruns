@@ -97,6 +97,7 @@ pub mod compaction;
 mod current_time;
 mod data_knowledge;
 mod declarative;
+mod error_disclosure;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -183,6 +184,9 @@ pub use declarative::{
     declarative_capability_info, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
+};
+pub use error_disclosure::{
+    ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
 };
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
@@ -1107,6 +1111,7 @@ impl CapabilityRegistry {
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
+        registry.register(ErrorDisclosureCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -2375,6 +2380,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "error_disclosure",
             "prompt_canary_guardrail",
             "user_hooks",
         ]

@@ -609,7 +609,8 @@ When a turn fails, an `output.message.completed` event with a user-friendly fall
 **Structured runtime errors:**
 - `error` remains the plain-English fallback for older clients and debugging.
 - `error_code` carries the stable user-facing classification.
-- `error_fields` carries interpolation values such as `spent`, `limit`, `soft_limit`, `currency`, `model_id`, `provider`, and `retry_after`.
+- `error_fields` carries interpolation values such as `spent`, `limit`, `soft_limit`, `currency`, `model_id`, `provider`, `retry_after`, and (detailed disclosure mode only) `detail`.
+- `error_disclosure` records the error-disclosure mode applied to `error_code`/`error_fields` (`generic` | `standard` | `detailed`, see `specs/error-disclosure.md`). Full diagnostic detail remains available to operators via `reason.completed` failure events, logs, and tracing.
 
 #### `turn.cancelled`
 

@@ -203,6 +203,13 @@ pub struct Controls {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
 
+    /// Error disclosure override for this turn: "generic", "standard", or
+    /// "detailed". Clamped to at most the mode allowed by the agent's
+    /// `error_disclosure` capability (capability absent => "standard"), so a
+    /// client can narrow but never widen disclosure.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_disclosure: Option<String>,
+
     /// Generic client hints — arbitrary key-value pairs declared by the client.
     /// Session-level defaults are set at session creation; per-message values
     /// override session hints key-by-key (shallow merge).

@@ -14,6 +14,10 @@ pub mod codes {
     pub const REQUEST_TOO_LARGE: &str = "request_too_large";
     pub const PROVIDER_RATE_LIMITED: &str = "provider_rate_limited";
     pub const PROVIDER_MISCONFIGURED: &str = "provider_misconfigured";
+    /// Provider account is out of credits/quota (billing). Distinct from
+    /// `provider_misconfigured` (bad/missing API key) so operators can tell
+    /// "top up the account" apart from "fix the key".
+    pub const PROVIDER_QUOTA_EXHAUSTED: &str = "provider_quota_exhausted";
     pub const PROVIDER_UNAVAILABLE: &str = "provider_unavailable";
     pub const PROCESSING_ERROR: &str = "processing_error";
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
@@ -24,6 +28,70 @@ pub mod codes {
 }
 
 pub type UserFacingErrorFields = BTreeMap<String, Value>;
+
+/// Message/event metadata keys used to track error disclosure decisions.
+pub mod metadata_keys {
+    /// Disclosure mode applied when the error surfaced ("generic" | "standard" | "detailed").
+    pub const ERROR_DISCLOSURE: &str = "error_disclosure";
+    /// The classified error code before disclosure was applied. Differs from
+    /// `error_code` only in `generic` mode, where the displayed code collapses
+    /// to `processing_error`.
+    pub const SOURCE_ERROR_CODE: &str = "source_error_code";
+}
+
+/// How much detail about a run-blocking error is shown to session viewers.
+///
+/// Ordering matters: variants are declared least → most disclosing so that
+/// per-message control overrides can be clamped with `min` against the
+/// capability-configured ceiling.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum ErrorDisclosure {
+    /// Collapse every blocking error into one generic, localizable message
+    /// (`processing_error`, no fields). For public-facing agents.
+    Generic,
+    /// Stable error code + structured interpolation fields. Current default.
+    #[default]
+    Standard,
+    /// Standard plus a `detail` field carrying the underlying driver error
+    /// text. For trusted surfaces such as coding-agent harnesses.
+    Detailed,
+}
+
+impl ErrorDisclosure {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "generic" => Some(ErrorDisclosure::Generic),
+            "standard" => Some(ErrorDisclosure::Standard),
+            "detailed" => Some(ErrorDisclosure::Detailed),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ErrorDisclosure::Generic => "generic",
+            ErrorDisclosure::Standard => "standard",
+            ErrorDisclosure::Detailed => "detailed",
+        }
+    }
+}
+
+/// Maximum length of the `detail` field attached in `Detailed` mode. Provider
+/// error bodies are normally short; this guards against pathological payloads
+/// bloating messages and events.
+const DETAIL_MAX_CHARS: usize = 1000;
+
+/// Provider quota/billing-exhaustion patterns shared by the string classifier
+/// and the driver-boundary semantic classifier (`LlmErrorKind`).
+pub fn is_provider_quota_message(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("insufficient_quota")
+        || lower.contains("insufficient quota")
+        || lower.contains("exceeded your current quota")
+        || lower.contains("credit balance is too low")
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -108,7 +176,56 @@ impl UserFacingError {
         }
     }
 
+    /// Apply an error-disclosure mode, returning the error as it should be
+    /// shown to session viewers. The original (source) error stays available
+    /// to the caller for tracking metadata.
+    ///
+    /// - `Generic` collapses to `processing_error` with no fields.
+    /// - `Standard` returns the error unchanged.
+    /// - `Detailed` attaches `detail` (the underlying driver error text,
+    ///   truncated) as an extra interpolation field.
+    pub fn apply_disclosure(&self, mode: ErrorDisclosure, detail: Option<&str>) -> UserFacingError {
+        match mode {
+            ErrorDisclosure::Generic => UserFacingError::new(codes::PROCESSING_ERROR),
+            ErrorDisclosure::Standard => self.clone(),
+            ErrorDisclosure::Detailed => {
+                let detail = detail.map(str::trim).filter(|d| !d.is_empty());
+                match detail {
+                    Some(detail) => self
+                        .clone()
+                        .with_field("detail", truncate_chars(detail, DETAIL_MAX_CHARS)),
+                    None => self.clone(),
+                }
+            }
+        }
+    }
+
+    /// Record disclosure tracking metadata on a message: the mode that was
+    /// applied and the pre-disclosure (source) error code.
+    pub fn apply_disclosure_to_message_metadata(
+        metadata: &mut HashMap<String, Value>,
+        mode: ErrorDisclosure,
+        source_code: &str,
+    ) {
+        metadata.insert(
+            metadata_keys::ERROR_DISCLOSURE.to_string(),
+            Value::String(mode.as_str().to_string()),
+        );
+        metadata.insert(
+            metadata_keys::SOURCE_ERROR_CODE.to_string(),
+            Value::String(source_code.to_string()),
+        );
+    }
+
     pub fn fallback_message(&self) -> String {
+        let base = self.base_fallback_message();
+        match string_field(&self.fields, "detail") {
+            Some(detail) => format!("{base}\n\nDetails: {detail}"),
+            None => base,
+        }
+    }
+
+    fn base_fallback_message(&self) -> String {
         match self.code.as_str() {
             codes::BUDGET_EXHAUSTED => budget_exhausted_message(&self.fields),
             codes::BUDGET_PAUSED => budget_paused_message(&self.fields),
@@ -134,6 +251,10 @@ impl UserFacingError {
             }
             codes::PROVIDER_MISCONFIGURED => {
                 "There is a misconfiguration with the AI provider. Please contact support."
+                    .to_string()
+            }
+            codes::PROVIDER_QUOTA_EXHAUSTED => {
+                "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
                     .to_string()
             }
             codes::PROVIDER_UNAVAILABLE => {
@@ -202,16 +323,13 @@ pub fn classify_runtime_error_message(
             .with_optional_field("model_id", context.model_id.clone());
     }
 
-    // OpenAI surfaces an exhausted-billing state as HTTP 429 + body
-    // `{"error":{"type":"insufficient_quota",...}}`. The "(429)" prefix would
+    // Exhausted provider billing (OpenAI: HTTP 429 + `insufficient_quota`,
+    // Anthropic: 400 + "credit balance is too low"). The "(429)" prefix would
     // otherwise route it to PROVIDER_RATE_LIMITED ("wait a moment"), but the
     // condition is non-transient and needs operator action (top up the
-    // account or rotate the key), so classify it as PROVIDER_MISCONFIGURED.
-    if lower.contains("insufficient_quota")
-        || lower.contains("insufficient quota")
-        || lower.contains("exceeded your current quota")
-    {
-        return UserFacingError::new(codes::PROVIDER_MISCONFIGURED)
+    // account or raise limits), so it gets its own code.
+    if is_provider_quota_message(normalized) {
+        return UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED)
             .with_optional_field("provider", context.provider.clone())
             .with_optional_field("model_id", context.model_id.clone());
     }
@@ -367,6 +485,14 @@ fn string_field<'a>(fields: &'a UserFacingErrorFields, key: &str) -> Option<&'a 
     fields.get(key)?.as_str()
 }
 
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        return value.to_string();
+    }
+    let truncated: String = value.chars().take(max_chars).collect();
+    format!("{truncated}\u{2026}")
+}
+
 fn number_field(fields: &UserFacingErrorFields, key: &str) -> Option<f64> {
     match fields.get(key)? {
         Value::Number(number) => number.as_f64(),
@@ -430,9 +556,10 @@ mod tests {
     }
 
     #[test]
-    fn classify_openai_insufficient_quota_as_provider_misconfigured() {
-        // OpenAI's exhausted-billing 429 needs operator action (top up or
-        // rotate key), not the transient "rate limited, wait a moment" copy.
+    fn classify_openai_insufficient_quota_as_provider_quota_exhausted() {
+        // OpenAI's exhausted-billing 429 needs operator action (top up the
+        // account), not the transient "rate limited, wait a moment" copy and
+        // not the "misconfigured" copy used for bad API keys.
         let error = classify_runtime_error_message(
             "ReasonAtom execution failed: OpenAI API error (429): {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}",
             &UserFacingErrorContext::default()
@@ -440,7 +567,7 @@ mod tests {
                 .with_model_id("gpt-4.1-mini"),
         );
 
-        assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
+        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
         assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
         assert_eq!(
             string_field(&error.fields, "model_id"),
@@ -451,14 +578,90 @@ mod tests {
     #[test]
     fn classify_insufficient_quota_without_status_prefix() {
         // Even if upstream wrapping drops the "(429)" prefix, the explicit
-        // quota substring must still route to PROVIDER_MISCONFIGURED rather
+        // quota substring must still route to PROVIDER_QUOTA_EXHAUSTED rather
         // than the canned PROCESSING_ERROR fallback (EVE-472).
         let error = classify_runtime_error_message(
             "LLM error: insufficient_quota: You exceeded your current quota.",
             &UserFacingErrorContext::default(),
         );
 
-        assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
+        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+    }
+
+    #[test]
+    fn classify_anthropic_low_credit_balance_as_provider_quota_exhausted() {
+        let error = classify_runtime_error_message(
+            "Anthropic API error (400): {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"}}",
+            &UserFacingErrorContext::default().with_provider("anthropic"),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+    }
+
+    #[test]
+    fn disclosure_generic_collapses_code_and_fields() {
+        let error = UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED)
+            .with_field("provider", "openai")
+            .with_field("model_id", "gpt-4.1-mini");
+
+        let disclosed = error.apply_disclosure(ErrorDisclosure::Generic, Some("raw detail"));
+
+        assert_eq!(disclosed.code, codes::PROCESSING_ERROR);
+        assert!(disclosed.fields.is_empty());
+        assert_eq!(
+            disclosed.fallback_message(),
+            "I encountered an error while processing your request. Please try again later."
+        );
+    }
+
+    #[test]
+    fn disclosure_standard_is_identity() {
+        let error = UserFacingError::new(codes::PROVIDER_RATE_LIMITED).with_field("retry_after", 7);
+        let disclosed = error.apply_disclosure(ErrorDisclosure::Standard, Some("raw detail"));
+        assert_eq!(disclosed, error);
+    }
+
+    #[test]
+    fn disclosure_detailed_attaches_detail_and_renders_it() {
+        let error = UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED);
+        let disclosed = error.apply_disclosure(
+            ErrorDisclosure::Detailed,
+            Some("OpenAI API error (429): insufficient_quota"),
+        );
+
+        assert_eq!(disclosed.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+        assert_eq!(
+            string_field(&disclosed.fields, "detail"),
+            Some("OpenAI API error (429): insufficient_quota")
+        );
+        let message = disclosed.fallback_message();
+        assert!(message.contains("out of credits or quota"));
+        assert!(message.contains("Details: OpenAI API error (429): insufficient_quota"));
+    }
+
+    #[test]
+    fn disclosure_detailed_truncates_long_detail() {
+        let error = UserFacingError::new(codes::PROCESSING_ERROR);
+        let long_detail = "x".repeat(5000);
+        let disclosed = error.apply_disclosure(ErrorDisclosure::Detailed, Some(&long_detail));
+        let detail = string_field(&disclosed.fields, "detail").unwrap();
+        assert!(detail.chars().count() <= 1001); // 1000 + ellipsis
+    }
+
+    #[test]
+    fn disclosure_parse_and_ordering() {
+        assert_eq!(
+            ErrorDisclosure::parse("Generic"),
+            Some(ErrorDisclosure::Generic)
+        );
+        assert_eq!(
+            ErrorDisclosure::parse("detailed"),
+            Some(ErrorDisclosure::Detailed)
+        );
+        assert_eq!(ErrorDisclosure::parse("nope"), None);
+        assert!(ErrorDisclosure::Generic < ErrorDisclosure::Standard);
+        assert!(ErrorDisclosure::Standard < ErrorDisclosure::Detailed);
+        assert_eq!(ErrorDisclosure::default(), ErrorDisclosure::Standard);
     }
 
     #[test]

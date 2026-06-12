@@ -1590,6 +1590,7 @@ mod tests {
             error: "boom".into(),
             error_code: None,
             error_fields: None,
+            error_disclosure: None,
         });
         let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
         assert_eq!(frame["status"]["state"], "failed");

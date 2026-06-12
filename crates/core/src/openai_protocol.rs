@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-use crate::error::{AgentLoopError, Result};
+use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
@@ -31,6 +31,7 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
 use crate::tool_types::{ToolCall, ToolDefinition};
+use crate::user_facing_error::is_provider_quota_message;
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
@@ -352,6 +353,15 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                     )));
                 }
 
+                // Exhausted billing quota is surfaced as a 429 but is not
+                // transient — fail fast instead of burning retries.
+                if is_provider_quota_message(&error_text) {
+                    return Err(AgentLoopError::llm_kind(
+                        LlmErrorKind::QuotaExhausted,
+                        format!("OpenAI API error ({}): {}", status, error_text),
+                    ));
+                }
+
                 // Calculate wait duration
                 let wait_duration = rate_limit_info
                     .as_ref()
@@ -392,17 +402,24 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                 return Err(AgentLoopError::request_too_large(error_msg));
             }
 
+            // Attach the semantic error kind while the HTTP status and body
+            // are still available (see LlmErrorKind).
+            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
             // If we exhausted retries, include that in the error message
             if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm(format!(
-                    "{} (after {} retries, last error: {})",
-                    error_msg,
-                    retry_metadata.attempts,
-                    last_error.unwrap_or_default()
-                )));
+                return Err(AgentLoopError::llm_kind(
+                    kind,
+                    format!(
+                        "{} (after {} retries, last error: {})",
+                        error_msg,
+                        retry_metadata.attempts,
+                        last_error.unwrap_or_default()
+                    ),
+                ));
             }
 
-            return Err(AgentLoopError::llm(error_msg));
+            return Err(AgentLoopError::llm_kind(kind, error_msg));
         };
 
         // Log successful retry recovery

@@ -14087,6 +14087,13 @@
         "type": "object",
         "description": "Runtime controls for message processing",
         "properties": {
+          "error_disclosure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error disclosure override for this turn: \"generic\", \"standard\", or\n\"detailed\". Clamped to at most the mode allowed by the agent's\n`error_disclosure` capability (capability absent => \"standard\"), so a\nclient can narrow but never widen disclosure."
+          },
           "hints": {
             "type": [
               "object",
@@ -23161,6 +23168,13 @@
             ],
             "description": "Stable error code for user-facing failures surfaced as assistant text."
           },
+          "error_disclosure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error-disclosure mode applied to `error_code`/`error_fields`\n(\"generic\" | \"standard\" | \"detailed\"). Tracking metadata; absent for\nnon-error messages and for paths that predate disclosure modes."
+          },
           "error_fields": {
             "type": [
               "object",
@@ -29043,6 +29057,13 @@
               "null"
             ],
             "description": "Error code"
+          },
+          "error_disclosure": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Error-disclosure mode applied to `error_code`/`error_fields`\n(\"generic\" | \"standard\" | \"detailed\"). Full diagnostic detail remains\navailable to operators via reason.completed failure events and tracing."
           },
           "error_fields": {
             "type": [

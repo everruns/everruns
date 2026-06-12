@@ -102,6 +102,7 @@ impl PublicError {
                 user_facing_error_codes::PROVIDER_UNAVAILABLE
                 | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
+                | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::MODEL_UNAVAILABLE
                 | user_facing_error_codes::BUDGET_EXHAUSTED
                 | user_facing_error_codes::BUDGET_PAUSED
@@ -168,6 +169,7 @@ mod tests {
             user_facing_error_codes::PROVIDER_UNAVAILABLE,
             user_facing_error_codes::DEPENDENCY_UNAVAILABLE,
             user_facing_error_codes::PROVIDER_MISCONFIGURED,
+            user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED,
             user_facing_error_codes::MODEL_UNAVAILABLE,
             user_facing_error_codes::BUDGET_EXHAUSTED,
             user_facing_error_codes::BUDGET_PAUSED,

@@ -20,7 +20,7 @@ use aws_sdk_bedrockruntime::types::{
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::llm_driver_registry::{
     BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
     LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
@@ -137,7 +137,12 @@ impl LlmDriver for BedrockLlmDriver {
             if is_too_large(&msg) {
                 AgentLoopError::request_too_large(msg)
             } else {
-                AgentLoopError::llm(format!("Bedrock ConverseStream failed: {e}"))
+                // No HTTP status at this boundary; classify the semantic
+                // kind from AWS SDK exception names in the message text.
+                AgentLoopError::llm_kind(
+                    LlmErrorKind::from_error_text(&msg),
+                    format!("Bedrock ConverseStream failed: {e}"),
+                )
             }
         })?;
 
@@ -247,7 +252,10 @@ impl LlmDriver for BedrockLlmDriver {
                         let err = if is_too_large(&msg) {
                             AgentLoopError::request_too_large(msg)
                         } else {
-                            AgentLoopError::llm(format!("Bedrock stream error: {e}"))
+                            AgentLoopError::llm_kind(
+                                LlmErrorKind::from_error_text(&msg),
+                                format!("Bedrock stream error: {e}"),
+                            )
                         };
                         let _ = tx.send(Err(err)).await;
                         return;

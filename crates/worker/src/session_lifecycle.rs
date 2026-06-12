@@ -190,6 +190,7 @@ impl<A: WorkerAdapters> SessionLifecycle<A> {
                     error: error.to_string(),
                     error_code: None,
                     error_fields: None,
+                    error_disclosure: None,
                 };
                 if let Some(user_error) = user_error {
                     user_error.apply_to_event_fields(&mut data.error_code, &mut data.error_fields);

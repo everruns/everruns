@@ -540,6 +540,7 @@ mod tests {
             model_id: None,
             reasoning: None,
             locale: Some("fr-FR".into()),
+            error_disclosure: None,
             hints: None,
         });
         message_store.add(session_id, input).await.unwrap();

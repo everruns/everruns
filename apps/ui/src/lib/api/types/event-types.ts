@@ -88,6 +88,8 @@ export interface OutputMessageCompletedData {
   usage?: TokenUsage;
   error_code?: string;
   error_fields?: Record<string, unknown>;
+  /** Error-disclosure mode applied to error_code/error_fields */
+  error_disclosure?: string;
 }
 
 /** Data for turn.started event */
@@ -127,6 +129,8 @@ export interface TurnFailedData {
   error: string;
   error_code?: string;
   error_fields?: Record<string, unknown>;
+  /** Error-disclosure mode applied to error_code/error_fields */
+  error_disclosure?: string;
 }
 
 /** Data for reason.started event */

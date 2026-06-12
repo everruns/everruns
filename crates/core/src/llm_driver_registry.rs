@@ -135,6 +135,24 @@ pub struct LlmCompletionMetadata {
 /// Trait for LLM drivers
 ///
 /// Implementations handle provider-specific API calls and response parsing.
+///
+/// # Error contract
+///
+/// Drivers surface provider failures as `AgentLoopError` and classify them
+/// semantically at the provider boundary, where HTTP status and response body
+/// are still available:
+///
+/// - request-too-large conditions => `AgentLoopError::request_too_large`
+/// - missing/unknown model => `AgentLoopError::model_not_available`
+/// - everything else => `AgentLoopError::llm_kind(LlmErrorKind::..., msg)`,
+///   using `LlmErrorKind::from_provider_status` (HTTP drivers) or
+///   `LlmErrorKind::from_error_text` (SDK drivers without a status). Plain
+///   `AgentLoopError::llm` is reserved for unclassifiable errors; downstream
+///   then falls back to string classification.
+///
+/// Quota/billing exhaustion (`LlmErrorKind::QuotaExhausted`) is non-transient
+/// and must not be retried by driver retry loops even when the provider
+/// reports it under a transient status like 429.
 #[async_trait]
 pub trait LlmDriver: Send + Sync {
     /// Call the LLM with streaming response

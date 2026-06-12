@@ -2934,7 +2934,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 19);
+        assert_eq!(cap_ids.len(), 20);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"bashkit_shell"));
@@ -2950,6 +2950,7 @@ mod tests {
         assert!(cap_ids.contains(&"budgeting"));
         assert!(cap_ids.contains(&"self_budget"));
         assert!(cap_ids.contains(&"loop_detection"));
+        assert!(cap_ids.contains(&"error_disclosure"));
         assert!(cap_ids.contains(&"message_metadata"));
         assert!(cap_ids.contains(&"compaction"));
         assert!(cap_ids.contains(&"tool_output_persistence"));
@@ -2963,6 +2964,13 @@ mod tests {
         assert_eq!(compaction_cap.config["strategy"], "auto");
         assert_eq!(compaction_cap.config["proactive"], true);
         assert_eq!(compaction_cap.config["budget_percent"], 0.85);
+        // The trusted default harness opts into detailed error disclosure.
+        let error_disclosure_cap = generic
+            .capabilities
+            .iter()
+            .find(|c| c.id == "error_disclosure")
+            .expect("error_disclosure capability should exist");
+        assert_eq!(error_disclosure_cap.config["mode"], "detailed");
         assert!(generic.tags.iter().any(|tag| tag == "generic"));
         assert!(generic.tags.iter().any(|tag| tag == "default"));
     }
