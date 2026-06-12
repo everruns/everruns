@@ -65,6 +65,14 @@ const METHOD_MESSAGE_SEND: &str = "message/send";
 const METHOD_MESSAGE_STREAM: &str = "message/stream";
 const METHOD_TASKS_GET: &str = "tasks/get";
 const METHOD_TASKS_CANCEL: &str = "tasks/cancel";
+// The linked Rust A2A client still emits legacy PascalCase JSON-RPC method
+// names while the current A2A endpoint contract uses slash-delimited names.
+// Keep the compatibility aliases at the method gate so they map to the same
+// audited handlers without widening the accepted method surface.
+const METHOD_MESSAGE_SEND_LEGACY: &str = "SendMessage";
+const METHOD_MESSAGE_STREAM_LEGACY: &str = "SendStreamingMessage";
+const METHOD_TASKS_GET_LEGACY: &str = "GetTask";
+const METHOD_TASKS_CANCEL_LEGACY: &str = "CancelTask";
 
 #[derive(Clone)]
 pub struct AppA2aState {
@@ -77,6 +85,12 @@ pub struct AppA2aState {
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: AppEndpointAuthVerifier,
     pub replay_store: A2aReplayStore,
+}
+
+struct MessageSendContext {
+    app_id: String,
+    channel_id: String,
+    req_id: Option<axum::Extension<RequestId>>,
 }
 
 impl AppA2aState {
@@ -167,6 +181,42 @@ fn rpc_error(id: Value, code: i32, message: impl Into<String>) -> Json<JsonRpcRe
     })
 }
 
+fn normalize_a2a_method(method: &str) -> &str {
+    match method {
+        METHOD_MESSAGE_SEND | METHOD_MESSAGE_SEND_LEGACY => METHOD_MESSAGE_SEND,
+        METHOD_MESSAGE_STREAM | METHOD_MESSAGE_STREAM_LEGACY => METHOD_MESSAGE_STREAM,
+        METHOD_TASKS_GET | METHOD_TASKS_GET_LEGACY => METHOD_TASKS_GET,
+        METHOD_TASKS_CANCEL | METHOD_TASKS_CANCEL_LEGACY => METHOD_TASKS_CANCEL,
+        other => other,
+    }
+}
+
+fn legacy_task_json(mut task: Value) -> Value {
+    if let Some(obj) = task.as_object_mut() {
+        obj.remove("kind");
+        if let Some(state) = obj
+            .get_mut("status")
+            .and_then(Value::as_object_mut)
+            .and_then(|status| status.get_mut("state"))
+            && let Some(state_label) = state.as_str()
+        {
+            let legacy = match state_label {
+                "submitted" => "TASK_STATE_SUBMITTED",
+                "working" => "TASK_STATE_WORKING",
+                "completed" => "TASK_STATE_COMPLETED",
+                "failed" => "TASK_STATE_FAILED",
+                "canceled" => "TASK_STATE_CANCELED",
+                "input_required" => "TASK_STATE_INPUT_REQUIRED",
+                "rejected" => "TASK_STATE_REJECTED",
+                "auth_required" => "TASK_STATE_AUTH_REQUIRED",
+                _ => "TASK_STATE_UNSPECIFIED",
+            };
+            *state = Value::String(legacy.to_string());
+        }
+    }
+    task
+}
+
 /// POST /v1/apps/{app_id}/a2a/{channel_id}
 #[utoipa::path(
     post,
@@ -230,15 +280,44 @@ pub async fn invoke_a2a(
 
     // Method gate. THREAT[TM-A2A-005]: only the audited methods reach the
     // session pipeline; everything else returns -32601 with no side effects.
-    match parsed.method.as_str() {
-        METHOD_MESSAGE_SEND => {
-            handle_message_send(&state, auth, parsed, rpc_id, app_id, channel_id, req_id).await
-        }
+    let requested_method = parsed.method.clone();
+    match normalize_a2a_method(&requested_method) {
+        METHOD_MESSAGE_SEND => handle_message_send(
+            &state,
+            auth,
+            parsed,
+            rpc_id,
+            MessageSendContext {
+                app_id,
+                channel_id,
+                req_id,
+            },
+            requested_method == METHOD_MESSAGE_SEND_LEGACY,
+        )
+        .await,
         METHOD_MESSAGE_STREAM => {
             handle_message_stream(&state, auth, parsed, rpc_id, app_id, channel_id, req_id).await
         }
-        METHOD_TASKS_GET => handle_tasks_get(&state, auth, parsed, rpc_id).await,
-        METHOD_TASKS_CANCEL => handle_tasks_cancel(&state, auth, parsed, rpc_id).await,
+        METHOD_TASKS_GET => {
+            handle_tasks_get(
+                &state,
+                auth,
+                parsed,
+                rpc_id,
+                requested_method == METHOD_TASKS_GET_LEGACY,
+            )
+            .await
+        }
+        METHOD_TASKS_CANCEL => {
+            handle_tasks_cancel(
+                &state,
+                auth,
+                parsed,
+                rpc_id,
+                requested_method == METHOD_TASKS_CANCEL_LEGACY,
+            )
+            .await
+        }
         other => (
             StatusCode::OK,
             rpc_error(
@@ -483,9 +562,16 @@ fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
     let text = parts
         .iter()
         .filter_map(|part| {
-            // Spec uses `kind: "text"`; older drafts used `type: "text"`. Accept both.
+            // Spec uses `kind: "text"`; older drafts used `type: "text"`.
+            // The linked Rust SDK serializes text parts as `{ "text": ... }`
+            // without a discriminator, so accept missing kind/type only when
+            // a string `text` field is present.
             let kind = part.get("kind").or_else(|| part.get("type"));
-            if kind.and_then(Value::as_str) == Some("text") {
+            let is_text = match kind {
+                Some(kind) => kind.as_str() == Some("text"),
+                None => part.get("text").and_then(Value::as_str).is_some(),
+            };
+            if is_text {
                 part.get("text").and_then(Value::as_str).map(str::to_owned)
             } else {
                 None
@@ -518,9 +604,8 @@ async fn handle_message_send(
     _auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
-    app_id: String,
-    channel_id: String,
-    req_id: Option<axum::Extension<RequestId>>,
+    ctx: MessageSendContext,
+    wrap_legacy_send_response: bool,
 ) -> Response {
     let parsed_msg = match parse_message_params(&parsed.params) {
         Ok(parsed) => parsed,
@@ -535,7 +620,7 @@ async fn handle_message_send(
     // from the session's turn lifecycle events, where the task corresponds
     // to the most recent turn for the underlying session.
     let task_id = Uuid::now_v7().to_string();
-    let request_id = req_id.map(|axum::Extension(id)| id.0);
+    let request_id = ctx.req_id.map(|axum::Extension(id)| id.0);
 
     let result = match invoke_a2a_app_channel(
         &state.db,
@@ -543,8 +628,8 @@ async fn handle_message_send(
         &state.session_service,
         &state.message_service,
         A2aInvocationRequest {
-            app_id,
-            channel_id,
+            app_id: ctx.app_id,
+            channel_id: ctx.channel_id,
             params: parsed.params,
             text: parsed_msg.text,
             message_id: parsed_msg.message_id,
@@ -561,7 +646,12 @@ async fn handle_message_send(
     };
 
     let task = build_task_json(result.session_id, "submitted", None);
-    (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+    let result = if wrap_legacy_send_response {
+        json!({ "task": legacy_task_json(task) })
+    } else {
+        task
+    };
+    (StatusCode::OK, rpc_success(rpc_id, result)).into_response()
 }
 
 /// Map a `tasks/get` / `tasks/cancel` JSON-RPC params object to an Everruns
@@ -590,6 +680,7 @@ async fn handle_tasks_get(
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
+    legacy_response: bool,
 ) -> Response {
     let session_id = match task_id_from_params(&parsed.params) {
         Ok(id) => id,
@@ -617,7 +708,10 @@ async fn handle_tasks_get(
         Err(err) => return internal_error(err).into_response(),
     };
 
-    let task = build_task_json(session.id, state_label, None);
+    let mut task = build_task_json(session.id, state_label, None);
+    if legacy_response {
+        task = legacy_task_json(task);
+    }
     (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
 }
 
@@ -628,6 +722,7 @@ async fn handle_tasks_cancel(
     auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
+    legacy_response: bool,
 ) -> Response {
     let session_id = match task_id_from_params(&parsed.params) {
         Ok(id) => id,
@@ -656,7 +751,10 @@ async fn handle_tasks_cancel(
     };
 
     if matches!(current, "completed" | "canceled" | "failed") {
-        let task = build_task_json(session.id, current, None);
+        let mut task = build_task_json(session.id, current, None);
+        if legacy_response {
+            task = legacy_task_json(task);
+        }
         return (StatusCode::OK, rpc_success(rpc_id, task)).into_response();
     }
 
@@ -664,7 +762,10 @@ async fn handle_tasks_cancel(
         return internal_error(err).into_response();
     }
 
-    let task = build_task_json(session.id, "canceled", None);
+    let mut task = build_task_json(session.id, "canceled", None);
+    if legacy_response {
+        task = legacy_task_json(task);
+    }
     (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
 }
 

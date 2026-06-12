@@ -3,7 +3,7 @@
 //! Keeps recent conversation turns in prompt context while exposing a
 //! `query_history` tool for older messages that fell out of the active window.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::{ExcludedNoticeTransform, MessageFilterProvider, MessageQuery};
 use crate::tool_types::ToolHints;
@@ -60,6 +60,99 @@ impl Capability for InfinityContextCapability {
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         Some(Arc::new(InfinityContextFilterProvider))
+    }
+
+    /// All three `InfinityContextConfig` fields are simple numeric knobs users
+    /// tune, so all are exposed. Candidate-load sizing (overfetch factor,
+    /// per-message token estimate, hard DB limit) is internal and derived from
+    /// these values, so it has no schema surface.
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "context_budget_tokens": {
+                    "type": "integer",
+                    "title": "Context budget (tokens)",
+                    "description": "Maximum prompt budget reserved for message history.",
+                    "minimum": 1,
+                    "default": default_context_budget_tokens()
+                },
+                "min_recent_messages": {
+                    "type": "integer",
+                    "title": "Minimum recent messages",
+                    "description": "Number of recent messages always kept, even when the token budget is tight.",
+                    "minimum": 1,
+                    "default": default_min_recent_messages()
+                },
+                "max_recent_messages": {
+                    "type": "integer",
+                    "title": "Maximum recent messages",
+                    "description": "Optional hard cap on recent messages kept in the live prompt.",
+                    "minimum": 1
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        let typed: InfinityContextConfig = serde_json::from_value(config.clone())
+            .map_err(|e| format!("invalid infinity_context config: {e}"))?;
+        if typed.context_budget_tokens == 0 {
+            return Err("context_budget_tokens must be >= 1".to_string());
+        }
+        if typed.min_recent_messages == 0 {
+            return Err("min_recent_messages must be >= 1".to_string());
+        }
+        if typed.max_recent_messages == Some(0) {
+            return Err("max_recent_messages must be >= 1".to_string());
+        }
+        Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls the token budget for history and the minimum/maximum number \
+                     of recent messages kept in the prompt.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Нескінченний контекст"),
+                description: Some(
+                    "Прибирає старішу історію розмови з активного запиту, зберігаючи її \
+                     доступною через інструмент query_history.",
+                ),
+                config_description: Some(
+                    "Визначає бюджет токенів для історії та мінімальну й максимальну \
+                     кількість останніх повідомлень у запиті.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "context_budget_tokens": {
+                            "title": "Бюджет контексту (токени)",
+                            "description": "Максимальний бюджет запиту, зарезервований для історії повідомлень."
+                        },
+                        "min_recent_messages": {
+                            "title": "Мінімум останніх повідомлень",
+                            "description": "Кількість останніх повідомлень, які зберігаються завжди, навіть коли бюджет токенів обмежений."
+                        },
+                        "max_recent_messages": {
+                            "title": "Максимум останніх повідомлень",
+                            "description": "Необов'язкове жорстке обмеження кількості останніх повідомлень в активному запиті."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -560,7 +653,7 @@ fn format_recent_result(messages: &[&Message], total: usize) -> ToolExecutionRes
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMessageRetriever;
+    use crate::in_memory::InMemoryMessageRetriever;
     use crate::typed_id::SessionId;
 
     #[test]
@@ -573,6 +666,57 @@ mod tests {
         assert_eq!(capability.category(), Some("Optimization"));
         assert_eq!(capability.tools().len(), 1);
         assert!(capability.message_filter_provider().is_some());
+    }
+
+    #[test]
+    fn test_config_schema_and_validate_config() {
+        let capability = InfinityContextCapability;
+
+        let schema = capability.config_schema().expect("config schema");
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["context_budget_tokens"].is_object());
+        assert!(schema["properties"]["min_recent_messages"].is_object());
+        assert!(schema["properties"]["max_recent_messages"].is_object());
+
+        // Null, empty, and valid configs are accepted.
+        assert!(capability.validate_config(&Value::Null).is_ok());
+        assert!(capability.validate_config(&json!({})).is_ok());
+        assert!(
+            capability
+                .validate_config(&json!({
+                    "context_budget_tokens": 50_000,
+                    "min_recent_messages": 5,
+                    "max_recent_messages": 100
+                }))
+                .is_ok()
+        );
+
+        // Wrong types and out-of-range values are rejected.
+        assert!(
+            capability
+                .validate_config(&json!({"context_budget_tokens": "lots"}))
+                .is_err()
+        );
+        assert!(
+            capability
+                .validate_config(&json!({"context_budget_tokens": 0}))
+                .is_err()
+        );
+        assert!(
+            capability
+                .validate_config(&json!({"max_recent_messages": 0}))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_localizations_resolve_uk() {
+        let capability = InfinityContextCapability;
+        assert_eq!(
+            capability.localized_name(Some("uk-UA")),
+            "Нескінченний контекст"
+        );
+        assert!(capability.describe_schema(None).is_some());
     }
 
     #[test]

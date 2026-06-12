@@ -22,7 +22,7 @@ Fundamental capabilities for file operations, command execution, web access, and
 | Capability | ID | Tools |
 |---|---|---|
 | [File System](/capabilities/file-system/) | `session_file_system` | 6 |
-| [Virtual Bash](/capabilities/virtual-bash/) | `virtual_bash` | 1 |
+| [Bashkit Shell](/capabilities/bashkit-shell/) | `bashkit_shell` | 1 |
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
@@ -36,6 +36,7 @@ Structured data, time awareness, task tracking, and scheduling.
 |---|---|---|
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
+| [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
 
@@ -123,7 +124,7 @@ curl -X POST http://localhost:9300/api/v1/agents \
   -d '{
     "name": "My Agent",
     "system_prompt": "You are a helpful assistant.",
-    "capabilities": ["session_file_system", "virtual_bash", "web_fetch"]
+    "capabilities": ["session_file_system", "bashkit_shell", "web_fetch"]
   }'
 ```
 
@@ -183,7 +184,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 
 | Capability | Depends On |
 |---|---|
-| [Virtual Bash](/capabilities/virtual-bash/) | [File System](/capabilities/file-system/) |
+| [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 
@@ -193,7 +194,7 @@ Capabilities declare UI features they contribute. The session aggregates feature
 
 | Feature | UI Element | Contributed By |
 |---|---|---|
-| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Virtual Bash](/capabilities/virtual-bash/) |
+| `file_system` | Workspace tab | [File System](/capabilities/file-system/), [Bashkit Shell](/capabilities/bashkit-shell/) |
 | `secrets` | Storage tab | [Storage](/capabilities/session-storage/) |
 | `key_value` | Storage tab | [Storage](/capabilities/session-storage/) |
 | `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |

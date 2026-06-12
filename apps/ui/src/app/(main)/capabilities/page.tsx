@@ -1,9 +1,8 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import {
   useCapabilities,
-  useCreateDeclarativeCapability,
   useDeclarativeCapabilities,
   useDeleteDeclarativeCapability,
   usePageTitle,
@@ -12,21 +11,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import Link from "next/link";
-import { CircleOff, Search as SearchIcon, Bot, Layers, X, Plus } from "lucide-react";
+import { CircleOff, Search as SearchIcon, Bot, Layers, X, Plus, Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
@@ -45,148 +40,50 @@ function getStatusLabel(status: CapabilityStatus): string {
   }
 }
 
-function DeclarativeCapabilityDialog() {
-  const createCapability = useCreateDeclarativeCapability();
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [description, setDescription] = useState("");
-  const [systemPrompt, setSystemPrompt] = useState("");
-  const [mcpServers, setMcpServers] = useState("{}");
-  const [error, setError] = useState<string | null>(null);
-
-  const handleSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError(null);
-
-    let parsedMcpServers: Record<string, unknown> | undefined;
-    try {
-      parsedMcpServers = mcpServers.trim() ? JSON.parse(mcpServers) : undefined;
-    } catch {
-      setError("MCP servers must be valid JSON.");
-      return;
-    }
-
-    await createCapability.mutateAsync({
-      definition: {
-        name,
-        display_name: displayName.trim() || undefined,
-        description,
-        category: "Declarative",
-        icon: "puzzle",
-        system_prompt: systemPrompt.trim() || undefined,
-        mcp_servers:
-          parsedMcpServers && Object.keys(parsedMcpServers).length > 0
-            ? parsedMcpServers
-            : undefined,
-        dependencies: ["session_file_system", "skills"],
-        risk_level: "low",
-      },
-    });
-
-    setOpen(false);
-    setName("");
-    setDisplayName("");
-    setDescription("");
-    setSystemPrompt("");
-    setMcpServers("{}");
-  };
-
+function NewDeclarativeButton() {
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" size="sm">
-          <Plus className="mr-1.5 h-4 w-4" />
-          New Declarative
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>New Declarative Capability</DialogTitle>
-        </DialogHeader>
-        <form className="space-y-4" onSubmit={handleSubmit}>
-          <div className="grid gap-2">
-            <Label htmlFor="declarative-name">Unique name</Label>
-            <Input
-              id="declarative-name"
-              placeholder="research_pack"
-              value={name}
-              onChange={(event) => setName(event.target.value.toLowerCase())}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="declarative-display-name">Display name</Label>
-            <Input
-              id="declarative-display-name"
-              placeholder="Research Pack"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="declarative-description">Description</Label>
-            <Input
-              id="declarative-description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-              required
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="declarative-prompt">System Prompt</Label>
-            <Textarea
-              id="declarative-prompt"
-              value={systemPrompt}
-              onChange={(event) => setSystemPrompt(event.target.value)}
-              rows={6}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="declarative-mcp">MCP Servers JSON</Label>
-            <Textarea
-              id="declarative-mcp"
-              value={mcpServers}
-              onChange={(event) => setMcpServers(event.target.value)}
-              rows={5}
-              className="font-mono text-xs"
-            />
-          </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={createCapability.isPending || !name || !description}>
-              {createCapability.isPending ? "Creating..." : "Create"}
-            </Button>
-          </div>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Link href="/capabilities/declarative/new">
+      <Button type="button" size="sm">
+        <Plus className="mr-1.5 h-4 w-4" />
+        New Declarative
+      </Button>
+    </Link>
   );
 }
 
 function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
+  const { locale } = useLocale();
   const deleteCapability = useDeleteDeclarativeCapability();
   return (
     <div className="flex items-center justify-between gap-3 border p-3">
-      <div className="min-w-0">
+      <Link href={`/capabilities/declarative/${capability.id}`} className="min-w-0 flex-1 group">
         <div className="flex items-center gap-2">
-          <p className="font-medium truncate">{capability.display_name ?? capability.name}</p>
-          <CopyButton value={capability.capability_id} />
+          <p className="font-medium truncate group-hover:underline">
+            {capability.display_name ?? localizedCapabilityName(capability, locale)}
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground line-clamp-1">{capability.description}</p>
+        <p className="text-sm text-muted-foreground line-clamp-1">
+          {localizedCapabilityDescription(capability, locale)}
+        </p>
+      </Link>
+      <div className="flex items-center gap-2 shrink-0">
+        <CopyButton value={capability.capability_id} />
+        <Link href={`/capabilities/declarative/${capability.id}`}>
+          <Button type="button" variant="outline" size="sm">
+            <Pencil className="mr-1.5 h-3.5 w-3.5" />
+            Edit
+          </Button>
+        </Link>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => deleteCapability.mutate(capability.id)}
+          disabled={deleteCapability.isPending}
+        >
+          Archive
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={() => deleteCapability.mutate(capability.id)}
-        disabled={deleteCapability.isPending}
-      >
-        Archive
-      </Button>
     </div>
   );
 }
@@ -209,6 +106,7 @@ function CapabilityStats({ capability }: { capability: Capability }) {
 }
 
 function CapabilityCard({ capability }: { capability: Capability }) {
+  const { locale } = useLocale();
   const IconComponent = getCapabilityIcon(capability.icon);
 
   return (
@@ -220,7 +118,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
               <IconComponent className="icon-sharp h-5 w-5" />
             </div>
             <div className="flex items-center gap-2 min-w-0">
-              <CardTitle className="text-lg truncate">{capability.name}</CardTitle>
+              <CardTitle className="text-lg truncate">
+                {localizedCapabilityName(capability, locale)}
+              </CardTitle>
               <CopyButton value={capability.id} />
             </div>
           </div>
@@ -230,7 +130,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
-            <InlineStreamdownMessage>{capability.description}</InlineStreamdownMessage>
+            <InlineStreamdownMessage>
+              {localizedCapabilityDescription(capability, locale)}
+            </InlineStreamdownMessage>
           </div>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             {capability.category ? (
@@ -248,6 +150,14 @@ function CapabilityCard({ capability }: { capability: Capability }) {
   );
 }
 
+function matchesLocalizations(capability: Pick<Capability, "localizations">, q: string): boolean {
+  return Object.values(capability.localizations ?? {}).some(
+    (loc) =>
+      (loc.name?.toLowerCase().includes(q) ?? false) ||
+      (loc.description?.toLowerCase().includes(q) ?? false),
+  );
+}
+
 function matches(capability: Capability, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
@@ -255,7 +165,8 @@ function matches(capability: Capability, query: string): boolean {
     capability.name.toLowerCase().includes(q) ||
     capability.description.toLowerCase().includes(q) ||
     capability.id.toLowerCase().includes(q) ||
-    (capability.category?.toLowerCase().includes(q) ?? false)
+    (capability.category?.toLowerCase().includes(q) ?? false) ||
+    matchesLocalizations(capability, q)
   );
 }
 
@@ -403,7 +314,7 @@ export default function CapabilitiesPage() {
               : formatCountLabel(totalCount, "capability", "capabilities")}
           </span>
         </div>
-        <DeclarativeCapabilityDialog />
+        <NewDeclarativeButton />
       </div>
 
       {filteredDeclarative.length > 0 && (

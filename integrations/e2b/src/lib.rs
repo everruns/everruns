@@ -1,11 +1,28 @@
-//! E2B Integration
+//! E2B cloud sandboxes for Everruns agents.
 //!
-//! Cloud sandboxes backed by E2B. Users bring their own E2B API key via the
-//! connection provider; no platform-owned or environment-variable fallback.
-//! Decision: external integration crate, auto-registered via inventory.
-//! Decision: BYO API-key connection model — credentials resolve from user
-//!   connection only; fail with ConnectionRequired if not configured.
-//! Decision: session-scoped sandbox state + leased-resource cleanup, similar to Daytona.
+//! `everruns-integrations-e2b` is part of the [Everruns](https://everruns.com)
+//! ecosystem. It gives agents cloud sandboxes backed by [E2B](https://e2b.dev),
+//! so they can create isolated environments, run processes, and read or write
+//! files without touching the host. Sandboxes are managed per session with
+//! leased-resource cleanup, and authenticate with a user-supplied E2B API key.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_e2b::E2BCapability;
+//!
+//! let capability = E2BCapability;
+//! assert_eq!(capability.id(), "e2b");
+//! ```
+//!
+//! # Design notes
+//!
+//! - External integration crate, auto-registered via the inventory plugin system.
+//! - Bring-your-own API-key connection model: credentials resolve from the user
+//!   connection only and fail with `ConnectionRequired` if not configured.
+//! - Session-scoped sandbox state with leased-resource cleanup, similar to
+//!   Daytona.
 
 pub mod client;
 pub mod connection;
@@ -13,7 +30,9 @@ pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -68,6 +87,15 @@ impl Capability for E2BCapability {
 
     fn description(&self) -> &str {
         "Run code in cloud sandboxes powered by E2B. Create isolated Linux environments, execute commands, and manage sandbox files."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "E2B",
+            "Запускайте код у хмарних пісочницях на основі E2B. Створюйте ізольовані \
+             середовища Linux, виконуйте команди та керуйте файлами пісочниці.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

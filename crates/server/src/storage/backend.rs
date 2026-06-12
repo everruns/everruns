@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
-    LeasedResourceId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId, VolumeId,
+    LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -786,159 +786,143 @@ impl StorageBackend {
     // Workspace Volumes
     // ============================================
 
-    pub async fn create_volume(&self, org_id: i64, input: CreateVolumeRow) -> Result<VolumeRow> {
-        dispatch!(self, create_volume, org_id, input)
+    pub async fn create_memory(&self, org_id: i64, input: CreateMemoryRow) -> Result<MemoryRow> {
+        dispatch!(self, create_memory, org_id, input)
     }
 
-    pub async fn get_volume(&self, org_id: i64, volume_id: VolumeId) -> Result<Option<VolumeRow>> {
+    pub async fn get_memory(&self, org_id: i64, memory_id: MemoryId) -> Result<Option<MemoryRow>> {
         dispatch!(
             self,
-            get_volume_by_public_id,
+            get_memory_by_public_id,
             org_id,
-            &volume_id.to_string()
+            &memory_id.to_string()
         )
     }
 
-    pub async fn get_volume_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<VolumeRow>> {
-        dispatch!(self, get_volume_by_id, org_id, id)
-    }
-
-    pub async fn list_volumes(
-        &self,
-        org_id: i64,
-        search: Option<&str>,
-        include_archived: bool,
-    ) -> Result<Vec<VolumeRow>> {
-        dispatch!(self, list_volumes, org_id, search, include_archived)
-    }
-
-    pub async fn update_volume(
-        &self,
-        org_id: i64,
-        id: Uuid,
-        input: UpdateVolume,
-    ) -> Result<Option<VolumeRow>> {
-        dispatch!(self, update_volume, org_id, id, input)
-    }
-
-    pub async fn archive_volume(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        dispatch!(self, archive_volume, org_id, id)
-    }
-
-    pub async fn claim_next_volume_sync(&self) -> Result<Option<VolumeRow>> {
-        dispatch!(self, claim_next_volume_sync)
-    }
-
-    pub async fn complete_volume_sync(
-        &self,
-        volume_id: Uuid,
-        claimed_at: DateTime<Utc>,
-        files: Vec<CreateVolumeFileRow>,
-    ) -> Result<Option<VolumeRow>> {
-        dispatch!(self, complete_volume_sync, volume_id, claimed_at, files)
-    }
-
-    pub async fn fail_volume_sync(
-        &self,
-        volume_id: Uuid,
-        claimed_at: DateTime<Utc>,
-        error: &str,
-    ) -> Result<Option<VolumeRow>> {
-        dispatch!(self, fail_volume_sync, volume_id, claimed_at, error)
-    }
-
-    pub async fn list_all_volume_files(&self, volume_id: Uuid) -> Result<Vec<VolumeFileRow>> {
-        dispatch!(self, list_all_volume_files, volume_id)
-    }
-
-    // ============================================
-    // Memory Stores
-    // ============================================
-
-    pub async fn create_memory_store(
-        &self,
-        org_id: i64,
-        input: CreateMemoryStoreRow,
-    ) -> Result<MemoryStoreDbRow> {
-        dispatch!(self, create_memory_store, org_id, input)
-    }
-
-    pub async fn get_memory_store_by_public_id(
-        &self,
-        org_id: i64,
-        public_id: &str,
-    ) -> Result<Option<MemoryStoreDbRow>> {
-        dispatch!(self, get_memory_store_by_public_id, org_id, public_id)
-    }
-
-    pub async fn get_default_memory_store(&self, org_id: i64) -> Result<Option<MemoryStoreDbRow>> {
-        dispatch!(self, get_default_memory_store, org_id)
-    }
-
-    pub async fn list_memory_stores(&self, org_id: i64) -> Result<Vec<MemoryStoreDbRow>> {
-        dispatch!(self, list_memory_stores, org_id)
-    }
-
-    pub async fn list_memory_stores_with_counts(
-        &self,
-        org_id: i64,
-    ) -> Result<Vec<MemoryStoreWithCount>> {
-        dispatch!(self, list_memory_stores_with_counts, org_id)
-    }
-
-    pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
-        dispatch!(self, count_memory_stores, org_id)
-    }
-
-    pub async fn update_memory_store(
-        &self,
-        org_id: i64,
-        public_id: &str,
-        input: UpdateMemoryStoreRow,
-    ) -> Result<Option<MemoryStoreDbRow>> {
-        dispatch!(self, update_memory_store, org_id, public_id, input)
-    }
-
-    pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
-        dispatch!(self, create_memory, input)
-    }
-
-    pub async fn create_memory_with_cap(
-        &self,
-        input: CreateMemoryRow,
-        cap_limit: i64,
-    ) -> Result<Option<MemoryDbRow>> {
-        dispatch!(self, create_memory_with_cap, input, cap_limit)
-    }
-
-    pub async fn get_memory_by_public_id(
-        &self,
-        org_id: i64,
-        public_id: &str,
-    ) -> Result<Option<MemoryDbRow>> {
-        dispatch!(self, get_memory_by_public_id, org_id, public_id)
+    pub async fn get_memory_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<MemoryRow>> {
+        dispatch!(self, get_memory_by_id, org_id, id)
     }
 
     pub async fn list_memories(
         &self,
         org_id: i64,
-        store_id: Option<Uuid>,
-        filter: ListMemoriesFilter,
-    ) -> Result<(Vec<MemoryDbRow>, i64)> {
-        dispatch!(self, list_memories, org_id, store_id, filter)
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<MemoryRow>> {
+        dispatch!(self, list_memories, org_id, search, include_archived)
     }
 
-    pub async fn count_active_memories(&self, store_id: Uuid) -> Result<i64> {
-        dispatch!(self, count_active_memories, store_id)
-    }
-
-    pub async fn deactivate_memory(
+    pub async fn update_memory(
         &self,
         org_id: i64,
-        store_id: Uuid,
-        memory_public_id: &str,
-    ) -> Result<bool> {
-        dispatch!(self, deactivate_memory, org_id, store_id, memory_public_id)
+        id: Uuid,
+        input: UpdateMemory,
+    ) -> Result<Option<MemoryRow>> {
+        dispatch!(self, update_memory, org_id, id, input)
+    }
+
+    pub async fn archive_memory(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_memory, org_id, id)
+    }
+
+    pub async fn claim_next_memory_sync(&self) -> Result<Option<MemoryRow>> {
+        dispatch!(self, claim_next_memory_sync)
+    }
+
+    pub async fn complete_memory_sync(
+        &self,
+        memory_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        files: Vec<CreateMemoryFileRow>,
+    ) -> Result<Option<MemoryRow>> {
+        dispatch!(self, complete_memory_sync, memory_id, claimed_at, files)
+    }
+
+    pub async fn fail_memory_sync(
+        &self,
+        memory_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<MemoryRow>> {
+        dispatch!(self, fail_memory_sync, memory_id, claimed_at, error)
+    }
+
+    pub async fn list_all_memory_files(&self, memory_id: Uuid) -> Result<Vec<MemoryFileRow>> {
+        dispatch!(self, list_all_memory_files, memory_id)
+    }
+
+    pub async fn create_memory_file(
+        &self,
+        memory_id: Uuid,
+        input: CreateMemoryFileRow,
+    ) -> Result<MemoryFileRow> {
+        dispatch!(self, create_memory_file, memory_id, input)
+    }
+
+    pub async fn get_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileRow>> {
+        dispatch!(self, get_memory_file, memory_id, path)
+    }
+
+    pub async fn get_memory_file_info(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+    ) -> Result<Option<MemoryFileInfoRow>> {
+        dispatch!(self, get_memory_file_info, memory_id, path)
+    }
+
+    pub async fn list_memory_files(
+        &self,
+        memory_id: Uuid,
+        parent_path: &str,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        dispatch!(self, list_memory_files, memory_id, parent_path)
+    }
+
+    pub async fn update_memory_file(
+        &self,
+        memory_id: Uuid,
+        path: &str,
+        input: UpdateMemoryFile,
+    ) -> Result<Option<MemoryFileRow>> {
+        dispatch!(self, update_memory_file, memory_id, path, input)
+    }
+
+    pub async fn delete_memory_file(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, delete_memory_file, memory_id, path)
+    }
+
+    pub async fn delete_memory_file_recursive(&self, memory_id: Uuid, path: &str) -> Result<u64> {
+        dispatch!(self, delete_memory_file_recursive, memory_id, path)
+    }
+
+    pub async fn grep_memory_files(
+        &self,
+        memory_id: Uuid,
+        pattern: &str,
+        path_pattern: Option<&str>,
+        max_file_bytes: i64,
+    ) -> Result<Vec<MemoryFileInfoRow>> {
+        dispatch!(
+            self,
+            grep_memory_files,
+            memory_id,
+            pattern,
+            path_pattern,
+            max_file_bytes
+        )
+    }
+
+    pub async fn memory_file_exists(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, memory_file_exists, memory_id, path)
+    }
+
+    pub async fn memory_directory_has_children(&self, memory_id: Uuid, path: &str) -> Result<bool> {
+        dispatch!(self, memory_directory_has_children, memory_id, path)
     }
 
     // ============================================
@@ -2563,8 +2547,8 @@ impl StorageBackend {
         dispatch!(self, get_eval_organization_id, public_id)
     }
 
-    pub async fn get_volume_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
-        dispatch!(self, get_volume_organization_id, public_id)
+    pub async fn get_memory_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_memory_organization_id, public_id)
     }
 
     pub async fn upsert_leased_resource(
@@ -2675,6 +2659,78 @@ impl StorageBackend {
         resource_id: &str,
     ) -> Result<bool> {
         dispatch!(self, delete_session_resource, session_id, resource_id)
+    }
+
+    // ============================================
+    // Session Tasks
+    // ============================================
+
+    /// Insert a task. Idempotent on `id`; the `bool` is true when inserted.
+    pub async fn create_session_task(
+        &self,
+        task: &everruns_core::SessionTask,
+    ) -> Result<(SessionTaskRow, bool)> {
+        dispatch!(self, create_session_task, task)
+    }
+
+    pub async fn get_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<SessionTaskRow>> {
+        dispatch!(self, get_session_task, session_id, task_id)
+    }
+
+    pub async fn list_session_tasks(
+        &self,
+        session_id: SessionId,
+        kind: Option<&str>,
+        state: Option<&str>,
+    ) -> Result<Vec<SessionTaskRow>> {
+        dispatch!(self, list_session_tasks, session_id, kind, state)
+    }
+
+    pub async fn update_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: everruns_core::SessionTaskUpdate,
+    ) -> Result<Option<SessionTaskRow>> {
+        dispatch!(self, update_session_task, session_id, task_id, update)
+    }
+
+    pub async fn request_cancel_session_task(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<(SessionTaskRow, bool)>> {
+        dispatch!(self, request_cancel_session_task, session_id, task_id)
+    }
+
+    pub async fn insert_session_task_message(
+        &self,
+        input: NewSessionTaskMessageRow,
+    ) -> Result<SessionTaskMessageRow> {
+        dispatch!(self, insert_session_task_message, input)
+    }
+
+    pub async fn list_session_task_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<SessionTaskMessageRow>> {
+        dispatch!(self, list_session_task_messages, session_id, task_id, limit)
+    }
+
+    /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
+    /// See individual backend impls for locking semantics.
+    pub async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String)>> {
+        dispatch!(self, list_orphaned_session_task_ids, stale_after, limit)
     }
 
     // ============================================

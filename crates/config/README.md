@@ -1,10 +1,18 @@
 # everruns-config
 
-Small configuration helpers shared across the Everruns Rust crates.
+> Shared configuration-loading helpers for Everruns crates.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It keeps
-environment-variable parsing consistent for services, workers, integrations,
-and embedders without pulling in the larger runtime crates.
+[![Crates.io](https://img.shields.io/crates/v/everruns-config.svg)](https://crates.io/crates/everruns-config)
+[![Documentation](https://docs.rs/everruns-config/badge.svg)](https://docs.rs/everruns-config)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-config` keeps environment-variable parsing consistent across the
+Everruns crates — services, workers, integrations, and embedders — without
+pulling in the larger runtime crates. It offers small, typed readers with
+defaults and a shared error type for missing or invalid required values.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents.
 
 ## Quick Example
 
@@ -29,6 +37,11 @@ println!("{bind_addr} {allow_dev} {timeout:?} {database_url}");
 - Duration helpers for seconds and milliseconds
 - A shared `ConfigError` type for missing or invalid required values
 
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-config)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

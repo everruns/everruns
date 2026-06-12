@@ -13,7 +13,8 @@ mod client;
 mod tools;
 
 use everruns_core::capabilities::{
-    AgentBlueprint, BlueprintModel, Capability, CapabilityStatus, IntegrationPlugin,
+    AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus,
+    IntegrationPlugin,
 };
 use everruns_core::tools::Tool;
 use serde_json::json;
@@ -65,6 +66,15 @@ impl Capability for GitHubScoutCapability {
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["subagents"]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "GitHub Scout",
+            "Розвідник репозиторіїв GitHub, що працює лише через blueprint і може породжувати \
+             субагентів для дослідження GitHub у режимі лише читання.",
+        )]
     }
 
     fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
@@ -119,6 +129,13 @@ mod tests {
         assert_eq!(cap.name(), "GitHub Scout");
         assert!(cap.tools().is_empty());
         assert_eq!(cap.dependencies(), vec!["subagents"]);
+    }
+
+    #[test]
+    fn uk_localization_resolves() {
+        let cap = GitHubScoutCapability;
+        assert_ne!(cap.localized_description(Some("uk")), cap.description());
+        assert_eq!(cap.localized_name(Some("uk")), "GitHub Scout");
     }
 
     #[test]

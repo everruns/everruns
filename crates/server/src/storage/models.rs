@@ -1016,11 +1016,11 @@ pub struct SessionFileInfoRow {
 }
 
 // ============================================
-// Workspace Volume models
+// Workspace Memory models
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct VolumeRow {
+pub struct MemoryRow {
     pub id: Uuid,
     pub org_id: i64,
     pub public_id: String,
@@ -1042,7 +1042,7 @@ pub struct VolumeRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateVolumeRow {
+pub struct CreateMemoryRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
@@ -1055,7 +1055,7 @@ pub struct CreateVolumeRow {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct UpdateVolume {
+pub struct UpdateMemory {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub status: Option<String>,
@@ -1068,9 +1068,9 @@ pub struct UpdateVolume {
 }
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct VolumeFileRow {
+pub struct MemoryFileRow {
     pub id: Uuid,
-    pub volume_id: Uuid,
+    pub memory_id: Uuid,
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
@@ -1081,89 +1081,31 @@ pub struct VolumeFileRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateVolumeFileRow {
+pub struct CreateMemoryFileRow {
     pub path: String,
     pub content: Option<Vec<u8>>,
     pub is_directory: bool,
     pub content_hash: Option<String>,
 }
 
-// ============================================
-// Memory Store models (org-scoped persistent memories — see specs/memory.md)
-// ============================================
-
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryStoreDbRow {
-    pub id: Uuid,
-    pub org_id: i64,
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryStoreWithCount {
-    pub id: Uuid,
-    pub org_id: i64,
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-    pub active_count: i64,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateMemoryStoreRow {
-    pub public_id: String,
-    pub name: String,
-    pub is_default: bool,
-}
-
+/// Input for updating a memory file. Optional fields are left unchanged when None.
 #[derive(Debug, Clone, Default)]
-pub struct UpdateMemoryStoreRow {
-    pub name: Option<String>,
-    pub is_default: Option<bool>,
+pub struct UpdateMemoryFile {
+    pub content: Option<Vec<u8>>,
+    pub content_hash: Option<Option<String>>,
 }
 
+/// Lightweight memory file info for listings (no content).
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct MemoryDbRow {
+pub struct MemoryFileInfoRow {
     pub id: Uuid,
-    pub public_id: String,
-    pub store_id: Uuid,
-    pub store_public_id: String,
-    pub org_id: i64,
-    pub content: String,
-    pub content_parts: serde_json::Value,
-    pub kind: String,
-    pub importance: i16,
-    pub tags: Vec<String>,
-    pub active: bool,
+    pub memory_id: Uuid,
+    pub path: String,
+    pub is_directory: bool,
+    pub size_bytes: i64,
+    pub content_hash: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone)]
-pub struct CreateMemoryRow {
-    pub public_id: String,
-    pub store_id: Uuid,
-    pub org_id: i64,
-    pub content: String,
-    pub content_parts: serde_json::Value,
-    pub kind: String,
-    pub importance: i16,
-    pub tags: Vec<String>,
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ListMemoriesFilter {
-    pub query: Option<String>,
-    pub kind: Option<String>,
-    pub tags: Option<Vec<String>>,
-    pub include_inactive: bool,
-    pub limit: usize,
 }
 
 // ============================================
@@ -1876,6 +1818,140 @@ pub struct UpsertSessionResourceRow {
     pub display_name: String,
     pub status: String,
     pub metadata: serde_json::Value,
+}
+
+// ============================================
+// Session task models
+// ============================================
+
+/// Row in `session_tasks`. JSONB columns serialize the corresponding
+/// `everruns_core::session_task` types; conversions live on this struct so
+/// both backends share identical (de)serialization.
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionTaskRow {
+    pub id: String,
+    pub session_id: SessionId,
+    pub kind: String,
+    pub display_name: String,
+    pub spec: serde_json::Value,
+    pub state: String,
+    pub state_detail: Option<String>,
+    pub progress: Option<serde_json::Value>,
+    pub input_request: Option<serde_json::Value>,
+    pub cancel_requested_at: Option<DateTime<Utc>>,
+    pub summary: Option<String>,
+    pub result_path: Option<String>,
+    pub artifacts: serde_json::Value,
+    pub error: Option<serde_json::Value>,
+    pub attempt: i32,
+    pub worker_id: Option<String>,
+    pub heartbeat_at: Option<DateTime<Utc>>,
+    pub links: serde_json::Value,
+    pub wake_policy: String,
+    pub created_at: DateTime<Utc>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl SessionTaskRow {
+    pub fn from_task(task: &everruns_core::SessionTask) -> anyhow::Result<Self> {
+        use serde_json::to_value;
+        Ok(Self {
+            id: task.id.clone(),
+            session_id: task.session_id,
+            kind: task.kind.clone(),
+            display_name: task.display_name.clone(),
+            spec: task.spec.clone(),
+            state: task.state.to_string(),
+            state_detail: task.state_detail.clone(),
+            progress: task.progress.as_ref().map(to_value).transpose()?,
+            input_request: task.input_request.as_ref().map(to_value).transpose()?,
+            cancel_requested_at: task.cancel_requested_at,
+            summary: task.summary.clone(),
+            result_path: task.result_path.clone(),
+            artifacts: to_value(&task.artifacts)?,
+            error: task.error.as_ref().map(to_value).transpose()?,
+            attempt: task.attempt,
+            worker_id: task.worker_id.clone(),
+            heartbeat_at: task.heartbeat_at,
+            links: to_value(&task.links)?,
+            wake_policy: to_value(task.wake_policy)?
+                .as_str()
+                .unwrap_or("silent")
+                .to_string(),
+            created_at: task.created_at,
+            started_at: task.started_at,
+            finished_at: task.finished_at,
+            updated_at: task.updated_at,
+        })
+    }
+
+    pub fn to_task(&self) -> anyhow::Result<everruns_core::SessionTask> {
+        use serde_json::from_value;
+        Ok(everruns_core::SessionTask {
+            id: self.id.clone(),
+            session_id: self.session_id,
+            kind: self.kind.clone(),
+            display_name: self.display_name.clone(),
+            spec: self.spec.clone(),
+            state: everruns_core::SessionTaskState::from(self.state.as_str()),
+            state_detail: self.state_detail.clone(),
+            progress: self.progress.clone().map(from_value).transpose()?,
+            input_request: self.input_request.clone().map(from_value).transpose()?,
+            cancel_requested_at: self.cancel_requested_at,
+            summary: self.summary.clone(),
+            result_path: self.result_path.clone(),
+            artifacts: from_value(self.artifacts.clone())?,
+            error: self.error.clone().map(from_value).transpose()?,
+            attempt: self.attempt,
+            worker_id: self.worker_id.clone(),
+            heartbeat_at: self.heartbeat_at,
+            links: from_value(self.links.clone())?,
+            wake_policy: from_value(serde_json::Value::String(self.wake_policy.clone()))
+                .unwrap_or_default(),
+            created_at: self.created_at,
+            started_at: self.started_at,
+            finished_at: self.finished_at,
+            updated_at: self.updated_at,
+        })
+    }
+}
+
+/// Row in `session_task_messages`.
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionTaskMessageRow {
+    pub id: String,
+    pub task_id: String,
+    pub session_id: SessionId,
+    pub direction: String,
+    pub content: serde_json::Value,
+    pub in_reply_to: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+impl SessionTaskMessageRow {
+    pub fn to_message(&self) -> anyhow::Result<everruns_core::TaskMessage> {
+        Ok(everruns_core::TaskMessage {
+            id: self.id.clone(),
+            task_id: self.task_id.clone(),
+            direction: everruns_core::TaskMessageDirection::from(self.direction.as_str()),
+            content: serde_json::from_value(self.content.clone())?,
+            in_reply_to: self.in_reply_to.clone(),
+            created_at: self.created_at,
+        })
+    }
+}
+
+/// Input for inserting a task message row.
+#[derive(Debug, Clone)]
+pub struct NewSessionTaskMessageRow {
+    pub id: String,
+    pub task_id: String,
+    pub session_id: SessionId,
+    pub direction: String,
+    pub content: serde_json::Value,
+    pub in_reply_to: Option<String>,
 }
 
 // ============================================

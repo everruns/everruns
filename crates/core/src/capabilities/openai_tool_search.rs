@@ -11,7 +11,7 @@
 // If the model does not support tool_search (tool_search=false in profile),
 // this capability is silently ignored — no error, no crash.
 
-use super::{Capability, CapabilityStatus, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use crate::llm_driver_registry::ToolSearchConfig;
 use async_trait::async_trait;
 
@@ -83,6 +83,14 @@ impl Capability for OpenAiToolSearchCapability {
     fn description(&self) -> &str {
         "Enables deferred tool loading for models that support it (GPT-5.4 and newer). \
          Reduces token usage by loading tool schemas on-demand instead of upfront."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Пошук інструментів OpenAI",
+            "Вмикає відкладене завантаження інструментів для моделей, які його підтримують (GPT-5.4 і новіші). Зменшує використання токенів, завантажуючи схеми інструментів на вимогу, а не заздалегідь.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

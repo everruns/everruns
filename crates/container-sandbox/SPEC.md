@@ -2,7 +2,7 @@
 
 ## Abstract
 
-Self-hosted container-based agent execution via Docker Engine REST API. Provides real filesystem, full process execution, and network access in isolated Docker containers. Fills the gap between virtual bash (safe but limited) and cloud sandboxes like Daytona/E2B (powerful but SaaS dependency).
+Self-hosted container-based agent execution via Docker Engine REST API. Provides real filesystem, full process execution, and network access in isolated Docker containers. Fills the gap between the bashkit shell (safe but limited) and cloud sandboxes like Daytona/E2B (powerful but SaaS dependency).
 
 **Status**: Available when the internal `container_sandbox` feature flag is enabled (`FEATURE_CONTAINER_SANDBOX=true`, with legacy fallback from `FEATURE_DOCKER_CAPABILITY=true`) and Docker Engine access is configured
 

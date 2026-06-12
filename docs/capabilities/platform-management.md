@@ -16,7 +16,7 @@ Tools to manage Everruns entities programmatically. Read, create, update, and de
 
 This capability mounts the Everruns platform documentation at `/workspace/docs` as a virtual read-only filesystem. The documentation is embedded at compile time from the repository `docs/` directory (markdown files only) and served from memory — no database writes per session.
 
-Agents can browse and search the docs using standard file tools (`read_file`, `list_directory`, `grep`) and virtual bash commands (`cat`, `ls`, `grep`).
+Agents can browse and search the docs using standard file tools (`read_file`, `list_directory`, `grep`) and bash commands (`cat`, `ls`, `grep`) via the Bashkit Shell capability.
 
 Key sections:
 - `/workspace/docs/getting-started/` — Introduction, concepts, architecture

@@ -6,7 +6,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic",
-        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, loop detection, and agent skills. Recommended default for most use cases.",
+        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, loop detection, message timestamp annotations, and agent skills. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
     .with_tags(["generic", "default", "built-in"])
@@ -14,7 +14,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_capabilities([
         BuiltInCapabilityDefinition::new("human_intent"),
         BuiltInCapabilityDefinition::new("session_file_system"),
-        BuiltInCapabilityDefinition::new("virtual_bash"),
+        BuiltInCapabilityDefinition::new("bashkit_shell"),
         BuiltInCapabilityDefinition::with_config(
             "web_fetch",
             serde_json::json!({"enable_file_download": true}),
@@ -30,6 +30,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
         BuiltInCapabilityDefinition::new("loop_detection"),
+        BuiltInCapabilityDefinition::new("message_metadata"),
         BuiltInCapabilityDefinition::with_config(
             "compaction",
             serde_json::json!({

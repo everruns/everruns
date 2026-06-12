@@ -21,13 +21,13 @@ use crate::atoms::{
 use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
-use crate::llm_driver_registry::{DriverRegistry, ProviderType};
-use crate::llm_models::LlmProviderType;
-use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
-use crate::memory::{
+use crate::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
     InMemoryMessageRetriever, InMemorySessionStore,
 };
+use crate::llm_driver_registry::{DriverRegistry, ProviderType};
+use crate::llm_models::LlmProviderType;
+use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
 use crate::session::{Session, SessionStatus};

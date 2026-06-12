@@ -123,10 +123,6 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
-        None
-    }
-
     fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
@@ -140,6 +136,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     fn session_resource_registry(&self) -> Option<Arc<dyn SessionResourceRegistry>> {
+        None
+    }
+
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
         None
     }
 
@@ -186,9 +188,21 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
+    /// Default: `None` (no spawn dedup — dev/test mode or hosts without durable execution).
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        None
+    }
+
     /// Stream-liveness heartbeater for the Reason activity (EVE-531).
     /// Default: `None` (no heartbeats sent — durable workers supply one).
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
+        None
+    }
+
+    /// Partial-stream store for ContinuePartial recovery (EVE-532).
+    /// Default: `None` (no recovery; in-memory and dev hosts use this default).
+    fn partial_stream_store(&self) -> Option<Arc<dyn everruns_core::PartialStreamStore>> {
         None
     }
 
@@ -292,7 +306,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     let specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
     let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-        everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+        everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
     );
     Ok((specs, dispatcher))
 }
@@ -421,7 +435,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         .collect();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-            everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+            everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
         );
         post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
             &user_hook_specs,
@@ -975,6 +989,12 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
     }
+    if let Some(store) = adapter.partial_stream_store() {
+        atom = atom.with_partial_stream_store(store);
+    }
+    if let Some(store) = adapter.durable_tool_result_store() {
+        atom = atom.with_durable_tool_result_store(store);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
@@ -1115,9 +1135,6 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     if let Some(egress_service) = adapter.egress_service() {
         atom = atom.with_egress_service(egress_service);
     }
-    if let Some(memory_store) = adapter.memory_store(org_id) {
-        atom = atom.with_memory_store(memory_store);
-    }
     if let Some(connection_resolver) = adapter.connection_resolver() {
         atom = atom.with_connection_resolver(connection_resolver);
     }
@@ -1129,6 +1146,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(registry) = adapter.session_resource_registry() {
         atom = atom.with_session_resource_registry(registry);
+    }
+    if let Some(registry) = adapter.session_task_registry() {
+        atom = atom.with_session_task_registry(registry);
     }
     if let Some(schedule_store) = adapter.schedule_store(org_id) {
         atom = atom.with_schedule_store(schedule_store);
@@ -1147,6 +1167,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
+    }
+    if let Some(store) = adapter.subagent_spawn_store() {
+        atom = atom.with_subagent_spawn_store(store);
     }
 
     atom.execute(input).await

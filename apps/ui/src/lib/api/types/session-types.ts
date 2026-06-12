@@ -178,6 +178,139 @@ export interface SessionResourceEntry {
 }
 
 // ============================================
+// Session Task types
+// ============================================
+
+// Lifecycle state of a session task. Three classes: active (queued, running),
+// interrupted (awaiting_input, resumable), terminal (succeeded, failed,
+// canceled). Timeout/rejection are error.kind values on "failed", not states.
+export type SessionTaskState =
+  | "queued"
+  | "running"
+  | "awaiting_input"
+  | "succeeded"
+  | "failed"
+  | "canceled";
+
+/** True when the task state is terminal (succeeded, failed, canceled). */
+export function isTerminalTaskState(state: SessionTaskState): boolean {
+  return state === "succeeded" || state === "failed" || state === "canceled";
+}
+
+/** Progress shape shared with background tool execution. */
+export interface TaskProgress {
+  current?: number;
+  total?: number;
+  unit?: string;
+  label?: string;
+}
+
+/** Structured ask posted by a task that needs input to continue. */
+export interface TaskInputRequest {
+  /** Stable ID referenced by the answering message's `in_reply_to`. */
+  id: string;
+  /** Human/agent-readable prompt. */
+  prompt: string;
+  /** Optional machine-readable description of the expected answer. */
+  expected?: unknown;
+}
+
+/** Terminal error detail. Timeout/rejection/orphaned are kinds, not states. */
+export interface TaskError {
+  kind: string;
+  message: string;
+}
+
+/** Typed link to something the task produced. */
+export interface TaskArtifact {
+  name: string;
+  /** Artifact type: "file", "url", "session", "pr", etc. */
+  type: string;
+  /** Session VFS path, when the artifact lives in the session filesystem. */
+  path?: string;
+  /** External URL, when the artifact lives elsewhere. */
+  url?: string;
+}
+
+/** Cross-references owned by a task. */
+export interface TaskLinks {
+  /** Child session, for subagent-shaped tasks. Full transcript lives there. */
+  child_session_id?: string;
+  /** Remote task ID, for tasks wrapping an external protocol task (A2A). */
+  remote_task_id?: string;
+  /** Session resources (sandboxes, browser sessions) this task holds. */
+  resource_ids?: string[];
+}
+
+/** When outbound task activity wakes the owning session's agent. */
+export type TaskWakePolicy = "silent" | "on_terminal" | "on_activity";
+
+/** A unit of background work owned by a session. */
+export interface SessionTask {
+  /** `task_*` public ID. */
+  id: string;
+  session_id: string;
+  /** Task kind: "subagent", "external_agent", "background_tool", "monitor", etc. */
+  kind: string;
+  /** Human-readable label. */
+  display_name: string;
+  /** Kind-specific input (instructions, tool args, external agent id). */
+  spec: unknown;
+  state: SessionTaskState;
+  /** Short live status line ("polling remote task", "iteration 4/10"). */
+  state_detail?: string;
+  progress?: TaskProgress;
+  /** Pending ask while `awaiting_input`; cleared when answered. */
+  input_request?: TaskInputRequest;
+  /** Cooperative cancel intent. A flag, not a state. */
+  cancel_requested_at?: string;
+  /** Human-readable outcome. */
+  summary?: string;
+  /** Machine result in the session VFS: `/.tasks/{task_id}/result.json`. */
+  result_path?: string;
+  artifacts?: TaskArtifact[];
+  error?: TaskError;
+  /** Execution attempt, starting at 1. Incremented on re-attach. */
+  attempt: number;
+  worker_id?: string;
+  heartbeat_at?: string;
+  links?: TaskLinks;
+  wake_policy: TaskWakePolicy;
+  created_at: string;
+  started_at?: string;
+  finished_at?: string;
+  updated_at: string;
+}
+
+/** One content part of a task message. */
+export type TaskMessagePart = { type: "text"; text: string } | { type: "data"; data: unknown };
+
+/** A message exchanged between a session and one of its tasks. */
+export interface TaskMessage {
+  /** `tmsg_*` public ID. */
+  id: string;
+  task_id: string;
+  /** Inbound = session to task. */
+  direction: "inbound" | "outbound";
+  content: TaskMessagePart[];
+  /** Set when this message answers a `TaskInputRequest`. */
+  in_reply_to?: string;
+  created_at: string;
+}
+
+/** Task snapshot plus its recent message thread. */
+export interface SessionTaskDetail {
+  task: SessionTask;
+  messages: TaskMessage[];
+}
+
+/** Request to post an inbound message (steering or input answer) to a task. */
+export interface PostTaskMessageRequest {
+  content: TaskMessagePart[];
+  in_reply_to?: string;
+}
+
+// ============================================
 // Session Storage types (Key-Value & Secrets)
 // ============================================
 

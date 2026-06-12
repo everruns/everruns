@@ -1,15 +1,31 @@
-//! Daytona Integration (Experimental)
+//! Daytona cloud sandboxes for Everruns agents.
 //!
-//! Cloud-based sandboxed code execution via Daytona REST API.
-//! Supports multiple sandboxes per session, each identified by sandbox_id.
+//! `everruns-integrations-daytona` is part of the
+//! [Everruns](https://everruns.com) ecosystem. It adds cloud-based sandboxed
+//! code execution backed by the [Daytona](https://www.daytona.io) REST API,
+//! letting agents create sandboxes, run commands with streamed output, and read
+//! or write files inside an isolated environment. Sandboxes are managed per
+//! session and authenticated with a user-supplied Daytona API key.
 //!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: Use secrets store for all state (API key + per-sandbox connection info)
-//! Decision: Two-tier API: Management API for lifecycle, Toolbox API for in-sandbox ops
-//! Decision: All exec goes through the Session API (/process/session) using a
-//!           shared session, async execution, and log polling for real-time
-//!           streaming output
-//! Decision: session_storage dependency for API key and state persistence
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_daytona::DaytonaCapability;
+//!
+//! let capability = DaytonaCapability;
+//! assert_eq!(capability.id(), "daytona");
+//! ```
+//!
+//! # Design notes
+//!
+//! - External integration crate, auto-registered via the inventory plugin system.
+//! - State (API key + per-sandbox connection info) lives in the secrets store.
+//! - Two-tier Daytona API: Management API for lifecycle, Toolbox API for
+//!   in-sandbox operations.
+//! - All execution goes through the Session API (`/process/session`) using a
+//!   shared session, async execution, and log polling for real-time streaming
+//!   output.
 
 pub mod client;
 pub mod connection;
@@ -21,8 +37,8 @@ mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
-    Capability, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder, MountPoint, RiskLevel,
-    SystemPromptContext,
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder,
+    MountPoint, RiskLevel, SystemPromptContext,
 };
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
@@ -224,6 +240,76 @@ impl Capability for DaytonaCapability {
     fn features(&self) -> Vec<&'static str> {
         vec![LEASED_RESOURCES_FEATURE]
     }
+
+    /// `enable_api_calling` is the only config flag this capability reads
+    /// (see `is_api_calling_enabled`), so it is the only exposed field.
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "enable_api_calling": {
+                    "type": "boolean",
+                    "title": "Allow direct API calls",
+                    "description": format!(
+                        "Adds the daytona_api_call tool for Daytona REST endpoints not \
+                         covered by dedicated tools; the OpenAPI spec is mounted at \
+                         {DAYTONA_OPENAPI_MOUNT_PATH} for reference."
+                    ),
+                    "default": false
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("daytona config must be an object".to_string());
+        }
+        match config.get("enable_api_calling") {
+            None | Some(serde_json::Value::Bool(_)) => Ok(()),
+            Some(other) => Err(format!("enable_api_calling must be a boolean, got {other}")),
+        }
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls whether the agent may call the Daytona REST API directly \
+                     via the daytona_api_call tool.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Daytona"),
+                description: Some(
+                    "Виконуйте код у хмарних пісочницях на основі Daytona. Створюйте кілька \
+                     ізольованих Linux-середовищ у межах сесії, виконуйте команди, керуйте \
+                     файлами та завантажуйте результати. ЕКСПЕРИМЕНТАЛЬНО: ця можливість \
+                     може змінюватися.",
+                ),
+                config_description: Some(
+                    "Визначає, чи може агент напряму викликати REST API Daytona через \
+                     інструмент daytona_api_call.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "enable_api_calling": {
+                            "title": "Дозволити прямі виклики API",
+                            "description": "Додає інструмент daytona_api_call для викликів REST API Daytona, які не покриваються спеціалізованими інструментами; специфікація OpenAPI змонтована за шляхом /daytona/openapi.yaml."
+                        }
+                    }
+                })),
+            },
+        ]
+    }
 }
 
 // ============================================================================
@@ -344,6 +430,45 @@ mod tests {
             .find(|t| t.name() == "daytona_api_call")
             .unwrap();
         assert!(api_tool.requires_context());
+    }
+
+    #[test]
+    fn test_config_schema_and_validate_config() {
+        let cap = DaytonaCapability;
+
+        let schema = cap.config_schema().expect("config schema");
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["enable_api_calling"].is_object());
+        assert_eq!(
+            schema["properties"]["enable_api_calling"]["default"],
+            json!(false)
+        );
+
+        // Null, empty, and valid configs are accepted.
+        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+        assert!(cap.validate_config(&json!({})).is_ok());
+        assert!(
+            cap.validate_config(&json!({"enable_api_calling": true}))
+                .is_ok()
+        );
+
+        // Non-boolean values are rejected.
+        let err = cap
+            .validate_config(&json!({"enable_api_calling": "yes"}))
+            .unwrap_err();
+        assert!(err.contains("enable_api_calling"));
+    }
+
+    #[test]
+    fn test_localizations_resolve_uk() {
+        let cap = DaytonaCapability;
+        // The capability name is a brand name and stays Latin in Ukrainian.
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Daytona");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("пісочницях")
+        );
+        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

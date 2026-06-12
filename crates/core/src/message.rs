@@ -991,10 +991,96 @@ impl Message {
     }
 }
 
+/// Patch dangling tool calls by adding synthetic "cancelled" results.
+///
+/// This ensures every tool call has a corresponding tool result,
+/// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
+///
+/// This is the simple, store-free patcher used by out-of-band completions
+/// (see `crate::command_host`). The main reason path uses the durable-store-aware
+/// `repair_dangling_tool_calls` in `crate::atoms::reason` instead (EVE-533),
+/// which can replay settled results rather than synthesizing cancellations.
+pub fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
+    let mut result = Vec::new();
+
+    for (i, msg) in messages.iter().enumerate() {
+        result.push(msg.clone());
+
+        // After an assistant message with tool calls, add cancelled results for any missing ones
+        if msg.role == MessageRole::Agent && msg.has_tool_calls() {
+            for tc in msg.tool_calls() {
+                // Look for a matching tool result in ALL subsequent messages
+                let has_result = messages[(i + 1)..]
+                    .iter()
+                    .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+
+                if !has_result {
+                    result.push(Message::tool_result(
+                        &tc.id,
+                        None,
+                        Some(
+                            "cancelled - another message came in before it could be completed"
+                                .to_string(),
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tool_types::ToolCall;
+
+    #[test]
+    fn test_patch_dangling_tool_calls_no_tool_calls() {
+        let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
+        let patched = patch_dangling_tool_calls(&messages);
+        assert_eq!(patched.len(), 2);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_with_result() {
+        let tool_call = ToolCall {
+            id: "call_123".to_string(),
+            name: "get_weather".to_string(),
+            arguments: serde_json::json!({"city": "NYC"}),
+        };
+
+        let messages = vec![
+            Message::user("What's the weather?"),
+            Message::assistant_with_tools("Let me check", vec![tool_call]),
+            Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+        assert_eq!(patched.len(), 3);
+    }
+
+    #[test]
+    fn test_patch_dangling_tool_calls_missing_result() {
+        let tool_call = ToolCall {
+            id: "call_456".to_string(),
+            name: "search_web".to_string(),
+            arguments: serde_json::json!({"query": "rust"}),
+        };
+
+        let messages = vec![
+            Message::user("Search for rust"),
+            Message::assistant_with_tools("Searching...", vec![tool_call]),
+            Message::user("Actually, never mind"),
+        ];
+
+        let patched = patch_dangling_tool_calls(&messages);
+        // Should have added a cancelled result
+        assert_eq!(patched.len(), 4);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    }
 
     #[test]
     fn test_user_message() {

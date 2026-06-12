@@ -10,7 +10,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
-use crate::capabilities::Capability;
+use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::message::{Message, MessageRole, ToolCallContentPart};
 use crate::message_filter::{MessageFilterProvider, MessageQuery};
 use crate::tool_fingerprint::tool_call_parts_fingerprint;
@@ -35,6 +35,76 @@ impl Capability for LoopDetectionCapability {
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         Some(Arc::new(LoopDetectionFilter))
+    }
+
+    /// `threshold` is the only knob this capability reads from config (see
+    /// `post_load`), so it is the only exposed field.
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "threshold": {
+                    "type": "integer",
+                    "title": "Repetition threshold",
+                    "description": "Number of consecutive identical tool-call batches that triggers the loop warning.",
+                    "minimum": 1,
+                    "default": DEFAULT_THRESHOLD
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("loop_detection config must be an object".to_string());
+        }
+        match config.get("threshold") {
+            None => Ok(()),
+            // `post_load` clamps the threshold to >= 1; reject values that
+            // would be silently clamped or are not unsigned integers.
+            Some(value) => match value.as_u64() {
+                Some(threshold) if threshold >= 1 => Ok(()),
+                _ => Err(format!(
+                    "threshold must be a positive integer (>= 1), got {value}"
+                )),
+            },
+        }
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls how many consecutive identical tool-call batches count as a loop.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Виявлення циклів інструментів"),
+                description: Some(
+                    "Виявляє повторювані однакові виклики інструментів і додає попередження, \
+                     щоб розірвати цикл.",
+                ),
+                config_description: Some(
+                    "Визначає, скільки однакових послідовних викликів інструментів вважається циклом.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "threshold": {
+                            "title": "Поріг повторень",
+                            "description": "Кількість послідовних однакових пакетів викликів інструментів, після якої додається попередження про цикл."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -353,5 +423,46 @@ mod tests {
         let cap = LoopDetectionCapability;
         assert_eq!(cap.id(), "loop_detection");
         assert!(cap.message_filter_provider().is_some());
+    }
+
+    #[test]
+    fn test_config_schema_and_validate_config() {
+        let cap = LoopDetectionCapability;
+
+        let schema = cap.config_schema().expect("config schema");
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["threshold"].is_object());
+
+        // Null, empty, and valid configs are accepted.
+        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+        assert!(cap.validate_config(&serde_json::json!({})).is_ok());
+        assert!(
+            cap.validate_config(&serde_json::json!({"threshold": 2}))
+                .is_ok()
+        );
+
+        // Zero, negative, and non-integer thresholds are rejected.
+        assert!(
+            cap.validate_config(&serde_json::json!({"threshold": 0}))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"threshold": -3}))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"threshold": "three"}))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_localizations_resolve_uk() {
+        let cap = LoopDetectionCapability;
+        assert_eq!(
+            cap.localized_name(Some("uk-UA")),
+            "Виявлення циклів інструментів"
+        );
+        assert!(cap.describe_schema(None).is_some());
     }
 }
