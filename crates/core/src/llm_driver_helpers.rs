@@ -1,4 +1,4 @@
-// Shared LLM Driver Helpers
+// Shared Chat Driver Helpers
 //
 // Common utilities extracted from individual LLM driver implementations
 // (Anthropic, Gemini, OpenAI) to eliminate duplication.

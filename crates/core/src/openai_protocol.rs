@@ -1,4 +1,4 @@
-// OpenAI Protocol LLM Driver
+// OpenAI Protocol Chat Driver
 //
 // Base implementation of the OpenAI chat completion protocol.
 // This driver can be used with any OpenAI-compatible API endpoint.
@@ -66,7 +66,7 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
         .is_some_and(|host| host == "api.openai.com")
 }
 
-/// OpenAI Protocol LLM Driver
+/// OpenAI Protocol Chat Driver
 ///
 /// Base implementation of `ChatDriver` for OpenAI-compatible APIs.
 /// Supports streaming responses and tool calls.

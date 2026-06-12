@@ -1,4 +1,4 @@
-// OpenAI LLM Drivers
+// OpenAI Chat Drivers
 //
 // This module provides two separate drivers for OpenAI:
 //
@@ -30,10 +30,10 @@ const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
 const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
 
 // ============================================================================
-// OpenAI LLM Driver (Open Responses API)
+// OpenAI Chat Driver (Open Responses API)
 // ============================================================================
 
-/// OpenAI LLM Driver using Open Responses API
+/// OpenAI Chat Driver using Open Responses API
 ///
 /// Production driver for OpenAI using the Open Responses specification
 /// (<https://www.openresponses.org/>). This is the recommended driver for
@@ -169,7 +169,7 @@ impl std::fmt::Debug for OpenAIChatDriver {
 }
 
 // ============================================================================
-// OpenRouter LLM Driver (OpenAI-compatible Responses API)
+// OpenRouter Chat Driver (OpenAI-compatible Responses API)
 // ============================================================================
 
 /// OpenRouter driver using its OpenAI-compatible Responses API.
@@ -252,10 +252,10 @@ impl std::fmt::Debug for OpenRouterChatDriver {
 }
 
 // ============================================================================
-// OpenAI Completions LLM Driver (Chat Completions API)
+// OpenAI Completions Chat Driver (Chat Completions API)
 // ============================================================================
 
-/// OpenAI LLM Driver using Chat Completions API
+/// OpenAI Chat Driver using Chat Completions API
 ///
 /// Driver for OpenAI using the traditional Chat Completions API
 /// (/v1/chat/completions). Use this for backward compatibility with

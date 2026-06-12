@@ -1,4 +1,4 @@
-// AWS Bedrock Runtime LLM Driver
+// AWS Bedrock Runtime Chat Driver
 //
 // Implements ChatDriver using the AWS Bedrock Runtime ConverseStream API.
 // Uses the aws-sdk-bedrockruntime crate for typed event stream handling,
@@ -36,7 +36,7 @@ const BEDROCK_STREAM_BUFFER_SIZE: usize = 64;
 
 use crate::credential::BedrockCredential;
 
-/// AWS Bedrock Runtime LLM Driver.
+/// AWS Bedrock Runtime Chat Driver.
 ///
 /// Implements `ChatDriver` using the `ConverseStream` API.
 /// Credentials are parsed from the JSON-encoded `api_key` field.

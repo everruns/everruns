@@ -1,4 +1,4 @@
-// Anthropic Claude LLM Driver
+// Anthropic Claude Chat Driver
 //
 // Implementation of ChatDriver for Anthropic's Claude API.
 // Uses the Messages API with streaming support.
@@ -40,7 +40,7 @@ const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Anthropic Claude LLM Driver
+/// Anthropic Claude Chat Driver
 ///
 /// Implements `ChatDriver` for Anthropic's Messages API.
 /// Supports streaming responses and tool calls.

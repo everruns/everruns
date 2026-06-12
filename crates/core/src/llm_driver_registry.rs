@@ -1,4 +1,4 @@
-// LLM Driver Abstractions
+// Chat Driver Abstractions
 //
 // This module encapsulates all abstractions needed to interact with LLM Providers:
 // - ChatDriver trait and types for provider-agnostic LLM interactions
@@ -1246,7 +1246,7 @@ impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
     }
 }
 
-/// Boxed LLM driver for dynamic dispatch
+/// Boxed chat driver for dynamic dispatch
 pub type BoxedChatDriver = Box<dyn ChatDriver>;
 
 // ============================================================================
@@ -1267,7 +1267,7 @@ pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + S
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::llm_drivers::{DriverRegistry, ProviderType};
+/// use everruns_core::{DriverRegistry, ProviderType};
 /// use everruns_anthropic::register_driver;
 /// use everruns_openai::register_driver as register_openai;
 ///

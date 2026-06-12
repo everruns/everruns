@@ -1,4 +1,4 @@
-// Google Gemini LLM Driver
+// Google Gemini Chat Driver
 //
 // Implementation of ChatDriver for Google's Gemini API.
 // Uses the generateContent API with streaming support.
@@ -31,7 +31,7 @@ use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
-/// Google Gemini LLM Driver
+/// Google Gemini Chat Driver
 ///
 /// Implements `ChatDriver` for Google's Gemini API.
 /// Supports streaming responses and tool calls.
