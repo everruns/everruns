@@ -355,16 +355,23 @@ impl FileSaver for SessionFileSaver {
 /// File download: when `save_to_file` is provided, content is saved through
 /// the session filesystem (SessionFileSystem) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
+    /// Builder template for this tool's fetchkit configuration. Cloned per
+    /// execution to inject the egress transport when the context provides an
+    /// `EgressService` (see `super::web_fetch_egress`).
+    builder: fetchkit::ToolBuilder,
+    /// Direct (non-egress) tool built from `builder`: serves metadata
+    /// (schema/description) and execution for contexts without an egress
+    /// service (e.g. embedded hosts), where fetchkit owns the HTTP client.
     fetchkit_tool: fetchkit::Tool,
     enable_save_to_file: bool,
     /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
-    /// Host-wide system allowlist ("green list") for the legacy direct path
-    /// only. When `ToolContext.egress_service` is present, fetches route
-    /// through the egress boundary, which enforces the allowlist itself; this
-    /// pre-flight check covers contexts without an egress service, where
-    /// fetchkit still owns the HTTP client. `None` = no global enforcement.
-    /// See `crate::system_allowlist` and `specs/system-allowlist.md`.
+    /// Host-wide system allowlist ("green list"), pre-checked on the initial
+    /// URL for a clear, distinct system-policy error. On the egress path the
+    /// boundary independently re-enforces it (final enforcement point, every
+    /// hop); on the direct path this pre-flight is the only enforcement.
+    /// `None` = no global enforcement. See `crate::system_allowlist` and
+    /// `specs/system-allowlist.md`.
     system_allowlist: Option<Arc<crate::system_allowlist::SystemAllowlist>>,
 }
 
@@ -378,6 +385,7 @@ impl WebFetchTool {
         let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
         Self {
+            builder,
             fetchkit_tool,
             enable_save_to_file,
             description,
@@ -559,18 +567,16 @@ impl Tool for WebFetchTool {
             );
         }
 
-        // Legacy direct path only: the host-wide system allowlist is enforced
-        // here, before the per-session access list, so the operator-level
-        // policy yields a clear, distinct error when both would deny. On the
-        // egress path the boundary owns this check instead.
-        if context.egress_service.is_none()
-            && let Some(blocked) = self.system_policy_block(&request.url)
-        {
+        // Host-wide system allowlist, pre-checked on the initial URL for a
+        // clear, distinct system-policy error. On the egress path the boundary
+        // independently re-enforces it on every hop.
+        if let Some(blocked) = self.system_policy_block(&request.url) {
             return blocked;
         }
 
         // THREAT[TM-AGENT-018]: Enforce network access list. This is the
-        // user-facing pre-check; on the egress path the boundary re-checks it.
+        // user-facing pre-check; on the egress path the boundary re-checks it
+        // on every hop.
         if let Some(ref acl) = context.network_access
             && !acl.is_url_allowed(&request.url)
         {
@@ -580,50 +586,32 @@ impl Tool for WebFetchTool {
             ));
         }
 
-        // Egress-backed path (specs/egress.md migration step 3): transport,
-        // SSRF pinning, the network access list, and the system allowlist are
-        // owned by the host egress boundary. fetchkit stays the adapter for
-        // schema and content conversion.
-        if let Some(egress) = &context.egress_service {
-            let saver = if request.save_to_file.is_some() {
-                match &context.file_store {
-                    Some(store) => Some(SessionFileSaver {
-                        file_store: store.clone(),
-                        session_id: context.session_id,
-                    }),
-                    None => {
-                        return ToolExecutionResult::tool_error(
-                            "File system not available in this context",
-                        );
-                    }
-                }
-            } else {
-                None
-            };
-            return match super::web_fetch_egress::fetch_via_egress(
-                &request,
-                egress.as_ref(),
-                context.network_access.as_ref(),
-                saver.as_ref().map(|s| s as &dyn FileSaver),
-            )
-            .await
-            {
-                Ok(response) => {
-                    ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
-                        |_| serde_json::json!({"error": "Failed to serialize response"}),
-                    ))
-                }
-                Err(e) => Self::map_error(e),
-            };
-        }
-
-        // Legacy direct path (no egress service in context, e.g. embedded
-        // hosts): fetchkit owns transport; the system allowlist was already
-        // pre-checked above.
+        // Egress-backed path (specs/egress.md migration step 3): when the host
+        // provides an egress service, inject it as fetchkit's HTTP transport.
+        // fetchkit keeps the whole pipeline (specialized fetchers, DNS policy,
+        // per-hop redirect validation, bot-auth signing, body caps); every
+        // HTTP hop crosses the egress boundary, which enforces the network
+        // access list and the system allowlist. Without an egress service
+        // (e.g. embedded hosts) fetchkit owns the HTTP client directly.
+        let routed_tool;
+        let tool = match &context.egress_service {
+            Some(egress) => {
+                routed_tool = self
+                    .builder
+                    .clone()
+                    .transport(Arc::new(super::web_fetch_egress::EgressHttpTransport::new(
+                        egress.clone(),
+                        context.network_access.clone(),
+                    )))
+                    .build();
+                &routed_tool
+            }
+            None => &self.fetchkit_tool,
+        };
 
         // If no save_to_file, use the simple path (no saver needed)
         if request.save_to_file.is_none() {
-            return match self.fetchkit_tool.execute(request).await {
+            return match tool.execute(request).await {
                 Ok(response) => {
                     ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
                         |_| serde_json::json!({"error": "Failed to serialize response"}),
@@ -648,11 +636,7 @@ impl Tool for WebFetchTool {
             session_id: context.session_id,
         };
 
-        match self
-            .fetchkit_tool
-            .execute_with_saver(request, Some(&saver))
-            .await
-        {
+        match tool.execute_with_saver(request, Some(&saver)).await {
             Ok(response) => {
                 ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
                     |_| serde_json::json!({"error": "Failed to serialize response"}),
@@ -673,12 +657,13 @@ mod tests {
     /// Create a WebFetchTool with permissive DNS policy for wiremock tests
     /// (wiremock binds to 127.0.0.1 which is blocked by default).
     fn tool_for_wiremock() -> WebFetchTool {
-        let fetchkit_tool = fetchkit::Tool::builder()
+        let builder = fetchkit::Tool::builder()
             .enable_save_to_file(true)
-            .block_private_ips(false)
-            .build();
+            .block_private_ips(false);
+        let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
         WebFetchTool {
+            builder,
             fetchkit_tool,
             enable_save_to_file: true,
             description,
