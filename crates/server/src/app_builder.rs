@@ -840,6 +840,8 @@ impl ServerAppBuilder {
             capability_service.clone(),
             auth_state.clone(),
         );
+        let plugins_state =
+            api::plugins::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let capabilities_state = api::capabilities::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -1146,6 +1148,7 @@ impl ServerAppBuilder {
             .merge(api::llm_models::routes(llm_models_state))
             .merge(api::llm_providers::routes(llm_providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
+            .merge(api::plugins::routes(plugins_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::session_files::routes(session_files_state))
             .merge(api::session_git::routes(session_git_state))

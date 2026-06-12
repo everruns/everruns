@@ -25,7 +25,8 @@ use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
     Caller, CapabilityId, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition,
     McpCapability, RiskLevel, Skill, declarative_capability_info, is_declarative_capability,
-    mcp_capability_id, parse_declarative_capability_id, skill_capability_id,
+    is_plugin_capability, mcp_capability_id, parse_declarative_capability_id,
+    parse_plugin_capability_id, plugin_capability_info, skill_capability_id,
 };
 use moka::future::Cache;
 use std::sync::Arc;
@@ -213,6 +214,33 @@ impl CapabilityService {
             capabilities.push(info);
         }
 
+        // Add active installed plugin capabilities.
+        let plugin_rows = self.db.list_active_plugin_installs(org_id).await?;
+        for row in plugin_rows {
+            let mut definition: everruns_core::DeclarativeCapabilityDefinition =
+                serde_json::from_value(row.definition.clone()).unwrap_or_default();
+            // Override display_name from manifest when the definition doesn't declare one.
+            if definition.display_name.is_none() {
+                definition.display_name = row
+                    .manifest
+                    .get("displayName")
+                    .or_else(|| row.manifest.get("display_name"))
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+            }
+            // Override description from manifest when definition has an empty value.
+            if definition.description.is_empty()
+                && let Some(desc) = row.manifest.get("description").and_then(|v| v.as_str())
+            {
+                definition.description = desc.to_string();
+            }
+            definition.status = CapabilityStatus::Available;
+            let mut info = plugin_capability_info(&row.name, definition);
+            info.agent_count = 0;
+            info.harness_count = 0;
+            capabilities.push(info);
+        }
+
         // Populate agent/harness reference counts in one pair of grouped queries.
         let (agent_counts, harness_counts) = tokio::try_join!(
             self.db.count_agent_capability_references(org_id),
@@ -349,6 +377,40 @@ impl CapabilityService {
                     CapabilityStatus::Deprecated
                 };
                 return Ok(Some(declarative_capability_info(name, definition)));
+            }
+            return Ok(None);
+        }
+
+        // Plugin capability — look up by plugin name.
+        if is_plugin_capability(id.as_str()) {
+            let Some(plugin_name) = parse_plugin_capability_id(id.as_str()) else {
+                return Ok(None);
+            };
+            if let Some(row) = self
+                .db
+                .get_plugin_install_by_name(org_id, plugin_name)
+                .await?
+            {
+                if row.status != "active" {
+                    return Ok(None);
+                }
+                let mut definition: DeclarativeCapabilityDefinition =
+                    serde_json::from_value(row.definition.clone()).unwrap_or_default();
+                if definition.display_name.is_none() {
+                    definition.display_name = row
+                        .manifest
+                        .get("displayName")
+                        .or_else(|| row.manifest.get("display_name"))
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                }
+                if definition.description.is_empty()
+                    && let Some(desc) = row.manifest.get("description").and_then(|v| v.as_str())
+                {
+                    definition.description = desc.to_string();
+                }
+                definition.status = CapabilityStatus::Available;
+                return Ok(Some(plugin_capability_info(plugin_name, definition)));
             }
             return Ok(None);
         }

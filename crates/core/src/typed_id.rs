@@ -532,6 +532,20 @@ impl IdMarker for ModelRouterIdMarker {
     const PREFIX: &'static str = "mrtr";
 }
 
+/// Marker for Plugin Marketplace IDs (see `specs/plugins.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PluginMarketplaceIdMarker;
+impl IdMarker for PluginMarketplaceIdMarker {
+    const PREFIX: &'static str = "plgmkt";
+}
+
+/// Marker for Plugin Install IDs (see `specs/plugins.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PluginInstallIdMarker;
+impl IdMarker for PluginInstallIdMarker {
+    const PREFIX: &'static str = "plugin";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -606,6 +620,10 @@ pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
 pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
 /// Model Router ID (semantic LLM selection — see `specs/model-router.md`)
 pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
+/// Plugin Marketplace ID (see `specs/plugins.md`)
+pub type PluginMarketplaceId = TypedId<PluginMarketplaceIdMarker>;
+/// Plugin Install ID (see `specs/plugins.md`)
+pub type PluginInstallId = TypedId<PluginInstallIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)

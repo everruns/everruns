@@ -22,6 +22,7 @@ mod notifications;
 mod org_feature_flags;
 mod organizations;
 mod payments;
+mod plugins;
 mod principals;
 mod reporting;
 mod schedules;

@@ -453,7 +453,8 @@ pub use typed_id::{
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
-    PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
+    SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports
