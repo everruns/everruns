@@ -167,10 +167,11 @@ transition to `succeeded` after their single fire; recurring monitors stay
 `running` until `cancel_task` is called, which cancels the linked schedule and
 transitions the task to `canceled`.
 
-Known limitation: canceling the underlying session schedule directly (not via
-`cancel_task` or the API cancel endpoint) leaves the monitor task in `running` —
-prefer `cancel_task` or `POST …/cancel` to cancel both atomically; reconciling
-orphaned monitors is a follow-up (EVE-monitor-orphan).
+If the underlying schedule is canceled or deleted directly (not via `cancel_task`
+or the API cancel endpoint), the session scheduler's periodic reconciliation sweep
+(~60 s cadence) detects the orphaned monitor and transitions it to `canceled`
+(`state_detail: "schedule canceled"`). Prefer `cancel_task` or `POST …/cancel`
+when both atomicity and immediacy matter.
 
 ## Results and artifacts
 

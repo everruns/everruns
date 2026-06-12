@@ -2889,6 +2889,15 @@ impl StorageBackend {
         dispatch!(self, list_session_task_messages, session_id, task_id, limit)
     }
 
+    /// Return (session_id, task_id, schedule_id) triples for running monitor
+    /// tasks whose linked schedule is inactive (missing or enabled=false).
+    pub async fn list_monitor_tasks_with_inactive_schedules(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, String)>> {
+        dispatch!(self, list_monitor_tasks_with_inactive_schedules, limit)
+    }
+
     /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
     /// See individual backend impls for locking semantics.
     pub async fn list_orphaned_session_task_ids(
