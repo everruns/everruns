@@ -59,7 +59,11 @@ impl KeyedLocks {
     /// locks (held only by this map) are pruned to keep the map bounded by the
     /// number of servers currently refreshing rather than ever seen.
     fn lock_for(&self, key: RefreshKey) -> Arc<AsyncMutex<()>> {
-        let mut map = self.map.lock().expect("REFRESH_LOCKS poisoned");
+        // Best-effort coordinator: recover from a poisoned mutex (a thread
+        // panicked while holding it) rather than propagating that panic into
+        // every subsequent tool resolution. The guarded map is plain data, so
+        // continuing with the recovered value is safe.
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
         map.retain(|k, lock| *k == key || Arc::strong_count(lock) > 1);
         map.entry(key).or_default().clone()
     }
@@ -547,7 +551,11 @@ impl McpServerService {
     /// Refresh tools under the per-server single-flight lock. Concurrent callers
     /// serialize; when `allow_cached` is set, a caller that finds the cache made
     /// fresh while it waited returns that result instead of re-fetching. Forced
-    /// refreshes pass `allow_cached = false` to guarantee an upstream fetch.
+    /// refreshes pass `allow_cached = false` so they always delegate to
+    /// `refresh_tools` rather than returning a still-fresh cache hit. (Whether
+    /// that performs an upstream `tools/list` is up to `refresh_tools`: OAuth
+    /// servers serve cached tools without an upstream call, as they cannot mint
+    /// a connection token here.)
     async fn refresh_tools_coalesced(
         &self,
         caller: &Caller,

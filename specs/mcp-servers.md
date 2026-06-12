@@ -219,8 +219,9 @@ Tools are discovered from MCP servers via the `tools/list` JSON-RPC method:
 ### Tool Caching
 
 Tools are cached per server (`cached_tools` + `tools_cached_at`) and served with
-a stale-while-revalidate strategy so agent tool resolution never blocks on an
-upstream `tools/list`:
+a stale-while-revalidate strategy so a *stale* cache never blocks agent tool
+resolution on an upstream `tools/list` (cold and forced refreshes still block —
+see below):
 
 - **Fresh** (within the 1h TTL): cached tools are returned directly.
 - **Stale** (older than the TTL, with a prior successful fetch): the cached tools
