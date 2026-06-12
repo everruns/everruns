@@ -1,5 +1,5 @@
 ---
-title: Bashkit Bashkit Shell Sandbox for Agents
+title: Bashkit Bash Sandbox for Agents
 description: Use Bashkit to run agent shell commands inside a virtual Bash interpreter with sandboxed filesystems, resource limits, network controls, and async execution.
 sidebar:
   label: Bashkit
@@ -14,10 +14,10 @@ Agents need shell access to be effective — installing packages, running builds
 ## Core Capabilities
 
 - **POSIX-compliant shell language** — variables, parameter expansion, command substitution, arithmetic, pipelines, redirections, control flow, functions, arrays, globs, here-documents
-- **85 built-in commands** — core I/O (`echo`, `cat`, `printf`), navigation (`cd`, `ls`, `find`), text processing (`grep`, `sed`, `awk`, `jq`, `sort`), file operations (`mkdir`, `rm`, `cp`, `mv`), archives (`tar`, `gzip`), network (`curl`, `wget` with domain allowlist), and more
+- **85 built-in commands** — core I/O (`echo`, `cat`, `printf`), navigation (`cd`, `ls`, `find`), text processing (`grep`, `sed`, `awk`, `jq`, `sort`), file operations (`mkdir`, `rm`, `cp`, `mv`), archives (`tar`, `gzip`), network (`curl`, `wget` with domain allowlist — optional `http_client` feature), and more
 - **Virtual filesystem** — pluggable backends: `InMemoryFs`, `OverlayFs`, `MountableFs`
 - **Resource limits** — configurable caps on command count, loop iterations, and function call depth
-- **Network allowlist** — HTTP requests via `curl`/`wget` require explicit per-domain authorization
+- **Network allowlist** — HTTP requests via `curl`/`wget` require explicit per-domain authorization (optional `http_client` feature)
 - **Async-native** — built on tokio
 
 ### Experimental Features
@@ -28,6 +28,8 @@ Agents need shell access to be effective — installing packages, running builds
 ## How Everruns Uses Bashkit
 
 Everruns integrates bashkit as the execution backend for the **Bashkit Shell** agent capability. When an agent runs shell commands, they execute inside bashkit rather than a real shell.
+
+Everruns compiles bashkit **without** the `http_client` feature, so the `curl`/`wget` network builtins listed above are not available inside sessions — the Bashkit Shell capability has no network access. Use the Web Fetch capability for HTTP.
 
 ### Session Filesystem Bridge
 
