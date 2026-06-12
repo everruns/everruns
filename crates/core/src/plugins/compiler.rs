@@ -185,7 +185,7 @@ fn compile_agents(
             let agent_name =
                 fm_name.unwrap_or_else(|| filename.trim_end_matches(".md").to_string());
 
-            let mut section = format!("<agent name=\"{agent_name}\"");
+            let mut section = format!("<agent name=\"{}\"", escape_attr(&agent_name));
             if let Some(desc) = fm_desc {
                 section.push_str(&format!(" description=\"{}\"", escape_attr(&desc)));
             }

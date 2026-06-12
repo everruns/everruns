@@ -454,6 +454,20 @@ fn require_egress_for_source(
     }
 }
 
+/// Reject compiled definitions with unsafe MCP server URLs at install/update
+/// time, mirroring declarative capability create/patch (TM-PLUGIN-003).
+/// Without this gate an unsafe URL would only surface at runtime, where
+/// scoped-MCP validation fails the whole server set for the turn.
+fn validate_compiled_mcp_servers(
+    definition: &everruns_core::DeclarativeCapabilityDefinition,
+) -> Result<(), CommandError> {
+    if let Some(servers) = &definition.mcp_servers {
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
+            .map_err(|error| CommandError::bad_request(format!("Invalid MCP servers: {error}")))?;
+    }
+    Ok(())
+}
+
 fn build_source_json(source_type: &str, source_value: &str) -> serde_json::Value {
     match source_type {
         "github" => serde_json::json!({ "repo": source_value }),
@@ -1006,6 +1020,7 @@ impl Command for InstallPluginCmd {
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        validate_compiled_mcp_servers(&compiled.definition)?;
 
         // Persist.
         let manifest_json = serde_json::to_value(&compiled.manifest)
@@ -1287,6 +1302,7 @@ impl Command for UpdatePlugin {
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        validate_compiled_mcp_servers(&compiled.definition)?;
 
         let manifest_json = serde_json::to_value(&compiled.manifest)
             .map_err(|e| CommandError::internal(e.into()))?;

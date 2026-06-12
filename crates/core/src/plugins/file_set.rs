@@ -87,7 +87,7 @@ impl PluginFileSet {
 
     /// Load a plugin directory from disk.
     ///
-    /// - Rejects `..` components and symlinks that escape the root.
+    /// - Rejects `..` components and all symlinks (cycle/escape defense).
     /// - Skips files larger than `MAX_PLUGIN_FILE_BYTES`.
     /// - Fails if more than `MAX_PLUGIN_FILES` files are found.
     /// - Fails if total bytes exceed `MAX_PLUGIN_TOTAL_BYTES`.
@@ -268,16 +268,14 @@ fn collect_dir(
             .symlink_metadata()
             .map_err(|e| format!("cannot stat {}: {}", entry_path.display(), e))?;
         if metadata.file_type().is_symlink() {
-            // Verify the symlink target stays within root.
-            let resolved = entry_path
-                .canonicalize()
-                .map_err(|e| format!("cannot resolve symlink {}: {}", entry_path.display(), e))?;
-            if !resolved.starts_with(root) {
-                return Err(format!(
-                    "symlink {} escapes plugin root — rejected for security",
-                    entry_path.display()
-                ));
-            }
+            // Reject symlinks outright: even an in-root link can form a
+            // directory cycle (unbounded traversal), and tarball extraction
+            // already skips link entries — keep both ingestion paths
+            // consistent.
+            return Err(format!(
+                "symlink {} is not allowed in a plugin directory",
+                entry_path.display()
+            ));
         }
 
         // Build a relative path (forward-slash, no leading slash).
@@ -301,7 +299,7 @@ fn collect_dir(
 
         let rel_str = rel.to_string_lossy().replace('\\', "/");
 
-        if metadata.is_dir() || metadata.file_type().is_symlink() && entry_path.is_dir() {
+        if metadata.is_dir() {
             collect_dir(root, &entry_path, files, total_bytes)?;
         } else {
             // It's a file.
@@ -389,6 +387,39 @@ mod tests {
         let (manifest, warnings) = fs.manifest().unwrap();
         assert_eq!(manifest.name, "my-test-plugin");
         assert!(warnings.iter().any(|w| w.contains("no plugin.json")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_rejected_even_within_root() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let plugin_dir = tmpdir.path().join("my-plugin");
+        std::fs::create_dir(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("README.md"), b"content").unwrap();
+        // In-root symlink: previously tolerated, now rejected (cycle defense).
+        std::os::unix::fs::symlink(plugin_dir.join("README.md"), plugin_dir.join("link.md"))
+            .unwrap();
+        let err = PluginFileSet::from_dir(&plugin_dir).unwrap_err();
+        assert!(
+            err.contains("symlink"),
+            "expected symlink error, got: {err}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn symlink_directory_cycle_rejected() {
+        let tmpdir = tempfile::tempdir().unwrap();
+        let plugin_dir = tmpdir.path().join("my-plugin");
+        std::fs::create_dir(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("README.md"), b"content").unwrap();
+        // Link back to the plugin root: would recurse forever if followed.
+        std::os::unix::fs::symlink(&plugin_dir, plugin_dir.join("loop")).unwrap();
+        let err = PluginFileSet::from_dir(&plugin_dir).unwrap_err();
+        assert!(
+            err.contains("symlink"),
+            "expected symlink error, got: {err}"
+        );
     }
 
     #[test]

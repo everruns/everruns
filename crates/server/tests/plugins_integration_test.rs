@@ -486,3 +486,86 @@ async fn test_update_plugin() {
     );
     assert_eq!(updated.json_value()["name"], "microsoft-docs");
 }
+
+// ============================================================
+// Install-time MCP server validation (TM-PLUGIN-003)
+// ============================================================
+
+/// A plugin whose .mcp.json points at a private address must be rejected at
+/// install time with a 400, mirroring declarative capability validation.
+#[tokio::test]
+async fn test_install_rejects_unsafe_mcp_server_url() {
+    let server = dev_server().await;
+
+    // Build a temp marketplace with one plugin declaring a localhost MCP URL.
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        root.join(".claude-plugin/marketplace.json"),
+        serde_json::to_vec(&json!({
+            "name": "unsafe-fixtures",
+            "owner": {"name": "Test"},
+            "plugins": [{"name": "unsafe-mcp", "source": "./unsafe-mcp",
+                         "description": "plugin with private MCP url"}]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    let plugin_dir = root.join("unsafe-mcp");
+    std::fs::create_dir_all(plugin_dir.join(".claude-plugin")).unwrap();
+    std::fs::write(
+        plugin_dir.join(".claude-plugin/plugin.json"),
+        serde_json::to_vec(&json!({
+            "name": "unsafe-mcp",
+            "description": "plugin with private MCP url",
+            "mcpServers": "./.mcp.json"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        plugin_dir.join(".mcp.json"),
+        serde_json::to_vec(&json!({
+            "mcpServers": {"local-loop": {"type": "http", "url": "http://127.0.0.1:8080/mcp"}}
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let resp = server
+        .post(
+            "/v1/plugin_marketplaces",
+            json!({
+                "name": "unsafe-fixtures",
+                "source_type": "local_path",
+                "source": root.to_string_lossy()
+            }),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::CREATED, "{}", resp.text());
+    let mkt_id = resp.json_value()["id"].as_str().unwrap().to_string();
+
+    let resp = server
+        .post(&format!("/v1/plugin_marketplaces/{mkt_id}/sync"), json!({}))
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK, "{}", resp.text());
+
+    let resp = server
+        .post(
+            "/v1/plugins",
+            json!({"marketplace_id": mkt_id, "plugin_name": "unsafe-mcp"}),
+        )
+        .await;
+    assert_eq!(
+        resp.status(),
+        StatusCode::BAD_REQUEST,
+        "install with private MCP url must be rejected: {}",
+        resp.text()
+    );
+    assert!(
+        resp.text().contains("MCP"),
+        "error should mention MCP servers: {}",
+        resp.text()
+    );
+}

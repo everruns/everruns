@@ -29,11 +29,7 @@ const marketplaceCrudHooks = createCrudHooks<
   UpdateMarketplaceRequest
 >({
   api: marketplacesCrudApi,
-  queryKeys: {
-    all: queryKeys.pluginMarketplaces.all,
-    list: queryKeys.pluginMarketplaces.list,
-    detail: queryKeys.pluginMarketplaces.detail,
-  },
+  queryKeys: queryKeys.pluginMarketplaces,
   staleTime: 30000,
 });
 
@@ -90,11 +86,7 @@ const installedPluginCrudHooks = createCrudHooks<
   UpdateInstalledPluginRequest
 >({
   api: installedPluginsCrudApi,
-  queryKeys: {
-    all: queryKeys.installedPlugins.all,
-    list: queryKeys.installedPlugins.list,
-    detail: queryKeys.installedPlugins.detail,
-  },
+  queryKeys: queryKeys.installedPlugins,
   staleTime: 30000,
 });
 
