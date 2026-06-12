@@ -485,6 +485,34 @@ impl GrpcClient {
         Ok(response.into_inner().updated)
     }
 
+    /// List (session_id, task_id) pairs for tasks with stale heartbeats.
+    /// Used by the session_task_reaper durable activity on gRPC workers.
+    pub async fn list_orphaned_session_tasks(
+        &self,
+        stale_after_seconds: i64,
+        limit: i64,
+    ) -> Result<Vec<(everruns_core::SessionId, String)>> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .list_orphaned_session_tasks(proto::ListOrphanedSessionTasksRequest {
+                stale_after_seconds,
+                limit,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .entries
+            .into_iter()
+            .map(|e| {
+                let uuid = uuid::Uuid::parse_str(&e.session_id).map_err(|err| {
+                    AgentLoopError::store(format!("Invalid session_id in orphan entry: {err}"))
+                })?;
+                Ok((everruns_core::SessionId::from_uuid(uuid), e.task_id))
+            })
+            .collect()
+    }
+
     pub async fn invoke_scheduled_app_channel(
         &self,
         org_id: i64,

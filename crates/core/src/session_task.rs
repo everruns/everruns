@@ -291,6 +291,20 @@ pub struct SessionTaskUpdate {
     pub worker_id: Option<String>,
     /// Liveness heartbeat timestamp.
     pub heartbeat_at: Option<DateTime<Utc>>,
+    /// Stale-attempt fence: when set, the update is silently ignored if
+    /// `task.attempt != expected_attempt`. Executors and sinks set this to
+    /// the attempt they captured at start; the reaper bumps `attempt` (via
+    /// `increment_attempt`) when it fails an orphan, so a zombie executor's
+    /// later writes are rejected. Writers that do not track attempts
+    /// (e.g. `cancel_task` from the API) leave this None.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_attempt: Option<i32>,
+    /// Supersede the current attempt: bumps `task.attempt` so writes fenced
+    /// on the previous attempt are rejected from now on. Set by the reaper
+    /// when it fails an orphaned task. Ignored if the update itself is
+    /// dropped by the fence or the terminal-state invariant.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub increment_attempt: bool,
 }
 
 /// Optional filter for listing tasks.
@@ -311,6 +325,15 @@ pub struct SessionTaskFilter {
 /// - setting `input_request` forces `awaiting_input`; leaving
 ///   `awaiting_input` clears it.
 pub fn apply_task_update(task: &mut SessionTask, update: SessionTaskUpdate, now: DateTime<Utc>) {
+    // Stale-attempt fence: if the update carries an attempt expectation and it
+    // does not match the current attempt, this write came from a superseded
+    // executor — ignore it entirely (heartbeats, state changes, everything).
+    if let Some(expected) = update.expected_attempt
+        && expected != task.attempt
+    {
+        return;
+    }
+
     let was_terminal = task.state.is_terminal();
 
     // Terminal states are final. An update that asks for a *different* state
@@ -324,6 +347,12 @@ pub fn apply_task_update(task: &mut SessionTask, update: SessionTaskUpdate, now:
         && state != task.state
     {
         return;
+    }
+
+    // Supersede the current attempt (reaper failing an orphan): writes fenced
+    // on the old attempt are rejected from here on.
+    if update.increment_attempt {
+        task.attempt += 1;
     }
 
     let mut next_state = update.state;
@@ -501,6 +530,12 @@ pub struct NewTaskMessage {
     pub content: Vec<TaskMessagePart>,
     #[serde(default)]
     pub in_reply_to: Option<String>,
+    /// Stale-attempt fence for message writes: when set, registries reject
+    /// the message if `task.attempt` no longer matches, so a superseded
+    /// executor cannot append to the thread or trigger wake-ups. Not stored
+    /// with the message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected_attempt: Option<i32>,
 }
 
 impl NewTaskMessage {
@@ -509,6 +544,7 @@ impl NewTaskMessage {
             direction: TaskMessageDirection::Inbound,
             content: vec![TaskMessagePart::text(text)],
             in_reply_to: None,
+            expected_attempt: None,
         }
     }
 
@@ -517,7 +553,14 @@ impl NewTaskMessage {
             direction: TaskMessageDirection::Outbound,
             content: vec![TaskMessagePart::text(text)],
             in_reply_to: None,
+            expected_attempt: None,
         }
+    }
+
+    /// Fence this message write on the given attempt (see `expected_attempt`).
+    pub fn with_expected_attempt(mut self, attempt: i32) -> Self {
+        self.expected_attempt = Some(attempt);
+        self
     }
 }
 
@@ -683,10 +726,16 @@ pub trait TaskSink: Send + Sync {
 
 /// `TaskSink` backed by a `SessionTaskRegistry`. Output deltas are dropped
 /// here; kinds with live output keep their existing streaming path.
+///
+/// Carries `attempt` for stale-attempt fencing: every update includes
+/// `expected_attempt` so writes from a superseded executor are rejected once
+/// the reaper increments the attempt counter on the task record.
 pub struct RegistryTaskSink {
     registry: Arc<dyn SessionTaskRegistry>,
     session_id: SessionId,
     task_id: String,
+    /// The attempt number this sink was created for (captured at task start).
+    attempt: i32,
 }
 
 impl RegistryTaskSink {
@@ -699,7 +748,15 @@ impl RegistryTaskSink {
             registry,
             session_id,
             task_id,
+            attempt: 1,
         }
+    }
+
+    /// Set the attempt number for fencing. Call this after reading the task
+    /// record at start so the sink rejects writes once the attempt is bumped.
+    pub fn with_attempt(mut self, attempt: i32) -> Self {
+        self.attempt = attempt;
+        self
     }
 }
 
@@ -713,6 +770,7 @@ impl TaskSink for RegistryTaskSink {
                 SessionTaskUpdate {
                     state: Some(state),
                     state_detail: detail,
+                    expected_attempt: Some(self.attempt),
                     ..Default::default()
                 },
             )
@@ -727,6 +785,7 @@ impl TaskSink for RegistryTaskSink {
                 &self.task_id,
                 SessionTaskUpdate {
                     progress: Some(progress),
+                    expected_attempt: Some(self.attempt),
                     ..Default::default()
                 },
             )
@@ -739,8 +798,14 @@ impl TaskSink for RegistryTaskSink {
     }
 
     async fn post(&self, message: NewTaskMessage) -> Result<()> {
+        // Fence message writes too: record_message emits events and can wake
+        // the parent session, so a superseded executor must not post.
         self.registry
-            .record_message(self.session_id, &self.task_id, message)
+            .record_message(
+                self.session_id,
+                &self.task_id,
+                message.with_expected_attempt(self.attempt),
+            )
             .await?;
         Ok(())
     }
@@ -752,6 +817,7 @@ impl TaskSink for RegistryTaskSink {
                 &self.task_id,
                 SessionTaskUpdate {
                     input_request: Some(request),
+                    expected_attempt: Some(self.attempt),
                     ..Default::default()
                 },
             )
@@ -763,6 +829,10 @@ impl TaskSink for RegistryTaskSink {
         let Some(task) = self.registry.get(self.session_id, &self.task_id).await? else {
             return Ok(());
         };
+        // Check attempt before fetching artifacts to avoid a stale write.
+        if task.attempt != self.attempt {
+            return Ok(());
+        }
         let mut artifacts = task.artifacts;
         artifacts.push(artifact);
         self.registry
@@ -771,6 +841,7 @@ impl TaskSink for RegistryTaskSink {
                 &self.task_id,
                 SessionTaskUpdate {
                     artifacts: Some(artifacts),
+                    expected_attempt: Some(self.attempt),
                     ..Default::default()
                 },
             )
@@ -960,5 +1031,150 @@ mod tests {
     fn message_text_rendering() {
         let msg = NewTaskMessage::outbound_text("hello");
         assert_eq!(task_message_text(&msg.content), "hello");
+    }
+
+    // -------------------------------------------------------------------------
+    // Stale-attempt fencing tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn update_with_matching_attempt_applies() {
+        let mut t = task();
+        // Task starts at attempt 1.
+        assert_eq!(t.attempt, 1);
+        let now = Utc::now();
+
+        // An update that carries expected_attempt == task.attempt applies normally.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Running),
+                state_detail: Some("step 1".to_string()),
+                heartbeat_at: Some(now),
+                expected_attempt: Some(1),
+                ..Default::default()
+            },
+            now,
+        );
+        assert_eq!(t.state, SessionTaskState::Running);
+        assert_eq!(t.state_detail.as_deref(), Some("step 1"));
+        assert_eq!(t.heartbeat_at, Some(now));
+    }
+
+    #[test]
+    fn update_with_stale_attempt_is_fully_ignored() {
+        let mut t = task();
+        // Simulate the reaper bumping the attempt by directly setting it.
+        t.attempt = 2;
+
+        let now = Utc::now();
+        let before_updated = t.updated_at;
+
+        // A write from the old executor (attempt = 1) must be fully ignored —
+        // state, heartbeat, and updated_at must not change.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Running),
+                state_detail: Some("superseded".to_string()),
+                heartbeat_at: Some(now),
+                expected_attempt: Some(1),
+                ..Default::default()
+            },
+            now,
+        );
+        assert_eq!(t.state, SessionTaskState::Queued, "state must be unchanged");
+        assert!(t.state_detail.is_none(), "state_detail must be unchanged");
+        assert!(t.heartbeat_at.is_none(), "heartbeat must be unchanged");
+        assert_eq!(t.updated_at, before_updated, "updated_at must be unchanged");
+    }
+
+    #[test]
+    fn update_with_none_expected_attempt_applies_regardless() {
+        let mut t = task();
+        // Even with attempt = 99 and no expected_attempt, the update applies.
+        t.attempt = 99;
+        let now = Utc::now();
+
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                summary: Some("cancel from API".to_string()),
+                expected_attempt: None,
+                ..Default::default()
+            },
+            now,
+        );
+        // Writers that don't track attempts (e.g. cancel_task from the API) still apply.
+        assert_eq!(t.summary.as_deref(), Some("cancel from API"));
+    }
+
+    #[test]
+    fn reaper_update_increments_attempt_and_fences_old_executor() {
+        let mut t = task();
+        t.state = SessionTaskState::Running;
+        assert_eq!(t.attempt, 1);
+        let now = Utc::now();
+
+        // Reaper-style update: fail as orphaned and supersede the attempt.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Failed),
+                error: Some(TaskError {
+                    kind: "orphaned".to_string(),
+                    message: "worker heartbeat stopped".to_string(),
+                }),
+                increment_attempt: true,
+                ..Default::default()
+            },
+            now,
+        );
+        assert_eq!(t.state, SessionTaskState::Failed);
+        assert_eq!(t.attempt, 2, "orphan reap must supersede the attempt");
+
+        // The zombie executor's content-only heartbeat (no state change, so the
+        // terminal invariant alone would let it through) is now fenced out.
+        let later = now + chrono::Duration::seconds(5);
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                heartbeat_at: Some(later),
+                expected_attempt: Some(1),
+                ..Default::default()
+            },
+            later,
+        );
+        assert_ne!(
+            t.heartbeat_at,
+            Some(later),
+            "stale heartbeat must be rejected"
+        );
+    }
+
+    #[test]
+    fn increment_attempt_is_inert_when_update_is_dropped() {
+        let mut t = task();
+        t.state = SessionTaskState::Succeeded;
+        assert_eq!(t.attempt, 1);
+        let now = Utc::now();
+
+        // Reaper losing the race against a clean finish: the terminal-state
+        // invariant drops the whole update, including the attempt bump.
+        apply_task_update(
+            &mut t,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Failed),
+                error: Some(TaskError {
+                    kind: "orphaned".to_string(),
+                    message: "worker heartbeat stopped".to_string(),
+                }),
+                increment_attempt: true,
+                ..Default::default()
+            },
+            now,
+        );
+        assert_eq!(t.state, SessionTaskState::Succeeded);
+        assert_eq!(t.attempt, 1, "dropped update must not bump the attempt");
     }
 }

@@ -966,3 +966,169 @@ fn test_db_info_to_proto_roundtrip() {
     assert!(proto.created_at.is_some());
     assert!(proto.updated_at.is_some());
 }
+
+// ============================================================================
+// Session task RPC tests — ListOrphanedSessionTasks
+// ============================================================================
+
+/// Helper: create a session task via the storage backend directly.
+async fn create_test_session_task(
+    db: &crate::storage::StorageBackend,
+    session_id: everruns_core::SessionId,
+    kind: &str,
+    state: everruns_core::session_task::SessionTaskState,
+    wake_policy: everruns_core::session_task::TaskWakePolicy,
+) -> String {
+    use everruns_core::session_task::{CreateSessionTask, TaskLinks, new_session_task};
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: kind.to_string(),
+            display_name: "Test task".to_string(),
+            spec: serde_json::json!({}),
+            state,
+            links: TaskLinks::default(),
+            wake_policy,
+        },
+        chrono::Utc::now(),
+    );
+    db.create_session_task(&task)
+        .await
+        .expect("create task")
+        .0
+        .id
+}
+
+#[tokio::test]
+async fn test_list_orphaned_session_tasks_returns_stale_task() {
+    let svc = test_worker_service().await;
+    let db = svc.db.clone();
+
+    let session_id = everruns_core::SessionId::new();
+
+    let task_id = create_test_session_task(
+        &db,
+        session_id,
+        everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL,
+        everruns_core::session_task::SessionTaskState::Running,
+        everruns_core::session_task::TaskWakePolicy::Silent,
+    )
+    .await;
+
+    // Backdate the heartbeat to be older than the stale threshold (5 minutes).
+    let stale_heartbeat = chrono::Utc::now() - chrono::Duration::minutes(10);
+    db.update_session_task(
+        session_id,
+        &task_id,
+        everruns_core::session_task::SessionTaskUpdate {
+            heartbeat_at: Some(stale_heartbeat),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("set stale heartbeat");
+
+    // Call the RPC with a 5-minute stale threshold.
+    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+        stale_after_seconds: 300,
+        limit: 50,
+    });
+    let response = svc
+        .list_orphaned_session_tasks(request)
+        .await
+        .expect("rpc should succeed");
+
+    let entries = response.into_inner().entries;
+    let found = entries.iter().any(|e| e.task_id == task_id);
+    assert!(
+        found,
+        "Expected task {} in orphan list, got: {:?}",
+        task_id,
+        entries.iter().map(|e| &e.task_id).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn test_list_orphaned_session_tasks_excludes_fresh_heartbeat() {
+    let svc = test_worker_service().await;
+    let db = svc.db.clone();
+
+    let session_id = everruns_core::SessionId::new();
+
+    let task_id = create_test_session_task(
+        &db,
+        session_id,
+        everruns_core::session_task::TASK_KIND_BACKGROUND_TOOL,
+        everruns_core::session_task::SessionTaskState::Running,
+        everruns_core::session_task::TaskWakePolicy::Silent,
+    )
+    .await;
+
+    // Set a recent heartbeat (only 1 second ago).
+    let fresh_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(1);
+    db.update_session_task(
+        session_id,
+        &task_id,
+        everruns_core::session_task::SessionTaskUpdate {
+            heartbeat_at: Some(fresh_heartbeat),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("set fresh heartbeat");
+
+    // Call with a 5-minute stale threshold — fresh task must not appear.
+    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+        stale_after_seconds: 300,
+        limit: 50,
+    });
+    let response = svc
+        .list_orphaned_session_tasks(request)
+        .await
+        .expect("rpc should succeed");
+
+    let entries = response.into_inner().entries;
+    let found = entries.iter().any(|e| e.task_id == task_id);
+    assert!(
+        !found,
+        "Fresh-heartbeat task {} must not be in orphan list",
+        task_id
+    );
+}
+
+#[tokio::test]
+async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
+    let svc = test_worker_service().await;
+    let db = svc.db.clone();
+
+    let session_id = everruns_core::SessionId::new();
+
+    // Create a task with no heartbeat (foreground/subagent tasks).
+    let task_id = create_test_session_task(
+        &db,
+        session_id,
+        everruns_core::session_task::TASK_KIND_SUBAGENT,
+        everruns_core::session_task::SessionTaskState::Running,
+        everruns_core::session_task::TaskWakePolicy::OnTerminal,
+    )
+    .await;
+
+    // heartbeat_at is NULL — must never appear in orphan list.
+    let request = tonic::Request::new(ListOrphanedSessionTasksRequest {
+        stale_after_seconds: 1,
+        limit: 50,
+    });
+    let response = svc
+        .list_orphaned_session_tasks(request)
+        .await
+        .expect("rpc should succeed");
+
+    let entries = response.into_inner().entries;
+    let found = entries.iter().any(|e| e.task_id == task_id);
+    assert!(
+        !found,
+        "NULL-heartbeat task {} must not be in orphan list",
+        task_id
+    );
+}

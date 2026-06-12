@@ -224,10 +224,9 @@ impl Default for DurableWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
-                // session_task_reaper is intentionally NOT a default here:
-                // the gRPC adapters have no orphan-listing RPC yet, so remote
-                // workers must not claim reaper tasks (the in-process unified
-                // worker handles them). Opting in via config fails fast.
+                // session_task_reaper now runs on gRPC workers via the
+                // ListOrphanedSessionTasks RPC (added alongside this change).
+                "session_task_reaper".to_string(),
                 "invoke_scheduled_app_channel".to_string(),
             ],
             max_concurrent_tasks: 1000, // High default for massive workflow parallelism

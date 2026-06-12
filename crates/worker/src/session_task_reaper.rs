@@ -87,6 +87,9 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
                 kind: "orphaned".to_string(),
                 message: "worker heartbeat stopped".to_string(),
             }),
+            // Supersede the executor's attempt so its fenced writes
+            // (heartbeats, progress, messages) are rejected from now on.
+            increment_attempt: true,
             ..Default::default()
         };
 
@@ -258,6 +261,7 @@ mod tests {
                     kind: "orphaned".to_string(),
                     message: "worker heartbeat stopped".to_string(),
                 }),
+                increment_attempt: true,
                 ..Default::default()
             };
             match registry.update(*session_id, task_id, update).await {
@@ -312,6 +316,10 @@ mod tests {
         let updated = registry.get(session_id, &task.id).await.unwrap().unwrap();
         assert_eq!(updated.state, SessionTaskState::Failed);
         assert_eq!(updated.error.as_ref().unwrap().kind, "orphaned");
+        assert_eq!(
+            updated.attempt, 2,
+            "orphan reap must supersede the executor's attempt"
+        );
     }
 
     #[tokio::test]

@@ -308,6 +308,17 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("Session task not found: {task_id}")))?;
 
+        // Stale-attempt fence: a superseded executor must not append to the
+        // thread (record_message emits events and can wake the parent).
+        if let Some(expected) = message.expected_attempt
+            && expected != task.attempt
+        {
+            return Err(AgentLoopError::store(format!(
+                "Stale attempt {expected} for task {task_id} (current attempt {})",
+                task.attempt
+            )));
+        }
+
         let row = self
             .db
             .insert_session_task_message(NewSessionTaskMessageRow {
@@ -646,6 +657,47 @@ mod tests {
             .map(|m| everruns_core::session_task::task_message_text(&m.content))
             .collect();
         assert_eq!(texts, vec!["m3", "m4"]);
+    }
+
+    #[tokio::test]
+    async fn record_message_rejects_stale_attempt() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let task = registry
+            .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
+            .await
+            .unwrap();
+
+        // Reaper-style supersede: fail as orphaned and bump the attempt.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Failed),
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // The zombie executor (attempt 1) must not append to the thread.
+        let err = registry
+            .record_message(
+                session_id,
+                &task.id,
+                NewTaskMessage::outbound_text("zombie").with_expected_attempt(1),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Stale attempt"), "got: {err}");
+
+        // Unfenced writers (API messages) still apply.
+        registry
+            .record_message(session_id, &task.id, NewTaskMessage::inbound_text("user"))
+            .await
+            .unwrap();
     }
 
     // -------------------------------------------------------------------------

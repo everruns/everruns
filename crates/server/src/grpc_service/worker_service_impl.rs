@@ -3033,6 +3033,43 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn list_orphaned_session_tasks(
+        &self,
+        request: Request<ListOrphanedSessionTasksRequest>,
+    ) -> Result<Response<ListOrphanedSessionTasksResponse>, Status> {
+        let req = request.into_inner();
+        if req.stale_after_seconds <= 0 {
+            return Err(Status::invalid_argument(
+                "stale_after_seconds must be positive",
+            ));
+        }
+        if req.limit <= 0 {
+            return Err(Status::invalid_argument("limit must be positive"));
+        }
+        let stale_after = chrono::Duration::seconds(req.stale_after_seconds);
+        // Cap the response size regardless of what the caller asks for.
+        let limit = req.limit.min(1000);
+
+        let pairs = self
+            .db
+            .list_orphaned_session_task_ids(stale_after, limit)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list orphaned session tasks: {e}");
+                Status::internal("Failed to list orphaned session tasks")
+            })?;
+
+        let entries = pairs
+            .into_iter()
+            .map(|(session_id, task_id)| OrphanedSessionTaskEntry {
+                session_id: session_id.uuid().to_string(),
+                task_id,
+            })
+            .collect();
+
+        Ok(Response::new(ListOrphanedSessionTasksResponse { entries }))
+    }
+
     // ========================================================================
     // Session schedule operations
     // ========================================================================

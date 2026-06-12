@@ -177,6 +177,10 @@ service WorkerService {
     rpc RecordSessionTaskMessage(RecordSessionTaskMessageRequest) returns (SessionTaskMessageResponse);
     rpc ListSessionTaskMessages(ListSessionTaskMessagesRequest) returns (ListSessionTaskMessagesResponse);
 
+    // List (session_id, task_id) pairs for tasks with a stale heartbeat, so
+    // gRPC workers can run the session_task_reaper durable activity.
+    rpc ListOrphanedSessionTasks(ListOrphanedSessionTasksRequest) returns (ListOrphanedSessionTasksResponse);
+
     // === Session schedule operations ===
     // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
     rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
@@ -1998,4 +2002,25 @@ message ListSessionTaskMessagesRequest {
 
 message ListSessionTaskMessagesResponse {
     repeated bytes message_json = 1;
+}
+
+// === List orphaned session tasks ===
+
+message ListOrphanedSessionTasksRequest {
+    // Age in seconds after which a stale heartbeat marks a task orphaned.
+    int64 stale_after_seconds = 1;
+    // Maximum number of results to return.
+    int64 limit = 2;
+}
+
+// One (session_id, task_id) pair from the orphan scan.
+message OrphanedSessionTaskEntry {
+    // session_id as a raw UUID string. The typed-id prefix ("ses_") is
+    // applied client-side when parsing into a SessionId.
+    string session_id = 1;
+    string task_id = 2;
+}
+
+message ListOrphanedSessionTasksResponse {
+    repeated OrphanedSessionTaskEntry entries = 1;
 }
