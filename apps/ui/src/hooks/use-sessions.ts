@@ -291,6 +291,16 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
   // Track events by ID to avoid duplicates
   const eventIdsRef = useRef<Set<string>>(new Set());
 
+  // Bound the dedup set to the events still in memory. Doing this in an effect
+  // (rather than inside the setEvents updater that trims the buffer) keeps that
+  // updater pure. The size guard makes this a no-op for normal appends and only
+  // rebuilds the set right after the buffer has been trimmed.
+  useEffect(() => {
+    if (eventIdsRef.current.size > events.length) {
+      eventIdsRef.current = new Set(events.map((e) => e.id));
+    }
+  }, [events]);
+
   // Track whether initial REST fetch has completed
   const [restLoaded, setRestLoaded] = useState(false);
 
@@ -481,16 +491,15 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
 
             eventIdsRef.current.add(event.id);
             lastEventIdRef.current = event.id;
+            // Keep this updater pure: React may invoke a state updater more than
+            // once for a single update (StrictMode, concurrent replays). The
+            // dedup set is reconciled to the in-memory window by the effect
+            // below, not mutated here.
             setEvents((prev) => {
               const next = [...prev, event];
-              if (next.length > MAX_EVENTS_IN_MEMORY) {
-                // Trim oldest events and their IDs from the dedup set
-                const trimmed = next.slice(next.length - MAX_EVENTS_IN_MEMORY);
-                const keptIds = new Set(trimmed.map((e) => e.id));
-                eventIdsRef.current = keptIds;
-                return trimmed;
-              }
-              return next;
+              return next.length > MAX_EVENTS_IN_MEMORY
+                ? next.slice(next.length - MAX_EVENTS_IN_MEMORY)
+                : next;
             });
           } catch (e) {
             console.error("Failed to parse SSE event:", e);
