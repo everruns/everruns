@@ -26,8 +26,9 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
-    Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService,
-    assemble_turn_context, org_public_id_from_internal, resolve_runtime_capabilities,
+    ErrorDisclosure, Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError,
+    UtilityLlmService, assemble_turn_context, org_public_id_from_internal,
+    resolve_runtime_capabilities,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -696,6 +697,21 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         error: &str,
         user_error: Option<&UserFacingError>,
     ) {
+        self.turn_failed_with_disclosure(turn_id, input_message_id, error, user_error, None)
+            .await;
+    }
+
+    /// `turn_failed` with the applied error-disclosure mode recorded on the
+    /// event. `user_error` (and the `error` text shown alongside it) must
+    /// already be disclosure-filtered by the caller.
+    pub async fn turn_failed_with_disclosure(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        error: &str,
+        user_error: Option<&UserFacingError>,
+        disclosure: Option<ErrorDisclosure>,
+    ) {
         self.set_session_status(SessionStatus::Idle, "turn_failed")
             .await;
 
@@ -708,6 +724,7 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
                     error: error.to_string(),
                     error_code: None,
                     error_fields: None,
+                    error_disclosure: disclosure.map(|mode| mode.as_str().to_string()),
                 };
                 if let Some(user_error) = user_error {
                     user_error.apply_to_event_fields(&mut data.error_code, &mut data.error_fields);
@@ -908,6 +925,8 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             tool_definitions: vec![],
             max_iterations: everruns_core::runtime_agent::default_max_iterations(),
             error: Some("dependency_unavailable".to_string()),
+            user_facing_error: None,
+            error_disclosure: None,
             usage: None,
             output_message_id: None,
             time_to_first_token_ms: None,
@@ -949,6 +968,8 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
                     tool_definitions: vec![],
                     max_iterations: everruns_core::runtime_agent::default_max_iterations(),
                     error: Some("blocked_by_user_prompt_hook".to_string()),
+                    user_facing_error: None,
+                    error_disclosure: None,
                     usage: None,
                     output_message_id: None,
                     time_to_first_token_ms: None,

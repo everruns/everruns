@@ -6,20 +6,109 @@
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use crate::user_facing_error::{
     UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
-    codes as user_facing_error_codes,
+    codes as user_facing_error_codes, is_provider_quota_message,
 };
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
 /// Result type alias for agent loop operations
 pub type Result<T> = std::result::Result<T, AgentLoopError>;
+
+/// Semantic classification of an LLM provider error, assigned by the driver
+/// at the provider boundary where the HTTP status and response body are still
+/// available. Downstream consumers prefer this over re-parsing error strings;
+/// `LlmErrorKind::Other` falls back to string classification
+/// (`classify_runtime_error_message`) so untyped errors keep working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmErrorKind {
+    /// Invalid or missing credentials, or access denied (401/403, bad API key).
+    Authentication,
+    /// Provider account is out of credits/quota (billing). Non-transient:
+    /// needs operator action, unlike a regular rate limit.
+    QuotaExhausted,
+    /// Transient rate limit (429).
+    RateLimited,
+    /// Provider outage or unreachable (5xx, 529, network failure).
+    Unavailable,
+    /// Provider rejected the request shape (4xx that is not auth/quota/429).
+    InvalidRequest,
+    /// Unclassified; downstream falls back to string classification.
+    Other,
+}
+
+impl LlmErrorKind {
+    /// Classify a provider HTTP error from status code + response body.
+    ///
+    /// Quota/billing patterns are checked before the status code because
+    /// providers surface exhausted billing under different statuses
+    /// (OpenAI: 429 `insufficient_quota`, Anthropic: 400 "credit balance is
+    /// too low").
+    pub fn from_provider_status(status: u16, body: &str) -> Self {
+        if is_provider_quota_message(body) {
+            return LlmErrorKind::QuotaExhausted;
+        }
+        match status {
+            401 | 403 => LlmErrorKind::Authentication,
+            429 => LlmErrorKind::RateLimited,
+            408 | 500..=599 => LlmErrorKind::Unavailable,
+            400..=499 => LlmErrorKind::InvalidRequest,
+            _ => LlmErrorKind::Other,
+        }
+    }
+
+    /// Keyword-based classification for drivers without an HTTP status at the
+    /// error site (e.g. Bedrock SDK errors).
+    pub fn from_error_text(text: &str) -> Self {
+        if is_provider_quota_message(text) {
+            return LlmErrorKind::QuotaExhausted;
+        }
+        let lower = text.to_ascii_lowercase();
+        if lower.contains("throttlingexception")
+            || lower.contains("toomanyrequestsexception")
+            || lower.contains("rate limit")
+            || lower.contains("too many requests")
+        {
+            return LlmErrorKind::RateLimited;
+        }
+        if lower.contains("accessdeniedexception")
+            || lower.contains("unrecognizedclientexception")
+            || lower.contains("expiredtokenexception")
+            || lower.contains("invalidsignatureexception")
+            || lower.contains("unauthorized")
+        {
+            return LlmErrorKind::Authentication;
+        }
+        if lower.contains("serviceunavailable")
+            || lower.contains("service unavailable")
+            || lower.contains("internalserverexception")
+            || lower.contains("modelnotreadyexception")
+        {
+            return LlmErrorKind::Unavailable;
+        }
+        LlmErrorKind::Other
+    }
+}
+
+/// LLM provider error with a semantic kind attached by the driver.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LlmError {
+    pub kind: LlmErrorKind,
+    pub message: String,
+}
+
+impl std::fmt::Display for LlmError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
 
 /// Errors that can occur during agent loop execution
 #[derive(Debug, Error)]
 pub enum AgentLoopError {
     /// LLM provider error
     #[error("LLM error: {0}")]
-    Llm(String),
+    Llm(LlmError),
 
     /// Request too large error (context length exceeded, token limits, etc.)
     /// Contains the original error message for logging
@@ -83,9 +172,29 @@ pub enum AgentLoopError {
 }
 
 impl AgentLoopError {
-    /// Create an LLM error
+    /// Create an LLM error with no semantic kind (falls back to string
+    /// classification downstream).
     pub fn llm(msg: impl Into<String>) -> Self {
-        AgentLoopError::Llm(msg.into())
+        AgentLoopError::Llm(LlmError {
+            kind: LlmErrorKind::Other,
+            message: msg.into(),
+        })
+    }
+
+    /// Create an LLM error with a semantic kind assigned at the driver boundary.
+    pub fn llm_kind(kind: LlmErrorKind, msg: impl Into<String>) -> Self {
+        AgentLoopError::Llm(LlmError {
+            kind,
+            message: msg.into(),
+        })
+    }
+
+    /// Get the semantic LLM error kind, if this is an LLM error.
+    pub fn llm_error_kind(&self) -> Option<LlmErrorKind> {
+        match self {
+            AgentLoopError::Llm(err) => Some(err.kind),
+            _ => None,
+        }
     }
 
     /// Create a tool execution error
@@ -156,15 +265,20 @@ impl AgentLoopError {
         }
     }
 
-    /// Check if this is a rate-limit error (HTTP 429 or rate-limit keywords)
+    /// Check if this is a rate-limit error (semantic kind, or HTTP 429 /
+    /// rate-limit keywords for untyped errors)
     pub fn is_rate_limited(&self) -> bool {
         match self {
-            AgentLoopError::Llm(msg) => {
-                let msg_lower = msg.to_ascii_lowercase();
-                msg_lower.contains("(429)")
-                    || msg_lower.contains("rate limit")
-                    || msg_lower.contains("too many requests")
-            }
+            AgentLoopError::Llm(err) => match err.kind {
+                LlmErrorKind::RateLimited => true,
+                LlmErrorKind::Other => {
+                    let msg_lower = err.message.to_ascii_lowercase();
+                    msg_lower.contains("(429)")
+                        || msg_lower.contains("rate limit")
+                        || msg_lower.contains("too many requests")
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -172,7 +286,13 @@ impl AgentLoopError {
     /// Check if this is an authentication/authorization error (HTTP 401/403)
     pub fn is_auth_error(&self) -> bool {
         match self {
-            AgentLoopError::Llm(msg) => msg.contains("(401)") || msg.contains("(403)"),
+            AgentLoopError::Llm(err) => match err.kind {
+                LlmErrorKind::Authentication => true,
+                LlmErrorKind::Other => {
+                    err.message.contains("(401)") || err.message.contains("(403)")
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -180,13 +300,18 @@ impl AgentLoopError {
     /// Check if this is a server error (HTTP 5xx or transient provider issue)
     pub fn is_server_error(&self) -> bool {
         match self {
-            AgentLoopError::Llm(msg) => {
-                msg.contains("(500)")
-                    || msg.contains("(502)")
-                    || msg.contains("(503)")
-                    || msg.contains("(504)")
-                    || msg.contains("(529)")
-            }
+            AgentLoopError::Llm(err) => match err.kind {
+                LlmErrorKind::Unavailable => true,
+                LlmErrorKind::Other => {
+                    let msg = &err.message;
+                    msg.contains("(500)")
+                        || msg.contains("(502)")
+                        || msg.contains("(503)")
+                        || msg.contains("(504)")
+                        || msg.contains("(529)")
+                }
+                _ => false,
+            },
             _ => false,
         }
     }
@@ -243,7 +368,39 @@ impl AgentLoopError {
                 UserFacingError::new(user_facing_error_codes::MAX_ITERATIONS)
                     .with_field("max_iterations", max_iterations)
             }
-            AgentLoopError::Llm(message) => classify_runtime_error_message(message, &context),
+            AgentLoopError::Llm(err) => {
+                // Prefer the semantic kind the driver assigned at the provider
+                // boundary; fall back to string classification for untyped
+                // errors so legacy paths keep working.
+                let code = match err.kind {
+                    LlmErrorKind::Authentication => {
+                        Some(user_facing_error_codes::PROVIDER_MISCONFIGURED)
+                    }
+                    LlmErrorKind::QuotaExhausted => {
+                        Some(user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED)
+                    }
+                    LlmErrorKind::RateLimited => {
+                        Some(user_facing_error_codes::PROVIDER_RATE_LIMITED)
+                    }
+                    LlmErrorKind::Unavailable => {
+                        Some(user_facing_error_codes::PROVIDER_UNAVAILABLE)
+                    }
+                    LlmErrorKind::InvalidRequest | LlmErrorKind::Other => None,
+                };
+                match code {
+                    Some(code) => {
+                        let error = UserFacingError::new(code)
+                            .with_optional_field("provider", context.provider)
+                            .with_optional_field("model_id", context.model_id);
+                        if code == user_facing_error_codes::PROVIDER_RATE_LIMITED {
+                            error.with_optional_field("retry_after", context.retry_after)
+                        } else {
+                            error
+                        }
+                    }
+                    None => classify_runtime_error_message(&err.message, &context),
+                }
+            }
             _ => UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR)
                 .with_optional_field("provider", context.provider)
                 .with_optional_field("model_id", context.model_id),
@@ -487,6 +644,126 @@ mod tests {
         assert_eq!(
             user_error.fields.get("retry_after"),
             Some(&serde_json::json!(12))
+        );
+    }
+
+    #[test]
+    fn test_llm_error_kind_from_provider_status() {
+        assert_eq!(
+            LlmErrorKind::from_provider_status(401, "invalid x-api-key"),
+            LlmErrorKind::Authentication
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(403, "forbidden"),
+            LlmErrorKind::Authentication
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(429, "rate limit exceeded"),
+            LlmErrorKind::RateLimited
+        );
+        // Quota patterns win over the 429 status.
+        assert_eq!(
+            LlmErrorKind::from_provider_status(
+                429,
+                "{\"error\":{\"type\":\"insufficient_quota\"}}"
+            ),
+            LlmErrorKind::QuotaExhausted
+        );
+        // Anthropic reports exhausted billing as a 400.
+        assert_eq!(
+            LlmErrorKind::from_provider_status(
+                400,
+                "Your credit balance is too low to access the Anthropic API."
+            ),
+            LlmErrorKind::QuotaExhausted
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(529, "overloaded"),
+            LlmErrorKind::Unavailable
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(503, "unavailable"),
+            LlmErrorKind::Unavailable
+        );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(400, "bad request"),
+            LlmErrorKind::InvalidRequest
+        );
+    }
+
+    #[test]
+    fn test_llm_error_kind_from_error_text_bedrock() {
+        assert_eq!(
+            LlmErrorKind::from_error_text("ThrottlingException: Too many requests"),
+            LlmErrorKind::RateLimited
+        );
+        assert_eq!(
+            LlmErrorKind::from_error_text("AccessDeniedException: not authorized"),
+            LlmErrorKind::Authentication
+        );
+        assert_eq!(
+            LlmErrorKind::from_error_text("ServiceUnavailableException"),
+            LlmErrorKind::Unavailable
+        );
+        assert_eq!(
+            LlmErrorKind::from_error_text("something else entirely"),
+            LlmErrorKind::Other
+        );
+    }
+
+    #[test]
+    fn test_user_facing_error_prefers_semantic_kind() {
+        // The message alone would string-classify as rate-limited ("429"),
+        // but the driver-assigned kind must win.
+        let err = AgentLoopError::llm_kind(
+            LlmErrorKind::QuotaExhausted,
+            "OpenAI API error (429): insufficient_quota",
+        );
+        let user_error =
+            err.user_facing_error(UserFacingErrorContext::default().with_provider("openai"));
+        assert_eq!(
+            user_error.code,
+            user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
+        );
+        assert_eq!(
+            user_error.fields.get("provider"),
+            Some(&serde_json::Value::String("openai".to_string()))
+        );
+
+        let err = AgentLoopError::llm_kind(LlmErrorKind::Authentication, "bad key");
+        assert_eq!(
+            err.user_facing_error(UserFacingErrorContext::default())
+                .code,
+            user_facing_error_codes::PROVIDER_MISCONFIGURED
+        );
+
+        let err = AgentLoopError::llm_kind(LlmErrorKind::RateLimited, "slow down");
+        let user_error =
+            err.user_facing_error(UserFacingErrorContext::default().with_retry_after(5));
+        assert_eq!(
+            user_error.code,
+            user_facing_error_codes::PROVIDER_RATE_LIMITED
+        );
+        assert_eq!(user_error.fields.get("retry_after"), Some(&json_val(&5)));
+
+        let err = AgentLoopError::llm_kind(LlmErrorKind::Unavailable, "overloaded");
+        assert_eq!(
+            err.user_facing_error(UserFacingErrorContext::default())
+                .code,
+            user_facing_error_codes::PROVIDER_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_semantic_kind_drives_predicates() {
+        assert!(AgentLoopError::llm_kind(LlmErrorKind::RateLimited, "x").is_rate_limited());
+        assert!(AgentLoopError::llm_kind(LlmErrorKind::Authentication, "x").is_auth_error());
+        assert!(AgentLoopError::llm_kind(LlmErrorKind::Unavailable, "x").is_server_error());
+        // Untyped errors keep the legacy string behavior.
+        assert!(AgentLoopError::llm("error (429)").is_rate_limited());
+        assert!(
+            !AgentLoopError::llm_kind(LlmErrorKind::Authentication, "error (429)")
+                .is_rate_limited()
         );
     }
 

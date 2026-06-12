@@ -65,6 +65,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
             reasoning: Some(ReasoningConfig {
                 effort: Some("high".into()),
             }),
+            error_disclosure: None,
             hints: None,
         }),
         metadata: None,
@@ -145,6 +146,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
             reasoning: Some(ReasoningConfig {
                 effort: Some("low".into()),
             }),
+            error_disclosure: None,
             hints: None,
         }),
         metadata: None,

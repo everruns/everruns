@@ -179,7 +179,9 @@ pub use command_host::{
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
-pub use error::{AgentLoopError, Result, StoreResultExt, from_json, json_val};
+pub use error::{
+    AgentLoopError, LlmError, LlmErrorKind, Result, StoreResultExt, from_json, json_val,
+};
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
     InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
@@ -206,8 +208,9 @@ pub use traits::{
     SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
-    UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
-    codes as user_facing_error_codes, trim_error_chain_prefixes,
+    ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
+    classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
+    metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
 };
 
 // Channel abstraction re-exports

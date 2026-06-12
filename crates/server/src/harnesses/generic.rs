@@ -30,6 +30,12 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
         BuiltInCapabilityDefinition::new("loop_detection"),
+        // Trusted, operator-facing default harness: show full provider error
+        // detail so failures (bad key, quota, outage) are self-explanatory.
+        BuiltInCapabilityDefinition::with_config(
+            "error_disclosure",
+            serde_json::json!({"mode": "detailed"}),
+        ),
         BuiltInCapabilityDefinition::new("message_metadata"),
         BuiltInCapabilityDefinition::with_config(
             "compaction",

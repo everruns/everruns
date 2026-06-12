@@ -1088,6 +1088,8 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
         tool_definitions: vec![],
         max_iterations: 8,
         error: None,
+        user_facing_error: None,
+        error_disclosure: None,
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -1141,6 +1143,8 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
         tool_definitions: vec![],
         max_iterations: 8,
         error: None,
+        user_facing_error: None,
+        error_disclosure: None,
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -1185,6 +1189,8 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         tool_definitions: vec![],
         max_iterations: 8,
         error: None,
+        user_facing_error: None,
+        error_disclosure: None,
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -1235,6 +1241,8 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
         tool_definitions: vec![],
         max_iterations: 8,
         error: None,
+        user_facing_error: None,
+        error_disclosure: None,
         usage: Some(TokenUsage::new(20, 8)),
         output_message_id: Some(final_message_id),
         time_to_first_token_ms: Some(50),
@@ -1294,6 +1302,8 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
         tool_definitions: vec![],
         max_iterations: 8,
         error: Some("Budget exhausted".into()),
+        user_facing_error: None,
+        error_disclosure: None,
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -1355,6 +1365,8 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
         error: Some(
             "LLM error: API key is required. Configure the API key in provider settings.".into(),
         ),
+        user_facing_error: None,
+        error_disclosure: None,
         usage: None,
         output_message_id: None,
         time_to_first_token_ms: None,
@@ -1383,6 +1395,67 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
         turn_failed.error_code.as_deref(),
         Some(user_facing_error_codes::PROVIDER_MISCONFIGURED)
     );
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
+    // Generic disclosure mode: the reason atom already collapsed a quota
+    // failure into processing_error. The turn.failed event must reuse that
+    // disclosed error instead of re-classifying the raw strings, otherwise
+    // it would leak past the generic mode.
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: false,
+        text: "I encountered an error while processing your request. Please try again later."
+            .into(),
+        tool_calls: vec![],
+        has_tool_calls: false,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: Some("LLM error: OpenAI API error (429): insufficient_quota".into()),
+        user_facing_error: Some(everruns_core::UserFacingError::new(
+            user_facing_error_codes::PROCESSING_ERROR,
+        )),
+        error_disclosure: Some(everruns_core::ErrorDisclosure::Generic),
+        usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
+        response_id: None,
+        locale: None,
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(plan, RuntimeTurnPlan::Complete { .. }));
+
+    let events = adapter.event_emitter.events().await;
+    let turn_failed = events
+        .into_iter()
+        .find_map(|event| match event.data {
+            EventData::TurnFailed(data) => Some(data),
+            _ => None,
+        })
+        .expect("turn.failed event emitted");
+
+    assert_eq!(
+        turn_failed.error_code.as_deref(),
+        Some(user_facing_error_codes::PROCESSING_ERROR)
+    );
+    assert_eq!(turn_failed.error_fields, None);
+    assert_eq!(turn_failed.error_disclosure.as_deref(), Some("generic"));
 }
 
 #[tokio::test]

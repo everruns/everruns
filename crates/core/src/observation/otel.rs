@@ -1033,6 +1033,7 @@ mod tests {
             error: "model overloaded".to_string(),
             error_code: Some("overloaded".to_string()),
             error_fields: None,
+            error_disclosure: None,
         };
         listener
             .on_event(&Event::new(
@@ -1114,6 +1115,7 @@ mod tests {
             error: "something broke".to_string(),
             error_code: None,
             error_fields: None,
+            error_disclosure: None,
         };
         listener
             .on_event(&Event::new(

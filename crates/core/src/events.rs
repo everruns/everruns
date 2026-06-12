@@ -710,6 +710,12 @@ pub struct OutputMessageCompletedData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub error_fields: Option<UserFacingErrorFields>,
+
+    /// Error-disclosure mode applied to `error_code`/`error_fields`
+    /// ("generic" | "standard" | "detailed"). Tracking metadata; absent for
+    /// non-error messages and for paths that predate disclosure modes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_disclosure: Option<String>,
 }
 
 impl OutputMessageCompletedData {
@@ -720,6 +726,7 @@ impl OutputMessageCompletedData {
             usage: None,
             error_code: None,
             error_fields: None,
+            error_disclosure: None,
         }
     }
 
@@ -735,6 +742,11 @@ impl OutputMessageCompletedData {
 
     pub fn with_user_facing_error(mut self, error: &UserFacingError) -> Self {
         error.apply_to_event_fields(&mut self.error_code, &mut self.error_fields);
+        self
+    }
+
+    pub fn with_error_disclosure(mut self, mode: crate::ErrorDisclosure) -> Self {
+        self.error_disclosure = Some(mode.as_str().to_string());
         self
     }
 }
@@ -1938,6 +1950,12 @@ pub struct TurnFailedData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub error_fields: Option<UserFacingErrorFields>,
+
+    /// Error-disclosure mode applied to `error_code`/`error_fields`
+    /// ("generic" | "standard" | "detailed"). Full diagnostic detail remains
+    /// available to operators via reason.completed failure events and tracing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_disclosure: Option<String>,
 }
 
 /// Data for turn.cancelled event
@@ -3937,6 +3955,7 @@ mod contract_tests {
             error: "Rate limit exceeded".to_string(),
             error_code: Some("RATE_LIMIT".to_string()),
             error_fields: None,
+            error_disclosure: None,
         };
         with_settings!({
             sort_maps => true,
@@ -4462,6 +4481,7 @@ mod contract_tests {
                     error: "err".to_string(),
                     error_code: None,
                     error_fields: None,
+                    error_disclosure: None,
                 }
                 .into(),
             ),

@@ -2174,6 +2174,7 @@ mod tests {
                 error: "OpenAI API error (429): {\"error\":{\"message\":\"Rate limit reached for gpt-4o in organization org-redacted on requests per min (RPM): Limit 500\",\"code\":\"rate_limit_exceeded\"}}".to_string(),
                 error_code: Some(user_facing_error_codes::PROVIDER_RATE_LIMITED.to_string()),
                 error_fields: None,
+                error_disclosure: None,
             },
         );
 
@@ -2196,6 +2197,7 @@ mod tests {
                 error: "OpenAI API error (503): server overloaded".to_string(),
                 error_code: Some(user_facing_error_codes::PROVIDER_UNAVAILABLE.to_string()),
                 error_fields: None,
+                error_disclosure: None,
             },
         );
 
@@ -2223,6 +2225,7 @@ mod tests {
                 error: raw_error.to_string(),
                 error_code: Some(user_facing_error_codes::PROVIDER_MISCONFIGURED.to_string()),
                 error_fields: None,
+                error_disclosure: None,
             },
         );
 
@@ -2255,6 +2258,7 @@ mod tests {
                 error: "OpenAI API error (401): invalid api key".to_string(),
                 error_code: Some(user_facing_error_codes::PROVIDER_MISCONFIGURED.to_string()),
                 error_fields: None,
+                error_disclosure: None,
             },
         );
 
@@ -2277,6 +2281,7 @@ mod tests {
                 error: "stack trace: thread 'tokio-runtime-worker' panicked at 'oops'".to_string(),
                 error_code: None,
                 error_fields: None,
+                error_disclosure: None,
             },
         );
 

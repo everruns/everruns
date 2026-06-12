@@ -58,7 +58,7 @@ use crate::traits::{
     SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
-use crate::{UserFacingErrorContext, user_facing_error_codes};
+use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};
 
 // ============================================================================
 // Helper Functions
@@ -232,6 +232,7 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "Rate limited by the AI provider. Please wait a moment.",
     "The conversation has become too long for the model to process. Please start a new session or reduce the context size.",
     "There is a misconfiguration with the AI provider. Please contact support.",
+    "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
 ];
 
 /// Returns true if the message is an error placeholder that should be stripped
@@ -255,6 +256,7 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
                 | user_facing_error_codes::REQUEST_TOO_LARGE
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
+                | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE
                 | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
                 | user_facing_error_codes::PROCESSING_ERROR
@@ -282,6 +284,20 @@ fn append_guarded_thinking_delta(
         pending_thinking_delta.push_str(delta);
         None
     }
+}
+
+/// Per-message error-disclosure override from the most recent user message's
+/// controls (mirrors how reasoning effort is resolved). The value is clamped
+/// against the capability-configured ceiling in `resolve_error_disclosure`.
+fn error_disclosure_override(messages: &[Message]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == MessageRole::User)?
+        .controls
+        .as_ref()?
+        .error_disclosure
+        .clone()
 }
 
 fn is_dynamic_error_placeholder(text: &str) -> bool {
@@ -351,6 +367,14 @@ pub struct ReasonResult {
     /// Error message if the call failed
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Disclosed user-facing classification of the failure, already filtered
+    /// through the resolved error-disclosure mode. Hosts must prefer this over
+    /// re-classifying `error`/`text` strings so disclosure stays consistent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_facing_error: Option<UserFacingError>,
+    /// Error-disclosure mode that was applied to `user_facing_error`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_disclosure: Option<ErrorDisclosure>,
     /// Token usage from the LLM call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
@@ -763,23 +787,63 @@ impl ReasonAtom {
             );
         }
 
-        // Execute the LLM call and handle errors gracefully
-        let result = match self
-            .execute_llm_call(
-                context.session_id,
-                harness_id,
-                agent_id,
-                org_id,
-                &context,
-                &mcp_tool_definitions,
-                &trace_id,
-                &reason_span_id,
-                previous_response_id,
-                iteration,
-                assembled,
-            )
-            .await
-        {
+        // Assemble the turn context up-front so the error path below knows
+        // the resolved provider/model and the error-disclosure mode even when
+        // the LLM call (or the assembly itself) fails.
+        let assembled = match assembled {
+            Some(assembled) => Ok(assembled),
+            None => {
+                assemble_turn_context(
+                    self.harness_store.as_ref(),
+                    self.agent_store.as_ref(),
+                    self.session_store.as_ref(),
+                    self.message_retriever.as_ref(),
+                    self.provider_store.as_ref(),
+                    &self.capability_registry,
+                    context.session_id,
+                    harness_id,
+                    agent_id,
+                    &mcp_tool_definitions,
+                    self.file_store.clone(),
+                )
+                .await
+            }
+        };
+
+        let (error_disclosure, error_context, call_result) = match assembled {
+            Ok(assembled) => {
+                let error_disclosure = crate::capabilities::resolve_error_disclosure(
+                    &assembled.resolved_capability_configs,
+                    error_disclosure_override(&assembled.messages).as_deref(),
+                );
+                let error_context = UserFacingErrorContext::default()
+                    .with_provider(assembled.model_with_provider.provider_type.to_string())
+                    .with_model_id(assembled.model_with_provider.model.clone());
+                let call_result = self
+                    .execute_llm_call(
+                        context.session_id,
+                        harness_id,
+                        agent_id,
+                        org_id,
+                        &context,
+                        &trace_id,
+                        &reason_span_id,
+                        previous_response_id,
+                        iteration,
+                        assembled,
+                    )
+                    .await;
+                (error_disclosure, error_context, call_result)
+            }
+            Err(error) => (
+                ErrorDisclosure::default(),
+                UserFacingErrorContext::default(),
+                Err(error),
+            ),
+        };
+
+        // Handle LLM call errors gracefully
+        let result = match call_result {
             Ok(result) => {
                 // Calculate reason phase duration
                 let reason_duration_ms = reason_start.elapsed().as_millis() as u64;
@@ -827,7 +891,8 @@ impl ReasonAtom {
                 );
 
                 let error_msg = e.to_string();
-                let user_error = e.user_facing_error(UserFacingErrorContext::default());
+                let source_error = e.user_facing_error(error_context);
+                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
                 let user_error_text = user_error.fallback_message();
 
                 // Only emit user-facing error events for non-transient errors.
@@ -844,6 +909,11 @@ impl ReasonAtom {
                     let mut error_message = Message::assistant(&user_error_text);
                     let mut metadata = std::collections::HashMap::new();
                     user_error.apply_to_message_metadata(&mut metadata);
+                    UserFacingError::apply_disclosure_to_message_metadata(
+                        &mut metadata,
+                        error_disclosure,
+                        &source_error.code,
+                    );
                     error_message.metadata = Some(metadata);
 
                     output_message_id = Some(error_message.id);
@@ -861,7 +931,8 @@ impl ReasonAtom {
                             context.session_id,
                             error_msg_context,
                             OutputMessageCompletedData::new(error_message)
-                                .with_user_facing_error(&user_error),
+                                .with_user_facing_error(&user_error)
+                                .with_error_disclosure(error_disclosure),
                         ))
                         .await
                     {
@@ -908,6 +979,8 @@ impl ReasonAtom {
                     tool_definitions: vec![],
                     max_iterations: default_max_iterations(),
                     error: Some(error_msg),
+                    user_facing_error: Some(user_error),
+                    error_disclosure: Some(error_disclosure),
                     usage: None,
                     output_message_id,
                     time_to_first_token_ms: None,
@@ -930,33 +1003,12 @@ impl ReasonAtom {
         agent_id: Option<AgentId>,
         org_id: i64,
         context: &AtomContext,
-        mcp_tool_definitions: &[ToolDefinition],
         trace_id: &str,
         reason_span_id: &str,
         previous_response_id: Option<String>,
         iteration: u32,
-        assembled: Option<AssembledTurnContext>,
+        assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
-        let assembled = match assembled {
-            Some(assembled) => assembled,
-            None => {
-                assemble_turn_context(
-                    self.harness_store.as_ref(),
-                    self.agent_store.as_ref(),
-                    self.session_store.as_ref(),
-                    self.message_retriever.as_ref(),
-                    self.provider_store.as_ref(),
-                    &self.capability_registry,
-                    session_id,
-                    harness_id,
-                    agent_id,
-                    mcp_tool_definitions,
-                    self.file_store.clone(),
-                )
-                .await?
-            }
-        };
-
         let messages = assembled.messages;
         let prior_usage = assembled.session.usage.clone();
         let model_with_provider = assembled.model_with_provider;
@@ -2436,6 +2488,8 @@ impl ReasonAtom {
             tool_definitions: runtime_agent.tools.clone(),
             max_iterations: runtime_agent.max_iterations,
             error: None,
+            user_facing_error: None,
+            error_disclosure: None,
             usage,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
@@ -2516,6 +2570,8 @@ impl ReasonAtom {
             tool_definitions: tool_definitions.to_vec(),
             max_iterations,
             error: None,
+            user_facing_error: None,
+            error_disclosure: None,
             usage: None,
             output_message_id: Some(output_message_id),
             time_to_first_token_ms: None,

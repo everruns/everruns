@@ -15,7 +15,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_core::is_provider_quota_message;
 use everruns_core::llm_driver_helpers::{
     self, AUDIO_CONTENT_PLACEHOLDER, GEMINI_NOT_FOUND_PATTERNS, GEMINI_TOO_LARGE_PATTERNS,
     parse_data_url,
@@ -367,6 +368,15 @@ impl LlmDriver for GeminiLlmDriver {
                     )));
                 }
 
+                // Exhausted billing quota is not transient — fail fast
+                // instead of burning retries.
+                if is_provider_quota_message(&error_text) {
+                    return Err(AgentLoopError::llm_kind(
+                        LlmErrorKind::QuotaExhausted,
+                        format!("Gemini API error ({}): {}", status, error_text),
+                    ));
+                }
+
                 let wait_duration = self.retry_config.calculate_backoff(retry_metadata.attempts);
 
                 tracing::warn!(
@@ -397,16 +407,23 @@ impl LlmDriver for GeminiLlmDriver {
                 return Err(AgentLoopError::request_too_large(error_msg));
             }
 
+            // Attach the semantic error kind while the HTTP status and body
+            // are still available (see LlmErrorKind).
+            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
             if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm(format!(
-                    "{} (after {} retries, last error: {})",
-                    error_msg,
-                    retry_metadata.attempts,
-                    last_error.unwrap_or_default()
-                )));
+                return Err(AgentLoopError::llm_kind(
+                    kind,
+                    format!(
+                        "{} (after {} retries, last error: {})",
+                        error_msg,
+                        retry_metadata.attempts,
+                        last_error.unwrap_or_default()
+                    ),
+                ));
             }
 
-            return Err(AgentLoopError::llm(error_msg));
+            return Err(AgentLoopError::llm_kind(kind, error_msg));
         };
 
         if retry_metadata.had_retries() {
