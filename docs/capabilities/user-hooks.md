@@ -19,7 +19,7 @@ agent execution lifecycle. The runtime hands each hook a structured JSON
 payload through environment variables (`$EVERRUNS_HOOK_PAYLOAD_JSON` plus a
 copy at `$EVERRUNS_HOOK_PAYLOAD_PATH` on the session VFS) and reads a
 structured decision back from stdout. (Delivery is via env vars rather than
-process stdin because the `virtual_bash` interpreter runs the script
+process stdin because the `bashkit_shell` interpreter runs the script
 in-process and exposes no process stdin.) Hooks can run silently (logging
 only), mutate the inputs they observe, or block the action outright.
 
@@ -43,7 +43,7 @@ shared across an organization, and every invocation lands in the audit log.
 ## Risk
 
 High. The capability accepts arbitrary shell commands from config. Even
-though the commands run inside the session's `virtual_bash` sandbox
+though the commands run inside the session's `bashkit_shell` sandbox
 (no host filesystem, no host network beyond the session's egress policy),
 the assignment gate is admin-only — anyone who can configure this
 capability can run arbitrary code in the session sandbox on every agent
@@ -194,7 +194,7 @@ Three accepted shapes, tried in this order:
 
 - **Timeout** — configurable per hook; default 5 s, max 30 s.
 - **Output size** — 64 KiB total (stdout + stderr).
-- **Sandbox** — runs through `virtual_bash` against the session VFS. No
+- **Sandbox** — runs through `bashkit_shell` against the session VFS. No
   host shell. Inherits the session's egress policy.
 - **stderr** — captured into the audit log; never shown to the model
   unless `decision == "block"` with no `reason`.
@@ -258,7 +258,7 @@ for ready-to-paste user-config bundle JSON.
 {
   "capabilities": [
     {
-      "ref": "virtual_bash"
+      "ref": "bashkit_shell"
     },
     {
       "ref": "user_hooks",
@@ -292,7 +292,7 @@ for ready-to-paste user-config bundle JSON.
 {
   "capabilities": [
     { "ref": "session_file_system" },
-    { "ref": "virtual_bash" },
+    { "ref": "bashkit_shell" },
     {
       "ref": "user_hooks",
       "config": {
@@ -324,7 +324,7 @@ for ready-to-paste user-config bundle JSON.
 {
   "capabilities": [
     { "ref": "session_file_system" },
-    { "ref": "virtual_bash" },
+    { "ref": "bashkit_shell" },
     {
       "ref": "user_hooks",
       "config": {
@@ -357,7 +357,7 @@ a pasted private key, rejects the turn with a message shown to the user.
 ```json
 {
   "capabilities": [
-    { "ref": "virtual_bash" },
+    { "ref": "bashkit_shell" },
     {
       "ref": "user_hooks",
       "config": {
@@ -407,7 +407,7 @@ turn finished cleanly.
 {
   "capabilities": [
     { "ref": "session_file_system" },
-    { "ref": "virtual_bash" },
+    { "ref": "bashkit_shell" },
     {
       "ref": "user_hooks",
       "config": {
@@ -466,4 +466,4 @@ hook's `user_message`.
 - [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md) — full contract
 - [`specs/capabilities.md`](https://github.com/everruns/everruns/blob/main/specs/capabilities.md) — capability framework
 - [`specs/threat-model.md`](https://github.com/everruns/everruns/blob/main/specs/threat-model.md) — TM-HOOK entries
-- [Virtual Bash](/capabilities/virtual-bash/) — the sandbox that runs hook commands
+- [Bashkit Shell](/capabilities/bashkit-shell/) — the sandbox that runs hook commands

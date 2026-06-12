@@ -199,7 +199,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_sql_database" => Some("sql-database"),
         "subagents" => Some("sub-agents"),
         "stateless_todo_list" => Some("task-management"),
-        "virtual_bash" => Some("virtual-bash"),
+        "bashkit_shell" => Some("bashkit-shell"),
         "web_fetch" => Some("web-fetch"),
         _ => None,
     }
@@ -495,8 +495,8 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // virtual_bash is High risk (code execution)
-        let bash_cap = registry.get("virtual_bash").unwrap();
+        // bashkit_shell is High risk (code execution)
+        let bash_cap = registry.get("bashkit_shell").unwrap();
         let info = CapabilityInfo::from_core(bash_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 

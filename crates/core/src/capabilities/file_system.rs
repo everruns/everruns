@@ -138,7 +138,7 @@ fn effective_read_defaults(
 }
 
 /// Normalize a file path by stripping the /workspace prefix.
-/// This ensures both file_system and virtual_bash capabilities use the same
+/// This ensures both file_system and bashkit_shell capabilities use the same
 /// path format in the session file store.
 ///
 /// Examples:

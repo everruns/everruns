@@ -6,7 +6,7 @@
 
 ## Why
 
-`virtual_bash` (see `specs/bashkit-requirements.md`) gives agents scripted
+`bashkit_shell` (see `specs/bashkit-requirements.md`) gives agents scripted
 execution over the session workspace. It is excellent at shell-idiom file
 munging but weak at structured-data work: everything is text, piping is
 fragile, quoting is a footgun, and extending it with typed host functions
@@ -26,10 +26,10 @@ targets, in order:
 7. **Code mode** *(later)* — the agent's available tools registered as Lua
    functions, so one script orchestrates many tool calls per turn.
 
-### Goal: supersede `virtual_bash`
+### Goal: supersede `bashkit_shell`
 
 The intent is for `lua` to become the primary execution capability and for
-`virtual_bash` to be deprecated once `lua` reaches feature parity for the
+`bashkit_shell` to be deprecated once `lua` reaches feature parity for the
 workflows bash is used for today. Until then the two ship side by side and are
 evaluated head to head (round-trips per task, token cost, success rate, sandbox
 incidents). No bash removal happens before that evidence exists. See
@@ -37,10 +37,10 @@ incidents). No bash removal happens before that evidence exists. See
 
 ## Architecture
 
-Mirrors `virtual_bash` so the proven scaffolding is reused:
+Mirrors `bashkit_shell` so the proven scaffolding is reused:
 
 - `LuaCapability` — `Capability` impl. `risk_level() = High`, admin-gated
-  exactly like `virtual_bash` (`check_high_risk_caps` /
+  exactly like `bashkit_shell` (`check_high_risk_caps` /
   `require_admin_for_high_risk`). Depends on `session_file_system`; contributes
   the `file_system` feature.
 - `LuaTool` — single `lua` tool. `cpu_bound`, `concurrency_class =
@@ -225,17 +225,17 @@ prompt) means it is paid only when `lua` is present.
   `lua` feature, run in CI) assert that the math tools are hidden from the model
   yet executed through one `lua` script.
 
-## Migration (supersede `virtual_bash`)
+## Migration (supersede `bashkit_shell`)
 
 1. Reach parity for the file-munging workflows bash covers (Phase 2 eval gate).
 2. Land code mode (Phase 4) — the capability bash cannot match.
-3. Default new agents to `lua`; mark `virtual_bash` deprecated in capability
+3. Default new agents to `lua`; mark `bashkit_shell` deprecated in capability
    metadata; keep existing bash-assigned agents running.
-4. Remove `virtual_bash` only after a deprecation window with no parity gaps.
+4. Remove `bashkit_shell` only after a deprecation window with no parity gaps.
 
 ## Evaluation vs bash
 
-| | `lua` | `virtual_bash` |
+| | `lua` | `bashkit_shell` |
 |---|---|---|
 | Structured data | Native tables + JSON | Text + fragile piping |
 | Sandbox ownership | Fully ours, extensible host fns | bashkit builtin set |
@@ -265,7 +265,7 @@ excluded from the workspace) — **not** `test_cases/`, which is for manual UI
 testing.
 
 - **A/B design.** Identical agent/model/prompt-scaffolding; swap only the
-  execution capability (`virtual_bash` ↔ `lua`). N runs per task for variance.
+  execution capability (`bashkit_shell` ↔ `lua`). N runs per task for variance.
 - **Corpus, sliced by target** (logic/math, VFS munging, JSON/CSV transforms,
   multi-file edits, grep-and-summarize, report generation, code-mode). Each task
   = seeded workspace + goal + a deterministic Rust grader (LLM-judge, blinded to
@@ -289,7 +289,7 @@ engines were measured against the same bash baseline:
 
 | arm | success | tool_calls | tool_errors | avg_iters | avg_ms |
 |---|---|---|---|---|---|
-| virtual_bash | 12/12 | 18 | 0 | 2.5 | 2597 |
+| bashkit_shell | 12/12 | 18 | 0 | 2.5 | 2597 |
 | lua — **mlua** | **12/12** | **12** | **0** | **2.0** | **2528** |
 | lua — piccolo | 9/12 | 46 | 27 | 4.6 | 7218 |
 

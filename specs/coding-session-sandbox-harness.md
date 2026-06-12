@@ -31,7 +31,7 @@ sandbox flow. It demonstrates the intended user experience:
 
 Intentionally omitted compared with `generic`:
 
-- `virtual_bash`
+- `bashkit_shell`
 
 ## Prompt intent
 

@@ -471,7 +471,7 @@ SKILL.md content may contain `` !`command` `` placeholders that, if expanded by 
 3. The function itself is preserved (full implementation, unit-test coverage) with bounded fan-out: at most `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) placeholders expanded per activation, at most 4 shells concurrently. These bounds protect a future re-enable from per-activation CPU / process exhaustion.
 4. SKILL.md content originating from user-facing session/file creation or update flows — including the session-files API, `initial_files`, and runtime `write_file` calls — stays untrusted regardless of metadata.
 5. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
-6. Command execution MUST target the session sandbox (virtual bash via `bashkit`) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
+6. Command execution MUST target the session sandbox (bashkit shell) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
 
 Follow-up work (tracked on EVE-388): (a) add a platform-controlled provenance field — e.g. a `mount_capability_id` column on `session_files` populated only by mount application code and rejected on all user-facing API paths, AND (b) replace `ProcessCommandExecutor` with a session-sandbox-backed executor (`bashkit` / managed session sandbox) so execution is confined to the session VFS. Both must land before the gate is flipped. See `specs/skills-registry.md` "Activation Substitution Pipeline" for the source/outcome matrix.
 
@@ -711,7 +711,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`) require Admin role to assign via API; gate is at create/update only, member-owned agents that already had high-risk capabilities are grandfathered (see `specs/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`) require Admin role to assign via API; gate is at create/update only, member-owned agents that already had high-risk capabilities are grandfathered (see `specs/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -795,7 +795,7 @@ Agents with the `platform_management` capability can create, update, and delete 
 
 - **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
 - **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) Platform tool execution resolves the owning session's user into a real `Caller` and evaluates command policy with the active `PermissionResolver`, so member-owned Platform Chat sessions do not inherit internal/owner bypass. (4) Both in-process (`DirectPlatformStore`) and gRPC (`ExecuteCommand`) platform paths route mutating operations through the normal command/policy boundary instead of raw storage writes. (5) `WorkerAdapters::platform_store(org_id, session_id)` receives the session's actual org_id and session_id from activity context, preventing cross-org access via hardcoded defaults and preserving session-owner authorization.
-- **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
+- **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `bashkit_shell`). Add recursion depth limits for agent-spawned session chains.
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
 
@@ -855,7 +855,7 @@ See [voice.md](voice.md) for the feature contract.
 
 ## 15. Bash Sandbox (TM-BASH)
 
-Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
+Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `bashkit_shell` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -934,7 +934,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 Experimental sandboxed Lua execution capability (`crates/core/src/capabilities/lua.rs`,
 `specs/lua-execution.md`). Engine: **mlua** (vendored Lua 5.4, never LuaJIT),
 behind the `lua` cargo feature. High risk, admin-gated (same gates as
-`virtual_bash`), and runtime-gated by `FEATURE_LUA`. One fresh VM per invocation,
+`bashkit_shell`), and runtime-gated by `FEATURE_LUA`. One fresh VM per invocation,
 never shared across sessions/tenants. All hardening is on by default — no
 configuration knobs.
 
@@ -1251,8 +1251,8 @@ entries from `user_hooks()`. See `specs/user-hooks.md`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-HOOK-001 | Hook-as-injection-amplifier: model-controlled file at the hook command path lets prompt-injected agent influence hook behavior | High | Hooks execute through `virtual_bash` against the session VFS, identical FS isolation as the `bash` tool. Operators who reference scripts from agent-writable paths (`/workspace`) opt in to that risk; the recommended pattern is to inline the command or read scripts from read-only capability mounts | MITIGATED |
-| TM-HOOK-002 | Hook-as-exfil-channel: a hook command makes outbound network calls to leak session state | High | This build of bashkit is compiled **without** the `http_client` feature (see `virtual_bash.rs::642` and TM-BASH-003), so `curl`/`after_http`/etc. builtins do not exist in the hook's vocabulary at all. The interpreter has no built-in path to open a socket. If a future build flips `http_client` on, this entry must be re-evaluated and an outbound allowlist enforced at the hook layer. | MITIGATED |
+| TM-HOOK-001 | Hook-as-injection-amplifier: model-controlled file at the hook command path lets prompt-injected agent influence hook behavior | High | Hooks execute through `bashkit_shell` against the session VFS, identical FS isolation as the `bash` tool. Operators who reference scripts from agent-writable paths (`/workspace`) opt in to that risk; the recommended pattern is to inline the command or read scripts from read-only capability mounts | MITIGATED |
+| TM-HOOK-002 | Hook-as-exfil-channel: a hook command makes outbound network calls to leak session state | High | This build of bashkit is compiled **without** the `http_client` feature (see `bashkit_shell.rs::642` and TM-BASH-003), so `curl`/`after_http`/etc. builtins do not exist in the hook's vocabulary at all. The interpreter has no built-in path to open a socket. If a future build flips `http_client` on, this entry must be re-evaluated and an outbound allowlist enforced at the hook layer. | MITIGATED |
 | TM-HOOK-003 | Stdout poisoning: a long-running or malicious hook fills stdout with bogus JSON or floods to deny tool execution | Medium | Per-hook timeout (default 5 s, max 30 s) + 64 KiB combined stdout/stderr cap (reuses `OutputHardLimitHook` ceiling) + `on_error` policy (`block`/`allow`/`warn`). Overrun is treated as an executor error, not a decision | MITIGATED |
 | TM-HOOK-004 | Privilege escalation via capability contribution: a built-in capability ships hooks that exfiltrate or block | High | The built-in `user_hooks` capability is permanently `High` and admin-gated on assignment via `check_high_risk_caps`. Capability-contributed hooks are surfaced in audit logs with their `{capability_id}:{name}` `HookId` so operators can locate and mute them via the `disabled_contributions` list on a sibling `user_hooks` config. Declarative-capability-contributed hook bundles (with the matching auto-elevation rule) are **not yet implemented** — see `specs/user-hooks.md` for the deferred path | MITIGATED |
 | TM-HOOK-005 | Hook chain DoS via fan-out across many configured hooks | Medium | Per-hook timeout caps wall-clock; hook execution is serial within a single event firing; combined chain wall-clock for `pre_tool_use` is bounded by `Σ timeout_ms` which is itself bounded by `(MAX_HOOK_TIMEOUT_MS × N hooks)`. Operators set the contributing capability list, capping `N` in practice | MITIGATED |
@@ -1274,7 +1274,7 @@ trusting the contents of that path. Recommended patterns:
 
 **TM-HOOK-002 — Egress inheritance:** `BashHookExecutor` does not
 construct a separate `NetworkAccessList`; the session sandbox supplies
-the same policy `virtual_bash` honors. There is no way to "opt out" a
+the same policy `bashkit_shell` honors. There is no way to "opt out" a
 hook command from session egress controls without explicit operator
 action on the agent.
 

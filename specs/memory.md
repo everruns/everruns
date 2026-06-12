@@ -180,7 +180,7 @@ memory archival/deletion is handled gracefully against this snapshot.
 ### Read
 
 * `read_file`, `list_directory`, `grep_files`, `stat_file`, the Workspace UI,
-  direct worker adapters, and `virtual_bash` include mounted Memory files.
+  direct worker adapters, and `bashkit_shell` include mounted Memory files.
 * Path display remains under `/workspace`; storage paths are normalized
   internally.
 * Directory listings merge workspace files and mounted Memory files

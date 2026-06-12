@@ -25,7 +25,7 @@ The **Generic** harness is the recommended default for most use cases. It config
 | Capability | What it provides |
 |------------|-----------------|
 | [File System](/capabilities/file-system/) | Read, write, list, grep, and delete files in the session workspace (`/workspace`) |
-| [Virtual Bash](/capabilities/virtual-bash/) | Sandboxed bash shell for running commands, scripts, and text processing |
+| [Bashkit Shell](/capabilities/bashkit-shell/) | Sandboxed bash shell for running commands, scripts, and text processing |
 | [Web Fetch](/capabilities/web-fetch/) | Fetch web content with file download support |
 | [Storage](/capabilities/session-storage/) | Key/value store for general data and encrypted secret storage |
 | [Session](/capabilities/session/) | Access session metadata and manage session title |

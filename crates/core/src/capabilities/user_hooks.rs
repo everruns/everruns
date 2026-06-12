@@ -57,7 +57,7 @@ impl Capability for UserHooksCapability {
 
     fn risk_level(&self) -> RiskLevel {
         // Accepts arbitrary bash commands from config. Even though execution
-        // is sandboxed through virtual_bash, the assignment gate must stay
+        // is sandboxed through bashkit_shell, the assignment gate must stay
         // admin-only — anyone who can configure this capability can run
         // arbitrary code in the session sandbox on every agent action.
         RiskLevel::High

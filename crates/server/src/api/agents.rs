@@ -1311,7 +1311,7 @@ pub async fn preview_agent(
 
 // Regression tests for fix(capabilities): restore high-risk levels for
 // bash/fetch (#1500). `require_admin_for_high_risk` is the HTTP-side gate
-// that enforces TM-AGENT-005: a member cannot assign `virtual_bash` or
+// that enforces TM-AGENT-005: a member cannot assign `bashkit_shell` or
 // `web_fetch` to an agent. The fix re-classified both capabilities as
 // High; without that classification this gate silently becomes a no-op
 // for the two most dangerous capabilities.
@@ -1347,22 +1347,36 @@ mod high_risk_admin_gate_tests {
     }
 
     #[test]
-    fn member_blocked_from_assigning_virtual_bash() {
+    fn member_blocked_from_assigning_bashkit_shell() {
         let svc = capability_service();
         let result = require_admin_for_high_risk(
             &org_with_role(OrgRole::Member),
-            &caps(&["virtual_bash"]),
+            &caps(&["bashkit_shell"]),
             &svc,
         );
-        let (status, body) = result.expect_err("member must not assign virtual_bash");
+        let (status, body) = result.expect_err("member must not assign bashkit_shell");
         assert_eq!(status, StatusCode::FORBIDDEN);
         assert!(
             body.0
                 .detail
                 .as_deref()
                 .unwrap_or("")
-                .contains("virtual_bash")
+                .contains("bashkit_shell")
         );
+    }
+
+    #[test]
+    fn member_blocked_from_assigning_legacy_virtual_bash_alias() {
+        // The pre-rename `virtual_bash` ID resolves to `bashkit_shell` via
+        // registry aliasing; the admin gate must cover it identically.
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Member),
+            &caps(&["virtual_bash"]),
+            &svc,
+        );
+        let (status, _body) = result.expect_err("member must not assign via legacy alias");
+        assert_eq!(status, StatusCode::FORBIDDEN);
     }
 
     #[test]
@@ -1390,11 +1404,11 @@ mod high_risk_admin_gate_tests {
     }
 
     #[test]
-    fn admin_allowed_for_virtual_bash() {
+    fn admin_allowed_for_bashkit_shell() {
         let svc = capability_service();
         let result = require_admin_for_high_risk(
             &org_with_role(OrgRole::Admin),
-            &caps(&["virtual_bash"]),
+            &caps(&["bashkit_shell"]),
             &svc,
         );
         assert!(result.is_ok());

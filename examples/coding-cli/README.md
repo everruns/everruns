@@ -279,7 +279,7 @@ run.
   `ToolOutputPersistenceCapability` (saves large exec output), and a tiny
   custom `CodingBashCapability` for the shell tool. Picks a driver
   (Anthropic / OpenAI / llmsim).
-- `src/tools.rs` — `BashTool` only. Built-in `virtual_bash` runs against the
+- `src/tools.rs` — `BashTool` only. Built-in `bashkit_shell` runs against the
   VFS, not the real workspace, so the shell tool stays custom.
 - `src/approval.rs` — `ApprovalGate` and the request enum; implements
   `everruns_runtime::FileApprovalGate` so it can be plugged directly into the

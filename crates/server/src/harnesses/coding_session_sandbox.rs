@@ -98,7 +98,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn coding_session_sandbox_harness_omits_virtual_bash() {
+    fn coding_session_sandbox_harness_omits_bashkit_shell() {
         let harness = definition();
         let capability_ids: Vec<&str> = harness
             .capabilities
@@ -109,6 +109,6 @@ mod tests {
         assert_eq!(harness.parent_name, None);
         assert!(capability_ids.contains(&"session_sandbox"));
         assert!(capability_ids.contains(&"session_file_system"));
-        assert!(!capability_ids.contains(&"virtual_bash"));
+        assert!(!capability_ids.contains(&"bashkit_shell"));
     }
 }
