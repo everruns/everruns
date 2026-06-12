@@ -274,7 +274,9 @@ POST /v1/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
 Message posts and cancels both invoke the kind's `TaskExecutor` best-effort
 after the durable registry write: the message is recorded and the cancel intent
 is set regardless of executor outcome. A delivery or cancel error is logged at
-`warn` and never fails the HTTP call.
+`warn` and never fails the HTTP call. Executor calls from the API run under the
+session's effective network ACL (harness chain → agent → session overlay fold);
+if the ACL cannot be computed the executor call is skipped with a `warn`.
 
 Specifically:
 - `POST …/messages`: records the message durably, then re-fetches the task

@@ -191,23 +191,40 @@ impl Command for PostSessionTaskMessage {
         // Best-effort executor delivery: re-fetch the task (it may have
         // transitioned to running if the message answered an input request),
         // then call deliver so the running work receives the message.
-        // The message is durably recorded regardless — a delivery error is
-        // logged but never fails the HTTP call.
-        if let Some(task) = q::registry_for_ctx(ctx)
-            .get(session_id, &task_id)
-            .await
-            .map_err(registry_err)?
-            && let Some(executor) = find_task_executor(&task.kind)
-        {
-            let tool_ctx = q::tool_context_for_ctx(ctx, session_id);
-            if let Err(e) = executor.deliver(&task, &recorded, &tool_ctx).await {
+        // The message is durably recorded regardless — a delivery error (or
+        // a re-fetch error) is logged but never fails the HTTP call.
+        let refetch = q::registry_for_ctx(ctx).get(session_id, &task_id).await;
+        match refetch {
+            Ok(Some(task)) if find_task_executor(&task.kind).is_some() => {
+                let executor = find_task_executor(&task.kind).unwrap();
+                match q::tool_context_for_ctx(ctx, session_id).await {
+                    Ok(tool_ctx) => {
+                        if let Err(e) = executor.deliver(&task, &recorded, &tool_ctx).await {
+                            tracing::warn!(
+                                task_id = %task_id,
+                                kind = %task.kind,
+                                error = %e,
+                                "PostSessionTaskMessage: executor deliver failed (best-effort; message is recorded)"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id,
+                            error = %e,
+                            "PostSessionTaskMessage: could not build ToolContext; skipping executor deliver (message is recorded)"
+                        );
+                    }
+                }
+            }
+            Err(e) => {
                 tracing::warn!(
                     task_id = %task_id,
-                    kind = %task.kind,
                     error = %e,
-                    "PostSessionTaskMessage: executor deliver failed (best-effort; message is recorded)"
+                    "PostSessionTaskMessage: re-fetch after record failed; skipping executor deliver (message is recorded)"
                 );
             }
+            _ => {}
         }
 
         Ok(recorded)
@@ -255,30 +272,56 @@ impl Command for CancelSessionTask {
             .map_err(registry_err)?
             .ok_or_else(|| CommandError::not_found("Session task"))?;
 
-        // Best-effort executor cancel: invoke the kind-specific cancel so
-        // active executors (notably MonitorTaskExecutor) can act immediately.
-        // MonitorTaskExecutor.cancel disables the linked schedule AND
-        // transitions the task to Canceled in the registry — so we re-fetch
-        // the task afterwards to return the freshest snapshot.
-        if let Some(executor) = find_task_executor(&task.kind) {
-            let tool_ctx = q::tool_context_for_ctx(ctx, session_id);
-            if let Err(e) = executor.cancel(&task, &tool_ctx).await {
-                tracing::warn!(
-                    task_id = %task.id,
-                    kind = %task.kind,
-                    error = %e,
-                    "CancelSessionTask: executor cancel failed (best-effort)"
-                );
+        // Best-effort executor cancel: skip for already-terminal tasks to
+        // avoid side effects (e.g. disabling a schedule for a task that
+        // already succeeded). For non-terminal tasks, invoke the kind-specific
+        // cancel so active executors (notably MonitorTaskExecutor) can act
+        // immediately. MonitorTaskExecutor.cancel disables the linked schedule
+        // AND transitions the task to Canceled in the registry — so we
+        // re-fetch the task afterwards to return the freshest snapshot.
+        if !task.state.is_terminal()
+            && let Some(executor) = find_task_executor(&task.kind)
+        {
+            match q::tool_context_for_ctx(ctx, session_id).await {
+                Ok(tool_ctx) => {
+                    if let Err(e) = executor.cancel(&task, &tool_ctx).await {
+                        tracing::warn!(
+                            task_id = %task.id,
+                            kind = %task.kind,
+                            error = %e,
+                            "CancelSessionTask: executor cancel failed (best-effort)"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %task.id,
+                        error = %e,
+                        "CancelSessionTask: could not build ToolContext; skipping executor cancel (cancel intent is recorded)"
+                    );
+                }
             }
         }
 
         // Re-fetch to return the freshest snapshot: the executor may have
         // transitioned the task to Canceled (e.g. MonitorTaskExecutor does).
-        let fresh = q::registry_for_ctx(ctx)
+        // On re-fetch error, return the previously fetched snapshot rather
+        // than failing the HTTP call (cancel intent is already recorded).
+        let fresh = match q::registry_for_ctx(ctx)
             .get(session_id, &self.task_id)
             .await
-            .map_err(registry_err)?
-            .unwrap_or(task);
+        {
+            Ok(Some(t)) => t,
+            Ok(None) => task,
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %self.task_id,
+                    error = %e,
+                    "CancelSessionTask: re-fetch after cancel failed; returning snapshot (cancel intent is recorded)"
+                );
+                task
+            }
+        };
 
         Ok(fresh)
     }
@@ -289,7 +332,9 @@ inventory::submit! { CommandDescriptor::of::<CancelSessionTask>() }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::models::CreateHarnessRow;
     use crate::storage::{CreateSessionRow, StorageBackend};
+    use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, TASK_KIND_BACKGROUND_TOOL,
         TASK_KIND_MONITOR, TaskLinks, TaskWakePolicy,
@@ -513,5 +558,176 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // CancelSessionTask — terminal task must not invoke executor
+    // -------------------------------------------------------------------------
+
+    /// API cancel of an already-terminal (succeeded) monitor task must NOT
+    /// invoke the executor. The linked schedule must remain enabled because
+    /// MonitorTaskExecutor.cancel was never called.
+    #[tokio::test]
+    async fn cancel_terminal_monitor_task_skips_executor() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        // Create a schedule that must remain enabled.
+        let schedule = db
+            .create_session_schedule(crate::storage::CreateSessionScheduleRow {
+                org_id: DEFAULT_ORG_ID,
+                session_id,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                description: "terminal monitor schedule".to_string(),
+                cron_expression: Some("0 * * * *".to_string()),
+                scheduled_at: None,
+                timezone: "UTC".to_string(),
+                next_trigger_at: None,
+            })
+            .await
+            .unwrap();
+        let schedule_id = schedule.id;
+        assert!(schedule.enabled, "schedule must start enabled");
+
+        // Create the monitor task already in Succeeded state.
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_MONITOR.to_string(),
+                display_name: "Succeeded Monitor".to_string(),
+                spec: serde_json::json!({ "schedule_id": schedule_id.to_string() }),
+                state: SessionTaskState::Succeeded,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // API cancel on a terminal task.
+        let result = CancelSessionTask {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        // request_cancel records cancel_requested_at but does NOT change state
+        // for terminal tasks (registry invariant); the returned task reflects
+        // the terminal state.
+        assert_eq!(
+            result.state,
+            SessionTaskState::Succeeded,
+            "terminal task state must not regress after API cancel"
+        );
+
+        // Schedule must still be enabled — MonitorTaskExecutor.cancel was NOT called.
+        let updated_schedule = db
+            .get_session_schedule(DEFAULT_ORG_ID, schedule_id)
+            .await
+            .unwrap()
+            .expect("schedule must still exist");
+        assert!(
+            updated_schedule.enabled,
+            "schedule must remain enabled when cancel skips executor for terminal task"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // tool_context_for_ctx — network_access is populated from folded overlays
+    // -------------------------------------------------------------------------
+
+    /// The factory must derive the effective network ACL by folding harness →
+    /// agent → session overlays and set it on the returned ToolContext.
+    ///
+    /// Test setup:
+    ///   harness allows [a.example.com, b.example.com]
+    ///   session allows [b.example.com]
+    ///   expected intersection: [b.example.com]  (a.example.com is narrowed out)
+    #[tokio::test]
+    async fn tool_context_for_ctx_populates_network_access() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        // Create a harness with a network_access list.
+        let harness_network_access =
+            NetworkAccessList::allow_only(["a.example.com", "b.example.com"]);
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "acl-test-harness".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: String::new(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: Some(serde_json::to_value(&harness_network_access).unwrap()),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Create a session with a narrower network_access list, linked to the harness.
+        let session_network_access = NetworkAccessList::allow_only(["b.example.com"]);
+        let session_id = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(harness.id),
+                agent_id: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("acl test session".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: Some(serde_json::to_value(&session_network_access).unwrap()),
+                max_iterations: None,
+                blueprint_id: None,
+                blueprint_config: None,
+            })
+            .await
+            .unwrap()
+            .id;
+
+        let ctx = test_ctx(db.clone());
+        let tool_ctx = q::tool_context_for_ctx(&ctx, session_id)
+            .await
+            .expect("tool_context_for_ctx must succeed");
+
+        let acl = tool_ctx
+            .network_access
+            .expect("network_access must be populated");
+
+        // b.example.com is in both layers → allowed after intersection.
+        assert!(
+            acl.is_url_allowed("https://b.example.com/ok"),
+            "b.example.com must be allowed (in both harness and session)"
+        );
+        // a.example.com is only in harness, not session → blocked by intersection.
+        assert!(
+            !acl.is_url_allowed("https://a.example.com/ok"),
+            "a.example.com must be blocked (not in session allow list)"
+        );
+        // Unrelated host must be blocked.
+        assert!(
+            !acl.is_url_allowed("https://other.example.com/ok"),
+            "other.example.com must be blocked"
+        );
     }
 }
