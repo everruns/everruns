@@ -552,6 +552,7 @@ mod tests {
                 provider_type: crate::llm_models::LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             })
             .await;
 
@@ -620,6 +621,7 @@ mod tests {
                 provider_type: crate::llm_models::LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             })
             .await;
 
@@ -674,6 +676,7 @@ mod tests {
                 provider_type: crate::llm_models::LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             })
             .await;
 
@@ -733,6 +736,7 @@ mod tests {
                 provider_type: crate::llm_models::LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             })
             .await;
 
