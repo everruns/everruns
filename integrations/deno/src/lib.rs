@@ -16,7 +16,9 @@ pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 use std::sync::LazyLock;
@@ -74,6 +76,16 @@ impl Capability for DenoCapability {
 
     fn description(&self) -> &str {
         "Run code in cloud-based Deno sandboxes. Create isolated Linux microVMs, execute commands, and manage files. EXPERIMENTAL: This capability may change."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Пісочниці Deno",
+            "Запускайте код у хмарних пісочницях Deno. Створюйте ізольовані мікровіртуальні \
+             машини Linux, виконуйте команди та керуйте файлами. ЕКСПЕРИМЕНТАЛЬНО: ця \
+             можливість може змінитися.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

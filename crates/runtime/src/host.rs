@@ -306,7 +306,7 @@ async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
     let specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
     let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-        everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+        everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
     );
     Ok((specs, dispatcher))
 }
@@ -435,7 +435,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         .collect();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
-            everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+            everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(adapter.file_store()),
         );
         post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
             &user_hook_specs,

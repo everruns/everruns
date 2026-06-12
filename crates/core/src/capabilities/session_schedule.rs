@@ -5,7 +5,7 @@
 //! - `cancel_schedule`: Cancel/disable a schedule
 //! - `list_schedules`: List all schedules for the current session
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -29,6 +29,14 @@ impl Capability for SessionScheduleCapability {
 
     fn description(&self) -> &str {
         "Schedule future tasks within the current session. Supports one-shot and recurring (cron) schedules."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Розклади",
+            "Плануйте майбутні завдання в межах поточної сесії. Підтримує одноразові та повторювані (cron) розклади.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

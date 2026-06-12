@@ -18,7 +18,7 @@
 //! - `aws_list_security_groups`: List security groups
 //! - `aws_get_cloudwatch_metrics`: Get CloudWatch metrics
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::SessionId;
 use crate::connection_provider::{
     ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionType,
@@ -752,6 +752,14 @@ impl Capability for FakeAwsCapability {
     fn description(&self) -> &str {
         "Mock AWS infrastructure tools (EC2, RDS, S3, IAM, CloudWatch). \
          All state persisted in session filesystem. Latency emulation via FAKE_AWS_LATENCY_MS."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Демо-інструменти AWS",
+            "Імітаційні інструменти інфраструктури AWS (EC2, RDS, S3, IAM, CloudWatch). Увесь стан зберігається у файловій системі сесії. Емуляція затримки через FAKE_AWS_LATENCY_MS.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

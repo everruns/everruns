@@ -9,7 +9,7 @@
 // - The side answer reuses the session's merged context, disables tools, and
 //   persists nothing, behaving like Claude Code's ephemeral overlay answer.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::command::{
     CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
     ExecuteCommandRequest,
@@ -39,6 +39,14 @@ impl Capability for BtwCapability {
 
     fn description(&self) -> &str {
         "Ephemeral side-question command for the current session."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "BTW",
+            "Ефемерна команда для побічних запитань у поточній сесії.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

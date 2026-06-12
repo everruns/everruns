@@ -15,7 +15,7 @@
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
 // Nesting prevention: rejects spawn if current session has parent_session_id set.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
@@ -43,6 +43,14 @@ impl Capability for SubagentCapability {
 
     fn description(&self) -> &str {
         "Spawn and manage subagents for parallel task execution in isolated context windows."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Субагенти",
+            "Запускайте субагентів і керуйте ними для паралельного виконання завдань в ізольованих контекстних вікнах.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -75,6 +83,26 @@ impl Capability for SubagentCapability {
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window. Do not delegate immediate sequential steps you can complete directly. No nested subagents. Use blueprints for specialist agents with their own tools and model.";
+
+fn terminal_subagent_status(wait_status: &str) -> Option<crate::session::SubagentStatus> {
+    match wait_status {
+        "idle" | "completed" => Some(crate::session::SubagentStatus::Completed),
+        "error" | "failed" => Some(crate::session::SubagentStatus::Failed),
+        "cancelled" => Some(crate::session::SubagentStatus::Cancelled),
+        "max_iterations_reached" => Some(crate::session::SubagentStatus::MaxIterationsReached),
+        _ => None,
+    }
+}
+
+fn terminal_subagent_task_state(
+    subagent_status: &crate::session::SubagentStatus,
+) -> SessionTaskState {
+    match subagent_status {
+        crate::session::SubagentStatus::Completed => SessionTaskState::Succeeded,
+        crate::session::SubagentStatus::Cancelled => SessionTaskState::Canceled,
+        _ => SessionTaskState::Failed,
+    }
+}
 
 // =============================================================================
 // Helper: get platform store from context
@@ -534,23 +562,6 @@ async fn spawn_create_and_wait(
         Err(e) => return ToolExecutionResult::internal_error(e),
     };
 
-    // Register subagent in session resource registry.
-    if let Some(ref registry) = context.session_resource_registry {
-        let _ = registry
-            .register(crate::session_resource::RegisterSessionResource {
-                session_id: context.session_id,
-                resource_id: child_session.id.to_string(),
-                kind: "subagent".to_string(),
-                display_name: name.to_string(),
-                status: crate::session_resource::SessionResourceStatus::Active,
-                metadata: json!({
-                    "task": task,
-                    "blueprint_id": blueprint_param,
-                }),
-            })
-            .await;
-    }
-
     // Create the session task tracking this subagent (specs/session-tasks.md).
     let mut task_id: Option<String> = None;
     if let Some(ref task_registry) = context.session_task_registry
@@ -643,16 +654,6 @@ async fn run_subagent_wait_and_settle(
     let status = match store.wait_for_idle(child_id, Some(300)).await {
         Ok(s) => s,
         Err(e) => {
-            // Mark as failed in registry.
-            if let Some(ref registry) = context.session_resource_registry {
-                let _ = registry
-                    .update_status(
-                        context.session_id,
-                        &child_id.to_string(),
-                        crate::session_resource::SessionResourceStatus::Failed,
-                    )
-                    .await;
-            }
             finish_subagent_task(
                 context,
                 task_id.as_deref(),
@@ -684,8 +685,12 @@ async fn run_subagent_wait_and_settle(
     let result_text = last_agent_message(&messages)
         .unwrap_or_else(|| format!("Subagent completed with status: {status}"));
 
-    // Settle the spawn handle if we have a durable store.
+    let terminal_status = terminal_subagent_status(&status);
+
+    // Settle the spawn handle only when the child reached a terminal state.
+    // Non-terminal waits must stay reattachable on replay.
     if let Some((spawn_store, tool_call_id, claim_token)) = settle_ctx
+        && terminal_status.is_some()
         && let Err(e) = spawn_store
             .settle_spawn(
                 context.session_id,
@@ -704,54 +709,36 @@ async fn run_subagent_wait_and_settle(
         );
     }
 
-    // Update registry and persist metadata only when the child reached a
-    // terminal state.  Non-terminal results from wait_for_idle (paused,
+    // Persist metadata and update the session task only when the child reached a
+    // terminal state. Non-terminal results from wait_for_idle (paused,
     // waiting_for_tool_results, timeout) leave the child Active.
-    if status == "idle" {
-        if let Some(ref registry) = context.session_resource_registry {
-            let _ = registry
-                .update_status(
-                    context.session_id,
-                    &child_id.to_string(),
-                    crate::session_resource::SessionResourceStatus::Completed,
-                )
-                .await;
-        }
+    if let Some(subagent_status) = terminal_status {
+        let task_state = terminal_subagent_task_state(&subagent_status);
         if let Err(e) = store
-            .set_subagent_metadata(
-                child_id,
-                context.session_id,
-                name,
-                task,
-                crate::session::SubagentStatus::Completed,
-            )
+            .set_subagent_metadata(child_id, context.session_id, name, task, subagent_status)
             .await
         {
             tracing::warn!(
                 session_id = %context.session_id,
                 child_session_id = %child_id,
                 error = %e,
-                "failed to persist subagent completed metadata"
+                "failed to persist terminal subagent metadata"
             );
         }
-        finish_subagent_task(
-            context,
-            task_id.as_deref(),
-            SessionTaskState::Succeeded,
-            Some(truncate_summary(&result_text)),
-            None,
-        )
-        .await;
-    } else if status == "error" {
-        finish_subagent_task(
-            context,
-            task_id.as_deref(),
-            SessionTaskState::Failed,
-            Some(truncate_summary(&result_text)),
+        let task_error = if task_state == SessionTaskState::Failed {
             Some(TaskError {
-                kind: "error".to_string(),
-                message: "Subagent session ended with an error".to_string(),
-            }),
+                kind: status.clone(),
+                message: format!("Subagent session ended with status: {status}"),
+            })
+        } else {
+            None
+        };
+        finish_subagent_task(
+            context,
+            task_id.as_deref(),
+            task_state,
+            Some(truncate_summary(&result_text)),
+            task_error,
         )
         .await;
     }
@@ -1148,6 +1135,36 @@ mod tests {
             names,
             vec!["spawn_subagent", "get_subagents", "message_subagent"]
         );
+    }
+
+    #[test]
+    fn terminal_subagent_status_maps_only_terminal_wait_states() {
+        assert_eq!(
+            terminal_subagent_status("idle"),
+            Some(crate::session::SubagentStatus::Completed)
+        );
+        assert_eq!(
+            terminal_subagent_status("failed"),
+            Some(crate::session::SubagentStatus::Failed)
+        );
+        assert_eq!(
+            terminal_subagent_status("cancelled"),
+            Some(crate::session::SubagentStatus::Cancelled)
+        );
+        assert_eq!(
+            terminal_subagent_task_state(&crate::session::SubagentStatus::Completed),
+            SessionTaskState::Succeeded
+        );
+        assert_eq!(
+            terminal_subagent_task_state(&crate::session::SubagentStatus::Cancelled),
+            SessionTaskState::Canceled
+        );
+        assert_eq!(
+            terminal_subagent_task_state(&crate::session::SubagentStatus::MaxIterationsReached),
+            SessionTaskState::Failed
+        );
+        assert_eq!(terminal_subagent_status("waiting_for_tool_results"), None);
+        assert_eq!(terminal_subagent_status("paused"), None);
     }
 
     #[test]

@@ -407,6 +407,7 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
+            mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
         })
     }
 }
@@ -445,6 +446,7 @@ pub struct InProcessRuntime {
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
+    mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
 }
 
 impl InProcessRuntime {
@@ -837,7 +839,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
             vec![]
         } else {
             crate::mcp::discover_tool_definitions(
-                &self.mcp_client(),
+                &self.mcp_discovery_cache,
+                self.mcp_client(),
                 session_id.uuid(),
                 &scoped_servers,
             )

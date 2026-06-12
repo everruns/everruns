@@ -712,7 +712,7 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 // The default `ProcessCommandExecutor` spawns `bash -c` on the worker host.
 // That is deliberately dormant: when command substitution is re-enabled, the
 // executor MUST be replaced with a session-sandbox-backed implementation so
-// commands run against virtual bash (bashkit / managed session sandbox) and
+// commands run against the bashkit shell (managed session sandbox) and
 // the session virtual filesystem rather than the worker. Flipping the trust
 // gate without that replacement would still be RCE against the worker host.
 //

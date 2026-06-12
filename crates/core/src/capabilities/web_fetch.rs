@@ -21,12 +21,14 @@
 //!   with HTTP 403.
 //! - Rationale: outbound HTTP from an agent doubles as both a data-exfiltration
 //!   channel (TM-AGENT-013) and an SSRF vector if egress is not strictly
-//!   isolated (TM-API-008 mitigates loopback/RFC1918 via `DnsPolicy::block_private_ips()`,
-//!   but no general outbound URL allowlist exists yet — TM-AGENT-018 OPEN).
-//!   Until a per-org outbound policy lands, admin assignment is the explicit
-//!   trust gate.
+//!   isolated. TM-API-008 is mitigated by SSRF validation (DNS-pinned on the
+//!   egress path, `DnsPolicy::block_private_ips()` on the legacy path);
+//!   TM-AGENT-018 is mitigated by the per-layer `NetworkAccessList` plus the
+//!   deployment-wide system allowlist enforced at the egress boundary.
+//!   Admin assignment remains the explicit trust gate for enabling the
+//!   capability at all.
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
@@ -236,6 +238,71 @@ impl Capability for WebFetchCapability {
             self.bot_auth.clone(),
         ))]
     }
+
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "enable_file_download": {
+                    "type": "boolean",
+                    "title": "Allow saving fetched files",
+                    "description": "Let the web_fetch tool save large or binary responses \
+                                    into the session workspace via save_to_file instead of \
+                                    inlining them.",
+                    "default": false
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("web_fetch config must be an object".to_string());
+        }
+        match config.get("enable_file_download") {
+            None | Some(serde_json::Value::Bool(_)) => Ok(()),
+            Some(other) => Err(format!(
+                "enable_file_download must be a boolean, got {other}"
+            )),
+        }
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls whether fetched responses may be saved into the session \
+                     workspace.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Отримання вебвмісту"),
+                description: Some(
+                    "Отримує вміст за URL-адресою (GET/HEAD) і за потреби зберігає його у \
+                     файлову систему сесії.",
+                ),
+                config_description: Some(
+                    "Визначає, чи можна зберігати отримані відповіді в робочий простір сесії.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "enable_file_download": {
+                            "title": "Дозволити збереження файлів",
+                            "description": "Дозволяє інструменту web_fetch зберігати великі або бінарні відповіді у файли робочого простору (save_to_file) замість вбудовування у відповідь."
+                        }
+                    }
+                })),
+            },
+        ]
+    }
 }
 
 // ============================================================================
@@ -288,15 +355,23 @@ impl FileSaver for SessionFileSaver {
 /// File download: when `save_to_file` is provided, content is saved through
 /// the session filesystem (SessionFileSystem) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
+    /// Builder template for this tool's fetchkit configuration. Cloned per
+    /// execution to inject the egress transport when the context provides an
+    /// `EgressService` (see `super::web_fetch_egress`).
+    builder: fetchkit::ToolBuilder,
+    /// Direct (non-egress) tool built from `builder`: serves metadata
+    /// (schema/description) and execution for contexts without an egress
+    /// service (e.g. embedded hosts), where fetchkit owns the HTTP client.
     fetchkit_tool: fetchkit::Tool,
     enable_save_to_file: bool,
     /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
-    /// Host-wide system allowlist ("green list"). fetchkit owns its own HTTP
-    /// client and does not (yet) route through `EgressService`, so the
-    /// deployment-wide allowlist is enforced here as a pre-flight check that
-    /// returns a clear system-policy error. `None` = no global enforcement.
-    /// See `crate::system_allowlist` and `specs/system-allowlist.md`.
+    /// Host-wide system allowlist ("green list"), pre-checked on the initial
+    /// URL for a clear, distinct system-policy error. On the egress path the
+    /// boundary independently re-enforces it (final enforcement point, every
+    /// hop); on the direct path this pre-flight is the only enforcement.
+    /// `None` = no global enforcement. See `crate::system_allowlist` and
+    /// `specs/system-allowlist.md`.
     system_allowlist: Option<Arc<crate::system_allowlist::SystemAllowlist>>,
 }
 
@@ -310,6 +385,7 @@ impl WebFetchTool {
         let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
         Self {
+            builder,
             fetchkit_tool,
             enable_save_to_file,
             description,
@@ -491,14 +567,16 @@ impl Tool for WebFetchTool {
             );
         }
 
-        // Host-wide system allowlist (green list). Enforced before the
-        // per-session access list so the operator-level policy yields a clear,
-        // distinct error.
+        // Host-wide system allowlist, pre-checked on the initial URL for a
+        // clear, distinct system-policy error. On the egress path the boundary
+        // independently re-enforces it on every hop.
         if let Some(blocked) = self.system_policy_block(&request.url) {
             return blocked;
         }
 
-        // THREAT[TM-AGENT-018]: Enforce network access list
+        // THREAT[TM-AGENT-018]: Enforce network access list. This is the
+        // user-facing pre-check; on the egress path the boundary re-checks it
+        // on every hop.
         if let Some(ref acl) = context.network_access
             && !acl.is_url_allowed(&request.url)
         {
@@ -508,9 +586,32 @@ impl Tool for WebFetchTool {
             ));
         }
 
+        // Egress-backed path (specs/egress.md migration step 3): when the host
+        // provides an egress service, inject it as fetchkit's HTTP transport.
+        // fetchkit keeps the whole pipeline (specialized fetchers, DNS policy,
+        // per-hop redirect validation, bot-auth signing, body caps); every
+        // HTTP hop crosses the egress boundary, which enforces the network
+        // access list and the system allowlist. Without an egress service
+        // (e.g. embedded hosts) fetchkit owns the HTTP client directly.
+        let routed_tool;
+        let tool = match &context.egress_service {
+            Some(egress) => {
+                routed_tool = self
+                    .builder
+                    .clone()
+                    .transport(Arc::new(super::web_fetch_egress::EgressHttpTransport::new(
+                        egress.clone(),
+                        context.network_access.clone(),
+                    )))
+                    .build();
+                &routed_tool
+            }
+            None => &self.fetchkit_tool,
+        };
+
         // If no save_to_file, use the simple path (no saver needed)
         if request.save_to_file.is_none() {
-            return match self.fetchkit_tool.execute(request).await {
+            return match tool.execute(request).await {
                 Ok(response) => {
                     ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
                         |_| serde_json::json!({"error": "Failed to serialize response"}),
@@ -535,11 +636,7 @@ impl Tool for WebFetchTool {
             session_id: context.session_id,
         };
 
-        match self
-            .fetchkit_tool
-            .execute_with_saver(request, Some(&saver))
-            .await
-        {
+        match tool.execute_with_saver(request, Some(&saver)).await {
             Ok(response) => {
                 ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
                     |_| serde_json::json!({"error": "Failed to serialize response"}),
@@ -560,12 +657,13 @@ mod tests {
     /// Create a WebFetchTool with permissive DNS policy for wiremock tests
     /// (wiremock binds to 127.0.0.1 which is blocked by default).
     fn tool_for_wiremock() -> WebFetchTool {
-        let fetchkit_tool = fetchkit::Tool::builder()
+        let builder = fetchkit::Tool::builder()
             .enable_save_to_file(true)
-            .block_private_ips(false)
-            .build();
+            .block_private_ips(false);
+        let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
         WebFetchTool {
+            builder,
             fetchkit_tool,
             enable_save_to_file: true,
             description,
@@ -599,6 +697,38 @@ mod tests {
         assert!(
             message.contains("blocked.example.com"),
             "error should include the URL, got: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_path_system_policy_error_wins_when_both_policies_deny() {
+        use crate::system_allowlist::SystemAllowlist;
+
+        let mut tool = tool_for_wiremock();
+        tool.system_allowlist = Some(
+            SystemAllowlist::from_toml("[groups.test]\nallowed = [\"allowed.example.com\"]\n")
+                .map(Arc::new)
+                .unwrap(),
+        );
+        // No egress service → legacy path; ACL denies the URL too.
+        let mut context = ToolContext::new(SessionId::new());
+        context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+            "allowed.example.com",
+        ]));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "https://blocked.example.com/x" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &result,
+                ToolExecutionResult::ToolError(msg) if msg.contains("blocked by system policy")
+            ),
+            "operator-level system policy error should take precedence, got: {result:?}"
         );
     }
 
@@ -1997,6 +2127,143 @@ mod tests {
             assert!(value.get("saved_path").is_none() || value["saved_path"].is_null());
         } else {
             panic!("Expected successful response, got: {:?}", result);
+        }
+    }
+
+    // ========================================================================
+    // Egress-backed path (specs/egress.md migration step 3)
+    //
+    // URLs use public IP literals so `validate_url_dns_pinned` passes without
+    // DNS; the egress mock never performs real network I/O.
+    // ========================================================================
+
+    /// Canned egress service: always returns 200 text/plain "pong from egress".
+    struct CannedEgress;
+
+    #[async_trait]
+    impl crate::egress::EgressService for CannedEgress {
+        async fn send(
+            &self,
+            _request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+            Ok(crate::egress::EgressResponse {
+                status: 200,
+                headers: [("content-type".to_string(), "text/plain".to_string())]
+                    .into_iter()
+                    .collect(),
+                body: b"pong from egress".to_vec(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressStreamResponse> {
+            let response = self.send(request).await?;
+            Ok(crate::egress::EgressStreamResponse {
+                status: response.status,
+                headers: response.headers,
+                body: Box::pin(futures::stream::once(async move { Ok(response.body) })),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_execute_with_context_routes_through_egress() {
+        let tool = WebFetchTool::default();
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(Arc::new(CannedEgress));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "http://93.184.216.34/ping" }),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["status_code"], 200);
+            assert_eq!(value["content"], "pong from egress");
+        } else {
+            panic!("Expected successful egress-path response, got: {result:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_egress_path_denies_url_outside_network_access_list() {
+        let tool = WebFetchTool::default();
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(Arc::new(CannedEgress));
+        context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+            "allowed.example.com",
+        ]));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "http://93.184.216.34/ping" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &result,
+                ToolExecutionResult::ToolError(msg) if msg.contains("blocked by network access policy")
+            ),
+            "expected network access denial, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_egress_path_blocks_private_address_before_sending() {
+        let tool = WebFetchTool::default();
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(Arc::new(CannedEgress));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "http://169.254.169.254/latest/meta-data/" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(
+                &result,
+                ToolExecutionResult::ToolError(msg) if msg.contains("blocked")
+            ),
+            "expected SSRF block on egress path, got: {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_egress_path_save_to_file_writes_session_file() {
+        let tool = WebFetchTool::new(true, None);
+        let file_store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let mut context = ToolContext::with_file_store(session_id, file_store.clone());
+        context.egress_service = Some(Arc::new(CannedEgress));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({
+                    "url": "http://93.184.216.34/file.txt",
+                    "save_to_file": "/downloads/file.txt"
+                }),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["saved_path"], "/downloads/file.txt");
+            let (content, encoding) = file_store
+                .get_file(session_id, "/downloads/file.txt")
+                .await
+                .expect("file should have been written via egress path");
+            assert_eq!(encoding, "text");
+            assert_eq!(content, "pong from egress");
+        } else {
+            panic!("Expected successful response, got: {result:?}");
         }
     }
 }

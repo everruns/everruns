@@ -1299,7 +1299,7 @@ impl SessionService {
             crate::domains::session_files::SessionFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
-            Arc::new(everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(file_store));
+            Arc::new(everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(file_store));
         let hooks = everruns_core::lifecycle_hooks::build_session_lifecycle_hooks(
             &specs, event, dispatcher,
         );
@@ -1501,7 +1501,7 @@ impl SessionService {
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
         // Expand declarative capability dependencies so hidden high-risk built-ins
-        // (e.g. `web_fetch`, `virtual_bash`) cannot bypass the admin gate. Validation
+        // (e.g. `web_fetch`, `bashkit_shell`) cannot bypass the admin gate. Validation
         // forbids nested declarative deps, so a single expansion pass is sufficient.
         let declarative_refs: Vec<String> = capability_ids
             .iter()
@@ -3191,7 +3191,7 @@ mod tests {
 
     // Build a harness carrying a `user_hooks` capability with a single hook of
     // the given event that writes a sentinel into the session VFS. Exercises the
-    // real server resolve -> finalize -> virtual_bash dispatch path end-to-end.
+    // real server resolve -> finalize -> bashkit_shell dispatch path end-to-end.
     async fn harness_with_user_hook(
         db: &Arc<StorageBackend>,
         org_id: i64,

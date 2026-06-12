@@ -11,7 +11,7 @@ use std::sync::Arc;
 use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize};
 
-use super::{Capability, ModelViewContext, ModelViewProvider};
+use super::{Capability, CapabilityLocalization, ModelViewContext, ModelViewProvider};
 use crate::message::{ContentPart, Message, MessageRole};
 
 pub const MESSAGE_METADATA_CAPABILITY_ID: &str = "message_metadata";
@@ -111,10 +111,15 @@ impl Capability for MessageMetadataCapability {
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["timestamp"]
+                        "title": "Metadata field",
+                        "description": "Metadata field rendered as a bracketed prefix on each message.",
+                        "oneOf": [
+                            { "const": "timestamp", "title": "Timestamp" }
+                        ]
                     },
                     "default": ["timestamp"],
-                    "title": "Metadata fields to annotate"
+                    "title": "Metadata fields to annotate",
+                    "description": "Which metadata fields are annotated onto user and agent messages, in render order. An empty list disables annotations."
                 }
             },
             "additionalProperties": false
@@ -132,6 +137,47 @@ impl Capability for MessageMetadataCapability {
 
     fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
         Some(Arc::new(MessageMetadataModelViewProvider))
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose which metadata fields are annotated onto messages sent to the LLM.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Метадані повідомлень"),
+                description: Some(
+                    "Додає до повідомлень користувача й агента метадані (часову позначку, UTC) \
+                     під час формування запиту до LLM, щоб модель могла враховувати час і паузи \
+                     між повідомленнями. Збережені повідомлення не змінюються.",
+                ),
+                config_description: Some(
+                    "Визначає, які поля метаданих додаються до повідомлень, що надсилаються LLM.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "fields": {
+                            "title": "Поля метаданих",
+                            "description": "Які поля метаданих додаються до повідомлень користувача й агента, у порядку відображення. Порожній список вимикає анотації.",
+                            "items": {
+                                "title": "Поле метаданих",
+                                "description": "Поле метаданих, що відображається як префікс у дужках для кожного повідомлення.",
+                                "enum_labels": {
+                                    "timestamp": "Часова позначка"
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -373,21 +419,25 @@ mod tests {
             .collect();
         assert_eq!(schema_keys, config_keys);
 
-        // The schema's enum of field names matches MessageMetadataField's
-        // serde names, and its default parses as a valid config.
-        let enum_values = schema["properties"]["fields"]["items"]["enum"]
+        // The schema's labeled oneOf of field names matches
+        // MessageMetadataField's serde names, and its default parses as a
+        // valid config.
+        let enum_values: Vec<serde_json::Value> = schema["properties"]["fields"]["items"]["oneOf"]
             .as_array()
-            .expect("fields enum");
-        for value in enum_values {
+            .expect("fields oneOf")
+            .iter()
+            .map(|option| option["const"].clone())
+            .collect();
+        for value in &enum_values {
             assert!(
                 serde_json::from_value::<MessageMetadataField>(value.clone()).is_ok(),
-                "schema enum value {value} is not a known MessageMetadataField"
+                "schema oneOf const {value} is not a known MessageMetadataField"
             );
         }
         assert_eq!(
             enum_values.len(),
             1,
-            "add new MessageMetadataField variants to the schema enum"
+            "add new MessageMetadataField variants to the schema oneOf"
         );
         let schema_default = serde_json::json!({
             "fields": schema["properties"]["fields"]["default"]

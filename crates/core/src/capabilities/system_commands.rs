@@ -7,7 +7,7 @@
 // System commands are surfaced to the UI via the commands() trait method
 // and executed via the commands API endpoint.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 /// System commands capability ID
 pub const SYSTEM_COMMANDS_CAPABILITY_ID: &str = "system_commands";
@@ -30,6 +30,14 @@ impl Capability for SystemCommandsCapability {
 
     fn description(&self) -> &str {
         "Built-in session control commands."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Системні команди",
+            "Вбудовані команди керування сесією.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -15,7 +15,9 @@ pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -85,6 +87,17 @@ impl Capability for SpritesCapability {
         "Run code in persistent, hardware-isolated Linux microVMs powered by Sprites. \
          Create multiple Firecracker VMs per session with full ext4 filesystems, \
          execute commands, manage files, checkpoint/restore state, and expose HTTP services."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Sprites",
+            "Запускайте код у постійних, апаратно ізольованих мікровіртуальних машинах Linux \
+             на основі Sprites. Створюйте кілька віртуальних машин Firecracker на сесію з \
+             повноцінними файловими системами ext4, виконуйте команди, керуйте файлами, \
+             зберігайте та відновлюйте стан через контрольні точки й публікуйте HTTP-сервіси.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -53,6 +53,12 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   useSessionContext: () => mockSessionContext,
 }));
 
+// SessionTaskChips pulls in org context + an SSE subscription; this suite
+// tests chat behavior, not the task strip.
+jest.mock("@/components/session/session-task-chips", () => ({
+  SessionTaskChips: () => null,
+}));
+
 jest.mock("@/hooks", () => ({
   useLlmModels: () => ({ data: [] }),
   useImageAttachments: () => ({

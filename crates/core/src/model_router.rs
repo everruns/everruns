@@ -16,6 +16,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::llm_driver_registry::OpenRouterRoutingConfig;
 use crate::typed_id::{ModelId, ModelRouterId};
 
 #[cfg(feature = "openapi")]
@@ -274,6 +275,79 @@ pub fn validate_route_shape(route: &ModelRouterRoute) -> Result<(), String> {
     Ok(())
 }
 
+/// OpenRouter-ready routing plan compiled from a model-router route.
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenRouterRoutePlan {
+    /// The concrete model slug to place in the required `model` request field.
+    pub primary_model: String,
+    /// Optional OpenRouter fallback routing fields. `None` means the route is a
+    /// direct single-model invocation and no provider-specific fields are needed.
+    pub routing: Option<OpenRouterRoutingConfig>,
+}
+
+/// Compile the currently executable Model Router strategies into OpenRouter's
+/// request-level fallback routing fields.
+///
+/// `model_slug_for_candidate` resolves Everruns `ModelId` references to the
+/// OpenRouter model slugs used on the wire (for example
+/// `anthropic/claude-sonnet-4.5`). Storage-backed resolution lives outside this
+/// foundational router module, so the caller supplies the lookup.
+pub fn compile_openrouter_route_plan(
+    route: &ModelRouterRoute,
+    model_slug_for_candidate: impl Fn(&ModelRouterCandidate) -> Option<String>,
+) -> Result<OpenRouterRoutePlan, String> {
+    validate_route_shape(route)?;
+
+    match route.strategy {
+        ModelRouterStrategy::Single => {
+            let candidate = route
+                .candidates
+                .first()
+                .ok_or_else(|| format!("route '{}' has no candidates", route.key))?;
+            let primary_model = model_slug_for_candidate(candidate).ok_or_else(|| {
+                format!(
+                    "route '{}' candidate '{}' does not resolve to an OpenRouter model slug",
+                    route.key, candidate.id
+                )
+            })?;
+            Ok(OpenRouterRoutePlan {
+                primary_model,
+                routing: None,
+            })
+        }
+        ModelRouterStrategy::OrderedFallback => {
+            let mut candidates = route.candidates.iter().collect::<Vec<_>>();
+            candidates.sort_by_key(|candidate| candidate.position);
+
+            let mut models = Vec::with_capacity(candidates.len());
+            for candidate in candidates {
+                let slug = model_slug_for_candidate(candidate).ok_or_else(|| {
+                    format!(
+                        "route '{}' candidate '{}' does not resolve to an OpenRouter model slug",
+                        route.key, candidate.id
+                    )
+                })?;
+                models.push(slug);
+            }
+
+            let primary_model = models
+                .first()
+                .cloned()
+                .ok_or_else(|| format!("route '{}' has no candidates", route.key))?;
+            Ok(OpenRouterRoutePlan {
+                primary_model,
+                routing: Some(OpenRouterRoutingConfig::fallback_models(models)),
+            })
+        }
+        ModelRouterStrategy::Weighted
+        | ModelRouterStrategy::Rules
+        | ModelRouterStrategy::Custom => Err(format!(
+            "route '{}' strategy '{}' cannot be compiled directly to OpenRouter fallback routing",
+            route.key, route.strategy
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,13 +357,39 @@ mod tests {
     }
 
     fn candidate(weight: i32, rules: Option<serde_json::Value>) -> ModelRouterCandidate {
+        candidate_with(weight, rules, 0, 1)
+    }
+
+    fn candidate_with(
+        weight: i32,
+        rules: Option<serde_json::Value>,
+        position: i32,
+        model_seed: u128,
+    ) -> ModelRouterCandidate {
         ModelRouterCandidate {
-            id: Uuid::nil(),
-            model_id: ModelId::from_seed(1),
+            id: Uuid::from_u128(model_seed),
+            model_id: ModelId::from_seed(model_seed),
             request_overrides: serde_json::Value::Null,
             weight,
             rules,
+            position,
+            created_at: now(),
+            updated_at: now(),
+        }
+    }
+
+    fn route(
+        strategy: ModelRouterStrategy,
+        candidates: Vec<ModelRouterCandidate>,
+    ) -> ModelRouterRoute {
+        ModelRouterRoute {
+            id: Uuid::nil(),
+            key: "base".into(),
+            purpose: "default route".into(),
+            when_to_use: "use this when no specific route fits".into(),
+            strategy,
             position: 0,
+            candidates,
             created_at: now(),
             updated_at: now(),
         }
@@ -425,18 +525,80 @@ mod tests {
 
     #[test]
     fn route_shape_accepts_ordered_fallback_with_multiple_candidates() {
-        let route = ModelRouterRoute {
-            id: Uuid::nil(),
-            key: "base".into(),
-            purpose: "default route".into(),
-            when_to_use: "use this when no specific route fits".into(),
-            strategy: ModelRouterStrategy::OrderedFallback,
-            position: 0,
-            candidates: vec![candidate(1, None), candidate(1, None)],
-            created_at: now(),
-            updated_at: now(),
-        };
+        let route = route(
+            ModelRouterStrategy::OrderedFallback,
+            vec![candidate(1, None), candidate(1, None)],
+        );
         assert!(validate_route_shape(&route).is_ok());
+    }
+
+    #[test]
+    fn openrouter_plan_single_returns_primary_without_routing() {
+        let route = route(ModelRouterStrategy::Single, vec![candidate(1, None)]);
+
+        let plan = compile_openrouter_route_plan(&route, |candidate| {
+            assert_eq!(candidate.model_id, ModelId::from_seed(1));
+            Some("openai/gpt-5-mini".to_string())
+        })
+        .unwrap();
+
+        assert_eq!(plan.primary_model, "openai/gpt-5-mini");
+        assert_eq!(plan.routing, None);
+    }
+
+    #[test]
+    fn openrouter_plan_ordered_fallback_preserves_candidate_order() {
+        let route = route(
+            ModelRouterStrategy::OrderedFallback,
+            vec![
+                candidate_with(1, None, 10, 2),
+                candidate_with(1, None, 0, 1),
+            ],
+        );
+
+        let plan = compile_openrouter_route_plan(&route, |candidate| {
+            if candidate.model_id == ModelId::from_seed(1) {
+                Some("openai/gpt-5-mini".to_string())
+            } else if candidate.model_id == ModelId::from_seed(2) {
+                Some("anthropic/claude-sonnet-4.5".to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap();
+
+        assert_eq!(plan.primary_model, "openai/gpt-5-mini");
+        let routing = plan.routing.unwrap();
+        assert_eq!(
+            routing.models,
+            vec![
+                "openai/gpt-5-mini".to_string(),
+                "anthropic/claude-sonnet-4.5".to_string(),
+            ]
+        );
+        assert_eq!(
+            routing.route,
+            Some(crate::llm_driver_registry::OpenRouterRoute::Fallback)
+        );
+    }
+
+    #[test]
+    fn openrouter_plan_rejects_uncompiled_strategies() {
+        let route = route(ModelRouterStrategy::Weighted, vec![candidate(1, None)]);
+
+        let err = compile_openrouter_route_plan(&route, |_| Some("openai/gpt-5-mini".to_string()))
+            .unwrap_err();
+
+        assert!(err.contains("cannot be compiled directly"));
+    }
+
+    #[test]
+    fn openrouter_plan_rejects_missing_model_slug() {
+        let route = route(ModelRouterStrategy::Single, vec![candidate(1, None)]);
+
+        let err = compile_openrouter_route_plan(&route, |_| None).unwrap_err();
+
+        assert!(err.contains("does not resolve to an OpenRouter model slug"));
     }
 
     #[test]

@@ -1780,6 +1780,14 @@ impl ServerAppBuilder {
             {
                 tracing::error!(error = %e, "Failed to bootstrap leased-resource cleanup schedule");
             }
+            if let Err(e) =
+                crate::session_task_reaper_scheduler::ensure_session_task_reaper_schedule(
+                    store.clone(),
+                )
+                .await
+            {
+                tracing::error!(error = %e, "Failed to bootstrap session-task reaper schedule");
+            }
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),

@@ -22,7 +22,7 @@
 
 use super::openai_tool_search::{OpenAiToolSearchCapability, model_supports_native_tool_search};
 use super::tool_search::ToolSearchCapability;
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
@@ -50,6 +50,19 @@ impl AutoToolSearchCapability {
             generic: ToolSearchCapability::with_threshold(threshold),
         }
     }
+
+    /// Keep the named tools' full schemas under the generic (client-side)
+    /// mechanism. Forwarded to the inner [`ToolSearchCapability`]; the hosted
+    /// OpenAI path is unaffected (use `DeferrablePolicy::Never` there). See
+    /// [`ToolSearchCapability::with_never_defer`].
+    pub fn with_never_defer<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.generic = self.generic.with_never_defer(names);
+        self
+    }
 }
 
 impl Default for AutoToolSearchCapability {
@@ -72,6 +85,14 @@ impl Capability for AutoToolSearchCapability {
          on models that support it (GPT-5.4 and newer) and a provider-agnostic \
          client-side fallback on every other model. Reduces token usage for \
          agents with many tools, regardless of provider."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Автоматичний пошук інструментів",
+            "Відкладене завантаження інструментів, що адаптується до моделі. Використовує хостований tool_search від OpenAI на моделях, які його підтримують (GPT-5.4 і новіші), та незалежний від провайдера клієнтський резервний механізм на всіх інших моделях. Зменшує використання токенів для агентів із багатьма інструментами незалежно від провайдера.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

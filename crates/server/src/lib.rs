@@ -99,6 +99,9 @@ pub mod seed;
 pub mod leased_resource_scheduler;
 pub mod session_scheduler;
 
+// Session-task orphan reconciler schedule seeder
+pub mod session_task_reaper_scheduler;
+
 // Background sweep: time out sessions stuck in waiting_for_tool_results
 pub mod tool_result_timeout;
 

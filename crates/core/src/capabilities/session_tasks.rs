@@ -10,7 +10,7 @@
 // absent (e.g. embedders without a registry) — they return a tool error
 // instead of panicking, matching other registry-backed capabilities.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_task::{
     NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
     TaskMessage, find_task_executor,
@@ -47,6 +47,14 @@ impl Capability for SessionTasksCapability {
 
     fn description(&self) -> &str {
         "Track, message, cancel, and wait on the session's background tasks (subagents, external agents, background tools)."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Завдання сесії",
+            "Відстежуйте фонові завдання сесії (субагенти, зовнішні агенти, фонові інструменти), надсилайте їм повідомлення, скасовуйте їх та очікуйте на їхнє завершення.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

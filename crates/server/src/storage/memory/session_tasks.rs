@@ -126,6 +126,35 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Return IDs of tasks that have a stale heartbeat (orphaned workers).
+    ///
+    /// A task is stale when:
+    /// - state IN ('queued', 'running'), AND
+    /// - heartbeat_at IS NOT NULL, AND
+    /// - heartbeat_at < now - stale_after.
+    ///
+    /// Tasks with NULL heartbeat_at are foreground subagent tasks (EVE-535
+    /// spawn-handle coverage) and are never reaped.
+    pub async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String)>> {
+        let cutoff = Self::now() - stale_after;
+        let tasks = self.session_tasks.read();
+        let mut result: Vec<(SessionId, String)> = tasks
+            .values()
+            .filter(|row| {
+                (row.state == "queued" || row.state == "running")
+                    && row.heartbeat_at.is_some_and(|hb| hb < cutoff)
+            })
+            .map(|row| (row.session_id, row.id.clone()))
+            .collect();
+        result.sort_by(|(_, a), (_, b)| a.cmp(b));
+        result.truncate(limit as usize);
+        Ok(result)
+    }
+
     /// Last `limit` messages, returned oldest first.
     pub async fn list_session_task_messages(
         &self,

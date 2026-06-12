@@ -1961,8 +1961,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        17,
-        "Generic harness should have 17 capabilities"
+        18,
+        "Generic harness should have 18 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -1973,8 +1973,8 @@ async fn test_get_generic_harness() {
         "Should have file system"
     );
     assert!(
-        cap_ids.contains(&"virtual_bash"),
-        "Should have virtual bash"
+        cap_ids.contains(&"bashkit_shell"),
+        "Should have bashkit shell"
     );
     assert!(cap_ids.contains(&"web_fetch"), "Should have web fetch");
     assert!(
@@ -2012,6 +2012,10 @@ async fn test_get_generic_harness() {
     assert!(
         cap_ids.contains(&"loop_detection"),
         "Should have loop detection"
+    );
+    assert!(
+        cap_ids.contains(&"message_metadata"),
+        "Should have message metadata annotations"
     );
 }
 
@@ -2500,8 +2504,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        17,
-        "Copied harness should have same 17 capabilities"
+        18,
+        "Copied harness should have same 18 capabilities"
     );
     assert!(
         copied
@@ -2878,7 +2882,7 @@ async fn test_session_features_generic_harness() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    // Generic harness has session_file_system, virtual_bash, session_storage, etc.
+    // Generic harness has session_file_system, bashkit_shell, session_storage, etc.
     let session: Session = server
         .post(
             "/v1/sessions",
@@ -2906,7 +2910,7 @@ async fn test_session_features_generic_harness() {
         "Generic harness should include key_value feature, got: {:?}",
         session.features,
     );
-    // file_system should only appear once despite session_file_system + virtual_bash
+    // file_system should only appear once despite session_file_system + bashkit_shell
     let fs_count = session
         .features
         .iter()

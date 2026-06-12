@@ -4,6 +4,52 @@
 
 Developer conventions for formatting, testing, error handling, and UI patterns. For architecture, layer separation, naming conventions, and type flow, see `specs/architecture.md`.
 
+## Crate Documentation
+
+Every workspace crate ships a `README.md` (referenced by `readme = "README.md"`
+in its `Cargo.toml`) and a crate-level rustdoc comment (`//!`) on its
+`lib.rs`/`main.rs`. Both are user-facing surfaces. For published crates the
+README renders on crates.io and the rustdoc on docs.rs; for unpublished
+workspace crates the README is read on GitHub and the rustdoc via local
+`cargo doc`. Either way they must read as documentation for a newcomer, not as
+internal notes.
+
+**Every README must include:**
+
+1. A one-line tagline under the `# crate-name` title.
+2. An abstract: one short paragraph stating what the crate is and does.
+3. An ecosystem line linking [everruns.com](https://everruns.com) and naming how
+   the crate fits (which crates it builds on or pairs with).
+4. A quick example — runnable when the crate exposes a usable standalone API;
+   a minimal usage snippet for internal or generated crates that cannot run
+   standalone.
+5. A short "What It Provides" / "Features" list.
+6. A "Documentation" section linking the relevant
+   [docs.everruns.com](https://docs.everruns.com) page(s), and — for published
+   crates — the docs.rs API reference.
+7. A "License" section linking the repository
+   [`LICENSE`](https://github.com/everruns/everruns/blob/main/LICENSE) (MIT).
+
+**Crate-level rustdoc** should mirror the README's abstract, ecosystem line, and a
+compiled example, so docs.rs and crates.io tell the same story. Examples in
+`//!` blocks are compiled as doctests and must pass.
+
+**Exclude from both surfaces:**
+
+- Publishing/release mechanics, CI wiring, or "keep this in sync" maintainer notes.
+- Links to internal `specs/` files (they do not resolve on crates.io or docs.rs);
+  reference design intent in code comments instead, or link a published
+  docs.everruns.com page.
+- Internal "Decision:" scratch notes as the lead content. Reframe durable design
+  rationale as a brief, user-facing "Design notes" subsection or move it to
+  inline code comments.
+
+**Badges** (crates.io version, docs.rs, license) belong only on crates that are
+actually published to crates.io — see the publish list in
+`.github/workflows/publish-crates.yml`. A crates.io or docs.rs badge on an
+unpublished crate renders as a broken link, so unpublished crates use a
+badge-free header and omit docs.rs links.
+
 ## Formatting
 
 ### Rust

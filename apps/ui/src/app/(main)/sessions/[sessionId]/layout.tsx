@@ -19,7 +19,7 @@ const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   files: "Files",
   events: "Events",
   storage: "Storage",
-  resources: "Resources",
+  resources: "Tasks",
   schedules: "Schedules",
   context: "Context",
 };

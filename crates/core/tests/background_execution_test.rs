@@ -54,17 +54,17 @@ async fn assemble(
     )
 }
 
-/// Auto-activation: a session that includes `virtual_bash` (which advertises
+/// Auto-activation: a session that includes `bashkit_shell` (which advertises
 /// `supports_background=true` on its `bash` tool) must end up with
 /// `spawn_background` in BOTH the worker tool registry AND the model-visible
 /// tool definitions, via the `background_execution` capability.
 #[tokio::test]
-async fn virtual_bash_session_auto_activates_spawn_background_in_lockstep() {
-    let (registry, defs, applied) = assemble(&["virtual_bash"]).await;
+async fn bashkit_shell_session_auto_activates_spawn_background_in_lockstep() {
+    let (registry, defs, applied) = assemble(&["bashkit_shell"]).await;
 
     assert!(
         registry.has("bash"),
-        "virtual_bash must contribute the bash tool to the executor"
+        "bashkit_shell must contribute the bash tool to the executor"
     );
     assert!(
         registry.has("spawn_background"),
@@ -130,9 +130,9 @@ async fn non_background_session_does_not_expose_spawn_background() {
 /// Explicit selection of `background_execution` alongside a background-capable
 /// tool must not duplicate `spawn_background` in either layer.
 #[tokio::test]
-async fn explicit_background_execution_plus_virtual_bash_is_idempotent() {
+async fn explicit_background_execution_plus_bashkit_shell_is_idempotent() {
     let (registry, defs, applied) =
-        assemble(&["virtual_bash", BACKGROUND_EXECUTION_CAPABILITY_ID]).await;
+        assemble(&["bashkit_shell", BACKGROUND_EXECUTION_CAPABILITY_ID]).await;
 
     assert!(registry.has("spawn_background"));
 
@@ -161,7 +161,7 @@ async fn explicit_background_execution_plus_virtual_bash_is_idempotent() {
 /// attributes the dispatch correctly.
 #[tokio::test]
 async fn spawn_background_definition_carries_capability_attribution() {
-    let (_registry, defs, _applied) = assemble(&["virtual_bash"]).await;
+    let (_registry, defs, _applied) = assemble(&["bashkit_shell"]).await;
     let spawn_def = defs
         .iter()
         .find(|d| d.name() == "spawn_background")

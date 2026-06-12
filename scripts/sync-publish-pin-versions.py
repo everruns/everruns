@@ -32,18 +32,27 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-openui",
         "everruns-a2ui",
     ],
+    "crates/mcp/Cargo.toml": ["everruns-core"],
     "crates/runtime/Cargo.toml": ["everruns-core"],
     "crates/openai/Cargo.toml": ["everruns-core"],
     "crates/anthropic/Cargo.toml": ["everruns-core"],
+    "crates/bedrock/Cargo.toml": ["everruns-core"],
+    "crates/gemini/Cargo.toml": ["everruns-core"],
     "integrations/duckduckgo/Cargo.toml": ["everruns-core"],
     "integrations/github/Cargo.toml": ["everruns-core"],
     "integrations/daytona/Cargo.toml": ["everruns-core"],
     "integrations/e2b/Cargo.toml": ["everruns-core"],
     "integrations/parallel/Cargo.toml": ["everruns-core"],
+    "integrations/brave-search/Cargo.toml": ["everruns-core"],
+    "integrations/browserless/Cargo.toml": ["everruns-core"],
+    "integrations/cursor/Cargo.toml": ["everruns-core"],
+    "integrations/deno/Cargo.toml": ["everruns-core"],
+    "integrations/docker/Cargo.toml": ["everruns-core"],
+    "integrations/sprites/Cargo.toml": ["everruns-core"],
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
-WORKSPACE_PIN_DEPS: list[str] = ["everruns-core"]
+WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-mcp"]
 
 
 def workspace_version() -> str:

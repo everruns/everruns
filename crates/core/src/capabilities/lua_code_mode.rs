@@ -34,7 +34,7 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use super::lua::is_code_mode_eligible;
-use super::{Capability, CapabilityStatus, RiskLevel, ToolDefinitionHook};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, ToolDefinitionHook};
 use crate::tool_types::ToolDefinition;
 
 pub const LUA_CODE_MODE_CAPABILITY_ID: &str = "lua_code_mode";
@@ -118,11 +118,17 @@ round-trips, structured results.
             "properties": {
                 "keep_visible": {
                     "type": "array",
-                    "items": { "type": "string" },
+                    "title": "Keep visible",
+                    "items": {
+                        "type": "string",
+                        "title": "Tool name",
+                        "description": "Name of a tool to keep directly callable."
+                    },
                     "description": "Tool names to keep directly callable by the model even when they would otherwise be routed through Lua code mode."
                 },
                 "full_schemas": {
                     "type": "boolean",
+                    "title": "Embed full schemas",
                     "default": false,
                     "description": "Embed each hidden tool's full JSON Schema in the lua tool description (lossless discovery). Off by default: a compact typed signature is shown instead."
                 }
@@ -159,6 +165,50 @@ round-trips, structured results.
             return Err("full_schemas must be a boolean".to_string());
         }
         Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls which tools stay directly callable and whether hidden \
+                     tools' full JSON Schemas are embedded in the lua tool description.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Режим коду Lua"),
+                description: Some(
+                    "Спрямовує виклики неосновних інструментів через пісочницю Lua: \
+                     приховує їх із прямого списку інструментів моделі, тож агент \
+                     викликає їх усередині інструмента lua через tools.<name>(args) — \
+                     менше окремих звернень, структуровані результати.",
+                ),
+                config_description: Some(
+                    "Визначає, які інструменти залишаються доступними для прямого виклику, та чи вбудовувати повні JSON-схеми прихованих інструментів в опис інструмента lua.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "keep_visible": {
+                            "title": "Залишити видимими",
+                            "description": "Назви інструментів, які модель може викликати напряму, навіть якщо їх інакше було б спрямовано через режим коду Lua.",
+                            "items": {
+                                "title": "Назва інструмента",
+                                "description": "Назва інструмента, що залишається доступним для прямого виклику."
+                            }
+                        },
+                        "full_schemas": {
+                            "title": "Вбудовувати повні схеми",
+                            "description": "Вбудовує повну JSON-схему кожного прихованого інструмента в опис інструмента lua (виявлення без втрат). Типово вимкнено: натомість показується компактний типізований підпис."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -577,6 +627,18 @@ mod tests {
             cap.validate_config(&json!({ "nope": 1 })).is_err(),
             "unknown config keys must be rejected"
         );
+    }
+
+    #[test]
+    fn uk_localization_resolves() {
+        let cap = LuaCodeModeCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Режим коду Lua");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("пісочницю Lua")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
     }
 
     // Prompt-budget ratchet (specs/capabilities.md → prompt size). Lowering is
