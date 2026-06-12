@@ -22199,18 +22199,7 @@
       },
       "LlmProviderType": {
         "type": "string",
-        "description": "LLM provider type",
-        "enum": [
-          "openai",
-          "openrouter",
-          "azure_openai",
-          "openai_completions",
-          "anthropic",
-          "gemini",
-          "llmsim",
-          "bedrock"
-        ],
-        "example": "anthropic"
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock. Any other string is treated as an embedder-defined external provider."
       },
       "LlmRequestOptions": {
         "type": "object",
