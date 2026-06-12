@@ -36,7 +36,7 @@
 //
 // Re-enable must ALSO replace `ProcessCommandExecutor` (which spawns worker-host
 // `bash -c`) with a session-sandbox-backed executor: execution MUST run against
-// virtual bash (bashkit / managed session sandbox) and the session virtual
+// the bashkit shell (managed session sandbox) and the session virtual
 // filesystem, not the worker host. Adding provenance alone would still be RCE
 // against the worker. See threat-model TM-TOOL-020 step 6.
 

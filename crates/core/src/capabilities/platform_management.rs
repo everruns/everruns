@@ -98,7 +98,7 @@ const SYSTEM_PROMPT: &str = r#"Capabilities extend agent/harness functionality. 
 <platform-docs>
 Platform documentation is available at /workspace/docs in the session filesystem.
 Use `read_file`, `list_directory`, or `grep` to browse and search it.
-Virtual bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
+Bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
 `grep -r "pattern" /workspace/docs/` also work.
 
 Key sections:

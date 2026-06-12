@@ -1974,7 +1974,7 @@ async fn test_get_generic_harness() {
     );
     assert!(
         cap_ids.contains(&"bashkit_shell"),
-        "Should have virtual bash"
+        "Should have bashkit shell"
     );
     assert!(cap_ids.contains(&"web_fetch"), "Should have web fetch");
     assert!(

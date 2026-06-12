@@ -27,7 +27,7 @@ Agents need shell access to be effective — installing packages, running builds
 
 ## How Everruns Uses Bashkit
 
-Everruns integrates bashkit as the execution backend for the **virtual bash** agent capability. When an agent runs shell commands, they execute inside bashkit rather than a real shell.
+Everruns integrates bashkit as the execution backend for the **Bashkit Shell** agent capability. When an agent runs shell commands, they execute inside bashkit rather than a real shell.
 
 ### Session Filesystem Bridge
 

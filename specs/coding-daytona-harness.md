@@ -20,7 +20,7 @@ the default-built-ins-vs-examples split and migration behaviour.
 
 The harness operates at two levels:
 
-1. **Workspace (VFS + virtual bash)** — inherited from Generic. For configuration, notes, artifacts, lightweight operations.
+1. **Workspace (VFS + bashkit shell)** — inherited from Generic. For configuration, notes, artifacts, lightweight operations.
 2. **Daytona sandbox** — real filesystem, real processes, real network. For actual coding: git clone, builds, tests, dev servers.
 
 The system prompt steers the LLM to use the right level for each task.
