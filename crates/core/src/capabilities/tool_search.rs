@@ -1220,14 +1220,24 @@ mod tests {
         // full surface, before deferral.
         let params_full: usize = defs.iter().map(|d| d.parameters().to_string().len()).sum();
 
-        // First model turn: every deferrable schema is stubbed.
-        let deferred = hook(1).transform(defs);
+        // First model turn at the real default threshold: a surface this size is
+        // above it, so every deferrable schema is stubbed.
+        let threshold = DEFAULT_TOOL_SEARCH_THRESHOLD;
+        let deferred = hook(threshold).transform(defs);
         let deferred_count = deferred.iter().filter(|d| is_stubbed(d)).count();
         let deferred_bytes = llm_view(&deferred);
         let params_deferred: usize = deferred
             .iter()
             .map(|d| d.parameters().to_string().len())
             .sum();
+
+        // Deferral must shrink the surface; guard against underflow so a
+        // regression fails with a clear message instead of a subtraction panic.
+        assert!(
+            deferred_bytes < full_bytes && params_deferred < params_full,
+            "deferral must not grow the serialized surface \
+             (tool list {full_bytes}->{deferred_bytes}, params {params_full}->{params_deferred})"
+        );
 
         let saved = full_bytes - deferred_bytes;
         let pct = (saved as f64 / full_bytes as f64) * 100.0;
@@ -1251,7 +1261,10 @@ mod tests {
         );
 
         // Sanity guard: a many-tool surface must shrink substantially.
-        assert!(total >= 15, "surface should exceed the default threshold");
+        assert!(
+            total >= threshold,
+            "surface should meet or exceed the default threshold ({total} < {threshold})"
+        );
         assert!(
             pct > 30.0,
             "deferral should cut the whole tool list by a wide margin (was {pct:.0}%)"
