@@ -282,6 +282,7 @@ Two hook slots run in sequence:
 
 Current hooks:
 - **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/core/src/capabilities/tool_output_persistence.rs`.
+- **DistillOutputHook** (`tool_output_distillation` capability): For tools that do *not* declare `persist_output` (notably MCP and `web_fetch`), produces a content-aware compact inline view of large results (array sampling, string head+tail, unified-diff summary) while self-persisting the full original to `/outputs/{tool_call_id}.stdout` and injecting the same `output_files` pointer. Runs as a capability hook (before the final hooks); the `output_files` guard above prevents double-writes with PersistOutputHook. Restores the verbatim original if persistence fails. See `crates/core/src/capabilities/tool_output_distillation.rs` and `specs/tool-output-distillation.md`.
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.

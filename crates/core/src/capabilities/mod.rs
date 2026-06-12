@@ -133,6 +133,7 @@ mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
+mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
@@ -270,6 +271,7 @@ pub use bashkit_shell::{BashTool, BashkitShellCapability, SessionFileSystemAdapt
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
+pub use tool_output_distillation::{DistillOutputHook, ToolOutputDistillationCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
 pub use tool_search::{
     TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
@@ -1134,6 +1136,7 @@ impl CapabilityRegistry {
 
         // Tool output persistence (EVE-222: persist exec output to VFS)
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
+        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
 
         // User hooks (see specs/user-hooks.md): user-authored shell commands
         // at lifecycle/tool events. Risk: High.
@@ -2350,6 +2353,7 @@ mod tests {
             "data_knowledge",
             "knowledge_base",
             "tool_output_persistence",
+            "tool_output_distillation",
             "fake_warehouse",
             "fake_aws",
             "fake_crm",
