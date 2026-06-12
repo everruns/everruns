@@ -383,7 +383,7 @@ mod tests {
         AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry, TestMathCapability,
     };
     use crate::harness::{Harness, HarnessStatus};
-    use crate::memory::{
+    use crate::in_memory::{
         InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore,
         InMemoryMessageRetriever,
     };
@@ -530,7 +530,7 @@ mod tests {
         harness_store.add_harness(harness(harness_id)).await;
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
-        let session_store = crate::memory::InMemorySessionStore::new();
+        let session_store = crate::in_memory::InMemorySessionStore::new();
         session_store
             .add_session(session(session_id, harness_id, agent_id))
             .await;
@@ -597,7 +597,7 @@ mod tests {
         agent_store.add_agent(agent(agent_id)).await;
         let mut session_record = session(session_id, harness_id, agent_id);
         session_record.locale = Some("en-US".into());
-        let session_store = crate::memory::InMemorySessionStore::new();
+        let session_store = crate::in_memory::InMemorySessionStore::new();
         session_store.add_session(session_record).await;
 
         let message_store = InMemoryMessageRetriever::new();
@@ -660,7 +660,7 @@ mod tests {
         harness_store.add_harness(harness(harness_id)).await;
         let agent_store = InMemoryAgentStore::new();
         agent_store.add_agent(agent(agent_id)).await;
-        let session_store = crate::memory::InMemorySessionStore::new();
+        let session_store = crate::in_memory::InMemorySessionStore::new();
         session_store
             .add_session(session(session_id, harness_id, agent_id))
             .await;
@@ -716,7 +716,7 @@ mod tests {
 
         let mut session_record = session(session_id, harness_id, agent_id);
         session_record.blueprint_id = Some("net_test_blueprint".to_string());
-        let session_store = crate::memory::InMemorySessionStore::new();
+        let session_store = crate::in_memory::InMemorySessionStore::new();
         session_store.add_session(session_record).await;
 
         let message_store = InMemoryMessageRetriever::new();

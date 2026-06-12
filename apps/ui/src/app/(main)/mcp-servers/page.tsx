@@ -32,7 +32,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
+import { Plus, Plug, Trash2, Key, Globe, X } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
 import {
   apiKeySecretSchema,
@@ -138,6 +138,8 @@ function AddMcpServerDialog({
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
+  const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
+  const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
 
   const createServer = useCreateMcpServer();
@@ -149,6 +151,8 @@ function AddMcpServerDialog({
     setUrl("");
     setApiKey("");
     setAuthMode("none");
+    setHeaders([]);
+    setHeaderErrors(null);
     setFieldErrors({});
   }, [open]);
 
@@ -166,6 +170,18 @@ function AddMcpServerDialog({
       return;
     }
 
+    const nonEmptyHeaders = headers.filter((h) => h.key || h.value);
+    const missingKey = nonEmptyHeaders.find((h) => !h.key);
+    if (missingKey) {
+      setHeaderErrors("All headers must have a name");
+      return;
+    }
+    setHeaderErrors(null);
+    const headersRecord =
+      nonEmptyHeaders.length > 0
+        ? Object.fromEntries(nonEmptyHeaders.map((h) => [h.key, h.value]))
+        : undefined;
+
     const data: CreateMcpServerRequest = {
       name: parsed.data.name,
       description: parsed.data.description,
@@ -173,6 +189,7 @@ function AddMcpServerDialog({
       transport_type: "http",
       auth_mode: parsed.data.auth_mode,
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
+      headers: headersRecord,
     };
     await createServer.mutateAsync(data);
     onOpenChange(false);
@@ -181,6 +198,8 @@ function AddMcpServerDialog({
     setUrl("");
     setApiKey("");
     setAuthMode("none");
+    setHeaders([]);
+    setHeaderErrors(null);
     setFieldErrors({});
   };
 
@@ -281,6 +300,60 @@ function AddMcpServerDialog({
               )}
             </div>
           )}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Custom Headers (optional)</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => setHeaders((prev) => [...prev, { key: "", value: "" }])}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add header
+              </Button>
+            </div>
+            {headers.length > 0 && (
+              <div className="space-y-2">
+                {headers.map((header, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Name"
+                      value={header.key}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setHeaders((prev) =>
+                          prev.map((h, i) => (i === index ? { ...h, key: e.target.value } : h)),
+                        );
+                        setHeaderErrors(null);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder="Value"
+                      value={header.value}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setHeaders((prev) =>
+                          prev.map((h, i) => (i === index ? { ...h, value: e.target.value } : h)),
+                        );
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 w-9 p-0 shrink-0"
+                      onClick={() => setHeaders((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {headerErrors && <p className="text-xs text-destructive">{headerErrors}</p>}
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel

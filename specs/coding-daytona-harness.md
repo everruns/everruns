@@ -12,7 +12,7 @@ the default-built-ins-vs-examples split and migration behaviour.
 
 **Name:** `coding-daytona`
 **Display Name:** Coding (Daytona)
-**Parent:** `generic` (inherits session_file_system, virtual_bash, web_fetch, session_storage, session, agent_instructions, skills, infinity_context, openai_tool_search, budgeting, compaction, tool_output_persistence)
+**Parent:** `generic` (inherits session_file_system, bashkit_shell, web_fetch, session_storage, session, agent_instructions, skills, infinity_context, openai_tool_search, budgeting, compaction, tool_output_persistence)
 **Additional capabilities:** `daytona`, `github_scout`
 **Roles:** None (not Base, Default, or Chat — opt-in harness)
 
@@ -20,7 +20,7 @@ the default-built-ins-vs-examples split and migration behaviour.
 
 The harness operates at two levels:
 
-1. **Workspace (VFS + virtual bash)** — inherited from Generic. For configuration, notes, artifacts, lightweight operations.
+1. **Workspace (VFS + bashkit shell)** — inherited from Generic. For configuration, notes, artifacts, lightweight operations.
 2. **Daytona sandbox** — real filesystem, real processes, real network. For actual coding: git clone, builds, tests, dev servers.
 
 The system prompt steers the LLM to use the right level for each task.
@@ -41,7 +41,7 @@ The system prompt follows patterns from state-of-the-art coding agents (Claude C
 
 Inherited from Generic:
 - `session_file_system` — workspace VFS
-- `virtual_bash` — lightweight sandboxed shell
+- `bashkit_shell` — lightweight sandboxed shell
 - `web_fetch` (with `enable_file_download: true`)
 - `session_storage` — KV store + encrypted secrets
 - `session` — session metadata

@@ -4,7 +4,7 @@
 // drivers that support it. This capability does not add tools or prompt text;
 // it only configures the outbound LLM request.
 
-use super::{Capability, CapabilityStatus, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use crate::llm_driver_registry::{PromptCacheConfig, PromptCacheStrategy};
 use async_trait::async_trait;
 
@@ -74,6 +74,14 @@ impl Capability for PromptCachingCapability {
     fn description(&self) -> &str {
         "Enables provider-specific prompt caching where supported and records \
          that request intent in llm.generation metadata."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Кешування промптів",
+            "Вмикає кешування промптів, специфічне для провайдера, там, де воно підтримується, і фіксує цей намір запиту в метаданих llm.generation.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

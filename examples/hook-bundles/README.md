@@ -26,7 +26,7 @@ curl -X POST http://localhost:9300/api/v1/agents \
     "system_prompt": "You are a helpful coding agent.",
     "capabilities": [
       "session_file_system",
-      "virtual_bash",
+      "bashkit_shell",
       {
         "ref": "user_hooks",
         "config": '"$(cat block-rm-rf.json)"'
@@ -36,7 +36,7 @@ curl -X POST http://localhost:9300/api/v1/agents \
 ```
 
 Risk: enabling `user_hooks` requires an admin role on the agent (same
-gate as `virtual_bash` and `web_fetch`).
+gate as `bashkit_shell` and `web_fetch`).
 
 ## Muting a capability-contributed hook
 

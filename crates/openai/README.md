@@ -1,10 +1,23 @@
 # everruns-openai
 
-OpenAI LLM provider implementation for Everruns.
+> OpenAI LLM provider for Everruns agents.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It
-registers OpenAI drivers with `everruns-core`, including the recommended
-Responses API driver and a Chat Completions compatibility driver.
+[![Crates.io](https://img.shields.io/crates/v/everruns-openai.svg)](https://crates.io/crates/everruns-openai)
+[![Documentation](https://docs.rs/everruns-openai/badge.svg)](https://docs.rs/everruns-openai)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-openai` registers OpenAI drivers with
+[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+agent loop can run against OpenAI models. It ships the recommended Responses API
+driver plus a Chat Completions compatibility driver for OpenAI-compatible
+endpoints, mapping Everruns' provider-neutral messages, tools, and reasoning
+onto the OpenAI wire format.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. Providers are swappable: see
+[`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
+models, or run with no key at all using the built-in LLM simulator in
+[`everruns-runtime`](https://crates.io/crates/everruns-runtime).
 
 ## Quick Example: Agent With OpenAI
 
@@ -55,6 +68,19 @@ let driver = OpenAILlmDriver::new("your-api-key");
 assert!(!driver.uses_custom_url());
 ```
 
+## What It Provides
+
+- A Responses API driver (recommended) and a Chat Completions compatibility driver
+- Registration into the Everruns `DriverRegistry` via `register_driver`
+- `base_url` override for OpenAI-compatible endpoints
+- Streaming, tool calls, and reasoning mapped to provider-neutral Everruns types
+
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-openai)
+- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

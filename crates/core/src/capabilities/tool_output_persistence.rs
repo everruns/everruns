@@ -22,7 +22,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileSystem, ToolContext};
@@ -164,6 +164,14 @@ impl Capability for ToolOutputPersistenceCapability {
          enabling lossless retrieval via read_file or grep."
     }
 
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Збереження виводу інструментів",
+            "Зберігає повний вивід інструментів виконання у VFS сесії перед обрізанням, що дає змогу отримати його без втрат через read_file або grep.",
+        )]
+    }
+
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
     }
@@ -271,7 +279,7 @@ impl PostToolExecHook for PersistOutputHook {
 /// Split combined output text into stdout and stderr streams.
 ///
 /// The raw output from exec tools uses `\n--- stderr ---\n` as a separator
-/// (see `virtual_bash.rs` and other sandbox tools). Uses `rfind` to split at
+/// (see `bashkit_shell.rs` and other sandbox tools). Uses `rfind` to split at
 /// the *last* occurrence, since the separator is injected by our tools and
 /// shouldn't appear more than once — but if stdout happens to contain the
 /// marker text, taking the last match minimizes corruption.

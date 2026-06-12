@@ -13,6 +13,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   site: "https://docs.everruns.com",
   trailingSlash: "always",
+  redirects: {
+    // virtual_bash capability renamed to bashkit_shell
+    "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
+  },
   vite: {
     resolve: {
       // Enable Starlight component imports from symlinked docs/ directory

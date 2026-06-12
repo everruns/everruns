@@ -8,14 +8,15 @@ use std::{
 };
 
 use async_trait::async_trait;
-use axum::http::{Method, StatusCode};
+use axum::{
+    Json, Router,
+    http::{Method, StatusCode},
+    routing::get,
+};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::capabilities::{A2aAgentDelegationCapability, Capability};
-use everruns_core::session_resource::{
-    RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
-};
 use everruns_core::tools::ToolExecutionResult;
-use everruns_core::traits::{SessionResourceRegistry, ToolContext};
+use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use hmac::{Hmac, Mac};
@@ -150,123 +151,181 @@ async fn wait_for_app_invocation_audit_log(
 }
 
 #[derive(Default)]
-struct TestSessionResourceRegistry {
-    entries: Mutex<HashMap<String, SessionResourceEntry>>,
+struct TestStorageStore {
+    values: Mutex<HashMap<String, String>>,
+}
+
+impl TestStorageStore {
+    /// Parse the stored agent-run record for a run_id, if present.
+    fn run_record(&self, run_id: &str) -> Option<Value> {
+        self.values
+            .lock()
+            .unwrap()
+            .get(&format!("agent_run:{run_id}"))
+            .and_then(|raw| serde_json::from_str(raw).ok())
+    }
 }
 
 #[async_trait]
-impl SessionResourceRegistry for TestSessionResourceRegistry {
-    async fn register(
+impl SessionStorageStore for TestStorageStore {
+    async fn set_value(
         &self,
-        entry: RegisterSessionResource,
-    ) -> everruns_core::Result<SessionResourceEntry> {
+        _session_id: SessionId,
+        key: &str,
+        value: &str,
+    ) -> everruns_core::Result<()> {
+        self.values
+            .lock()
+            .unwrap()
+            .insert(key.to_string(), value.to_string());
+        Ok(())
+    }
+
+    async fn get_value(
+        &self,
+        _session_id: SessionId,
+        key: &str,
+    ) -> everruns_core::Result<Option<String>> {
+        Ok(self.values.lock().unwrap().get(key).cloned())
+    }
+
+    async fn delete_value(&self, _session_id: SessionId, key: &str) -> everruns_core::Result<bool> {
+        Ok(self.values.lock().unwrap().remove(key).is_some())
+    }
+
+    async fn list_keys(&self, _session_id: SessionId) -> everruns_core::Result<Vec<KeyInfo>> {
         let now = chrono::Utc::now();
-        let mut entries = self.entries.lock().unwrap();
-        let existing = entries.get(&entry.resource_id).cloned();
-        let out = SessionResourceEntry {
-            resource_id: entry.resource_id.clone(),
-            session_id: entry.session_id,
-            kind: entry.kind,
-            display_name: entry.display_name,
-            status: entry.status,
-            metadata: entry.metadata,
-            created_at: existing.as_ref().map(|e| e.created_at).unwrap_or(now),
-            updated_at: now,
-        };
-        entries.insert(entry.resource_id, out.clone());
-        Ok(out)
-    }
-
-    async fn update_status(
-        &self,
-        _session_id: SessionId,
-        resource_id: &str,
-        status: SessionResourceStatus,
-    ) -> everruns_core::Result<Option<SessionResourceEntry>> {
-        let mut entries = self.entries.lock().unwrap();
-        if let Some(entry) = entries.get_mut(resource_id) {
-            entry.status = status;
-            entry.updated_at = chrono::Utc::now();
-            return Ok(Some(entry.clone()));
-        }
-        Ok(None)
-    }
-
-    async fn get(
-        &self,
-        _session_id: SessionId,
-        resource_id: &str,
-    ) -> everruns_core::Result<Option<SessionResourceEntry>> {
-        Ok(self.entries.lock().unwrap().get(resource_id).cloned())
-    }
-
-    async fn list(
-        &self,
-        _session_id: SessionId,
-        filter: Option<&SessionResourceFilter>,
-    ) -> everruns_core::Result<Vec<SessionResourceEntry>> {
-        let entries = self.entries.lock().unwrap();
-        Ok(entries
-            .values()
-            .filter(|entry| {
-                filter
-                    .and_then(|f| f.kind.as_deref())
-                    .is_none_or(|kind| entry.kind == kind)
+        Ok(self
+            .values
+            .lock()
+            .unwrap()
+            .keys()
+            .map(|key| KeyInfo {
+                key: key.clone(),
+                created_at: now,
+                updated_at: now,
             })
-            .filter(|entry| {
-                filter
-                    .and_then(|f| f.status)
-                    .is_none_or(|status| entry.status == status)
-            })
-            .cloned()
             .collect())
     }
 
-    async fn deregister(
+    async fn set_secret(
         &self,
         _session_id: SessionId,
-        resource_id: &str,
+        _name: &str,
+        _value: &str,
+    ) -> everruns_core::Result<()> {
+        Ok(())
+    }
+
+    async fn get_secret(
+        &self,
+        _session_id: SessionId,
+        _name: &str,
+    ) -> everruns_core::Result<Option<String>> {
+        Ok(None)
+    }
+
+    async fn delete_secret(
+        &self,
+        _session_id: SessionId,
+        _name: &str,
     ) -> everruns_core::Result<bool> {
-        Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
+        Ok(false)
+    }
+
+    async fn list_secrets(&self, _session_id: SessionId) -> everruns_core::Result<Vec<SecretInfo>> {
+        Ok(Vec::new())
     }
 }
 
-async fn create_published_served_a2a_app() -> (TestServer, String, String) {
-    let (server, base_url) = TestServer::serving_in_memory().await;
-    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
-    let app_id = app["id"].as_str().unwrap();
-    let channel_id = app["channels"][0]["id"].as_str().unwrap();
-    publish_app(&server, app_id).await;
-    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
-    (server, endpoint, api_key)
-}
-
-fn outbound_delegation_config(discovery_base_url: &str, api_key: &str) -> Value {
+fn a2a_agent_card(endpoint: &str) -> Value {
     json!({
-        "agents": [{
-            "id": "local_app",
-            "name": "Local App",
-            "description": "Local Everruns A2A app endpoint",
-            "base_url": discovery_base_url,
-            "headers": {
-                "authorization": format!("Bearer {api_key}")
-            },
-            "preferred_binding": "JSONRPC",
-            "poll_interval_ms": 100,
-            "allow_local_urls": true
-        }]
+        "name": "Local Everruns A2A app",
+        "description": "Local A2A app endpoint used by outbound delegation tests",
+        "version": "0.1",
+        "protocolVersion": "0.3.0",
+        "preferredTransport": "JSONRPC",
+        "supportedInterfaces": [
+            {
+                "url": endpoint,
+                "protocolBinding": "JSONRPC",
+                "protocolVersion": "1.0"
+            }
+        ],
+        "capabilities": {
+            "streaming": false,
+            "pushNotifications": false,
+            "stateTransitionHistory": false
+        },
+        "defaultInputModes": ["text/plain"],
+        "defaultOutputModes": ["text/plain"],
+        "skills": []
     })
 }
 
-async fn spawn_background_against_local_a2a(config: Value) -> Value {
+async fn spawn_agent_card_server(card: Value) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("bind agent-card server");
+    let addr = listener.local_addr().expect("agent-card server addr");
+    let app = Router::new().route(
+        "/.well-known/agent-card.json",
+        get(move || {
+            let card = card.clone();
+            async move { Json(card) }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .await
+            .expect("serve agent-card server");
+    });
+    format!("http://{addr}")
+}
+
+async fn create_published_served_a2a_app() -> (TestServer, String, String, String, String) {
+    let (server, base_url) = TestServer::serving_in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-outbound-local", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap().to_string();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
+    publish_app(&server, &app_id).await;
+    let endpoint = format!("{base_url}/api/v1/apps/{app_id}/a2a/{channel_id}");
+    (server, endpoint, api_key, app_id, channel_id)
+}
+
+fn outbound_delegation_config(
+    endpoint: &str,
+    api_key: &str,
+    discovery_base_url: Option<&str>,
+) -> Value {
+    let mut agent = json!({
+        "id": "local_app",
+        "name": "Local App",
+        "description": "Local Everruns A2A app endpoint",
+        "headers": {
+            "authorization": format!("Bearer {api_key}")
+        },
+        "preferred_binding": "JSONRPC",
+        "poll_interval_ms": 100,
+        "allow_local_urls": true
+    });
+    if let Some(base_url) = discovery_base_url {
+        agent["base_url"] = json!(base_url);
+    } else {
+        agent["agent_card"] = a2a_agent_card(endpoint);
+    }
+    json!({ "agents": [agent] })
+}
+
+async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageStore>, Value) {
     let capability = A2aAgentDelegationCapability;
     let spawn_tool = capability
         .tools_with_config(&config)
         .into_iter()
         .find(|tool| tool.name() == "spawn_agent")
         .expect("spawn_agent tool");
-    let registry = Arc::new(TestSessionResourceRegistry::default());
-    let ctx = ToolContext::new(SessionId::new()).with_session_resource_registry(registry);
+    let storage = Arc::new(TestStorageStore::default());
+    let ctx = ToolContext::with_storage_store(SessionId::new(), storage.clone());
 
     let result = spawn_tool
         .execute_with_context(
@@ -284,7 +343,23 @@ async fn spawn_background_against_local_a2a(config: Value) -> Value {
     let ToolExecutionResult::Success(value) = result else {
         panic!("expected successful spawn_agent result: {result:?}");
     };
-    value
+    (storage, value)
+}
+
+async fn wait_for_remote_task_snapshot(storage: &TestStorageStore, run_id: &str) -> Value {
+    for _ in 0..30 {
+        if let Some(metadata) = storage.run_record(run_id) {
+            assert_ne!(
+                metadata["status"], "failed",
+                "agent_run failed before remote task snapshot was observed: {metadata:?}",
+            );
+            if metadata["last_remote_task_snapshot"].is_object() {
+                return metadata;
+            }
+        }
+        sleep(Duration::from_millis(50)).await;
+    }
+    panic!("expected background monitor to record a remote task snapshot for {run_id}");
 }
 
 #[tokio::test]
@@ -578,6 +653,35 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
         "method": "message/send",
         "params": {
             "message": { "role": "user", "parts": [] }
+        }
+    }))
+    .unwrap();
+    let response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(response["error"]["code"], -32602);
+
+    // Present-but-malformed discriminators are invalid rather than treated as
+    // legacy discriminator-free text parts.
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "z",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": 123, "text": "malformed discriminator" }]
+            }
         }
     }))
     .unwrap();
@@ -1105,25 +1209,79 @@ async fn a2a_agent_card_published_only_when_live() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn outbound_a2a_delegation_resolves_local_app_discovery_card() {
-    let (_server, endpoint, api_key) = create_published_served_a2a_app().await;
-    let config = outbound_delegation_config(&endpoint, &api_key);
+async fn outbound_a2a_delegation_reaches_local_app_with_discovery_card() {
+    let (_server, endpoint, api_key, _app_id, _channel_id) =
+        create_published_served_a2a_app().await;
+    let discovery_base_url = spawn_agent_card_server(a2a_agent_card(&endpoint)).await;
+    let config = outbound_delegation_config(&endpoint, &api_key, Some(&discovery_base_url));
 
-    let spawn_result = spawn_background_against_local_a2a(config).await;
+    let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
 
-    assert_eq!(spawn_result["status"], "failed");
-    let error = spawn_result["error"].as_str().unwrap_or_default();
-    assert!(
-        !error.contains("Failed to resolve A2A AgentCard"),
-        "card discovery should parse before any send failure: {spawn_result:?}",
+    assert_ne!(
+        spawn_result["status"], "failed",
+        "spawn_agent failed: {spawn_result:?}",
     );
-    assert!(
-        !error.contains("failed to parse agent card"),
-        "served card must deserialize with the outbound A2A resolver: {spawn_result:?}",
+    let run_id = spawn_result["agent_run_id"].as_str().unwrap();
+    let remote_task_id = spawn_result["remote_task_id"].as_str().unwrap();
+    assert_eq!(
+        spawn_result["remote_context_id"].as_str().unwrap(),
+        remote_task_id
     );
+
+    let metadata = wait_for_remote_task_snapshot(&storage, run_id).await;
+    assert_eq!(metadata["remote_task_id"], remote_task_id);
+    assert_eq!(metadata["last_remote_task_snapshot"]["id"], remote_task_id);
     assert!(
-        error.contains("A2A send_message failed") || error.contains("Method not found"),
-        "expected remaining failure, if any, to be past AgentCard parsing and in EVE-540 scope: {spawn_result:?}",
+        matches!(
+            metadata["last_remote_task_snapshot"]["state"].as_str(),
+            Some(
+                "submitted"
+                    | "working"
+                    | "completed"
+                    | "TASK_STATE_SUBMITTED"
+                    | "TASK_STATE_WORKING"
+                    | "TASK_STATE_COMPLETED"
+            )
+        ),
+        "expected non-error remote task state, got {metadata:?}",
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn outbound_a2a_delegation_reaches_local_app_with_inline_card() {
+    let (_server, endpoint, api_key, _app_id, _channel_id) =
+        create_published_served_a2a_app().await;
+    let config = outbound_delegation_config(&endpoint, &api_key, None);
+
+    let (storage, spawn_result) = spawn_background_against_local_a2a(config).await;
+
+    assert_ne!(
+        spawn_result["status"], "failed",
+        "spawn_agent failed: {spawn_result:?}",
+    );
+    let run_id = spawn_result["agent_run_id"].as_str().unwrap();
+    let remote_task_id = spawn_result["remote_task_id"].as_str().unwrap();
+    assert_eq!(
+        spawn_result["remote_context_id"].as_str().unwrap(),
+        remote_task_id
+    );
+
+    let metadata = wait_for_remote_task_snapshot(&storage, run_id).await;
+    assert_eq!(metadata["remote_task_id"], remote_task_id);
+    assert_eq!(metadata["last_remote_task_snapshot"]["id"], remote_task_id);
+    assert!(
+        matches!(
+            metadata["last_remote_task_snapshot"]["state"].as_str(),
+            Some(
+                "submitted"
+                    | "working"
+                    | "completed"
+                    | "TASK_STATE_SUBMITTED"
+                    | "TASK_STATE_WORKING"
+                    | "TASK_STATE_COMPLETED"
+            )
+        ),
+        "expected non-error remote task state, got {metadata:?}",
     );
 }
 

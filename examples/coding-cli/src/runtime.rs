@@ -21,10 +21,10 @@ use everruns_core::capabilities::{
 };
 use everruns_core::command::CommandDescriptor;
 use everruns_core::error::AgentLoopError;
+use everruns_core::in_memory::InMemoryMessageRetriever;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::memory::InMemoryMessageRetriever;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{

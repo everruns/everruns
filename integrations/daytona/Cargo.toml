@@ -5,12 +5,19 @@
 name = "everruns-integrations-daytona"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-daytona"
+readme = "README.md"
+keywords = ["everruns", "daytona", "sandbox", "agents"]
+categories = ["api-bindings", "development-tools"]
 description = "Daytona cloud sandbox integration for Everruns"
 
 [dependencies]
-everruns-core = { path = "../../crates/core" }
+everruns-core.workspace = true
 inventory.workspace = true
 
 # HTTP client for Daytona API

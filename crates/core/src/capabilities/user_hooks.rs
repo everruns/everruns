@@ -13,7 +13,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::user_hook_types::{HookSource, UserHookSpec};
 
 /// Config shape parsed from `AgentCapabilityConfig.config` for the
@@ -57,7 +57,7 @@ impl Capability for UserHooksCapability {
 
     fn risk_level(&self) -> RiskLevel {
         // Accepts arbitrary bash commands from config. Even though execution
-        // is sandboxed through virtual_bash, the assignment gate must stay
+        // is sandboxed through bashkit_shell, the assignment gate must stay
         // admin-only — anyone who can configure this capability can run
         // arbitrary code in the session sandbox on every agent action.
         RiskLevel::High
@@ -69,13 +69,19 @@ impl Capability for UserHooksCapability {
             "properties": {
                 "hooks": {
                     "type": "array",
+                    "title": "Hooks",
                     "description": "User-authored hook entries (see specs/user-hooks.md#userhookspec).",
                     "items": { "$ref": "#/$defs/UserHookSpec" }
                 },
                 "disabled_contributions": {
                     "type": "array",
+                    "title": "Disabled contributed hooks",
                     "description": "Stable HookId strings of capability-contributed hooks to mute. Format: \"{capability_id}:{name}\".",
-                    "items": { "type": "string" }
+                    "items": {
+                        "type": "string",
+                        "title": "Hook ID",
+                        "description": "Stable HookId of a capability-contributed hook."
+                    }
                 }
             },
             "additionalProperties": false,
@@ -84,44 +90,103 @@ impl Capability for UserHooksCapability {
                     "type": "object",
                     "required": ["event", "executor"],
                     "properties": {
-                        "id": { "type": "string" },
+                        "id": {
+                            "type": "string",
+                            "title": "Hook ID",
+                            "description": "Optional stable identifier for this hook."
+                        },
                         "event": {
                             "type": "string",
-                            "enum": [
-                                "session_start",
-                                "user_prompt_submit",
-                                "pre_tool_use",
-                                "post_tool_use",
-                                "turn_end",
-                                "session_end"
+                            "title": "Event",
+                            "description": "Lifecycle event that triggers this hook.",
+                            "oneOf": [
+                                { "const": "session_start", "title": "Session start" },
+                                { "const": "user_prompt_submit", "title": "User prompt submit" },
+                                { "const": "pre_tool_use", "title": "Before tool use" },
+                                { "const": "post_tool_use", "title": "After tool use" },
+                                { "const": "turn_end", "title": "Turn end" },
+                                { "const": "session_end", "title": "Session end" }
                             ]
                         },
                         "matcher": {
                             "type": "object",
+                            "title": "Matcher",
+                            "description": "Optional filter that limits which tool calls trigger this hook (tool events only).",
                             "properties": {
-                                "tool_name": { "type": "string" },
-                                "tool_name_glob": { "type": "string" },
-                                "args_jsonpath": { "type": "string" },
-                                "match_regex": { "type": "string" },
-                                "deny_regex": { "type": "string" }
+                                "tool_name": {
+                                    "type": "string",
+                                    "title": "Tool name",
+                                    "description": "Exact tool name to match."
+                                },
+                                "tool_name_glob": {
+                                    "type": "string",
+                                    "title": "Tool name glob",
+                                    "description": "Glob pattern matched against the tool name."
+                                },
+                                "args_jsonpath": {
+                                    "type": "string",
+                                    "title": "Arguments JSONPath",
+                                    "description": "JSONPath selecting the tool argument value to test."
+                                },
+                                "match_regex": {
+                                    "type": "string",
+                                    "title": "Match regex",
+                                    "description": "Regex the selected value must match."
+                                },
+                                "deny_regex": {
+                                    "type": "string",
+                                    "title": "Deny regex",
+                                    "description": "Regex the selected value must not match."
+                                }
                             },
                             "additionalProperties": false
                         },
                         "executor": {
                             "type": "object",
+                            "title": "Executor",
+                            "description": "Command executed when the hook fires.",
                             "required": ["type", "command"],
                             "properties": {
-                                "type": { "const": "bash" },
-                                "command": { "type": "string" },
+                                "type": {
+                                    "title": "Executor type",
+                                    "description": "Executor kind; only bash is supported.",
+                                    "const": "bash"
+                                },
+                                "command": {
+                                    "type": "string",
+                                    "title": "Command",
+                                    "description": "Shell command run in the session sandbox."
+                                },
                                 "env": {
                                     "type": "object",
+                                    "title": "Environment variables",
+                                    "description": "Extra environment variables passed to the command.",
                                     "additionalProperties": { "type": "string" }
                                 }
                             }
                         },
-                        "timeout_ms": { "type": "integer", "minimum": 100, "maximum": 30000 },
-                        "on_error": { "type": "string", "enum": ["block", "allow", "warn"] },
-                        "description": { "type": "string" }
+                        "timeout_ms": {
+                            "type": "integer",
+                            "title": "Timeout (ms)",
+                            "description": "Maximum hook run time in milliseconds (100-30000).",
+                            "minimum": 100,
+                            "maximum": 30000
+                        },
+                        "on_error": {
+                            "type": "string",
+                            "title": "On error",
+                            "description": "What to do when the hook command fails.",
+                            "oneOf": [
+                                { "const": "block", "title": "Block" },
+                                { "const": "allow", "title": "Allow" },
+                                { "const": "warn", "title": "Warn" }
+                            ]
+                        },
+                        "description": {
+                            "type": "string",
+                            "title": "Description",
+                            "description": "Optional human-readable note about what this hook does."
+                        }
                     }
                 }
             }
@@ -142,6 +207,130 @@ impl Capability for UserHooksCapability {
                 .map_err(|e| format!("user_hooks.hooks[{idx}]: {e}"))?;
         }
         Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Defines user-authored hook commands that run at agent lifecycle \
+                     events and which capability-contributed hooks to mute.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Хуки користувача"),
+                description: Some(
+                    "Виконує написані користувачем шелл-команди у визначених точках \
+                     життєвого циклу виконання агента. Хуки можуть змінювати вхідні дані \
+                     або блокувати виконання.",
+                ),
+                config_description: Some(
+                    "Визначає хуки користувача, що запускаються на подіях життєвого циклу агента, та які хуки від можливостей вимкнути.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "hooks": {
+                            "title": "Хуки",
+                            "description": "Хуки, створені користувачем (див. specs/user-hooks.md#userhookspec).",
+                            "items": {
+                                "properties": {
+                                    "id": {
+                                        "title": "Ідентифікатор хука",
+                                        "description": "Необов'язковий стабільний ідентифікатор цього хука."
+                                    },
+                                    "event": {
+                                        "title": "Подія",
+                                        "description": "Подія життєвого циклу, що запускає цей хук.",
+                                        "enum_labels": {
+                                            "session_start": "Початок сесії",
+                                            "user_prompt_submit": "Надсилання запиту користувача",
+                                            "pre_tool_use": "Перед викликом інструмента",
+                                            "post_tool_use": "Після виклику інструмента",
+                                            "turn_end": "Завершення ходу",
+                                            "session_end": "Завершення сесії"
+                                        }
+                                    },
+                                    "matcher": {
+                                        "title": "Фільтр",
+                                        "description": "Необов'язковий фільтр, що обмежує, які виклики інструментів запускають цей хук (лише для подій інструментів).",
+                                        "properties": {
+                                            "tool_name": {
+                                                "title": "Назва інструмента",
+                                                "description": "Точна назва інструмента для збігу."
+                                            },
+                                            "tool_name_glob": {
+                                                "title": "Glob назви інструмента",
+                                                "description": "Glob-шаблон, що зіставляється з назвою інструмента."
+                                            },
+                                            "args_jsonpath": {
+                                                "title": "JSONPath аргументів",
+                                                "description": "JSONPath, що вибирає значення аргументу інструмента для перевірки."
+                                            },
+                                            "match_regex": {
+                                                "title": "Регулярний вираз збігу",
+                                                "description": "Регулярний вираз, якому має відповідати вибране значення."
+                                            },
+                                            "deny_regex": {
+                                                "title": "Регулярний вираз заборони",
+                                                "description": "Регулярний вираз, якому вибране значення не повинно відповідати."
+                                            }
+                                        }
+                                    },
+                                    "executor": {
+                                        "title": "Виконавець",
+                                        "description": "Команда, що виконується, коли спрацьовує хук.",
+                                        "properties": {
+                                            "type": {
+                                                "title": "Тип виконавця",
+                                                "description": "Вид виконавця; підтримується лише bash."
+                                            },
+                                            "command": {
+                                                "title": "Команда",
+                                                "description": "Шелл-команда, що виконується в пісочниці сесії."
+                                            },
+                                            "env": {
+                                                "title": "Змінні середовища",
+                                                "description": "Додаткові змінні середовища, що передаються команді."
+                                            }
+                                        }
+                                    },
+                                    "timeout_ms": {
+                                        "title": "Тайм-аут (мс)",
+                                        "description": "Максимальний час виконання хука в мілісекундах (100-30000)."
+                                    },
+                                    "on_error": {
+                                        "title": "У разі помилки",
+                                        "description": "Що робити, коли команда хука завершується з помилкою.",
+                                        "enum_labels": {
+                                            "block": "Блокувати",
+                                            "allow": "Дозволити",
+                                            "warn": "Попередити"
+                                        }
+                                    },
+                                    "description": {
+                                        "title": "Опис",
+                                        "description": "Необов'язкова зрозуміла людині нотатка про призначення цього хука."
+                                    }
+                                }
+                            }
+                        },
+                        "disabled_contributions": {
+                            "title": "Вимкнені хуки можливостей",
+                            "description": "Стабільні ідентифікатори HookId хуків, доданих можливостями, які потрібно вимкнути. Формат: \"{capability_id}:{name}\".",
+                            "items": {
+                                "title": "Ідентифікатор хука",
+                                "description": "Стабільний HookId хука, доданого можливістю."
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 
     fn user_hooks_with_config(&self, config: &serde_json::Value) -> Vec<UserHookSpec> {
@@ -254,6 +443,49 @@ mod tests {
             ]
         });
         assert!(cap.validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn uk_localization_and_schema_one_of_match_validation() {
+        let cap = UserHooksCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Хуки користувача");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("шелл-команди")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
+
+        // Every event/on_error oneOf const must be accepted by validate_config.
+        let schema = cap.config_schema().expect("config schema");
+        let spec = &schema["$defs"]["UserHookSpec"]["properties"];
+        let consts = |prop: &serde_json::Value| -> Vec<String> {
+            prop["oneOf"]
+                .as_array()
+                .expect("oneOf")
+                .iter()
+                .map(|v| v["const"].as_str().expect("const").to_string())
+                .collect()
+        };
+        let events = consts(&spec["event"]);
+        let on_errors = consts(&spec["on_error"]);
+        assert_eq!(events.len(), 6);
+        assert_eq!(on_errors, vec!["block", "allow", "warn"]);
+        for event in &events {
+            for on_error in &on_errors {
+                let config = serde_json::json!({
+                    "hooks": [
+                        {
+                            "event": event,
+                            "executor": { "type": "bash", "command": "true" },
+                            "on_error": on_error
+                        }
+                    ]
+                });
+                cap.validate_config(&config)
+                    .unwrap_or_else(|e| panic!("{event}/{on_error} should validate: {e}"));
+            }
+        }
     }
 
     #[test]

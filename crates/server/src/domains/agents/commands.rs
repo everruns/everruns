@@ -1689,7 +1689,7 @@ mod tests {
             system_prompt: "test".to_string(),
             default_model_id: None,
             tags: Vec::new(),
-            capabilities: vec![AgentCapabilityConfig::new("virtual_bash")],
+            capabilities: vec![AgentCapabilityConfig::new("bashkit_shell")],
             initial_files: Vec::new(),
             tools: Vec::new(),
             mcp_servers: Default::default(),

@@ -24,7 +24,9 @@ mod tools;
 mod validation;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -156,6 +158,18 @@ impl Capability for BrowserlessCapability {
 
     fn features(&self) -> Vec<&'static str> {
         vec![LEASED_RESOURCES_FEATURE]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Browserless",
+            "Хмарна автоматизація браузера на основі Browserless. Робіть знімки екрана, \
+             читайте вміст DOM, збирайте структуровані дані та взаємодійте з вебсторінками \
+             (кліки, введення тексту, клавіатура, миша, дотики). Підтримує постійні сесії \
+             браузера через CDP для сценаріїв входу. Сценарії використання: тестування \
+             доступності, регресійне тестування, вебскрейпінг, перевірка інтерфейсу.",
+        )]
     }
 }
 

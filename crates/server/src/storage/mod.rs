@@ -18,9 +18,9 @@ pub mod harness_store;
 pub mod leased_resource_store;
 pub mod llm_provider_store;
 pub mod memory;
-pub mod memory_store_backend;
 pub mod message_store;
 pub mod models;
+pub mod partial_stream;
 pub mod password;
 pub mod reporting;
 pub mod repositories;
@@ -29,6 +29,8 @@ pub mod session_resource_store;
 pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;
+pub mod session_task_store;
+pub mod subagent_spawn_handles;
 
 #[cfg(test)]
 mod event_tests;
@@ -47,9 +49,9 @@ pub use leased_resource_store::{
 };
 pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
-pub use memory_store_backend::DbMemoryStore;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;
+pub use partial_stream::PgPartialStreamStore;
 pub use repositories::*;
 pub use session_file_store::{DbSessionFileStore, create_db_session_file_store};
 pub use session_resource_store::DbSessionResourceRegistry;
@@ -59,3 +61,5 @@ pub use session_storage_store::{
     create_db_session_storage_store_without_encryption,
 };
 pub use session_store::{DbSessionStore, create_db_session_store};
+pub use session_task_store::DbSessionTaskRegistry;
+pub use subagent_spawn_handles::PgSubagentSpawnStore;

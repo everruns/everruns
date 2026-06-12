@@ -115,7 +115,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::InMemoryMessageRetriever;
+    use crate::in_memory::InMemoryMessageRetriever;
     use crate::message_retriever::InputMessage;
     use crate::typed_id::{MessageId, SessionId, TurnId};
 

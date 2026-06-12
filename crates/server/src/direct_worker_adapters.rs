@@ -1495,21 +1495,26 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )))
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        let waker = Arc::new(DirectSessionTaskWaker {
+            db: self.db.clone(),
+            event_service: self.event_service.clone(),
+            runner: self.runner.clone(),
+        });
+        Some(Arc::new(
+            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+                .with_event_emitter(self.event_service.clone())
+                .with_waker(waker),
+        ))
+    }
+
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
         Arc::new(crate::storage::DbSessionScheduleStore::new(
             self.db.clone(),
             org_id,
         ))
-    }
-
-    fn memory_store(
-        &self,
-        org_id: i64,
-    ) -> Option<Arc<dyn everruns_core::memory_store::MemoryStoreBackend>> {
-        Some(Arc::new(crate::storage::DbMemoryStore::new(
-            self.db.clone(),
-            org_id,
-        )))
     }
 
     fn budget_checker(
@@ -1554,6 +1559,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         self.db.pool().map(|pool| {
             Arc::new(crate::storage::PgDurableToolResultStore::new(pool.clone()))
                 as Arc<dyn everruns_core::DurableToolResultStore>
+        })
+    }
+
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        self.db.pool().map(|pool| {
+            Arc::new(crate::storage::PgSubagentSpawnStore::new(pool.clone()))
+                as Arc<dyn everruns_core::SubagentSpawnStore>
         })
     }
 
@@ -1669,6 +1681,33 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 ))
             })?
             .is_some())
+    }
+
+    async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(everruns_core::SessionId, String)>> {
+        self.db
+            .list_orphaned_session_task_ids(stale_after, limit)
+            .await
+            .map_err(|e| store_error(format!("Failed to list orphaned session tasks: {e}")))
+    }
+
+    fn reaper_session_task_registry(
+        &self,
+    ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+        // Attach waker so reaped tasks can wake sessions per wake_policy.
+        let waker = Arc::new(DirectSessionTaskWaker {
+            db: self.db.clone(),
+            event_service: self.event_service.clone(),
+            runner: self.runner.clone(),
+        });
+        Arc::new(
+            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+                .with_event_emitter(self.event_service.clone())
+                .with_waker(waker),
+        )
     }
 }
 
@@ -1946,6 +1985,84 @@ fn event_to_message(event: Event) -> Option<Message> {
             })
         }
         _ => None,
+    }
+}
+
+// =============================================================================
+// DirectSessionTaskWaker — inject wake messages into sessions from the worker
+// =============================================================================
+
+/// Wake the owning session by injecting a synthetic user message via the same
+/// path as `platform_send_message` in the gRPC service. Uses an internal
+/// caller so the message is created without a user context.
+struct DirectSessionTaskWaker {
+    db: Arc<crate::storage::StorageBackend>,
+    event_service: Arc<crate::services::EventService>,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+}
+
+#[async_trait::async_trait]
+impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskWaker {
+    async fn wake(&self, session_id: everruns_core::SessionId, text: &str) -> anyhow::Result<()> {
+        // Fetch session without org-scope to get harness_id and org_id.
+        let session = self
+            .db
+            .get_session_unscoped(session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to look up session for wake: {e}"))?;
+        let Some(session) = session else {
+            return Ok(());
+        };
+        let Some(harness_id) = session.harness_id else {
+            tracing::debug!(
+                session_id = %session_id,
+                "SessionTaskWaker: session has no harness_id; skipping wake"
+            );
+            return Ok(());
+        };
+
+        let message_id = everruns_core::MessageId::new();
+        let now = chrono::Utc::now();
+        let core_message = everruns_core::Message {
+            id: message_id,
+            role: everruns_core::MessageRole::User,
+            content: vec![everruns_core::ContentPart::text(text)],
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+            controls: None,
+            metadata: None,
+            external_actor: None,
+            created_at: now,
+        };
+
+        self.event_service
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::InputMessageData::new(core_message),
+            ))
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to emit wake message event: {e}"))?;
+
+        if let Some(runner) = &self.runner {
+            let runner = runner.clone();
+            let agent_id = session.agent_id;
+            let org_id = session.org_id;
+            tokio::spawn(async move {
+                if let Err(e) = runner
+                    .start_run(org_id, session_id, harness_id, agent_id, message_id, None)
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        "SessionTaskWaker: failed to start turn workflow: {e}"
+                    );
+                }
+            });
+        }
+
+        Ok(())
     }
 }
 

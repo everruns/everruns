@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use crate::capabilities::{Capability, ToolCallHook, ToolDefinitionHook};
+use crate::capabilities::{Capability, CapabilityLocalization, ToolCallHook, ToolDefinitionHook};
 use crate::tool_narration::ToolNarrationPhase;
 use crate::tool_types::{
     ToolCall, ToolDefinition, add_human_intent_to_tool_definitions, human_intent,
@@ -21,6 +21,14 @@ impl Capability for HumanIntentCapability {
 
     fn description(&self) -> &'static str {
         "Adds model-authored human_intent narration to every active tool call for UI rendering."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Людський намір",
+            "Додає до кожного активного виклику інструмента написаний моделлю опис наміру human_intent для відображення в інтерфейсі.",
+        )]
     }
 
     fn category(&self) -> Option<&'static str> {

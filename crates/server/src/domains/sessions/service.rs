@@ -17,7 +17,7 @@ use crate::org_init;
 use crate::services::PrincipalService;
 use crate::storage::{
     StorageBackend,
-    models::{CreateSessionRow, UpdateSession, VolumeFileRow},
+    models::{CreateSessionRow, MemoryFileRow, UpdateSession},
 };
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
@@ -27,13 +27,14 @@ use everruns_core::{
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
     SessionFile, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{
-        RiskLevel, SystemPromptContext, WORKSPACE_VOLUMES_CAPABILITY_ID,
-        collect_capabilities_with_configs, compute_features, resolve_capability_configs,
+        MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
+        compute_features, resolve_capability_configs,
     },
-    is_declarative_capability, merge_capabilities, merge_initial_files,
-    normalize_initial_file_path, parse_declarative_capability_id,
-    typed_id::VolumeId,
-    volume::{VolumeMountAccess, WorkspaceVolumesConfig},
+    is_declarative_capability,
+    memory::{MemoryConfig, MemoryMountAccess},
+    merge_capabilities, merge_initial_files, normalize_initial_file_path,
+    parse_declarative_capability_id,
+    typed_id::MemoryId,
 };
 use everruns_durable::UpdateField;
 use std::collections::{HashMap, HashSet};
@@ -634,7 +635,7 @@ impl SessionService {
                 .await
                 .mounts;
         mounts.extend(
-            self.collect_workspace_volume_mounts(org_id, &resolved_configs)
+            self.collect_workspace_memory_mounts(org_id, &resolved_configs)
                 .await?,
         );
         Ok(mounts)
@@ -1298,7 +1299,7 @@ impl SessionService {
             crate::domains::session_files::SessionFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
-            Arc::new(everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(file_store));
+            Arc::new(everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(file_store));
         let hooks = everruns_core::lifecycle_hooks::build_session_lifecycle_hooks(
             &specs, event, dispatcher,
         );
@@ -1432,52 +1433,52 @@ impl SessionService {
         ))
     }
 
-    async fn collect_workspace_volume_mounts(
+    async fn collect_workspace_memory_mounts(
         &self,
         org_id: i64,
         capability_configs: &[AgentCapabilityConfig],
     ) -> Result<Vec<MountPoint>> {
         let Some(config) = capability_configs
             .iter()
-            .find(|config| config.capability_id() == WORKSPACE_VOLUMES_CAPABILITY_ID)
+            .find(|config| config.capability_id() == MEMORY_CAPABILITY_ID)
         else {
             return Ok(vec![]);
         };
-        let volume_config: WorkspaceVolumesConfig = serde_json::from_value(config.config.clone())
-            .map_err(|error| {
-            BadRequestError::new(format!("Invalid workspace volume config: {error}"))
-        })?;
-        let mut mounts = Vec::with_capacity(volume_config.mounts.len());
+        let memory_config: MemoryConfig =
+            serde_json::from_value(config.config.clone()).map_err(|error| {
+                BadRequestError::new(format!("Invalid workspace memory config: {error}"))
+            })?;
+        let mut mounts = Vec::with_capacity(memory_config.mounts.len());
 
-        for mount in volume_config.mounts {
-            let volume_id = VolumeId::parse(&mount.volume)
-                .map_err(|_| BadRequestError::new("Invalid workspace volume ID"))?;
-            let volume = self
+        for mount in memory_config.mounts {
+            let memory_id = MemoryId::parse(&mount.memory)
+                .map_err(|_| BadRequestError::new("Invalid workspace memory ID"))?;
+            let memory = self
                 .db
-                .get_volume(org_id, volume_id)
+                .get_memory(org_id, memory_id)
                 .await?
-                .filter(|volume| volume.status == "active")
-                .ok_or_else(|| ResourceNotFoundError::new("Volume"))?;
+                .filter(|memory| memory.status == "active")
+                .ok_or_else(|| ResourceNotFoundError::new("Memory"))?;
 
-            if volume.is_readonly && mount.mode == VolumeMountAccess::ReadWrite {
+            if memory.is_readonly && mount.mode == MemoryMountAccess::ReadWrite {
                 return Err(BadRequestError::new(format!(
-                    "Volume {} is read-only and cannot be mounted readwrite",
-                    mount.volume
+                    "Memory {} is read-only and cannot be mounted readwrite",
+                    mount.memory
                 ))
                 .into());
             }
 
-            let access = if volume.is_readonly || mount.mode == VolumeMountAccess::ReadOnly {
+            let access = if memory.is_readonly || mount.mode == MemoryMountAccess::ReadOnly {
                 MountAccess::ReadOnly
             } else {
                 MountAccess::ReadWrite
             };
-            let files = self.db.list_all_volume_files(volume.id).await?;
+            let files = self.db.list_all_memory_files(memory.id).await?;
             mounts.push(MountPoint::new(
                 mount.path,
                 access,
-                MountSource::directory(volume_files_to_mount_entries(files)),
-                WORKSPACE_VOLUMES_CAPABILITY_ID,
+                MountSource::directory(memory_files_to_mount_entries(files)),
+                MEMORY_CAPABILITY_ID,
             ));
         }
 
@@ -1500,7 +1501,7 @@ impl SessionService {
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
         // Expand declarative capability dependencies so hidden high-risk built-ins
-        // (e.g. `web_fetch`, `virtual_bash`) cannot bypass the admin gate. Validation
+        // (e.g. `web_fetch`, `bashkit_shell`) cannot bypass the admin gate. Validation
         // forbids nested declarative deps, so a single expansion pass is sufficient.
         let declarative_refs: Vec<String> = capability_ids
             .iter()
@@ -1718,7 +1719,7 @@ fn sanitize_session_capabilities(
         .collect()
 }
 
-fn volume_files_to_mount_entries(mut files: Vec<VolumeFileRow>) -> HashMap<String, MountEntry> {
+fn memory_files_to_mount_entries(mut files: Vec<MemoryFileRow>) -> HashMap<String, MountEntry> {
     files.sort_by(|left, right| left.path.cmp(&right.path));
     let mut entries = HashMap::new();
 
@@ -1793,15 +1794,15 @@ fn insert_mount_file(
 mod tests {
     use super::*;
     use crate::domains::common::{Command, Ctx};
-    use crate::domains::volumes::CreateVolume;
-    use crate::domains::volumes::types::{CreateVolumeSourceRequest, GitVolumeSourceRequest};
+    use crate::domains::memory::CreateMemory;
+    use crate::domains::memory::types::{CreateMemorySourceRequest, GitMemorySourceRequest};
     use crate::domains::{
         agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest,
     };
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
-        CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow,
-        CreateVolumeFileRow, StorageBackend,
+        CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMemoryFileRow,
+        CreateOrganizationRow, StorageBackend,
     };
     use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
@@ -2791,17 +2792,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_volume_mount_materializes_source_volume_readonly() {
+    async fn workspace_memory_mount_materializes_source_memory_readonly() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let file_service = SessionFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let ctx = test_ctx(caller.clone(), db.clone());
 
-        let volume = CreateVolume {
-            name: "Repo Volume".to_string(),
+        let memory = CreateMemory {
+            name: "Repo Memory".to_string(),
             description: None,
-            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+            source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
                 url: "https://example.com/org/repo.git".to_string(),
                 branch: None,
                 root_folder: None,
@@ -2812,16 +2813,16 @@ mod tests {
         .await
         .unwrap();
         let claimed = db
-            .claim_next_volume_sync()
+            .claim_next_memory_sync()
             .await
             .unwrap()
-            .expect("volume should be pending sync");
-        db.complete_volume_sync(
+            .expect("memory should be pending sync");
+        db.complete_memory_sync(
             claimed.id,
             claimed.updated_at,
-            vec![CreateVolumeFileRow {
+            vec![CreateMemoryFileRow {
                 path: "/README.md".to_string(),
-                content: Some(b"hello from volume".to_vec()),
+                content: Some(b"hello from memory".to_vec()),
                 is_directory: false,
                 content_hash: None,
             }],
@@ -2830,18 +2831,18 @@ mod tests {
         .unwrap();
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
-            name: "volume-harness".to_string(),
-            display_name: Some("Volume Harness".to_string()),
+            name: "memory-harness".to_string(),
+            display_name: Some("Memory Harness".to_string()),
             description: None,
             system_prompt: "Harness prompt".to_string(),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::with_config(
-                WORKSPACE_VOLUMES_CAPABILITY_ID,
+                MEMORY_CAPABILITY_ID,
                 serde_json::json!({
                     "mounts": [{
-                        "volume": volume.id.to_string(),
+                        "memory": memory.id.to_string(),
                         "path": "/workspace/repo",
                         "mode": "readonly"
                     }]
@@ -2876,21 +2877,21 @@ mod tests {
             &file.encoding,
         )
         .unwrap();
-        assert_eq!(content, b"hello from volume");
+        assert_eq!(content, b"hello from memory");
         assert!(file.is_readonly);
     }
 
     #[tokio::test]
-    async fn workspace_volume_mount_rejects_readwrite_source_volume() {
+    async fn workspace_memory_mount_rejects_readwrite_source_volume() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let ctx = test_ctx(caller.clone(), db.clone());
 
-        let volume = CreateVolume {
+        let memory = CreateMemory {
             name: "Read-only Repo".to_string(),
             description: None,
-            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+            source: Some(CreateMemorySourceRequest::Git(GitMemorySourceRequest {
                 url: "https://example.com/org/repo.git".to_string(),
                 branch: None,
                 root_folder: None,
@@ -2901,18 +2902,18 @@ mod tests {
         .await
         .unwrap();
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
-            name: "readwrite-volume-harness".to_string(),
-            display_name: Some("Readwrite Volume Harness".to_string()),
+            name: "readwrite-memory-harness".to_string(),
+            display_name: Some("Readwrite Memory Harness".to_string()),
             description: None,
             system_prompt: "Harness prompt".to_string(),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::with_config(
-                WORKSPACE_VOLUMES_CAPABILITY_ID,
+                MEMORY_CAPABILITY_ID,
                 serde_json::json!({
                     "mounts": [{
-                        "volume": volume.id.to_string(),
+                        "memory": memory.id.to_string(),
                         "path": "/workspace/repo",
                         "mode": "readwrite"
                     }]
@@ -3190,7 +3191,7 @@ mod tests {
 
     // Build a harness carrying a `user_hooks` capability with a single hook of
     // the given event that writes a sentinel into the session VFS. Exercises the
-    // real server resolve -> finalize -> virtual_bash dispatch path end-to-end.
+    // real server resolve -> finalize -> bashkit_shell dispatch path end-to-end.
     async fn harness_with_user_hook(
         db: &Arc<StorageBackend>,
         org_id: i64,

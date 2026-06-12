@@ -13,7 +13,7 @@
 //! - `crm_add_interaction`: Add customer interaction note
 //! - `crm_search_customers`: Search customers by criteria
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -35,6 +35,14 @@ impl Capability for FakeCrmCapability {
 
     fn description(&self) -> &str {
         "Demo capability: CRM and customer support tools (customers, tickets, interactions). State stored in session filesystem."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Демо-інструменти CRM",
+            "Демонстраційна можливість: інструменти CRM і підтримки клієнтів (клієнти, тікети, взаємодії). Стан зберігається у файловій системі сесії.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -2,7 +2,13 @@
 
 import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
-import type { FieldTemplateProps, RJSFSchema, UiSchema, WidgetProps } from "@rjsf/utils";
+import type {
+  FieldTemplateProps,
+  RJSFSchema,
+  RJSFValidationError,
+  UiSchema,
+  WidgetProps,
+} from "@rjsf/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,12 +21,13 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
-import { MemoryCapabilityConfigEditor } from "./memory-capability-config-editor";
-import { WorkspaceVolumesConfigEditor } from "./workspace-volumes-config-editor";
+import { localizedConfigDescription, localizedConfigSchema } from "@/lib/capability-localization";
+import { formatMessage, type MessageKey, type SupportedLocale } from "@/lib/i18n";
+import { useLocale } from "@/providers/locale-provider";
+import { MemoryConfigEditor } from "./memory-config-editor";
 
 // Capability IDs with purpose-built editors. Mirrors the constants exported
 // from crates/core/src/capabilities/*.
-const WORKSPACE_VOLUMES_CAPABILITY_ID = "workspace_volumes";
 const MEMORY_CAPABILITY_ID = "memory";
 
 interface CapabilitySettingsEditorProps {
@@ -40,11 +47,8 @@ export function CapabilitySettingsEditor({
   onChange,
   disabled,
 }: CapabilitySettingsEditorProps) {
-  if (capability.id === WORKSPACE_VOLUMES_CAPABILITY_ID) {
-    return <WorkspaceVolumesConfigEditor config={config} onChange={onChange} disabled={disabled} />;
-  }
   if (capability.id === MEMORY_CAPABILITY_ID) {
-    return <MemoryCapabilityConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+    return <MemoryConfigEditor config={config} onChange={onChange} disabled={disabled} />;
   }
   return (
     <SchemaCapabilityEditor
@@ -73,9 +77,12 @@ function SchemaCapabilityEditor({
   onChange,
   disabled,
 }: SchemaCapabilityEditorProps) {
-  if (!capability.config_schema) {
+  const { locale } = useLocale();
+  const schema = localizedConfigSchema(capability, locale);
+  if (!schema) {
     return null;
   }
+  const configDescription = localizedConfigDescription(capability, locale);
 
   const uiSchema: UiSchema = {
     ...(capability.config_ui_schema as UiSchema | undefined),
@@ -84,8 +91,11 @@ function SchemaCapabilityEditor({
 
   return (
     <div className="pt-2">
+      {configDescription && (
+        <p className="pb-2 text-xs text-muted-foreground">{configDescription}</p>
+      )}
       <Form
-        schema={capability.config_schema as RJSFSchema}
+        schema={schema as RJSFSchema}
         uiSchema={uiSchema}
         formData={config}
         validator={validator}
@@ -94,10 +104,50 @@ function SchemaCapabilityEditor({
         widgets={CAPABILITY_CONFIG_WIDGETS}
         showErrorList={false}
         noHtml5Validate
+        transformErrors={(errors) => translateValidationErrors(locale, errors)}
         onChange={({ formData }) => onChange(cleanConfig(formData))}
       />
     </div>
   );
+}
+
+// Maps AJV error keywords to catalog message keys; unknown keywords keep the
+// validator's original message so information is never lost.
+const VALIDATION_MESSAGE_KEYS: Record<string, MessageKey> = {
+  required: "validation_required",
+  pattern: "validation_pattern",
+  enum: "validation_enum",
+  const: "validation_enum",
+  oneOf: "validation_enum",
+  type: "validation_type",
+  minimum: "validation_minimum",
+  exclusiveMinimum: "validation_minimum",
+  maximum: "validation_maximum",
+  exclusiveMaximum: "validation_maximum",
+  minLength: "validation_min_length",
+  maxLength: "validation_max_length",
+  minItems: "validation_min_items",
+  maxItems: "validation_max_items",
+};
+
+function validationMessageValue(error: RJSFValidationError): string | number {
+  const params = (error.params ?? {}) as Record<string, unknown>;
+  const limit = params.limit ?? params.type ?? params.allowedValues;
+  if (typeof limit === "number" || typeof limit === "string") return limit;
+  if (Array.isArray(limit)) return limit.join(", ");
+  return "";
+}
+
+export function translateValidationErrors(
+  locale: SupportedLocale,
+  errors: RJSFValidationError[],
+): RJSFValidationError[] {
+  return errors.map((error) => {
+    const key = error.name ? VALIDATION_MESSAGE_KEYS[error.name] : undefined;
+    if (!key) return error;
+    const message = formatMessage(locale, key, { value: validationMessageValue(error) });
+    return { ...error, message, stack: message };
+  });
 }
 
 function cleanConfig(value: unknown): Record<string, unknown> {

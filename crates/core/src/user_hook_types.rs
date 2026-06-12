@@ -187,7 +187,7 @@ fn regex_match(pattern: &str, value: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExecutorSpec {
-    /// Run a shell command inside `virtual_bash` against the session VFS.
+    /// Run a shell command inside `bashkit_shell` against the session VFS.
     Bash {
         /// Command line passed to bash. Required.
         command: String,
@@ -440,7 +440,7 @@ mod tests {
     fn glob_trailing_star_matches_prefix() {
         assert!(glob_matches("daytona_*", "daytona_exec"));
         assert!(glob_matches("daytona_*", "daytona_read_file"));
-        assert!(!glob_matches("daytona_*", "virtual_bash"));
+        assert!(!glob_matches("daytona_*", "bashkit_shell"));
     }
 
     #[test]

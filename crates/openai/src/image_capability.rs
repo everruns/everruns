@@ -5,7 +5,9 @@ use crate::images::{
 use async_trait::async_trait;
 use base64::Engine;
 use everruns_core::ImageId;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
+};
 use everruns_core::session_file::SessionFile;
 use everruns_core::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolResultImage};
@@ -178,6 +180,64 @@ impl Capability for GptImageGenCapability {
         parse_capability_config(config)
             .map(|_| ())
             .map_err(tool_error_to_string)
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose the default image model, the default quality, and how many \
+                     streamed progress updates single-image requests emit.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Генерація зображень OpenAI"),
+                description: Some(
+                    "Генеруйте та редагуйте растрові зображення через GPT Image API від OpenAI.",
+                ),
+                config_description: Some(
+                    "Визначає типову модель зображень, типову якість і кількість потокових \
+                     оновлень прогресу для запитів з одним зображенням.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "model": {
+                            "title": "Модель зображень",
+                            "description": "Типова модель для інструментів генерації та редагування зображень.",
+                            "enum_labels": {
+                                "gpt-image-2": "ChatGPT Images 2.0",
+                                "gpt-image-1": "GPT Image 1"
+                            }
+                        },
+                        "default_quality": {
+                            "title": "Типова якість",
+                            "description": "Якість за замовчуванням, коли виклик інструмента не вказує якість.",
+                            "enum_labels": {
+                                "medium": "Середня",
+                                "low": "Низька",
+                                "high": "Висока",
+                                "auto": "Авто"
+                            }
+                        },
+                        "partial_images": {
+                            "title": "Оновлення прогресу",
+                            "description": "Кількість потокових проміжних оновлень зображення для запитів з одним зображенням.",
+                            "enum_labels": {
+                                "1": "1 оновлення прогресу",
+                                "0": "Вимкнено",
+                                "2": "2 оновлення прогресу",
+                                "3": "3 оновлення прогресу"
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -1391,6 +1451,13 @@ mod tests {
             .await
             .unwrap();
         assert!(prompt.len() <= 850, "prompt is {} bytes", prompt.len());
+    }
+
+    #[test]
+    fn localizations_cover_schema_summary_and_uk_name() {
+        let cap = GptImageGenCapability;
+        assert!(cap.describe_schema(None).is_some());
+        assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
     }
 
     #[test]

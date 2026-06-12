@@ -1,12 +1,22 @@
-// Google Gemini Driver Implementation
-//
-// This crate provides a Google Gemini LLM driver implementation.
-// It implements the LlmDriver trait from everruns-core, enabling
-// the agent loop to communicate with Google's Gemini API.
-//
-// Design: This crate depends on everruns-core and registers its driver
-// at application startup via register_driver(). This enables dependency
-// inversion - core has no knowledge of specific provider implementations.
+//! Google Gemini LLM provider driver for Everruns.
+//!
+//! `everruns-gemini` is part of the [Everruns](https://everruns.com) ecosystem.
+//! It implements the `LlmDriver` contract from `everruns-core`, so the agent
+//! loop can run against Google's Gemini API, and registers itself through
+//! [`register_driver`].
+//!
+//! Core has no knowledge of specific providers; hosts register whichever drivers
+//! they want available via `register_driver` at startup.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_gemini::register_driver;
+//! use everruns_core::DriverRegistry;
+//!
+//! let mut registry = DriverRegistry::new();
+//! register_driver(&mut registry);
+//! ```
 
 mod driver;
 

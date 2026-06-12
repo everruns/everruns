@@ -33,6 +33,25 @@ export interface Capability {
   harness_count?: number;
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
+  /**
+   * Localized display strings keyed by lowercase language tag (e.g. "uk").
+   * The "en" entry carries only config_description, since the base
+   * name/description/config_schema strings are already English.
+   */
+  localizations?: Record<string, CapabilityLocalization>;
+}
+
+/** Localized display strings for one locale of a capability. */
+export interface CapabilityLocalization {
+  name?: string;
+  description?: string;
+  /** One-line summary of what this capability's config controls */
+  config_description?: string;
+  /**
+   * Overlay merged into config_schema before rendering: mirrors the schema
+   * structure (properties/items) with title/description/enum_labels leaves.
+   */
+  config_overlay?: Record<string, unknown>;
 }
 
 export interface DeclarativeCapabilityFile {

@@ -93,7 +93,7 @@ pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_proxy;
 pub mod mcp_server;
-pub mod memory_store;
+pub mod memory;
 pub mod model_router;
 pub mod network_access;
 pub mod organization;
@@ -106,9 +106,9 @@ pub mod session_resource;
 pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
+pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
-pub mod volume;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
@@ -124,6 +124,7 @@ pub mod url_validation;
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
+pub mod command_host;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
@@ -151,7 +152,7 @@ pub mod truncation_info;
 pub mod user_facing_error;
 
 // In-memory implementations for examples and testing
-pub mod memory;
+pub mod in_memory;
 
 // LLM Simulator driver for testing
 pub mod llmsim_driver;
@@ -167,6 +168,10 @@ pub mod turn;
 // This enables dependency inversion - provider crates register their drivers at startup.
 
 // Re-exports for convenience
+pub use command_host::{
+    CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
+    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream, StoreCommandHost,
+};
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
@@ -189,21 +194,16 @@ pub use runtime_context::{
 pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
     ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
-    NoopDurableToolResultStore, NoopEventEmitter, NoopStreamHeartbeater, OutboundToolRateLimiter,
+    NoopDurableToolResultStore, NoopEventEmitter, NoopPartialStreamStore, NoopStreamHeartbeater,
+    NoopSubagentSpawnStore, OutboundToolRateLimiter, PartialStreamState, PartialStreamStore,
     ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
-    SessionStorageStore, SessionStore, StreamHeartbeater, StreamProgress, ToolCallClaimResult,
-    ToolContext, ToolExecutor, UserConnectionResolver,
+    SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress,
+    SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,
     codes as user_facing_error_codes, trim_error_chain_prefixes,
-};
-
-// Memory store re-exports
-pub use memory_store::{
-    Memory, MemoryContentPart, MemoryImagePart, MemoryKind, MemoryLimits, MemoryQuery,
-    MemoryStoreBackend, MemoryStoreEntity, MemoryTextPart,
 };
 
 // Channel abstraction re-exports
@@ -377,14 +377,15 @@ pub use events::{
     ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
     OUTPUT_MESSAGE_STARTED, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageReplacedData, OutputMessageStartedData, REASON_COMPLETED, REASON_ITEM,
-    REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
-    ReasonCompletedData, ReasonItemData, ReasonStartedData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED,
-    SESSION_STARTED, SessionActivatedData, SessionIdledData, SessionStartedData,
-    TOOL_CALL_REQUESTED, TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED,
-    TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData,
-    ToolCallSummary, ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData,
-    TurnCancelledData, TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
+    REASON_RECOVERED, REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA,
+    REASON_THINKING_STARTED, ReasonCompletedData, ReasonItemData, ReasonRecoveredData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
+    SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
+    TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
+    TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
+    TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
@@ -425,6 +426,13 @@ pub use session_sqldb::{
     ColumnSchema, DatabaseInfo, SessionSqlDbError, SessionSqlDbStore, SqlExecuteResult,
     SqlQueryResult, TableSchema,
 };
+pub use session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
+    SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor,
+    TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection,
+    TaskMessagePart, TaskProgress, TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+};
 pub use skill::{
     ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
@@ -433,9 +441,8 @@ pub use typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
-    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId,
-    PaymentAttemptId, PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
-    TurnId, TypedId,
+    MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
+    PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

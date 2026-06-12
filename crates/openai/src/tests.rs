@@ -6,7 +6,7 @@ mod driver_tests {
         DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, OpenRouterLlmDriver,
         register_driver,
     };
-    use everruns_core::llm_driver_registry::{ProviderConfig, ProviderType};
+    use everruns_core::llm_driver_registry::{LlmDriver, ProviderConfig, ProviderType};
     use everruns_core::llm_models::LlmProviderType;
 
     #[test]
@@ -61,6 +61,31 @@ mod driver_tests {
         assert!(format!("{:?}", driver).contains("OpenRouterLlmDriver"));
         assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
         assert_eq!(driver.provider_type(), &LlmProviderType::Openrouter);
+    }
+
+    #[test]
+    fn test_openrouter_driver_with_base_url_marks_custom_url() {
+        let driver = OpenRouterLlmDriver::with_base_url(
+            "test-key",
+            "https://openrouter.ai/api/v1/responses",
+        );
+        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
+        assert!(driver.uses_custom_url());
+    }
+
+    #[tokio::test]
+    async fn test_openrouter_custom_non_openrouter_host_skips_model_listing() {
+        let driver = OpenRouterLlmDriver::with_base_url(
+            "test-key",
+            "https://custom.api.example/v1/responses",
+        );
+
+        let discovered = driver
+            .list_models()
+            .await
+            .expect("custom non-OpenRouter discovery should be skipped");
+
+        assert!(discovered.is_none());
     }
 
     #[test]

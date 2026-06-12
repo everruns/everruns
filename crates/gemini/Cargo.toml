@@ -4,11 +4,16 @@
 
 [package]
 name = "everruns-gemini"
+readme = "README.md"
 version.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Google Gemini provider implementation for Everruns"
+documentation = "https://docs.rs/everruns-gemini"
 
 [dependencies]
 # Core dependencies
@@ -29,7 +34,6 @@ serde_json.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
-everruns-core = { path = "../core" }
-
+everruns-core.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

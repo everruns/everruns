@@ -1,9 +1,14 @@
 # Session Resource Registry
 
-A generic, session-scoped registry of resources that are active alongside the
-main conversation. Sandboxes, subagents, browser sessions, and any future
-background work register here so the agent can query what is running and
-infrastructure can discover what needs cleanup.
+A generic, session-scoped registry of infrastructure resources that are active
+alongside the main conversation — sandboxes, browser sessions, voice
+connections — so the agent can query what is held and infrastructure can
+discover what needs cleanup.
+
+Background **work** (subagents, external agent runs, background tool runs) is
+tracked by the session task registry instead; see
+[`specs/session-tasks.md`](./session-tasks.md). Resources are *held and
+released*; tasks *run and finish*.
 
 ## Relationship to Leased Resources
 
@@ -41,12 +46,14 @@ rather than duplicate.
 |-----------------|---------------------------------------|--------------------|----------------------------|
 | Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
-| Subagents                    | `spawn_subagent` tool                 | `subagent`        | Child session public ID    |
-| Agent handoff                | `start_agent_handoff` tool            | `agent_handoff`   | Child session public ID    |
-| Background tool runs         | `spawn_background` tool              | `background_run`  | Generated background run ID |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
 | Voice Connections            | Voice bootstrap endpoints             | `voice_connection` | Voice connection public ID |
 | *(future)*                   | Direct `registry.register()`          | *(any string)*    | Caller-defined             |
+
+Work-shaped kinds (`subagent`, `agent_run`, `background_run`, `agent_handoff`)
+were migrated to `session_tasks` (migration 053). The dual-write transitional
+registrations were retired in migration 054; these kinds are no longer written
+to `session_resources`.
 
 ### Storage
 

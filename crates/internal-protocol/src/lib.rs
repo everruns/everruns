@@ -1,5 +1,11 @@
-// Internal Protocol for Worker <-> Control Plane Communication
-//
+//! gRPC protocol for Everruns worker ↔ control-plane communication.
+//!
+//! `everruns-internal-protocol` is part of the [Everruns](https://everruns.com)
+//! ecosystem. It is an internal building block that defines the gRPC service and
+//! message types Everruns workers use to talk to the control-plane server, and
+//! the conversions between protobuf and Everruns domain types. It is not a stable
+//! public API.
+
 // Decision: gRPC with tonic (industry standard, already in stack)
 // Decision: Use google.protobuf.Value/Struct for JSON values instead of strings
 // Decision: Proto is transport layer, Rust schemas remain source of truth
@@ -222,6 +228,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::TurnCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonRecovered(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::CapabilityUsage(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
@@ -242,6 +249,10 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SubagentCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SubagentFailed(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SubagentCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TaskCreated(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TaskUpdated(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TaskMessageSent(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TaskMessageReceived(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ContextCompacting(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ContextCompacted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::BudgetWarning(d) => serde_json::to_value(d).unwrap_or_default(),
@@ -256,6 +267,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::VoiceOutputTranscriptCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::VoiceSessionEnded(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::VoiceSessionFailed(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::TranscriptRepaired(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::Unsupported { data, .. } => {
             // Should not happen in production - unsupported events are filtered before reaching here
             data.clone()
@@ -436,6 +448,18 @@ pub fn proto_session_to_schema(
         .as_ref()
         .map(|u| format!("principal_{}", u.value.replace("-", "")))
         .ok_or(ConversionError::MissingField("owner_principal_id"))?;
+    let parent_session_id_str = value
+        .parent_session_id
+        .as_ref()
+        .map(|u| format!("session_{}", u.value.replace("-", "")));
+    let subagent_status = value
+        .subagent_status
+        .as_deref()
+        .map(everruns_core::session::SubagentStatus::from);
+    let blueprint_config = value
+        .blueprint_config_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
 
     let capabilities: Vec<serde_json::Value> = value
         .capabilities
@@ -467,6 +491,12 @@ pub fn proto_session_to_schema(
         "started_at": started_at,
         "finished_at": finished_at,
         "hints": value.hints.as_ref().map(proto_struct_to_json),
+        "parent_session_id": parent_session_id_str,
+        "subagent_name": value.subagent_name,
+        "subagent_task": value.subagent_task,
+        "subagent_status": subagent_status,
+        "blueprint_id": value.blueprint_id,
+        "blueprint_config": blueprint_config,
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -495,6 +525,17 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         tags: value.tags.clone(),
         owner_principal_id: Some(uuid_to_proto_uuid(value.owner_principal_id.uuid())),
         resolved_owner_user_id: value.resolved_owner_user_id.map(uuid_to_proto_uuid),
+        parent_session_id: value
+            .parent_session_id
+            .map(|id| uuid_to_proto_uuid(id.uuid())),
+        subagent_name: value.subagent_name.clone(),
+        subagent_task: value.subagent_task.clone(),
+        subagent_status: value.subagent_status.as_ref().map(ToString::to_string),
+        blueprint_id: value.blueprint_id.clone(),
+        blueprint_config_json: value
+            .blueprint_config
+            .as_ref()
+            .and_then(|config| serde_json::to_string(config).ok()),
         hints: value.hints.as_ref().map(|h| {
             let json = serde_json::to_value(h).unwrap_or_default();
             json_to_proto_struct(&json)
@@ -1428,12 +1469,12 @@ mod tests {
             is_pinned: None,
             active_schedule_count: None,
             features: vec![],
-            parent_session_id: None,
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
-            blueprint_id: None,
-            blueprint_config: None,
+            parent_session_id: Some(everruns_core::SessionId::new()),
+            subagent_name: Some("Test Runner".to_string()),
+            subagent_task: Some("Run focused tests".to_string()),
+            subagent_status: Some(everruns_core::session::SubagentStatus::Running),
+            blueprint_id: Some("oracle".to_string()),
+            blueprint_config: Some(serde_json::json!({ "depth": "focused" })),
         };
 
         // Convert to proto
@@ -1444,6 +1485,9 @@ mod tests {
         );
         assert_eq!(proto_session.capabilities.len(), 1);
         assert_eq!(proto_session.tags, vec!["slack:thread:123.456".to_string()]);
+        assert_eq!(proto_session.subagent_name.as_deref(), Some("Test Runner"));
+        assert_eq!(proto_session.subagent_status.as_deref(), Some("running"));
+        assert_eq!(proto_session.blueprint_id.as_deref(), Some("oracle"));
 
         // Convert back to schema
         let schema_session = proto_session_to_schema(proto_session).unwrap();
@@ -1463,6 +1507,12 @@ mod tests {
         );
         assert_eq!(schema_session.capabilities.len(), 1);
         assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+        assert_eq!(schema_session.parent_session_id, session.parent_session_id);
+        assert_eq!(schema_session.subagent_name, session.subagent_name);
+        assert_eq!(schema_session.subagent_task, session.subagent_task);
+        assert_eq!(schema_session.subagent_status, session.subagent_status);
+        assert_eq!(schema_session.blueprint_id, session.blueprint_id);
+        assert_eq!(schema_session.blueprint_config, session.blueprint_config);
     }
 
     #[test]

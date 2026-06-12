@@ -20,7 +20,7 @@ readme = "README.md"
 
 [dependencies]
 # Core dependencies
-everruns-config = { path = "../config", version = "0.10.0" }
+everruns-config = { path = "../config", version = "0.11.0" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
@@ -65,13 +65,14 @@ similar = "2"
 url = "2"
 
 # Web fetching
-fetchkit = { version = "=0.2.0", features = ["bot-auth"] }
+bytes = "1"
+fetchkit = { version = "=0.4.0", features = ["bot-auth"] }
 
 # Ed25519 key derivation (bot-auth public key registration)
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 
-# Virtual bash interpreter
-bashkit = { version = "0.8.0", features = ["jq"] }
+# Bash interpreter backing the bashkit_shell capability
+bashkit = { version = "0.10.0", features = ["jq"] }
 
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
@@ -108,10 +109,10 @@ inventory.workspace = true
 llmsim = "0.4.0"
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.10.0", optional = true }
+everruns-openui = { path = "../openui", version = "0.11.0", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.10.0", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.11.0", optional = true }
 
 # A2A outbound agent delegation
 a2a.workspace = true

@@ -17,6 +17,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Plus, Search, ChevronRight, Plug, Link, Lock } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 
@@ -37,6 +42,7 @@ export function CapabilityDialog({
   getDependents,
   onToggle,
 }: CapabilityDialogProps) {
+  const { locale } = useLocale();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
@@ -186,7 +192,7 @@ export function CapabilityDialog({
                               <IconComponent className="w-4 h-4 mt-0.5 shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 text-sm font-medium">
-                                  {cap.name}
+                                  {localizedCapabilityName(cap, locale)}
                                   {cap.is_mcp && (
                                     <Badge
                                       variant="outline"
@@ -211,7 +217,10 @@ export function CapabilityDialog({
                                         <p>
                                           Depends on:{" "}
                                           {cap.dependencies
-                                            ?.map((d) => getCapability(d)?.name ?? d)
+                                            ?.map((d) => {
+                                              const dep = getCapability(d);
+                                              return dep ? localizedCapabilityName(dep, locale) : d;
+                                            })
                                             .join(", ")}
                                         </p>
                                       </TooltipContent>
@@ -232,7 +241,10 @@ export function CapabilityDialog({
                                         <p>
                                           Required by:{" "}
                                           {dependents
-                                            .map((d) => getCapability(d)?.name ?? d)
+                                            .map((d) => {
+                                              const dep = getCapability(d);
+                                              return dep ? localizedCapabilityName(dep, locale) : d;
+                                            })
                                             .join(", ")}
                                         </p>
                                       </TooltipContent>
@@ -241,7 +253,7 @@ export function CapabilityDialog({
                                 </div>
                                 <div className="text-xs text-muted-foreground line-clamp-2">
                                   <InlineStreamdownMessage>
-                                    {cap.description}
+                                    {localizedCapabilityDescription(cap, locale)}
                                   </InlineStreamdownMessage>
                                 </div>
                               </div>

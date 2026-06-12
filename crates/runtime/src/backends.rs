@@ -10,17 +10,16 @@ use everruns_core::agent::Agent;
 use everruns_core::error::Result;
 use everruns_core::events::Event;
 use everruns_core::harness::Harness;
-use everruns_core::memory::{
+use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
+    InMemoryMessageRetriever,
 };
-use everruns_core::memory_store::MemoryStoreBackend;
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
-    SessionStorageStore, SessionStore,
+    SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
@@ -109,8 +108,14 @@ pub struct RuntimeBackends {
     pub event_bus: Arc<dyn EventBus>,
     /// Session key/value + secret storage backend.
     pub storage_store: Arc<dyn SessionStorageStore>,
-    /// Persistent cross-session memory backend.
-    pub memory_store: Arc<dyn MemoryStoreBackend>,
+    /// Optional resolver for user connection tokens (e.g. GitHub, Daytona).
+    ///
+    /// When set, the runtime exposes it through `ToolContext.connection_resolver`
+    /// so connection-aware capabilities can resolve tokens lazily at tool time.
+    /// `None` (the default) leaves the resolver unset, matching prior behavior.
+    /// There is no in-memory default because a connection resolver implies a
+    /// real credential source the embedder must supply.
+    pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
 }
 
 impl RuntimeBackends {
@@ -128,7 +133,7 @@ impl RuntimeBackends {
             provider_store: Arc::new(InMemoryLlmProviderStore::new()),
             event_bus,
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
-            memory_store: Arc::new(InMemoryMemoryStore::new()),
+            connection_resolver: None,
         }
     }
 
@@ -167,8 +172,12 @@ impl RuntimeBackends {
         self
     }
 
-    pub fn with_memory_store(mut self, store: Arc<dyn MemoryStoreBackend>) -> Self {
-        self.memory_store = store;
+    /// Supply a resolver for user connection tokens (e.g. GitHub, Daytona).
+    ///
+    /// The runtime forwards it into `ToolContext` so connection-aware
+    /// capabilities resolve tokens lazily at tool execution time.
+    pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
+        self.connection_resolver = Some(resolver);
         self
     }
 }

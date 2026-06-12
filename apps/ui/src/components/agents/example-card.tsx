@@ -7,6 +7,11 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Import } from "lucide-react";
 import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 
 interface ExampleCardProps {
   example: AgentExample;
@@ -21,6 +26,7 @@ export function ExampleCard({
   onImport,
   adopting = false,
 }: ExampleCardProps) {
+  const { locale } = useLocale();
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
@@ -50,11 +56,13 @@ export function ExampleCard({
                   <Tooltip key={capConfig.ref}>
                     <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
                       <IconComponent className="icon-sharp h-3 w-3" />
-                      <span>{cap.name}</span>
+                      <span>{localizedCapabilityName(cap, locale)}</span>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="font-medium">{cap.name}</p>
-                      <p className="text-xs text-muted-foreground">{cap.description}</p>
+                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {localizedCapabilityDescription(cap, locale)}
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 );

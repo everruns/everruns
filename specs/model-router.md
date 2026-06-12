@@ -129,6 +129,21 @@ The runtime resolver and the strategy implementations themselves ship in a
 follow-up vertical slice. This PR validates that strategy values are one of
 the five enum members and parses them into typed values.
 
+### OpenRouter Routing Bridge
+
+The foundational router types also define a pure OpenRouter bridge for the
+strategies that map directly to OpenRouter request-level routing extensions.
+When every candidate resolves to an OpenRouter model slug, `single` compiles to
+the primary `model` field with no provider-specific routing, and
+`ordered_fallback` compiles to the first candidate as `model` plus OpenRouter
+`models` and `route: "fallback"` fields in candidate `position` order.
+
+`weighted`, `rules`, and `custom` remain Everruns resolver responsibilities
+because OpenRouter's fallback router does not express local sampling,
+parameterized rules, or host-registered custom logic. Future storage-backed
+resolver slices can use this bridge after they have validated org scope,
+provider type, and concrete model availability.
+
 ## Resolution Contract
 
 At LLM-call time the resolver returns:

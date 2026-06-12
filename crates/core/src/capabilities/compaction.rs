@@ -10,7 +10,9 @@
 //! - The `auto` cascade: observation masking → native → summarization
 //! - Proactive compaction at a configurable budget threshold, not just on error
 
-use super::{Capability, CapabilityStatus, ModelViewContext, ModelViewProvider};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, ModelViewContext, ModelViewProvider,
+};
 use crate::events::TokenUsage;
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::MessageFilterProvider;
@@ -293,6 +295,115 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
 
     fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
         Some(Arc::new(CompactionModelViewProvider))
+    }
+
+    /// Only the top-level knobs users meaningfully tune are exposed:
+    /// `strategy`, `proactive`, and `budget_percent`. The nested
+    /// `observation_masking` / `summarization` / `memory_tiers` /
+    /// `cost_control` objects are advanced tuning with safe defaults and stay
+    /// out of the schema, but `validate_config` still accepts them via the
+    /// typed `CompactionConfig` parse.
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "strategy": {
+                    "type": "string",
+                    "title": "Strategy",
+                    "description": "Compaction strategy used when the conversation approaches the context window.",
+                    "oneOf": [
+                        { "const": "auto", "title": "Automatic" },
+                        { "const": "native", "title": "Provider-native" },
+                        { "const": "observation_masking", "title": "Observation masking" },
+                        { "const": "summarization", "title": "LLM summarization" }
+                    ],
+                    "default": "auto"
+                },
+                "proactive": {
+                    "type": "boolean",
+                    "title": "Proactive compaction",
+                    "description": "Compact at the budget threshold instead of waiting for a request-too-large error.",
+                    "default": true
+                },
+                "budget_percent": {
+                    "type": "number",
+                    "title": "Context budget threshold",
+                    "description": "Fraction of the model context window at which proactive compaction triggers.",
+                    "minimum": 0.1,
+                    "maximum": 1.0,
+                    // Keep in sync with `default_budget_percent()`; the f32
+                    // value is not used directly to avoid noisy f32->f64
+                    // widening in the serialized schema.
+                    "default": 0.85
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        let typed: CompactionConfig = serde_json::from_value(config.clone())
+            .map_err(|e| format!("invalid compaction config: {e}"))?;
+        if !(0.1..=1.0).contains(&typed.budget_percent) {
+            return Err(format!(
+                "budget_percent must be between 0.1 and 1.0, got {}",
+                typed.budget_percent
+            ));
+        }
+        Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls the compaction strategy, proactive triggering, and the \
+                     context-budget threshold.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Ущільнення контексту"),
+                description: Some(
+                    "Налаштовуване ущільнення контексту, коли розмова перевищує контекстне \
+                     вікно LLM. Доступні стратегії: нативне ущільнення провайдера, маскування \
+                     результатів інструментів і підсумовування через LLM; стратегія auto \
+                     перебирає всі доступні варіанти.",
+                ),
+                config_description: Some(
+                    "Визначає стратегію ущільнення контексту, проактивний запуск і поріг \
+                     бюджету контексту.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "strategy": {
+                            "title": "Стратегія",
+                            "description": "Стратегія ущільнення, коли розмова наближається до межі контекстного вікна.",
+                            "enum_labels": {
+                                "auto": "Автоматично",
+                                "native": "Нативна (провайдер)",
+                                "observation_masking": "Маскування результатів інструментів",
+                                "summarization": "Підсумовування через LLM"
+                            }
+                        },
+                        "proactive": {
+                            "title": "Проактивне ущільнення",
+                            "description": "Ущільнювати контекст при досягненні порогу бюджету, а не лише після помилки про завеликий запит."
+                        },
+                        "budget_percent": {
+                            "title": "Поріг бюджету контексту",
+                            "description": "Частка контекстного вікна моделі, після якої запускається проактивне ущільнення."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -1523,6 +1634,54 @@ mod tests {
         assert_eq!(cap.category(), Some("Optimization"));
         assert!(cap.tools().is_empty());
         assert!(cap.message_filter_provider().is_some());
+    }
+
+    #[test]
+    fn test_config_schema_and_validate_config() {
+        let cap = CompactionCapability;
+
+        let schema = cap.config_schema().expect("config schema");
+        assert_eq!(schema["type"], "object");
+        // Only the simple knobs are exposed; advanced nested objects stay out.
+        assert!(schema["properties"]["strategy"].is_object());
+        assert!(schema["properties"]["proactive"].is_object());
+        assert!(schema["properties"]["budget_percent"].is_object());
+        assert!(schema["properties"].get("observation_masking").is_none());
+        assert!(schema["properties"].get("cost_control").is_none());
+
+        // Null and valid configs are accepted.
+        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+        assert!(
+            cap.validate_config(&json!({
+                "strategy": "native",
+                "proactive": false,
+                "budget_percent": 0.9
+            }))
+            .is_ok()
+        );
+        // Advanced nested fields are tolerated even though not in the schema.
+        assert!(
+            cap.validate_config(&json!({
+                "strategy": "observation_masking",
+                "observation_masking": { "keep_recent_tool_outputs": 4 },
+                "cost_control": { "enabled": false }
+            }))
+            .is_ok()
+        );
+
+        // Invalid values are rejected.
+        assert!(cap.validate_config(&json!({"strategy": "bogus"})).is_err());
+        let err = cap
+            .validate_config(&json!({"budget_percent": 5.0}))
+            .unwrap_err();
+        assert!(err.contains("budget_percent"));
+    }
+
+    #[test]
+    fn test_localizations_resolve_uk() {
+        let cap = CompactionCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Ущільнення контексту");
+        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]
