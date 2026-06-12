@@ -102,7 +102,7 @@ The **default marketplace** is seeded for every organization. It is named
 `everruns`, uses `source_type: github`, and points at `everruns/everruns`
 (the repo's own `.claude-plugin/marketplace.json`). Seeding happens at org
 creation via `org_init::seed_default_plugin_marketplace`; existing orgs
-received it via the one-time backfill in `056_backfill_default_marketplace.sql`.
+received it via the one-time backfill in `057_backfill_default_marketplace.sql`.
 The marketplace is deletable/disableable like any other marketplace; "default"
 means seeded, not privileged. Deletion is permanent — the marketplace is
 never re-seeded lazily on read.
