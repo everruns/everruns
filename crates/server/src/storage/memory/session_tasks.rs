@@ -126,6 +126,49 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    /// Return (session_id, task_id, schedule_id) triples for running monitor
+    /// tasks whose linked schedule is inactive (missing or enabled=false).
+    pub async fn list_monitor_tasks_with_inactive_schedules(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, String)>> {
+        let tasks = self.session_tasks.read();
+        let schedules = self.session_schedules.read();
+
+        let mut result: Vec<(SessionId, String, String)> = tasks
+            .values()
+            .filter_map(|row| {
+                if row.kind != "monitor" || row.state != "running" {
+                    return None;
+                }
+                let schedule_id_str = row
+                    .spec
+                    .get("schedule_id")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)?;
+
+                // Parse the schedule_id as a UUID/ScheduleId.
+                let schedule_id: everruns_core::ScheduleId = schedule_id_str.parse().ok()?;
+
+                // Inactive = missing row OR enabled=false.
+                let is_inactive = schedules
+                    .get(&schedule_id)
+                    .map(|s| !s.enabled)
+                    .unwrap_or(true); // missing row → inactive
+
+                if is_inactive {
+                    Some((row.session_id, row.id.clone(), schedule_id_str))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        result.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+        result.truncate(limit as usize);
+        Ok(result)
+    }
+
     /// Return IDs of tasks that have a stale heartbeat (orphaned workers).
     ///
     /// A task is stale when:

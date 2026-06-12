@@ -240,6 +240,46 @@ impl Database {
         Ok(row)
     }
 
+    /// Return (session_id, task_id, schedule_id) triples for running monitor
+    /// tasks whose linked schedule is inactive (missing row or enabled=false).
+    ///
+    /// "Inactive" = the schedule row does not exist, OR its `enabled` column
+    /// is false.  Both cases mean the schedule will never fire again, so the
+    /// monitor is an orphan that should be canceled.
+    ///
+    /// Plain snapshot read — safe for concurrent sweepers because transitions
+    /// are applied through `apply_task_update` where terminal states are final.
+    pub async fn list_monitor_tasks_with_inactive_schedules(
+        &self,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, String)>> {
+        // spec->>'schedule_id' holds the PREFIXED typed id ("sched_<32hex>",
+        // see ScheduleId::to_string), so it cannot be cast to uuid directly.
+        // Compare dash-stripped schedule UUIDs against the hex suffix instead
+        // (no cast on user-shaped data — a malformed value can never error the
+        // sweep), and only consider well-formed ids so malformed specs are
+        // skipped rather than canceled.
+        let rows = sqlx::query_as::<_, (SessionId, String, String)>(
+            r#"
+            SELECT st.session_id, st.id, st.spec->>'schedule_id'
+            FROM session_tasks st
+            LEFT JOIN session_schedules ss
+                   ON REPLACE(ss.id::text, '-', '')
+                      = SUBSTRING(st.spec->>'schedule_id' FROM 7)
+            WHERE st.kind = 'monitor'
+              AND st.state = 'running'
+              AND st.spec->>'schedule_id' ~ '^sched_[0-9a-f]{32}$'
+              AND (ss.id IS NULL OR ss.enabled = false)
+            ORDER BY st.id
+            LIMIT $1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
     ///
     /// Tasks with NULL heartbeat_at are excluded (foreground tasks without
