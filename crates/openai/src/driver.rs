@@ -537,24 +537,27 @@ fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> R
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Register OpenAI with Open Responses API (recommended)
-    registry.register(ProviderType::OpenAI, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::OpenAI, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
             None => OpenAILlmDriver::new(api_key),
         };
         Box::new(driver) as BoxedLlmDriver
     });
 
-    registry.register(ProviderType::OpenRouter, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::OpenRouter, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => OpenRouterLlmDriver::with_base_url(api_key, url),
             None => OpenRouterLlmDriver::new(api_key),
         };
         Box::new(driver) as BoxedLlmDriver
     });
 
-    registry.register(ProviderType::AzureOpenAI, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::AzureOpenAI, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
             None => OpenAILlmDriver::new(api_key),
         };
@@ -562,8 +565,9 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     });
 
     // Register OpenAI Completions with Chat Completions API
-    registry.register(ProviderType::OpenAICompletions, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::OpenAICompletions, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => OpenAICompletionsLlmDriver::with_base_url(api_key, url),
             None => OpenAICompletionsLlmDriver::new(api_key),
         };

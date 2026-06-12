@@ -835,8 +835,9 @@ impl std::fmt::Debug for GeminiLlmDriver {
 
 /// Register the Gemini driver with the driver registry
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::Gemini, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::Gemini, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => GeminiLlmDriver::with_base_url(api_key, url),
             None => GeminiLlmDriver::new(api_key),
         };

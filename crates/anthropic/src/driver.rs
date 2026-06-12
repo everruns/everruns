@@ -963,8 +963,9 @@ impl std::fmt::Debug for AnthropicLlmDriver {
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::Anthropic, |api_key, base_url| {
-        let driver = match base_url {
+    registry.register(ProviderType::Anthropic, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
             Some(url) => AnthropicLlmDriver::with_base_url(api_key, url),
             None => AnthropicLlmDriver::new(api_key),
         };

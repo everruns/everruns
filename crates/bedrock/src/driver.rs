@@ -70,13 +70,13 @@ impl BedrockLlmDriver {
 
 /// Register the Bedrock driver with the given registry.
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(
-        ProviderType::Bedrock,
-        |api_key, _base_url| match BedrockLlmDriver::new(api_key) {
+    registry.register(ProviderType::Bedrock, |config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        match BedrockLlmDriver::new(api_key) {
             Ok(driver) => Box::new(driver) as BoxedLlmDriver,
             Err(e) => Box::new(FailDriver(e.to_string())) as BoxedLlmDriver,
-        },
-    );
+        }
+    });
 }
 
 /// Driver that immediately fails with a credential error.
