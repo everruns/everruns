@@ -11,62 +11,114 @@ use crate::typed_id::{ModelId, ProviderId};
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-/// LLM provider type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
-#[serde(rename_all = "snake_case")]
+/// LLM provider type identifier.
+///
+/// Built-in variants cover providers shipped with everruns. Any string that
+/// does not match a built-in id becomes `External(id)`, so embedders can store
+/// and use custom provider ids without schema migrations.
+///
+/// Serializes to/from a plain string (e.g. `"anthropic"`, `"openai-codex"`).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LlmProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
     Openai,
     /// OpenRouter using the OpenAI-compatible Responses API
     Openrouter,
     /// Azure OpenAI using the Azure-hosted OpenAI v1 API
-    #[serde(rename = "azure_openai")]
     AzureOpenai,
     /// OpenAI using Chat Completions API (for backward compatibility)
-    #[serde(rename = "openai_completions")]
     OpenaiCompletions,
     Anthropic,
     /// Google Gemini API
     Gemini,
     /// LLM simulator for testing
-    #[serde(rename = "llmsim")]
     LlmSim,
     /// AWS Bedrock Runtime (ConverseStream API)
     Bedrock,
+    /// Embedder-defined provider not compiled into everruns-core. The inner id
+    /// is the canonical wire string (e.g. `"openai-codex"`).
+    External(std::sync::Arc<str>),
 }
 
 impl std::fmt::Display for LlmProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl LlmProviderType {
+    /// Return the canonical string identifier for this provider.
+    pub fn as_str(&self) -> &str {
         match self {
-            LlmProviderType::Openai => write!(f, "openai"),
-            LlmProviderType::Openrouter => write!(f, "openrouter"),
-            LlmProviderType::AzureOpenai => write!(f, "azure_openai"),
-            LlmProviderType::OpenaiCompletions => write!(f, "openai_completions"),
-            LlmProviderType::Anthropic => write!(f, "anthropic"),
-            LlmProviderType::Gemini => write!(f, "gemini"),
-            LlmProviderType::LlmSim => write!(f, "llmsim"),
-            LlmProviderType::Bedrock => write!(f, "bedrock"),
+            LlmProviderType::Openai => "openai",
+            LlmProviderType::Openrouter => "openrouter",
+            LlmProviderType::AzureOpenai => "azure_openai",
+            LlmProviderType::OpenaiCompletions => "openai_completions",
+            LlmProviderType::Anthropic => "anthropic",
+            LlmProviderType::Gemini => "gemini",
+            LlmProviderType::LlmSim => "llmsim",
+            LlmProviderType::Bedrock => "bedrock",
+            LlmProviderType::External(id) => id.as_ref(),
         }
     }
 }
 
 impl std::str::FromStr for LlmProviderType {
-    type Err = String;
+    // Parsing never fails: unknown ids become `External`.
+    type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "openai" => Ok(LlmProviderType::Openai),
-            "openrouter" => Ok(LlmProviderType::Openrouter),
-            "azure_openai" => Ok(LlmProviderType::AzureOpenai),
-            "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
-            "anthropic" => Ok(LlmProviderType::Anthropic),
-            "gemini" => Ok(LlmProviderType::Gemini),
-            "llmsim" => Ok(LlmProviderType::LlmSim),
-            "bedrock" => Ok(LlmProviderType::Bedrock),
-            _ => Err(format!("Unknown provider type: {}", s)),
-        }
+        Ok(match s {
+            "openai" => LlmProviderType::Openai,
+            "openrouter" => LlmProviderType::Openrouter,
+            "azure_openai" => LlmProviderType::AzureOpenai,
+            "openai_completions" => LlmProviderType::OpenaiCompletions,
+            "anthropic" => LlmProviderType::Anthropic,
+            "gemini" => LlmProviderType::Gemini,
+            "llmsim" => LlmProviderType::LlmSim,
+            "bedrock" => LlmProviderType::Bedrock,
+            other => LlmProviderType::External(std::sync::Arc::from(other)),
+        })
+    }
+}
+
+impl Serialize for LlmProviderType {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for LlmProviderType {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        // FromStr is infallible (unknown ids become External).
+        Ok(s.parse().unwrap_or_else(|_| unreachable!()))
+    }
+}
+
+// `Arc<str>` does not implement `ToSchema`, so the schema is written by hand.
+// It is a plain string at the wire level regardless of the variant.
+#[cfg(feature = "openapi")]
+impl utoipa::ToSchema for LlmProviderType {
+    fn name() -> std::borrow::Cow<'static, str> {
+        std::borrow::Cow::Borrowed("LlmProviderType")
+    }
+}
+
+#[cfg(feature = "openapi")]
+impl utoipa::PartialSchema for LlmProviderType {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::Schema> {
+        utoipa::openapi::ObjectBuilder::new()
+            .schema_type(utoipa::openapi::schema::SchemaType::new(
+                utoipa::openapi::schema::Type::String,
+            ))
+            .description(Some(
+                "LLM provider type. Built-in: openai, openrouter, azure_openai, \
+                 openai_completions, anthropic, gemini, llmsim, bedrock. \
+                 Any other string is treated as an embedder-defined external provider.",
+            ))
+            .build()
+            .into()
     }
 }
 
