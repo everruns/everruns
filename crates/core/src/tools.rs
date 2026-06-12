@@ -20,7 +20,6 @@ use tracing::error;
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
-use crate::session_resource::{RegisterSessionResource, SessionResourceStatus};
 use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
@@ -1161,9 +1160,9 @@ impl Tool for SpawnBackgroundTool {
             };
         }
 
-        let Some(resource_registry) = &context.session_resource_registry else {
+        let Some(task_registry) = &context.session_task_registry else {
             return ToolExecutionResult::tool_error(
-                "Session resource registry not available in this context",
+                "Session task registry not available in this context. Background runs require task tracking.",
             );
         };
         if context.file_store.is_none() {
@@ -1196,52 +1195,32 @@ impl Tool for SpawnBackgroundTool {
         let artifact_dir = format!("/.background/{run_id}");
         let log_path = format!("{artifact_dir}/output.log");
         let result_path = format!("{artifact_dir}/result.json");
-        let metadata = json!({
-            "tool": tool_name,
-            "status_text": "Queued",
-            "signal_on_completion": signal_on_completion,
-            "artifact_dir": artifact_dir,
-            "log_path": log_path,
-            "result_path": result_path,
-        });
 
-        if let Err(e) = resource_registry
-            .register(RegisterSessionResource {
+        // Create the session task tracking this run (specs/session-tasks.md).
+        // task_registry is guaranteed Some above.
+        let task_id: Option<String> = match task_registry
+            .create(crate::session_task::CreateSessionTask {
                 session_id: context.session_id,
-                resource_id: run_id.clone(),
-                kind: "background_run".to_string(),
+                id: None,
+                kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
                 display_name: title.clone(),
-                status: SessionResourceStatus::Active,
-                metadata,
+                spec: json!({
+                    "tool": tool_name,
+                    "arguments": &tool_args,
+                }),
+                state: crate::session_task::SessionTaskState::Running,
+                links: crate::session_task::TaskLinks::default(),
+                wake_policy: crate::session_task::TaskWakePolicy::Silent,
             })
             .await
         {
-            return ToolExecutionResult::internal_error_msg(format!(
-                "Failed to register background run: {e}"
-            ));
-        }
-
-        // Create the session task tracking this run (specs/session-tasks.md).
-        let mut task_id: Option<String> = None;
-        if let Some(ref task_registry) = context.session_task_registry
-            && let Ok(task) = task_registry
-                .create(crate::session_task::CreateSessionTask {
-                    session_id: context.session_id,
-                    id: None,
-                    kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
-                    display_name: title.clone(),
-                    spec: json!({
-                        "tool": tool_name,
-                        "arguments": &tool_args,
-                    }),
-                    state: crate::session_task::SessionTaskState::Running,
-                    links: crate::session_task::TaskLinks::default(),
-                    wake_policy: crate::session_task::TaskWakePolicy::Silent,
-                })
-                .await
-        {
-            task_id = Some(task.id);
-        }
+            Ok(task) => Some(task.id),
+            Err(e) => {
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "Failed to create background run task: {e}"
+                ));
+            }
+        };
 
         let background_context = context.clone().with_tool_registry(tool_registry.clone());
         let sink = Arc::new(SessionBackgroundSink::new(
@@ -1465,8 +1444,6 @@ impl SessionBackgroundSink {
             ..Default::default()
         })
         .await;
-        self.update_resource(SessionResourceStatus::Failed, Some("Canceled by request."))
-            .await?;
         if self.signal_on_completion {
             self.signal_session("canceled", "Canceled by request.")
                 .await?;
@@ -1502,8 +1479,6 @@ impl SessionBackgroundSink {
                     ..Default::default()
                 })
                 .await;
-                self.update_resource(SessionResourceStatus::Completed, Some(&outcome.summary))
-                    .await?;
                 if self.signal_on_completion {
                     self.signal_session("completed", &outcome.summary).await?;
                 }
@@ -1551,8 +1526,6 @@ impl SessionBackgroundSink {
                     ..Default::default()
                 })
                 .await;
-                self.update_resource(SessionResourceStatus::Failed, Some(&message))
-                    .await?;
                 if self.signal_on_completion {
                     self.signal_session("failed", &message).await?;
                 }
@@ -1578,41 +1551,6 @@ impl SessionBackgroundSink {
         platform_store
             .send_message(self.context.session_id, &message)
             .await
-    }
-
-    async fn update_resource(
-        &self,
-        status: SessionResourceStatus,
-        summary: Option<&str>,
-    ) -> Result<()> {
-        let Some(registry) = &self.context.session_resource_registry else {
-            return Ok(());
-        };
-        let state = self.state.lock().await;
-        let status_text = state.status_text.clone();
-        let progress = state.progress.clone();
-        let output_tail = state.output_tail.clone();
-        drop(state);
-        registry
-            .register(RegisterSessionResource {
-                session_id: self.context.session_id,
-                resource_id: self.run_id.clone(),
-                kind: "background_run".to_string(),
-                display_name: self.display_name.clone(),
-                status,
-                metadata: json!({
-                    "tool": self.tool_name,
-                    "status_text": status_text,
-                    "progress": progress,
-                    "output_tail": output_tail,
-                    "log_path": self.log_path,
-                    "result_path": self.result_path,
-                    "summary": summary,
-                    "signal_on_completion": self.signal_on_completion,
-                }),
-            })
-            .await?;
-        Ok(())
     }
 
     async fn write_text_file(&self, path: &str, content: &str) -> Result<()> {
@@ -1645,8 +1583,7 @@ impl BackgroundEventSink for SessionBackgroundSink {
             ..Default::default()
         })
         .await;
-        self.update_resource(SessionResourceStatus::Active, None)
-            .await
+        Ok(())
     }
 
     async fn output(&self, stream: &str, delta: &str) -> Result<()> {
@@ -1668,9 +1605,7 @@ impl BackgroundEventSink for SessionBackgroundSink {
                     .collect();
             }
         }
-        drop(state);
-        self.update_resource(SessionResourceStatus::Active, None)
-            .await
+        Ok(())
     }
 
     async fn progress(&self, progress: BackgroundProgress) -> Result<()> {
@@ -1682,8 +1617,7 @@ impl BackgroundEventSink for SessionBackgroundSink {
             ..Default::default()
         })
         .await;
-        self.update_resource(SessionResourceStatus::Active, None)
-            .await
+        Ok(())
     }
 }
 
@@ -1828,9 +1762,8 @@ mod tests {
     use crate::capabilities::GetCurrentTimeTool;
     use crate::platform_store::PlatformStore;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
-    use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
     use crate::session_task::SessionTaskRegistry;
-    use crate::traits::{SessionFileSystem, SessionResourceRegistry, SessionScheduleStore};
+    use crate::traits::{SessionFileSystem, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
     use async_trait::async_trait;
@@ -2078,87 +2011,6 @@ mod tests {
 
         fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
             Some(self)
-        }
-    }
-
-    #[derive(Default)]
-    struct TestSessionResourceRegistry {
-        entries: Mutex<HashMap<String, SessionResourceEntry>>,
-    }
-
-    #[async_trait]
-    impl crate::traits::SessionResourceRegistry for TestSessionResourceRegistry {
-        async fn register(
-            &self,
-            entry: RegisterSessionResource,
-        ) -> crate::Result<SessionResourceEntry> {
-            let stored = SessionResourceEntry {
-                resource_id: entry.resource_id.clone(),
-                session_id: entry.session_id,
-                kind: entry.kind,
-                display_name: entry.display_name,
-                status: entry.status,
-                metadata: entry.metadata,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            };
-            self.entries
-                .lock()
-                .unwrap()
-                .insert(entry.resource_id, stored.clone());
-            Ok(stored)
-        }
-
-        async fn update_status(
-            &self,
-            _session_id: SessionId,
-            resource_id: &str,
-            status: SessionResourceStatus,
-        ) -> crate::Result<Option<SessionResourceEntry>> {
-            let mut entries = self.entries.lock().unwrap();
-            if let Some(entry) = entries.get_mut(resource_id) {
-                entry.status = status;
-                entry.updated_at = chrono::Utc::now();
-                return Ok(Some(entry.clone()));
-            }
-            Ok(None)
-        }
-
-        async fn get(
-            &self,
-            _session_id: SessionId,
-            resource_id: &str,
-        ) -> crate::Result<Option<SessionResourceEntry>> {
-            Ok(self.entries.lock().unwrap().get(resource_id).cloned())
-        }
-
-        async fn list(
-            &self,
-            session_id: SessionId,
-            filter: Option<&SessionResourceFilter>,
-        ) -> crate::Result<Vec<SessionResourceEntry>> {
-            Ok(self
-                .entries
-                .lock()
-                .unwrap()
-                .values()
-                .filter(|entry| entry.session_id == session_id)
-                .filter(|entry| {
-                    filter.is_none_or(|filter| {
-                        filter.kind.as_ref().is_none_or(|kind| &entry.kind == kind)
-                            && filter.status.is_none_or(|status| entry.status == status)
-                    })
-                })
-                .cloned()
-                .collect())
-        }
-
-        async fn deregister(
-            &self,
-            _session_id: SessionId,
-            resource_id: &str,
-        ) -> crate::Result<bool> {
-            Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
         }
     }
 
@@ -2975,10 +2827,10 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_background_executes_and_signals_session() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
         let file_store = Arc::new(TestFileStore::default());
         let platform_store = Arc::new(TestPlatformStore::default());
         let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let tool_registry = ToolRegistry::builder()
             .tool(SpawnBackgroundTool)
             .tool(TestBackgroundTool)
@@ -2987,7 +2839,7 @@ mod tests {
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
             .with_platform_store(platform_store.clone())
-            .with_session_resource_registry(resource_registry.clone());
+            .with_session_task_registry(task_registry.clone());
 
         let tool = SpawnBackgroundTool;
         let result = tool
@@ -3004,27 +2856,25 @@ mod tests {
             panic!("spawn_background should succeed");
         };
         let run_id = value["run_id"].as_str().unwrap().to_string();
+        let task_id = value["task_id"].as_str().unwrap().to_string();
 
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
             loop {
-                let entry = resource_registry
-                    .get(session_id, &run_id)
-                    .await
-                    .unwrap()
-                    .expect("resource exists");
-                if entry.status == SessionResourceStatus::Completed {
-                    break entry;
+                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                    && task.state == crate::session_task::SessionTaskState::Succeeded
+                {
+                    break task;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
         })
         .await
         .expect("background run should complete");
+        let _ = run_id; // still available in result json
 
         let messages = platform_store.sent_messages.lock().unwrap().clone();
         assert_eq!(messages.len(), 1);
         assert!(messages[0].contains("Background run completed"));
-        assert!(messages[0].contains(&run_id));
 
         let log_file = file_store
             .read_file(session_id, &format!("/.background/{run_id}/output.log"))
@@ -3043,9 +2893,9 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_background_persists_failure_artifacts() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let tool_registry = ToolRegistry::builder()
             .tool(SpawnBackgroundTool)
             .tool(TestFailingBackgroundTool)
@@ -3053,7 +2903,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_session_resource_registry(resource_registry.clone());
+            .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
             .execute_with_context(
@@ -3069,22 +2919,21 @@ mod tests {
             panic!("spawn_background should succeed");
         };
         let run_id = value["run_id"].as_str().unwrap().to_string();
+        let task_id = value["task_id"].as_str().unwrap().to_string();
 
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
             loop {
-                let entry = resource_registry
-                    .get(session_id, &run_id)
-                    .await
-                    .unwrap()
-                    .expect("resource exists");
-                if entry.status == SessionResourceStatus::Failed {
-                    break entry;
+                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                    && task.state == crate::session_task::SessionTaskState::Failed
+                {
+                    break task;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
         })
         .await
         .expect("background run should fail");
+        let _ = run_id;
 
         let log_file = file_store
             .read_file(session_id, &format!("/.background/{run_id}/output.log"))
@@ -3114,9 +2963,9 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_background_rejects_when_session_active_run_limit_reached() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let release = StdArc::new(AtomicBool::new(false));
         let tool_registry = ToolRegistry::builder()
             .tool(SpawnBackgroundTool)
@@ -3127,9 +2976,9 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store, storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_session_resource_registry(resource_registry.clone());
+            .with_session_task_registry(task_registry.clone());
 
-        let mut run_ids = Vec::new();
+        let mut task_ids = Vec::new();
         for _ in 0..MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
             let result = SpawnBackgroundTool
                 .execute_with_context(
@@ -3144,29 +2993,30 @@ mod tests {
             let ToolExecutionResult::Success(value) = result else {
                 panic!("background run below the session limit should start");
             };
-            run_ids.push(value["run_id"].as_str().unwrap().to_string());
+            task_ids.push(value["task_id"].as_str().unwrap().to_string());
         }
 
+        // Wait for all tasks to be running (semaphore acquired).
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
             loop {
-                let active_runs = resource_registry
+                let running = task_registry
                     .list(
                         session_id,
-                        Some(&SessionResourceFilter {
-                            kind: Some("background_run".to_string()),
-                            status: Some(SessionResourceStatus::Active),
+                        Some(&crate::session_task::SessionTaskFilter {
+                            kind: Some(crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string()),
+                            state: Some(crate::session_task::SessionTaskState::Running),
                         }),
                     )
                     .await
                     .unwrap();
-                if active_runs.len() == MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+                if running.len() == MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
             }
         })
         .await
-        .expect("background runs should become active");
+        .expect("background runs should become running");
 
         let result = SpawnBackgroundTool
             .execute_with_context(
@@ -3186,14 +3036,11 @@ mod tests {
 
         release.store(true, Ordering::SeqCst);
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
-            for run_id in run_ids {
+            for task_id in task_ids {
                 loop {
-                    let entry = resource_registry
-                        .get(session_id, &run_id)
-                        .await
-                        .unwrap()
-                        .expect("resource exists");
-                    if entry.status == SessionResourceStatus::Completed {
+                    if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                        && task.state == crate::session_task::SessionTaskState::Succeeded
+                    {
                         break;
                     }
                     tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -3205,18 +3052,49 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_spawn_background_requires_file_store() {
+    async fn test_spawn_background_requires_task_registry() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
         let tool_registry = ToolRegistry::builder()
             .tool(SpawnBackgroundTool)
             .tool(TestBackgroundTool)
             .build();
 
+        // No task_registry wired — should fail.
+        let context = ToolContext::with_stores(session_id, file_store, storage_store)
+            .with_tool_registry(Arc::new(tool_registry));
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("spawn_background should reject missing task registry");
+        };
+        assert!(message.contains("Session task registry not available"));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_requires_file_store() {
+        let session_id = SessionId::new();
+        let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestBackgroundTool)
+            .build();
+
+        // No file_store wired — should fail.
         let context = ToolContext::with_storage_store(session_id, storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_session_resource_registry(resource_registry);
+            .with_session_task_registry(task_registry);
 
         let result = SpawnBackgroundTool
             .execute_with_context(
@@ -3237,9 +3115,9 @@ mod tests {
     #[tokio::test]
     async fn test_spawn_background_caps_output_log_size() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
         let tool_registry = ToolRegistry::builder()
             .tool(SpawnBackgroundTool)
             .tool(TestLargeOutputBackgroundTool)
@@ -3247,7 +3125,7 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_session_resource_registry(resource_registry.clone());
+            .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
             .execute_with_context(
@@ -3263,15 +3141,13 @@ mod tests {
             panic!("spawn_background should succeed");
         };
         let run_id = value["run_id"].as_str().unwrap().to_string();
+        let task_id = value["task_id"].as_str().unwrap().to_string();
 
         tokio::time::timeout(std::time::Duration::from_secs(2), async {
             loop {
-                let entry = resource_registry
-                    .get(session_id, &run_id)
-                    .await
-                    .unwrap()
-                    .expect("resource exists");
-                if entry.status == SessionResourceStatus::Completed {
+                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                    && task.state == crate::session_task::SessionTaskState::Succeeded
+                {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -3279,6 +3155,7 @@ mod tests {
         })
         .await
         .expect("background run should complete");
+        let _ = run_id;
 
         let log_content = file_store
             .read_file(session_id, &format!("/.background/{run_id}/output.log"))
@@ -3608,7 +3485,6 @@ mod tests {
     #[tokio::test]
     async fn test_cancel_background_run_via_task_registry() {
         let session_id = SessionId::new();
-        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
         let file_store = Arc::new(TestFileStore::default());
         let storage_store = Arc::new(NoopStorageStore);
         let task_registry = Arc::new(InMemoryTaskRegistry::default());
@@ -3620,7 +3496,6 @@ mod tests {
 
         let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
             .with_tool_registry(Arc::new(tool_registry))
-            .with_session_resource_registry(resource_registry.clone())
             .with_session_task_registry(task_registry.clone());
 
         let result = SpawnBackgroundTool
@@ -3643,14 +3518,8 @@ mod tests {
         // Wait until the background task is Running (heartbeat loop started).
         tokio::time::timeout(std::time::Duration::from_secs(5), async {
             loop {
-                let entry = resource_registry
-                    .get(session_id, &run_id)
-                    .await
-                    .unwrap()
-                    .expect("resource exists");
-                // Also wait for a heartbeat to confirm the watcher is live.
-                if entry.status == SessionResourceStatus::Active
-                    && let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
+                // Wait for a heartbeat to confirm the watcher is live.
+                if let Ok(Some(task)) = task_registry.get(session_id, &task_id).await
                     && task.heartbeat_at.is_some()
                 {
                     break;

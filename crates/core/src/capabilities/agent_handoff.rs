@@ -9,30 +9,27 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::platform_store::PlatformStore;
 use crate::session::SubagentStatus;
-use crate::session_resource::{
-    RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
+use crate::session_task::{
+    CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError,
+    TaskLinks, TaskWakePolicy,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionResourceRegistry, ToolContext};
+use crate::traits::ToolContext;
 use crate::typed_id::{AgentId, HarnessId};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const AGENT_HANDOFF_CAPABILITY_ID: &str = "agent_handoff";
-const AGENT_HANDOFF_RESOURCE_KIND: &str = "agent_handoff";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 
-fn terminal_handoff_status(wait_status: &str) -> Option<(SessionResourceStatus, SubagentStatus)> {
+fn terminal_handoff_status(wait_status: &str) -> Option<SubagentStatus> {
     match wait_status {
-        "idle" | "completed" => Some((SessionResourceStatus::Completed, SubagentStatus::Completed)),
-        "error" | "failed" => Some((SessionResourceStatus::Failed, SubagentStatus::Failed)),
-        "cancelled" => Some((SessionResourceStatus::Failed, SubagentStatus::Cancelled)),
-        "max_iterations_reached" => Some((
-            SessionResourceStatus::Failed,
-            SubagentStatus::MaxIterationsReached,
-        )),
+        "idle" | "completed" => Some(SubagentStatus::Completed),
+        "error" | "failed" => Some(SubagentStatus::Failed),
+        "cancelled" => Some(SubagentStatus::Cancelled),
+        "max_iterations_reached" => Some(SubagentStatus::MaxIterationsReached),
         _ => None,
     }
 }
@@ -416,35 +413,6 @@ async fn require_connections(
     Ok(())
 }
 
-async fn register_handoff_resource(
-    registry: Option<&std::sync::Arc<dyn SessionResourceRegistry>>,
-    parent_session_id: crate::typed_id::SessionId,
-    child_session_id: crate::typed_id::SessionId,
-    target: &AgentHandoffTargetConfig,
-    mode: AgentHandoffMode,
-    status: SessionResourceStatus,
-) {
-    let Some(registry) = registry else {
-        return;
-    };
-    let _ = registry
-        .register(RegisterSessionResource {
-            session_id: parent_session_id,
-            resource_id: child_session_id.to_string(),
-            kind: AGENT_HANDOFF_RESOURCE_KIND.to_string(),
-            display_name: target.name.clone(),
-            status,
-            metadata: json!({
-                "target": target.id,
-                "target_agent_id": target.agent_id,
-                "required_connections": target.required_connections,
-                "required_scopes": target.required_scopes,
-                "mode": mode.as_str(),
-            }),
-        })
-        .await;
-}
-
 pub struct StartAgentHandoffTool {
     config: AgentHandoffConfig,
 }
@@ -576,15 +544,34 @@ impl Tool for StartAgentHandoffTool {
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
 
-        register_handoff_resource(
-            context.session_resource_registry.as_ref(),
-            context.session_id,
-            child_session.id,
-            target,
-            mode,
-            SessionResourceStatus::Active,
-        )
-        .await;
+        // Register a subagent-kind session task so the handoff appears in the
+        // task registry alongside other work-shaped tasks (specs/session-tasks.md).
+        let handoff_task_id: Option<String> =
+            if let Some(task_registry) = &context.session_task_registry {
+                task_registry
+                    .create(CreateSessionTask {
+                        session_id: context.session_id,
+                        id: None,
+                        kind: TASK_KIND_SUBAGENT.to_string(),
+                        display_name: target.name.clone(),
+                        spec: json!({
+                            "target_id": &target.id,
+                            "external_agent_id": target.agent_id,
+                            "mode": mode.as_str(),
+                        }),
+                        state: SessionTaskState::Running,
+                        links: TaskLinks {
+                            child_session_id: Some(child_session.id),
+                            ..Default::default()
+                        },
+                        wake_policy: TaskWakePolicy::Silent,
+                    })
+                    .await
+                    .ok()
+                    .map(|t| t.id)
+            } else {
+                None
+            };
 
         if let Err(error) = store.send_message(child_session.id, &handoff_task).await {
             return ToolExecutionResult::internal_error(error);
@@ -596,12 +583,24 @@ impl Tool for StartAgentHandoffTool {
         {
             Ok(status) => status,
             Err(error) => {
-                if let Some(registry) = &context.session_resource_registry {
+                // Mirror the failure into the session task (best-effort) so it
+                // is not left running indefinitely — handoff tasks do not
+                // heartbeat, so the orphan reaper would never reclaim them.
+                if let (Some(registry), Some(task_id)) =
+                    (&context.session_task_registry, &handoff_task_id)
+                {
                     let _ = registry
-                        .update_status(
+                        .update(
                             context.session_id,
-                            &child_session.id.to_string(),
-                            SessionResourceStatus::Failed,
+                            task_id,
+                            SessionTaskUpdate {
+                                state: Some(SessionTaskState::Failed),
+                                error: Some(TaskError {
+                                    kind: "handoff_failed".to_string(),
+                                    message: error.to_string(),
+                                }),
+                                ..Default::default()
+                            },
                         )
                         .await;
                 }
@@ -624,24 +623,14 @@ impl Tool for StartAgentHandoffTool {
         let result = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Handoff completed with status: {status}"));
 
-        if let Some((resource_status, subagent_status)) = terminal_handoff_status(&status) {
-            if let Some(registry) = &context.session_resource_registry {
-                let _ = registry
-                    .update_status(
-                        context.session_id,
-                        &child_session.id.to_string(),
-                        resource_status,
-                    )
-                    .await;
-            }
-
+        if let Some(subagent_status) = terminal_handoff_status(&status) {
             if let Err(error) = store
                 .set_subagent_metadata(
                     child_session.id,
                     context.session_id,
                     &target.name,
                     &handoff_task,
-                    subagent_status,
+                    subagent_status.clone(),
                 )
                 .await
             {
@@ -651,6 +640,40 @@ impl Tool for StartAgentHandoffTool {
                     error = %error,
                     "failed to persist terminal handoff metadata"
                 );
+            }
+
+            // Mirror terminal state into the session task (best-effort).
+            if let (Some(registry), Some(task_id)) =
+                (&context.session_task_registry, &handoff_task_id)
+            {
+                let task_state = match subagent_status {
+                    SubagentStatus::Completed => SessionTaskState::Succeeded,
+                    SubagentStatus::Failed | SubagentStatus::MaxIterationsReached => {
+                        SessionTaskState::Failed
+                    }
+                    SubagentStatus::Cancelled => SessionTaskState::Canceled,
+                    SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
+                };
+                let error = if task_state == SessionTaskState::Failed {
+                    Some(TaskError {
+                        kind: "handoff_failed".to_string(),
+                        message: format!("Handoff ended with status: {status}"),
+                    })
+                } else {
+                    None
+                };
+                let _ = registry
+                    .update(
+                        context.session_id,
+                        task_id,
+                        SessionTaskUpdate {
+                            state: Some(task_state),
+                            summary: Some(result.clone()),
+                            error,
+                            ..Default::default()
+                        },
+                    )
+                    .await;
             }
         }
 
@@ -710,21 +733,6 @@ impl Tool for GetAgentHandoffsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        if let Some(registry) = &context.session_resource_registry {
-            let filter = SessionResourceFilter {
-                kind: Some(AGENT_HANDOFF_RESOURCE_KIND.to_string()),
-                status: None,
-            };
-            let mut entries = match registry.list(context.session_id, Some(&filter)).await {
-                Ok(entries) => entries,
-                Err(error) => return ToolExecutionResult::internal_error(error),
-            };
-            if let Some(handoff_id) = arguments.get("handoff_id").and_then(Value::as_str) {
-                entries.retain(|entry| entry.resource_id == handoff_id);
-            }
-            return ToolExecutionResult::success(json!({ "handoffs": entries }));
-        }
-
         let store = match get_platform_store(context) {
             Ok(store) => store,
             Err(error) => return error,
@@ -872,12 +880,11 @@ mod tests {
     use super::*;
     use crate::Result;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
     use crate::tools::{Tool, ToolExecutionResult};
-    use crate::traits::{SessionResourceRegistry, UserConnectionResolver};
+    use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;
-    use std::collections::{HashMap, HashSet};
-    use std::sync::{Arc, Mutex};
+    use std::collections::HashSet;
+    use std::sync::Arc;
     use uuid::Uuid;
 
     fn target_config(
@@ -958,106 +965,13 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct TestResourceRegistry {
-        entries: Mutex<HashMap<(SessionId, String), SessionResourceEntry>>,
-    }
-
-    #[async_trait]
-    impl SessionResourceRegistry for TestResourceRegistry {
-        async fn register(&self, entry: RegisterSessionResource) -> Result<SessionResourceEntry> {
-            let now = chrono::Utc::now();
-            let record = SessionResourceEntry {
-                resource_id: entry.resource_id,
-                session_id: entry.session_id,
-                kind: entry.kind,
-                display_name: entry.display_name,
-                status: entry.status,
-                metadata: entry.metadata,
-                created_at: now,
-                updated_at: now,
-            };
-            self.entries.lock().expect("registry mutex").insert(
-                (record.session_id, record.resource_id.clone()),
-                record.clone(),
-            );
-            Ok(record)
-        }
-
-        async fn update_status(
-            &self,
-            session_id: SessionId,
-            resource_id: &str,
-            status: SessionResourceStatus,
-        ) -> Result<Option<SessionResourceEntry>> {
-            let mut entries = self.entries.lock().expect("registry mutex");
-            let Some(entry) = entries.get_mut(&(session_id, resource_id.to_string())) else {
-                return Ok(None);
-            };
-            entry.status = status;
-            entry.updated_at = chrono::Utc::now();
-            Ok(Some(entry.clone()))
-        }
-
-        async fn get(
-            &self,
-            session_id: SessionId,
-            resource_id: &str,
-        ) -> Result<Option<SessionResourceEntry>> {
-            Ok(self
-                .entries
-                .lock()
-                .expect("registry mutex")
-                .get(&(session_id, resource_id.to_string()))
-                .cloned())
-        }
-
-        async fn list(
-            &self,
-            session_id: SessionId,
-            filter: Option<&SessionResourceFilter>,
-        ) -> Result<Vec<SessionResourceEntry>> {
-            let mut entries = self
-                .entries
-                .lock()
-                .expect("registry mutex")
-                .values()
-                .filter(|entry| entry.session_id == session_id)
-                .filter(|entry| {
-                    filter
-                        .and_then(|f| f.kind.as_ref())
-                        .is_none_or(|kind| &entry.kind == kind)
-                })
-                .filter(|entry| {
-                    filter
-                        .and_then(|f| f.status)
-                        .is_none_or(|status| entry.status == status)
-                })
-                .cloned()
-                .collect::<Vec<_>>();
-            entries.sort_by(|a, b| a.resource_id.cmp(&b.resource_id));
-            Ok(entries)
-        }
-
-        async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool> {
-            Ok(self
-                .entries
-                .lock()
-                .expect("registry mutex")
-                .remove(&(session_id, resource_id.to_string()))
-                .is_some())
-        }
-    }
-
     fn context(
         store: Arc<MockPlatformStore>,
         resolver: Option<Arc<dyn UserConnectionResolver>>,
-        registry: Option<Arc<dyn SessionResourceRegistry>>,
     ) -> ToolContext {
         let mut context = ToolContext::new(store.session.id);
         context.platform_store = Some(store);
         context.connection_resolver = resolver;
-        context.session_resource_registry = registry;
         context
     }
 
@@ -1092,18 +1006,15 @@ mod tests {
     fn terminal_handoff_status_maps_only_terminal_wait_states() {
         assert_eq!(
             terminal_handoff_status("idle"),
-            Some((SessionResourceStatus::Completed, SubagentStatus::Completed))
+            Some(SubagentStatus::Completed)
         );
         assert_eq!(
             terminal_handoff_status("error"),
-            Some((SessionResourceStatus::Failed, SubagentStatus::Failed))
+            Some(SubagentStatus::Failed)
         );
         assert_eq!(
             terminal_handoff_status("max_iterations_reached"),
-            Some((
-                SessionResourceStatus::Failed,
-                SubagentStatus::MaxIterationsReached,
-            ))
+            Some(SubagentStatus::MaxIterationsReached)
         );
         assert_eq!(terminal_handoff_status("waiting_for_tool_results"), None);
         assert_eq!(terminal_handoff_status("paused"), None);
@@ -1138,7 +1049,7 @@ mod tests {
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::new(),
         });
-        let context = context(store, Some(resolver), None);
+        let context = context(store, Some(resolver));
 
         let result = tool
             .execute_with_context(
@@ -1165,7 +1076,7 @@ mod tests {
             vec!["fake_aws"],
         );
         let tool = start_tool(config);
-        let context = context(store, None, None);
+        let context = context(store, None);
 
         let result = tool
             .execute_with_context(
@@ -1183,7 +1094,6 @@ mod tests {
     #[tokio::test]
     async fn start_handoff_creates_child_session_for_target_agent() {
         let store = Arc::new(MockPlatformStore::new());
-        let registry = Arc::new(TestResourceRegistry::default());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
@@ -1193,7 +1103,7 @@ mod tests {
             vec!["fake_aws"],
         );
         let tool = start_tool(config);
-        let context = context(store.clone(), Some(resolver), Some(registry.clone()));
+        let context = context(store.clone(), Some(resolver));
 
         let result = tool
             .execute_with_context(
@@ -1212,21 +1122,6 @@ mod tests {
         assert_eq!(value["target"], "aws_operator");
         assert_eq!(value["target_agent_id"], json!(store.agent.public_id));
         assert_eq!(value["result"], "Hi!");
-
-        let handoff_id = value["handoff_id"].as_str().expect("handoff_id");
-        let entry = registry
-            .get(context.session_id, handoff_id)
-            .await
-            .expect("registry get")
-            .expect("handoff resource");
-        assert_eq!(entry.kind, AGENT_HANDOFF_RESOURCE_KIND);
-        assert_eq!(entry.status, SessionResourceStatus::Completed);
-        assert_eq!(entry.metadata["target"], "aws_operator");
-        assert_eq!(entry.metadata["required_connections"], json!(["fake_aws"]));
-        assert_eq!(
-            entry.metadata["required_scopes"],
-            json!(["fake_aws:rds:create"])
-        );
     }
 
     /// Regression for the confused-deputy issue this PR fixes: the child
@@ -1237,7 +1132,6 @@ mod tests {
     #[tokio::test]
     async fn start_handoff_uses_target_harness_not_parent() {
         let store = Arc::new(MockPlatformStore::new());
-        let registry = Arc::new(TestResourceRegistry::default());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
@@ -1248,7 +1142,7 @@ mod tests {
 
         let config = target_config(store.agent.public_id, target_harness_id, vec!["fake_aws"]);
         let tool = start_tool(config);
-        let context = context(store.clone(), Some(resolver), Some(registry));
+        let context = context(store.clone(), Some(resolver));
 
         let result = tool
             .execute_with_context(
@@ -1282,39 +1176,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_handoffs_lists_registered_handoff_resources() {
-        let store = Arc::new(MockPlatformStore::new());
-        let registry = Arc::new(TestResourceRegistry::default());
+    async fn get_handoffs_lists_child_sessions_as_handoffs() {
+        // The get_agent_handoffs tool uses list_sessions filtered by parent_session_id.
+        // Set up a mock store whose session record already represents a child session
+        // so list_sessions returns it in the filtered results.
+        let parent_id = SessionId::new();
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.parent_session_id = Some(parent_id);
+        store_value.session.subagent_name = Some("AWS Operator".to_string());
+        store_value.session.subagent_status = Some(SubagentStatus::Completed);
+        let store = Arc::new(store_value);
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
-        let start = start_tool(config.clone());
         let get = get_tool(config);
-        let context = context(store, None, Some(registry));
 
-        let start_result = start
-            .execute_with_context(
-                json!({
-                    "target": "aws_operator",
-                    "task": "Create an RDS database named app-db"
-                }),
-                &context,
-            )
-            .await;
-        assert!(start_result.is_success());
+        let mut ctx = ToolContext::new(parent_id);
+        ctx.platform_store = Some(store);
 
-        let result = get.execute_with_context(json!({}), &context).await;
+        let result = get.execute_with_context(json!({}), &ctx).await;
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success, got {result:?}");
         };
-        assert_eq!(value["handoffs"].as_array().expect("handoffs").len(), 1);
-        assert_eq!(value["handoffs"][0]["kind"], AGENT_HANDOFF_RESOURCE_KIND);
-        assert_eq!(value["handoffs"][0]["status"], "completed");
+        let handoffs = value["handoffs"].as_array().expect("handoffs");
+        assert_eq!(handoffs.len(), 1);
+        assert_eq!(handoffs[0]["name"], "AWS Operator");
+        assert_eq!(handoffs[0]["status"], "completed");
     }
 
     #[tokio::test]
     async fn message_handoff_rejects_invalid_handoff_id() {
         let store = Arc::new(MockPlatformStore::new());
         let tool = message_tool(json!({}));
-        let context = context(store, None, None);
+        let context = context(store, None);
 
         let result = tool
             .execute_with_context(

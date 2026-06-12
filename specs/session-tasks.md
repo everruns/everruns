@@ -304,10 +304,12 @@ No backward compatibility is required; data migrates forward once:
   `apply_task_update` in `crates/core/src/session_task.rs`. gRPC workers get
   the registry via task RPCs in the internal worker protocol (payloads travel
   as canonical core JSON).
-- Spawning capabilities currently dual-write: tasks plus their legacy
-  session-resource registrations and `subagent.*` events. Retiring the
-  duplicates (and the `sessions.subagent_*` columns and the
-  `task` → `instructions` parameter rename) is follow-up work.
+- Session-resource dual-write retired (migration 054): subagent, background_run,
+  and agent_handoff no longer register in `session_resources`. A2A agent runs
+  (`external_agent` tasks) now store their run records in session storage KV
+  (`agent_run:{run_id}` keys). Legacy `subagent.*` events are retained for CLI
+  compatibility. The `sessions.subagent_*` column retirement and the
+  `task` → `instructions` parameter rename remain follow-up work.
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
   reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
   with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -
