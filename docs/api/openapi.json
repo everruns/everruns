@@ -13330,6 +13330,9 @@
             ],
             "description": "Human-readable display name for UI rendering (e.g., \"Get Current Time\" for `get_current_time`)"
           },
+          "full_parameters": {
+            "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
+          },
           "hints": {
             "$ref": "#/components/schemas/ToolHints",
             "description": "Semantic hints describing the tool's behavioral properties"
@@ -13795,6 +13798,9 @@
               "null"
             ],
             "description": "Human-readable display name for UI rendering"
+          },
+          "full_parameters": {
+            "description": "Original full parameter schema saved by `DeferSchemaHook` before stripping.\nSerialized only when present so durable reason-to-act scheduling can\npreserve deferred schemas for `tool_search` in the act phase."
           },
           "hints": {
             "$ref": "#/components/schemas/ToolHints",
