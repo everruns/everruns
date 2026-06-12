@@ -25,6 +25,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/api-examples.md` - Per-operation request/response examples on `#[utoipa::path]` handlers
 - `specs/api-llm-extensions.md` - LLM-specific OpenAPI extensions (`x-llm-*`)
 - `specs/public-endpoints.md` - Public endpoints, error sanitization contract, stable public code set
+- `specs/error-disclosure.md` - Semantic driver error kinds and session error-disclosure modes
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/tool-execution.md` - Tool types and execution flow

@@ -55,6 +55,21 @@ export function localizeRuntimeError(
 ): string {
   if (!error?.code) return fallback;
 
+  const localized = localizeRuntimeErrorBase(locale, error, fallback);
+  if (localized === fallback) return localized;
+
+  // Detailed disclosure mode attaches the underlying provider error as a
+  // `detail` field; the backend fallback text already includes it, so append
+  // it only when the text was replaced with a localized template.
+  const detail = stringField(error.fields, "detail");
+  return detail ? `${localized}\n\nDetails: ${detail}` : localized;
+}
+
+function localizeRuntimeErrorBase(
+  locale: SupportedLocale,
+  error: RuntimeErrorInfo,
+  fallback: string,
+): string {
   switch (error.code) {
     case "budget_exhausted":
       return localizeBudgetExhausted(locale, error.fields, fallback);
@@ -78,6 +93,8 @@ export function localizeRuntimeError(
     }
     case "provider_misconfigured":
       return formatMessage(locale, "runtime_error_provider_misconfigured");
+    case "provider_quota_exhausted":
+      return formatMessage(locale, "runtime_error_provider_quota_exhausted");
     case "provider_unavailable":
       return formatMessage(locale, "runtime_error_provider_unavailable");
     case "processing_error":
