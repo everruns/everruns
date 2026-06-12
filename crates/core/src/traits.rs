@@ -1443,12 +1443,14 @@ impl ToolContext {
     }
 
     /// Set the outbound egress service on this context when available.
-    /// A no-op when `service` is `None`.
+    /// Preserves any already-set service when `service` is `None`.
     pub fn with_egress_service_opt(
         mut self,
         service: Option<Arc<dyn crate::EgressService>>,
     ) -> Self {
-        self.egress_service = service;
+        if let Some(service) = service {
+            self.egress_service = Some(service);
+        }
         self
     }
 

@@ -19,8 +19,8 @@
 //         (state stays running so the fence is correct).
 //      b. If update was accepted (attempt bumped): build a minimal ToolContext
 //         and call executor.start(&updated_task, &ctx).
-//      c. On start() error: log and fall back to failing as orphaned (the fence
-//         already incremented attempt, so we increment again here).
+//      c. On start() error: log and fall back to failing as orphaned, fenced
+//         on the already-bumped attempt (no further increment).
 //   4. Otherwise: fail as orphaned (existing path).
 
 use anyhow::Result;
@@ -306,6 +306,9 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
                 kind: "orphaned".to_string(),
                 message: "worker heartbeat stopped".to_string(),
             }),
+            // Guard against a concurrent reaper double-bumping: only apply if
+            // the attempt still matches the snapshot we inspected.
+            expected_attempt: Some(task.attempt),
             // Supersede the executor's attempt so its fenced writes
             // (heartbeats, progress, messages) are rejected from now on.
             increment_attempt: true,
@@ -1022,8 +1025,8 @@ mod tests {
         let updated = registry.get(session_id, &task.id).await.unwrap().unwrap();
         assert_eq!(updated.state, SessionTaskState::Failed);
         assert_eq!(updated.error.as_ref().unwrap().kind, "orphaned");
-        // Attempt bumped twice: once for re-attach supersede, used in fail
-        // (expected_attempt=new_attempt matches so fail applies).
+        // Attempt bumped once (1 -> 2) by the re-attach supersede; the fail
+        // update is fenced on that bumped attempt and does not bump again.
         assert_eq!(updated.attempt, 2);
     }
 }

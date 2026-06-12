@@ -37,6 +37,11 @@ use url::Url;
 pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
+
+/// Error prefix returned by `wait_for_run` when the attempt fence reveals the
+/// executor was superseded (reaper re-attached the task elsewhere). The
+/// background monitor exits without writing failure state on this error.
+const SUPERSEDED_ERROR_PREFIX: &str = "Superseded external agent poll for";
 const MAX_RESULT_CHARS: usize = 8_192;
 
 /// Outbound A2A delegation capability.
@@ -1044,12 +1049,15 @@ async fn wait_for_run(
 
     while Instant::now() < deadline {
         // Heartbeat through the registry so the reaper sees a live worker.
+        // A fence miss (returned attempt differs from ours) means the reaper
+        // superseded this executor — stop polling immediately so we never
+        // write failure state over the new attempt's work.
         if let (Some(attempt), Some(registry), Some(task_id)) = (
             heartbeat_attempt,
             &context.session_task_registry,
             record.task_id.as_deref(),
         ) {
-            let _ = registry
+            let heartbeat = registry
                 .update(
                     context.session_id,
                     task_id,
@@ -1060,6 +1068,14 @@ async fn wait_for_run(
                     },
                 )
                 .await;
+            if let Ok(Some(task)) = heartbeat
+                && task.attempt != attempt
+            {
+                return Err(format!(
+                    "{SUPERSEDED_ERROR_PREFIX} run {} (attempt {attempt} superseded by {})",
+                    record.run_id, task.attempt
+                ));
+            }
         }
 
         let task = client
@@ -1128,6 +1144,13 @@ async fn background_monitor(
     let record = match wait_for_run(&context, &agent, record, timeout_secs, heartbeat_attempt).await
     {
         Ok(record) => record,
+        // Superseded by a newer attempt (reaper re-attached the task to
+        // another executor): exit silently — the new owner reports state;
+        // writing failure here would overwrite its work.
+        Err(error) if error.starts_with(SUPERSEDED_ERROR_PREFIX) => {
+            tracing::info!(run_id = %run_id, "A2A background monitor superseded; exiting");
+            return;
+        }
         Err(error) => {
             let mut failed = load_run(&context, &run_id).await.unwrap_or(fallback_record);
             failed.status = AgentRunStatus::Failed;
@@ -2702,6 +2725,105 @@ mod tests {
             updated.state,
             SessionTaskState::Succeeded,
             "terminal run should mirror to succeeded"
+        );
+    }
+
+    /// A heartbeat fence miss (task attempt moved past ours) must abort the
+    /// poll loop with the superseded error before any remote call or write.
+    #[tokio::test]
+    async fn wait_for_run_exits_superseded_on_fence_miss() {
+        let storage = Arc::new(TestStorageStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let session_id = crate::typed_id::SessionId::new();
+
+        let run_id = "run-superseded".to_string();
+        // Inline card so build_client performs no network discovery; the
+        // heartbeat fence check fires before any remote get_task call.
+        let inline_card = AgentCard {
+            name: "Echo".to_string(),
+            description: "Echo".to_string(),
+            version: "1".to_string(),
+            supported_interfaces: vec![AgentInterface::new(
+                "https://agent.example.com/api".to_string(),
+                "JSONRPC",
+            )],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extensions: None,
+                extended_agent_card: None,
+            },
+            default_input_modes: vec![],
+            default_output_modes: vec![],
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security_requirements: None,
+            signatures: None,
+        };
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: Some("https://agent.example.com".to_string()),
+            agent_card: Some(inline_card),
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let task_id = format!("task_{run_id}");
+
+        let mut record = AgentRunRecord::new(
+            run_id.clone(),
+            &config,
+            "instructions".to_string(),
+            AgentRunMode::Background,
+            false,
+        );
+        record.remote_task_id = Some("remote-xyz".to_string());
+        record.task_id = Some(task_id.clone());
+
+        // Task in the registry already at attempt 2 (reaper superseded us).
+        registry
+            .create(crate::session_task::CreateSessionTask {
+                session_id,
+                id: Some(task_id.clone()),
+                kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+                display_name: "Echo".to_string(),
+                spec: json!({ "run_id": &run_id }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &task_id,
+                crate::session_task::SessionTaskUpdate {
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let ctx = ToolContext::new(session_id)
+            .with_storage_store_arc(storage.clone() as Arc<dyn crate::traits::SessionStorageStore>)
+            .with_session_task_registry(registry.clone());
+
+        // Poll as the old executor (attempt 1): the first heartbeat reveals
+        // the supersession and the loop exits before any remote call.
+        let err = wait_for_run(&ctx, &config, record, 30, Some(1))
+            .await
+            .expect_err("superseded poll must error");
+        assert!(
+            err.starts_with(SUPERSEDED_ERROR_PREFIX),
+            "expected superseded error, got: {err}"
         );
     }
 
