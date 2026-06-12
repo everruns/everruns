@@ -1,0 +1,231 @@
+# Plugins
+
+## Abstract
+
+A Plugin is an installable package in the cross-host plugin directory format
+popularized by Claude Code and shared (with minor dialect differences) by
+Codex and Cursor: a directory with a `.claude-plugin/plugin.json` manifest,
+`skills/`, `commands/`, `agents/`, and `.mcp.json`. Everruns acts as a plugin
+**host**: installing a plugin into an organization produces a capability with
+reference `plugin:{name}` that agents and harnesses enable like any other
+capability.
+
+A Marketplace is an org-registered catalog in the `marketplace.json` format.
+A first-party default marketplace ships preconfigured for every organization,
+but it is a regular marketplace row — nothing about it is special-cased in
+code.
+
+Direction matters relative to existing specs:
+
+- [everruns-dev-plugin.md](everruns-dev-plugin.md) is **outbound**: Everruns
+  packaged as a plugin for Claude Code/Codex/Cursor (`plugins/everruns*`).
+- This spec is **inbound**: Everruns consuming plugins in the same format.
+  The outbound plugins double as the first dogfood content: `everruns` and
+  `everruns-dev` must install cleanly into Everruns itself.
+
+## Why not just declarative capabilities
+
+Persisted declarative capabilities ([capabilities.md](capabilities.md)) are
+the right *runtime* model: data-only contributions (system prompt, skills,
+text file mounts, scoped MCP config) with no arbitrary server-side code. A
+plugin install **compiles into the same declarative definition shape** and
+reuses its hydration, validation, size limits, and worker execution path
+unchanged.
+
+What plugins add is the layer declarative capabilities deliberately lack:
+
+- **Interchange format**: consume packages authored for Claude Code, Codex,
+  or Cursor without conversion, at least partially. Unsupported components
+  degrade to install warnings, mirroring Claude Code's own tolerant loading
+  policy for unrecognized fields.
+- **Distribution**: marketplaces, sources (git repo, subdirectory, URL),
+  versioning, and pinning.
+- **Provenance and lifecycle**: where a capability came from, which version
+  is installed, update/uninstall semantics. A declarative capability is
+  org-local and hand-edited; an installed plugin is a managed artifact whose
+  compiled definition is regenerated on update, never edited in place.
+
+## Component mapping
+
+One plugin installs as one capability. Manifest fields and components map to
+capability contributions:
+
+| Plugin component                  | Capability contribution                                       |
+| --------------------------------- | ------------------------------------------------------------- |
+| `name`                            | capability name; ref `plugin:{name}`                          |
+| `displayName`                     | `display_name`                                                |
+| `description`                     | `description`                                                 |
+| `version`, `author`, `homepage`, `repository`, `license`, `keywords` | install provenance metadata (not runtime) |
+| `agents/*.md`                     | system prompt contribution: each agent file rendered as a named persona/instructions section |
+| `skills/<name>/SKILL.md` + files  | skill packages (same shape as `DeclarativeCapabilitySkill`)   |
+| `commands/*.md`                   | user-invocable skills (`user_invocable: true`); frontmatter `name`/`description` carried over |
+| `.mcp.json` / `mcpServers`        | scoped MCP servers; HTTP transport only, SSRF-validated like all scoped MCP config |
+| `userConfig`                      | *(phase 2)* capability `config_schema`                        |
+| `hooks`, `lspServers`, `monitors`, `themes`, `outputStyles` | ignored; surfaced as install warnings |
+
+Notes:
+
+- `agents/*.md` are subagent definitions on other hosts. Everruns has no
+  per-plugin subagent runtime, so v1 folds them into the capability system
+  prompt (the user-visible contract: "this plugin teaches the agent these
+  personas/behaviors"). Mapping them to agent blueprints or subagent
+  definitions is a possible later phase; the install pipeline keeps the raw
+  files so re-compilation can change the mapping.
+- Hook components are shell commands on the authoring host and cannot run
+  server-side. If a future phase maps them to `user_hooks`
+  ([user-hooks.md](user-hooks.md)), the compiled capability must take
+  `risk_level: high` and the admin assignment gate, same as the planned
+  declarative `user_hooks` field.
+- Plugin names are kebab-case per the host convention; they reuse the
+  declarative name validation and must fit capability reference columns with
+  the `plugin:` prefix. Names are unique per organization across installed
+  plugins; the `plugin:` namespace keeps them from colliding with
+  `declarative:{name}` refs.
+
+## Marketplaces
+
+Org-scoped registry of plugin catalogs (`plugin_marketplaces`):
+
+- `name`: unique per org, used in install references (`my-tool@my-marketplace`).
+- `source`: where `marketplace.json` lives — GitHub repo, git URL, or direct
+  HTTPS URL. Fetched through the egress boundary ([egress.md](egress.md)).
+- Cached catalog: the validated `marketplace.json` content plus sync
+  metadata (`last_synced_at`, resolved commit SHA when the source is git).
+
+Sync is explicit (`POST .../sync`) and on a periodic schedule. The catalog
+schema is the marketplace.json schema: top-level `name`/`owner`/`plugins`,
+plugin entries with `name`, `source` (relative path, `github`, `url`,
+`git-subdir`; `npm` deferred), and optional metadata/component overrides.
+Unknown fields are preserved and ignored.
+
+The **default marketplace** is seeded for every organization and points at
+the first-party curated catalog (initially the `everruns/everruns` repo's own
+`.claude-plugin/marketplace.json`, later a dedicated curated repo). It is
+deletable/disableable like any other marketplace; "default" means seeded, not
+privileged.
+
+## Lifecycle
+
+- **Install**: resolve the plugin entry's source relative to the marketplace,
+  fetch the plugin directory at a concrete commit SHA (GitHub tarball / git
+  archive — no server-side clones in v1), validate against the manifest
+  schema and declarative size/count limits, compile to the declarative
+  definition shape, persist with provenance (`marketplace`, `source`,
+  `version`, `pinned_sha`, raw manifest, install warnings).
+- **Update**: explicit re-install at the marketplace's current entry;
+  recompiles the definition. Version semantics follow the host convention:
+  a manifest `version` pins until bumped, otherwise the commit SHA is the
+  effective version. Auto-update is deferred.
+- **Uninstall**: removes the capability; agents referencing `plugin:{name}`
+  surface the same dangling-ref behavior as deleted declarative capabilities.
+- **Enable/disable**: installed plugins follow the standard building-block
+  lifecycle and are assigned to agents/harnesses by capability ref.
+
+## API sketch
+
+```
+GET/POST          /v1/plugin_marketplaces
+GET/PATCH/DELETE  /v1/plugin_marketplaces/{id}
+POST              /v1/plugin_marketplaces/{id}/sync
+GET               /v1/plugin_marketplaces/{id}/plugins     # catalog
+GET/POST          /v1/plugins                              # installed; install
+GET/PATCH/DELETE  /v1/plugins/{id}
+POST              /v1/plugins/{id}/update
+```
+
+Resources follow the dual-ID pattern ([id-schema.md](id-schema.md)).
+Installed plugins appear in `GET /v1/capabilities` as a distinct kind next to
+built-in, MCP, skill, and declarative refs.
+
+## UI
+
+Marketplaces and plugins are managed through the UI on top of the same CRUD
+API — full management parity with the API, not a read-only view:
+
+- **Marketplaces**: list registered marketplaces with sync status; add by
+  GitHub repo or URL (admin-gated); manual re-sync; remove/disable.
+- **Catalog**: browse a synced marketplace's plugin entries (name, display
+  name, description, version, author) and install from there.
+- **Installed plugins**: list with provenance (marketplace, version, pinned
+  SHA) and install warnings; enable/disable; uninstall; **Update** action
+  shown when the synced catalog resolves to a newer version or SHA than the
+  installed pin. Update is always explicit user action in v1.
+- Installed plugins also surface in the existing capability picker as
+  `plugin:{name}` entries, so assignment to agents/harnesses reuses the
+  capability UI unchanged.
+
+## Runtime mode
+
+The plugins subsystem must work in the in-process runtime
+([runtime.md](runtime.md)) — not only in the server/control-plane deployment:
+
+- The **plugin compiler** (directory → manifest validation → declarative
+  definition shape) lives in `everruns-core`, not in the server crate, so
+  server, worker, and embedded runtime share one implementation.
+- `InProcessRuntimeBuilder` accepts local plugins: load a plugin directory
+  from disk (the equivalent of a local marketplace path source) or a
+  pre-compiled definition. No PostgreSQL and no marketplace sync are
+  involved; marketplace registration, catalog cache, and remote fetch are
+  control-plane concerns only.
+- Because workers and the runtime receive fully hydrated capability config
+  (same property declarative capabilities rely on), a plugin compiled by the
+  control plane executes identically in dev mode, durable worker mode, and
+  embedded runtime.
+- Plugin-declared MCP servers execute through the runtime MCP client
+  ([runtime-mcp.md](runtime-mcp.md)). HTTP transport everywhere in v1;
+  stdio-transport plugin servers are a possible embedded-runtime-only
+  extension, rejected elsewhere.
+
+## Test fixture
+
+`testdata/plugins/` is a local marketplace fixture used by server and runtime
+tests:
+
+- `testdata/plugins/.claude-plugin/marketplace.json` — valid marketplace
+  manifest with relative-path plugin sources.
+- `testdata/plugins/microsoft-docs/` — an Everruns-authored variant of the
+  public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
+  public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
+  every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
+  and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
+
+Tests cover: marketplace sync from a local path, install/compile of the
+fixture, the compiled capability's prompt/skill/MCP contributions, and
+loading the same plugin directory through `InProcessRuntimeBuilder`. The MCP
+server is public and unauthenticated, so manual smoke tests can call it live;
+automated tests must not depend on network.
+
+## Security
+
+Plugins are third-party remote content compiled into agent context — a
+supply-chain and prompt-injection surface on top of the declarative
+capability threat model:
+
+- Adding a marketplace and installing plugins are admin-gated org actions.
+- Installs pin a commit SHA; an upstream force-push cannot silently change
+  an installed plugin. Updates are explicit and re-validated.
+- The compiled definition passes the full declarative validation: size/count
+  limits, text-only files, path traversal rejection, skill name validation,
+  SSRF-safe scoped-MCP URL validation.
+- No code-execution components are compiled in v1 (hooks/LSP/monitors are
+  dropped with warnings).
+- MCP servers declared by a plugin use existing scoped-MCP auth (OAuth /
+  API key) with per-org consent, analogous to Claude Code's connector
+  enablement step.
+- Threat model entries: see `TM-PLUGIN-*` in
+  [threat-model.md](threat-model.md) § 26.
+
+## Phasing
+
+1. **v1**: marketplaces CRUD + sync (GitHub + direct URL sources), install
+   with relative-path and `github` plugin sources, compile
+   skills/commands/agents/MCP, `plugin:{name}` refs, capability registry and
+   picker integration, marketplace/plugin management UI, core-owned compiler
+   with `InProcessRuntimeBuilder` local-directory loading, dogfood by
+   installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.
+2. **v2**: `userConfig` → capability `config_schema`, `git-subdir` and git
+   URL sources, update UX with version diffing, install warnings surfaced in
+   UI.
+3. **Later**: publishing (export a declarative capability as a plugin
+   directory), org-to-org sharing, `agents/*.md` → blueprints/subagents,
+   hooks → `user_hooks` (high-risk gated), npm source.

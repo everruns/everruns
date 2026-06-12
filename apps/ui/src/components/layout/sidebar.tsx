@@ -99,6 +99,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Models", href: "/models", icon: Cpu },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
+  { name: "Plugins", href: "/plugins", icon: Puzzle },
   { name: "Apps", href: "/apps", icon: Rocket },
   { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
 ];

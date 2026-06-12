@@ -18,6 +18,7 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
+use crate::capability_types::is_plugin_capability;
 use crate::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
@@ -178,9 +179,10 @@ pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::DataKnowledgeCapability;
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
-    DeclarativeCapabilitySkill, declarative_capability_id, declarative_capability_info,
-    hydrate_declarative_capability_config, is_declarative_capability,
-    parse_declarative_capability_id, validate_declarative_capability_definition,
+    DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
+    declarative_capability_info, hydrate_declarative_capability_config,
+    hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
+    plugin_capability_info, validate_declarative_capability_definition,
 };
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
@@ -1599,7 +1601,9 @@ pub fn collect_capability_mcp_servers(
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
-        if is_declarative_capability(cap_id) {
+        // Both `declarative:` and `plugin:` carry a serialized
+        // `DeclarativeCapabilityDefinition`; handle them the same way.
+        if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
             if let Ok(definition) =
                 serde_json::from_value::<DeclarativeCapabilityDefinition>(cap_config.config.clone())
             {
@@ -1765,7 +1769,10 @@ pub fn resolve_capability_configs(
 ) -> Result<Vec<AgentCapabilityConfig>, DependencyError> {
     let mut selected_ids: Vec<String> = Vec::new();
     for config in selected_configs {
-        if is_declarative_capability(config.capability_id())
+        // Both `declarative:` and `plugin:` carry a `DeclarativeCapabilityDefinition`
+        // config that may declare dependencies.
+        if (is_declarative_capability(config.capability_id())
+            || is_plugin_capability(config.capability_id()))
             && let Ok(definition) =
                 serde_json::from_value::<DeclarativeCapabilityDefinition>(config.config.clone())
         {
@@ -1831,7 +1838,12 @@ fn resolve_single_capability(
     let capability = match registry.get(cap_id) {
         Some(cap) => cap,
         None => {
-            if is_declarative_capability(cap_id) && !resolved_set.contains(cap_id) {
+            // `declarative:` and `plugin:` refs carry their full definition in
+            // the config payload — they don't need a registry entry. Pass them
+            // through so `collect_capabilities_with_configs` can process them.
+            if (is_declarative_capability(cap_id) || is_plugin_capability(cap_id))
+                && !resolved_set.contains(cap_id)
+            {
                 resolved.push(cap_id.to_string());
                 resolved_set.insert(cap_id.to_string());
                 if !user_selected.contains(cap_id) {
@@ -1983,7 +1995,11 @@ pub async fn collect_capabilities_with_configs(
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
-        if is_declarative_capability(cap_id) {
+        // `declarative:` and `plugin:` refs both carry a serialized
+        // `DeclarativeCapabilityDefinition` in their config and execute through
+        // the same runtime path. `plugin:` is handled first (more specific
+        // prefix), then `declarative:`, then the registry lookup.
+        if is_declarative_capability(cap_id) || is_plugin_capability(cap_id) {
             match serde_json::from_value::<DeclarativeCapabilityDefinition>(
                 cap_config.config.clone(),
             ) {
@@ -2016,7 +2032,7 @@ pub async fn collect_capabilities_with_configs(
                     tracing::warn!(
                         capability_id = %cap_id,
                         error = %error,
-                        "Skipping invalid declarative capability config"
+                        "Skipping invalid declarative/plugin capability config"
                     );
                 }
             }

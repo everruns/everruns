@@ -42,6 +42,7 @@ pub mod notifications;
 pub mod org_feature_flags;
 pub mod organizations;
 pub mod payments;
+pub mod plugins;
 pub mod prometheus;
 pub mod public;
 pub mod reporting;

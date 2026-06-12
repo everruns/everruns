@@ -121,6 +121,10 @@ pub mod resource_names;
 // URL validation for SSRF prevention (shared utility)
 pub mod url_validation;
 
+// Plugin compiler (directory → declarative capability definition)
+// See specs/plugins.md
+pub mod plugins;
+
 pub mod atoms;
 pub mod capabilities;
 pub mod command;
@@ -322,8 +326,9 @@ pub use capabilities::{
     TestWeatherCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool, WriteSessionTitleTool,
     WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
     compute_features, declarative_capability_id, declarative_capability_info, get_dependencies,
-    hydrate_declarative_capability_config, is_declarative_capability, is_mcp_capability,
-    mcp_capability_id, parse_declarative_capability_id, parse_mcp_capability_id,
+    hydrate_declarative_capability_config, hydrate_plugin_capability_config,
+    is_declarative_capability, is_mcp_capability, mcp_capability_id,
+    parse_declarative_capability_id, parse_mcp_capability_id, plugin_capability_info,
     resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
@@ -346,6 +351,12 @@ pub use atoms::{
 pub use tool_types::{
     BuiltinTool, ClientSideTool, DeferrablePolicy, SideEffectClass, ToolCall, ToolDefinition,
     ToolHints, ToolPolicy, ToolResult,
+};
+
+// Plugin capability ID helpers — mirrors the declarative_capability_id trio.
+pub use capability_types::{
+    PLUGIN_CAPABILITY_PREFIX, is_plugin_capability, parse_plugin_capability_id,
+    plugin_capability_id,
 };
 
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
@@ -442,7 +453,8 @@ pub use typed_id::{
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
-    PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
+    SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

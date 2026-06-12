@@ -1,0 +1,16 @@
+{
+  "name": "everruns-test-fixtures",
+  "description": "Local marketplace fixture for plugins subsystem tests. Not shipped.",
+  "owner": {
+    "name": "Everruns"
+  },
+  "plugins": [
+    {
+      "name": "microsoft-docs",
+      "source": "./microsoft-docs",
+      "description": "Search official Microsoft documentation through the Microsoft Learn MCP server.",
+      "version": "0.1.0",
+      "category": "research"
+    }
+  ]
+}

@@ -22,3 +22,4 @@ export * from "./budget-types";
 export * from "./payment-types";
 export * from "./memory-types";
 export * from "./reporting-types";
+export * from "./plugin-types";

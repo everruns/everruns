@@ -388,6 +388,8 @@ impl TestServer {
         );
         let skills_state =
             api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
+        let plugins_state =
+            api::plugins::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
         let organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
@@ -538,6 +540,7 @@ impl TestServer {
             .merge(api::durable::routes(durable_state))
             .merge(api::schedules::routes(schedules_state))
             .merge(api::skills::routes(skills_state))
+            .merge(api::plugins::routes(plugins_state))
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
             .merge(api::session_schedules::routes(session_schedules_state))

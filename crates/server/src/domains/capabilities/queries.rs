@@ -12,8 +12,9 @@ use super::types::{DeclarativeCapability, DeclarativeCapabilityRow};
 use crate::storage::StorageBackend;
 use everruns_core::{
     AgentCapabilityConfig, DeclarativeCapabilityDefinition, DeclarativeCapabilityId,
-    declarative_capability_id, hydrate_declarative_capability_config, is_declarative_capability,
-    parse_declarative_capability_id,
+    declarative_capability_id, hydrate_declarative_capability_config,
+    hydrate_plugin_capability_config, is_declarative_capability, is_plugin_capability,
+    parse_declarative_capability_id, parse_plugin_capability_id,
 };
 
 /// Filter capabilities by search query (name/description match).
@@ -76,6 +77,17 @@ pub async fn hydrate_declarative_capability_configs(
             hydrated.push(AgentCapabilityConfig::with_config(
                 cap_id,
                 hydrate_declarative_capability_config(cap.config, &definition),
+            ));
+        } else if is_plugin_capability(&cap_id)
+            && let Some(plugin_name) = parse_plugin_capability_id(&cap_id)
+            && let Some(row) = db.get_plugin_install_by_name(org_id, plugin_name).await?
+            && matches!(row.status.as_str(), "active" | "disabled")
+        {
+            let definition: DeclarativeCapabilityDefinition =
+                serde_json::from_value(row.definition.clone()).unwrap_or_default();
+            hydrated.push(AgentCapabilityConfig::with_config(
+                cap_id,
+                hydrate_plugin_capability_config(cap.config, &definition),
             ));
         } else {
             hydrated.push(cap);

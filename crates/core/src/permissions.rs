@@ -30,6 +30,8 @@ pub enum Permission {
     OrgSkillsDangerous,
     /// Dangerous MCP server operations
     OrgMcpServersDangerous,
+    /// Register marketplaces and install/uninstall plugins (admin-gated per specs/plugins.md)
+    OrgPluginsManage,
     /// Dangerous app operations
     OrgAppsDangerous,
     /// CRUD on sessions
@@ -69,6 +71,7 @@ impl Permission {
             Permission::OrgAgentsDangerous => "org:agents:dangerous",
             Permission::OrgSkillsDangerous => "org:skills:dangerous",
             Permission::OrgMcpServersDangerous => "org:mcp-servers:dangerous",
+            Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgAppsDangerous => "org:apps:dangerous",
             Permission::OrgSessionsManage => "org:sessions:manage",
             Permission::OrgLlmProvidersView => "org:llm-providers:view",
@@ -94,6 +97,7 @@ impl Permission {
         Permission::OrgAgentsDangerous,
         Permission::OrgSkillsDangerous,
         Permission::OrgMcpServersDangerous,
+        Permission::OrgPluginsManage,
         Permission::OrgAppsDangerous,
         Permission::OrgSessionsManage,
         Permission::OrgLlmProvidersView,
@@ -129,6 +133,7 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgAgentsDangerous,
     Permission::OrgSkillsDangerous,
     Permission::OrgMcpServersDangerous,
+    Permission::OrgPluginsManage,
     Permission::OrgAppsDangerous,
     Permission::OrgSessionsManage,
     Permission::OrgLlmProvidersView,
@@ -149,6 +154,7 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesView,
     Permission::OrgHarnessesManage,
     Permission::OrgAgentsManage,
+    Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
     Permission::OrgLlmProvidersView,
     Permission::OrgLlmProvidersManage,
@@ -904,8 +910,8 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 20);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 14);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 21);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 15);
         assert_eq!(role_permissions(OrgRole::Member).len(), 7);
         assert!(role_has_permission(
             OrgRole::Owner,

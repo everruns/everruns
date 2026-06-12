@@ -18,6 +18,36 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// ============================================================================
+// Plugin capability ID helpers
+// ============================================================================
+//
+// Mirrors the `declarative_capability_id` / `is_declarative_capability` /
+// `parse_declarative_capability_id` trio in `capabilities/declarative.rs` for
+// the `plugin:` namespace.
+//
+// `plugin:` is 7 bytes; capability ref columns are VARCHAR(50), leaving 43
+// bytes for the unique plugin name.
+
+/// The `plugin:` prefix used to identify installed plugin capabilities.
+pub const PLUGIN_CAPABILITY_PREFIX: &str = "plugin:";
+
+/// Construct a `plugin:{name}` capability reference.
+pub fn plugin_capability_id(name: &str) -> String {
+    format!("{PLUGIN_CAPABILITY_PREFIX}{name}")
+}
+
+/// Return `true` if `capability_id` is a `plugin:…` reference.
+pub fn is_plugin_capability(capability_id: &str) -> bool {
+    capability_id.starts_with(PLUGIN_CAPABILITY_PREFIX)
+}
+
+/// Strip the `plugin:` prefix and return the plugin name, or `None` if the ID
+/// is not a plugin capability reference.
+pub fn parse_plugin_capability_id(capability_id: &str) -> Option<&str> {
+    capability_id.strip_prefix(PLUGIN_CAPABILITY_PREFIX)
+}
+
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 

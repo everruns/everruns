@@ -86,6 +86,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/fcp-channel.md` - FCP inbound channel
 - `specs/messaging-integrations.md` - Messaging integrations
 - `specs/everruns-dev-plugin.md` - Everruns(Dev) plugin sync contract
+- `specs/plugins.md` - Plugin host: marketplaces and cross-host plugin packages installed as capabilities
 - `specs/model-router.md` - Model Routers
 
 ## Infrastructure and operations

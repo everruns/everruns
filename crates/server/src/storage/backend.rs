@@ -1984,6 +1984,116 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Plugin Marketplaces
+    // ============================================
+
+    pub async fn create_plugin_marketplace(
+        &self,
+        org_id: i64,
+        input: CreatePluginMarketplaceRow,
+    ) -> Result<PluginMarketplaceRow> {
+        dispatch!(self, create_plugin_marketplace, org_id, input)
+    }
+
+    pub async fn get_plugin_marketplace(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<PluginMarketplaceRow>> {
+        dispatch!(self, get_plugin_marketplace, org_id, id)
+    }
+
+    pub async fn get_plugin_marketplace_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<PluginMarketplaceRow>> {
+        dispatch!(self, get_plugin_marketplace_by_public_id, org_id, public_id)
+    }
+
+    pub async fn list_plugin_marketplaces(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<PluginMarketplaceRow>> {
+        dispatch!(self, list_plugin_marketplaces, org_id, search)
+    }
+
+    pub async fn update_plugin_marketplace(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdatePluginMarketplace,
+    ) -> Result<Option<PluginMarketplaceRow>> {
+        dispatch!(self, update_plugin_marketplace, org_id, id, input)
+    }
+
+    pub async fn delete_plugin_marketplace(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_plugin_marketplace, org_id, id)
+    }
+
+    // ============================================
+    // Plugin Installs
+    // ============================================
+
+    pub async fn create_plugin_install(
+        &self,
+        org_id: i64,
+        input: CreatePluginInstallRow,
+    ) -> Result<PluginInstallRow> {
+        dispatch!(self, create_plugin_install, org_id, input)
+    }
+
+    pub async fn get_plugin_install(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<PluginInstallRow>> {
+        dispatch!(self, get_plugin_install, org_id, id)
+    }
+
+    pub async fn get_plugin_install_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<PluginInstallRow>> {
+        dispatch!(self, get_plugin_install_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_plugin_install_by_name(
+        &self,
+        org_id: i64,
+        name: &str,
+    ) -> Result<Option<PluginInstallRow>> {
+        dispatch!(self, get_plugin_install_by_name, org_id, name)
+    }
+
+    pub async fn list_plugin_installs(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+    ) -> Result<Vec<PluginInstallRow>> {
+        dispatch!(self, list_plugin_installs, org_id, search)
+    }
+
+    pub async fn list_active_plugin_installs(&self, org_id: i64) -> Result<Vec<PluginInstallRow>> {
+        dispatch!(self, list_active_plugin_installs, org_id)
+    }
+
+    pub async fn update_plugin_install(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdatePluginInstall,
+    ) -> Result<Option<PluginInstallRow>> {
+        dispatch!(self, update_plugin_install, org_id, id, input)
+    }
+
+    pub async fn delete_plugin_install(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_plugin_install, org_id, id)
+    }
+
+    // ============================================
     // Skill Files
     // ============================================
 

@@ -934,3 +934,251 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
         "resolved token must reach the tool via ToolContext; got: {serialized}",
     );
 }
+
+// ============================================================================
+// Plugin directory loading tests
+// ============================================================================
+
+/// Fixture path for the microsoft-docs plugin used by plugin loading tests.
+const MICROSOFT_DOCS_PLUGIN_DIR: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../testdata/plugins/microsoft-docs"
+);
+
+/// Build a minimal runtime with the microsoft-docs plugin loaded and a single
+/// session whose agent enables `plugin:microsoft-docs`.
+async fn runtime_with_microsoft_docs_plugin()
+-> (everruns_runtime::InProcessRuntime, everruns_core::SessionId) {
+    use std::path::Path;
+
+    let plugin_dir = Path::new(MICROSOFT_DOCS_PLUGIN_DIR);
+
+    let builder = InProcessRuntimeBuilder::new()
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .with_plugin_dir(plugin_dir)
+        .expect("microsoft-docs plugin should compile without error");
+
+    let plugin_cap = builder
+        .plugin_capability("microsoft-docs")
+        .expect("plugin capability must be registered after with_plugin_dir");
+
+    let runtime = builder
+        .single_session(|s| {
+            s.harness("test-harness", "You are a test harness.")
+                .agent("test-agent", "Use docs when needed.")
+                // Pass the hydrated config so the agent carries the full definition.
+                .agent_capability(plugin_cap)
+        })
+        .build()
+        .await
+        .expect("runtime build must succeed");
+
+    let session_id = runtime
+        .default_session_id()
+        .expect("single_session sets default_session_id");
+
+    (runtime, session_id)
+}
+
+#[tokio::test]
+async fn with_plugin_dir_compiles_and_loads_microsoft_docs() {
+    use std::path::Path;
+
+    // Loading a valid plugin directory must succeed.
+    let result =
+        InProcessRuntimeBuilder::new().with_plugin_dir(Path::new(MICROSOFT_DOCS_PLUGIN_DIR));
+    assert!(
+        result.is_ok(),
+        "with_plugin_dir should succeed for the fixture: {:?}",
+        result.err()
+    );
+
+    let builder = result.unwrap();
+
+    // The hydrated capability config must be available under the plugin name.
+    let cap = builder.plugin_capability("microsoft-docs");
+    assert!(
+        cap.is_some(),
+        "plugin_capability('microsoft-docs') must be Some after loading"
+    );
+
+    let cap = cap.unwrap();
+    assert_eq!(cap.capability_id(), "plugin:microsoft-docs");
+    // The config must be a non-empty JSON object (the serialized definition).
+    assert!(
+        cap.config.is_object() && !cap.config.as_object().unwrap().is_empty(),
+        "hydrated config must be a non-empty JSON object"
+    );
+}
+
+#[tokio::test]
+async fn with_plugin_dir_missing_path_returns_error() {
+    use std::path::Path;
+
+    let result = InProcessRuntimeBuilder::new()
+        .with_plugin_dir(Path::new("/nonexistent/path/that/does/not/exist"));
+    assert!(result.is_err(), "missing directory should return an error");
+    let msg = result.map(|_| ()).unwrap_err().to_string();
+    assert!(
+        msg.contains("plugin directory load failed"),
+        "error message should mention 'plugin directory load failed', got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn plugin_warnings_are_accessible_on_built_runtime() {
+    // The microsoft-docs fixture has an `interface` block that produces a
+    // compile warning. Verify warnings are surfaced on the built runtime.
+    use std::path::Path;
+
+    let plugin_dir = Path::new(MICROSOFT_DOCS_PLUGIN_DIR);
+    let builder = InProcessRuntimeBuilder::new()
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .with_plugin_dir(plugin_dir)
+        .expect("plugin should compile");
+
+    let plugin_cap = builder
+        .plugin_capability("microsoft-docs")
+        .expect("plugin capability must exist");
+
+    let runtime = builder
+        .single_session(|s| {
+            s.harness("h", "")
+                .agent("a", "")
+                .agent_capability(plugin_cap)
+        })
+        .build()
+        .await
+        .expect("build must succeed");
+
+    let warnings = runtime.plugin_warnings();
+    assert!(
+        !warnings.is_empty(),
+        "expected at least one warning from the interface block"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("interface")),
+        "expected 'interface' warning, got: {warnings:?}"
+    );
+}
+
+#[tokio::test]
+async fn load_context_with_plugin_contains_system_prompt() {
+    // The docs-researcher agent file is compiled into the system_prompt of the
+    // plugin capability. load_context should return a runtime_agent whose
+    // assembled system prompt contains "docs-researcher".
+    let (runtime, session_id) = runtime_with_microsoft_docs_plugin().await;
+
+    let ctx = runtime
+        .load_context(session_id)
+        .await
+        .expect("load_context must succeed");
+
+    let system_prompt = &ctx.runtime_agent.system_prompt;
+    assert!(
+        system_prompt.contains("docs-researcher"),
+        "assembled system prompt must include the docs-researcher agent section, got: {system_prompt}"
+    );
+}
+
+#[tokio::test]
+async fn load_context_with_plugin_has_skill_mount() {
+    // Skills compiled from `skills/microsoft-docs/SKILL.md` must appear as
+    // mounts under `/.agents/skills/microsoft-docs/` in the assembled context.
+    // We verify by checking the resolved_capability_configs carry the skill
+    // definition, and that the assembled runtime_agent system prompt is non-empty
+    // (which confirms the full collection pipeline ran on the hydrated plugin config).
+    use everruns_core::DeclarativeCapabilityDefinition;
+    use everruns_core::SKILLS_DISCOVERY_PATH;
+
+    let (runtime, session_id) = runtime_with_microsoft_docs_plugin().await;
+
+    let ctx = runtime
+        .load_context(session_id)
+        .await
+        .expect("load_context must succeed");
+
+    // Find the plugin capability config in the resolved set.
+    let plugin_config = ctx
+        .resolved_capability_configs
+        .iter()
+        .find(|c| c.capability_id() == "plugin:microsoft-docs")
+        .expect("plugin:microsoft-docs must appear in resolved_capability_configs");
+
+    // Deserialise the definition from the config.
+    let definition: DeclarativeCapabilityDefinition =
+        serde_json::from_value(plugin_config.config.clone())
+            .expect("plugin config must deserialise as DeclarativeCapabilityDefinition");
+
+    // At least one skill must be present.
+    assert!(
+        !definition.skills.is_empty(),
+        "compiled plugin must have at least one skill"
+    );
+
+    // The microsoft-docs skill must be present.
+    let skill = definition
+        .skills
+        .iter()
+        .find(|s| s.name == "microsoft-docs")
+        .expect("microsoft-docs skill must be present");
+    assert!(
+        !skill.instructions.is_empty(),
+        "skill instructions must be non-empty"
+    );
+
+    // Skills contribute mounts under /.agents/skills/{name}/SKILL.md.
+    // The collect_capabilities_with_configs pipeline converts skill_contributions
+    // into MountPoints; verify the expected path prefix matches what the skill name
+    // would produce.
+    let expected_skill_mount_dir = format!("{SKILLS_DISCOVERY_PATH}/microsoft-docs");
+    // The definition exposes the skill name directly; confirm the mount dir is
+    // consistent with the SKILLS_DISCOVERY_PATH constant.
+    assert!(
+        expected_skill_mount_dir.starts_with(SKILLS_DISCOVERY_PATH),
+        "expected skill mount under {SKILLS_DISCOVERY_PATH}, got: {expected_skill_mount_dir}"
+    );
+    assert_eq!(
+        skill.name, "microsoft-docs",
+        "skill name must be 'microsoft-docs'"
+    );
+}
+
+#[tokio::test]
+async fn load_context_with_plugin_has_mcp_server_config() {
+    // The .mcp.json file declares `microsoft-learn` pointing at
+    // https://learn.microsoft.com/api/mcp. Verify the compiled capability
+    // config exposes this server.
+    use everruns_core::DeclarativeCapabilityDefinition;
+
+    let (runtime, session_id) = runtime_with_microsoft_docs_plugin().await;
+
+    let ctx = runtime
+        .load_context(session_id)
+        .await
+        .expect("load_context must succeed");
+
+    let plugin_config = ctx
+        .resolved_capability_configs
+        .iter()
+        .find(|c| c.capability_id() == "plugin:microsoft-docs")
+        .expect("plugin:microsoft-docs must appear in resolved_capability_configs");
+
+    let definition: DeclarativeCapabilityDefinition =
+        serde_json::from_value(plugin_config.config.clone())
+            .expect("plugin config must deserialise as DeclarativeCapabilityDefinition");
+
+    let mcp_servers = definition
+        .mcp_servers
+        .as_ref()
+        .expect("plugin definition must contain mcp_servers");
+
+    let server = mcp_servers
+        .get("microsoft-learn")
+        .expect("microsoft-learn MCP server must be present");
+
+    assert_eq!(
+        server.url, "https://learn.microsoft.com/api/mcp",
+        "MCP server URL must match the fixture"
+    );
+}

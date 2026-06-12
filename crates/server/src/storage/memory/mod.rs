@@ -27,6 +27,7 @@ mod notifications;
 mod org_feature_flags;
 mod organizations;
 mod payments;
+mod plugins;
 mod principals;
 mod schedules;
 mod session_files;
@@ -167,6 +168,9 @@ pub struct InMemoryDatabase {
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
     oauth_refresh_tokens: RwLock<HashMap<Uuid, OAuthRefreshTokenRow>>,
+    // Plugin marketplaces and installs (see specs/plugins.md)
+    plugin_marketplaces: RwLock<HashMap<Uuid, PluginMarketplaceRow>>,
+    plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -249,6 +253,8 @@ impl Default for InMemoryDatabase {
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
+            plugin_marketplaces: RwLock::new(HashMap::new()),
+            plugin_installs: RwLock::new(HashMap::new()),
         }
     }
 }
