@@ -9,6 +9,12 @@ session/agent configuration surface. It is a host service exposed through
 capability execution context so capabilities can perform bounded internal model
 work without reusing user-configured model providers or session secrets.
 
+Server-side system analysis tasks are also sanctioned callers: bounded,
+system-initiated analysis of platform-owned data (e.g., agent configuration
+checks per `specs/agent-checks.md`). These run inside server domains via the
+`PlatformDefinition` service handle — never as a public ad hoc completion
+endpoint.
+
 ## Core Contract
 
 `everruns-core` owns the service abstraction:
@@ -48,6 +54,7 @@ bypass env-based setup by constructing a custom `PlatformDefinition` and calling
 ## Non-Goals
 
 - No user-facing model picker entry.
-- No REST API endpoint for ad hoc utility LLM calls.
+- No REST API endpoint for ad hoc utility LLM calls. System analysis tasks
+  expose their own purpose-specific endpoints; the model call stays internal.
 - No per-organization or per-session utility model configuration.
 - No access from ordinary agent model selection or provider records.
