@@ -229,6 +229,8 @@ pub struct AgentPreviewResponse {
     /// All tool definitions from capabilities
     #[schema(value_type = Vec<Object>)]
     pub tools: Vec<ToolDefinition>,
+    /// Advisory findings from built-in checks (specs/agent-checks.md)
+    pub findings: Vec<super::checks::Finding>,
 }
 
 /// Query parameters for listing agents.

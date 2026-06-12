@@ -12245,9 +12245,17 @@
         "description": "Response showing the final agent shape after applying capabilities",
         "required": [
           "system_prompt",
-          "tools"
+          "tools",
+          "findings"
         ],
         "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "description": "Advisory findings from built-in checks (specs/agent-checks.md)"
+          },
           "system_prompt": {
             "type": "string",
             "description": "The full system prompt with capability additions prepended"
@@ -16814,6 +16822,111 @@
             "description": "File size in bytes after write."
           }
         }
+      },
+      "Finding": {
+        "type": "object",
+        "description": "A single advisory finding about an agent configuration.",
+        "required": [
+          "rule_id",
+          "severity",
+          "category",
+          "message",
+          "source"
+        ],
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/FindingCategory"
+          },
+          "fix": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Proposed replacement text (phase 2+; always absent for builtin rules)."
+          },
+          "location": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FindingLocation"
+              }
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation. Safe to render in user-facing messages."
+          },
+          "rule_id": {
+            "type": "string",
+            "description": "Stable rule identifier, e.g. `prompt.duplicate_paragraphs`."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FindingSeverity"
+          },
+          "source": {
+            "$ref": "#/components/schemas/FindingSource"
+          }
+        }
+      },
+      "FindingCategory": {
+        "type": "string",
+        "enum": [
+          "structure",
+          "completeness",
+          "effectiveness",
+          "safety",
+          "cost"
+        ]
+      },
+      "FindingLocation": {
+        "type": "object",
+        "description": "Pointer to the config field (and optional byte span within it) a finding\nrefers to.",
+        "required": [
+          "field"
+        ],
+        "properties": {
+          "end": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "field": {
+            "type": "string",
+            "description": "Config field name, e.g. `system_prompt`, `tools`."
+          },
+          "start": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Byte offset range into the field's authored text, when applicable.",
+            "minimum": 0
+          }
+        }
+      },
+      "FindingSeverity": {
+        "type": "string",
+        "description": "Advisory severity. There is deliberately no `error`: checks never gate\nsave/publish (specs/agent-checks.md, Non-Goals).",
+        "enum": [
+          "warning",
+          "info",
+          "suggestion"
+        ]
+      },
+      "FindingSource": {
+        "type": "string",
+        "description": "Which tier produced the finding.",
+        "enum": [
+          "builtin",
+          "llm",
+          "health_check"
+        ]
       },
       "ForkAgentVersionRequest": {
         "type": "object",
