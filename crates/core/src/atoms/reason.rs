@@ -235,6 +235,38 @@ const ERROR_PLACEHOLDER_MESSAGES: &[&str] = &[
     "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
 ];
 
+/// Returns true when a stream event carries assistant output progress.
+fn stream_event_advances_stall_deadline(event: &LlmStreamEvent) -> bool {
+    match event {
+        LlmStreamEvent::TextDelta(delta) | LlmStreamEvent::ThinkingDelta(delta) => {
+            !delta.is_empty()
+        }
+        LlmStreamEvent::ReasonItem {
+            encrypted_content,
+            summary,
+            token_count,
+            ..
+        } => {
+            encrypted_content
+                .as_ref()
+                .is_some_and(|content| !content.is_empty())
+                || summary.iter().any(|item| !item.is_empty())
+                || token_count.is_some_and(|count| count > 0)
+        }
+        LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
+        LlmStreamEvent::ThinkingSignature(_)
+        | LlmStreamEvent::Done(_)
+        | LlmStreamEvent::Error(_) => false,
+    }
+}
+
+fn unix_now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
 /// Returns true if the message is an error placeholder that should be stripped
 /// from the conversation history before sending to the LLM.
 fn is_error_placeholder_message(msg: &Message) -> bool {
@@ -1905,10 +1937,7 @@ impl ReasonAtom {
             // Updated only on content events; keepalive heartbeats use this
             // so the control plane can distinguish "alive/slow" from "making
             // progress" without conflating keepalive pings with real tokens.
-            let mut last_token_at_unix: u64 = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs();
+            let mut last_token_at_unix: u64 = unix_now_secs();
 
             loop {
                 let event = tokio::select! {
@@ -1941,11 +1970,15 @@ impl ReasonAtom {
                         continue;
                     },
                 };
-                // Reset stall deadline on every received stream event
-                stall_sleep
-                    .as_mut()
-                    .reset(tokio::time::Instant::now() + stall_timeout);
-                match event? {
+                let event = event?;
+                let advances_stall_deadline = stream_event_advances_stall_deadline(&event);
+                if advances_stall_deadline {
+                    stall_sleep
+                        .as_mut()
+                        .reset(tokio::time::Instant::now() + stall_timeout);
+                    last_token_at_unix = unix_now_secs();
+                }
+                match event {
                     LlmStreamEvent::TextDelta(delta) => {
                         // Track time-to-first-token on first non-empty delta
                         if time_to_first_token_ms.is_none() && !delta.is_empty() {
@@ -1959,10 +1992,6 @@ impl ReasonAtom {
                         }
                         text.push_str(&delta);
                         pending_delta.push_str(&delta);
-                        last_token_at_unix = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
 
                         // Run output guardrails on the new accumulated text.
                         // Cheap by contract — runs in the streaming hot path.
@@ -2030,10 +2059,6 @@ impl ReasonAtom {
                             tripped = Some(t);
                             break;
                         }
-                        last_token_at_unix = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
                         tracing::debug!(
                             session_id = %session_id,
                             delta_len = delta.len(),
@@ -2785,6 +2810,76 @@ mod tests {
                 && record.capability_id == "cap:demo"
                 && record.tool_name.as_deref() == Some("demo_tool")
         }));
+    }
+
+    #[test]
+    fn stream_stall_deadline_ignores_empty_keepalive_events() {
+        assert!(!stream_event_advances_stall_deadline(
+            &LlmStreamEvent::TextDelta(String::new())
+        ));
+        assert!(!stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ThinkingDelta(String::new())
+        ));
+        assert!(!stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ThinkingSignature("signature".to_string())
+        ));
+        assert!(!stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ReasonItem {
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "item_1".to_string(),
+                encrypted_content: None,
+                summary: vec![String::new()],
+                token_count: Some(0),
+            }
+        ));
+    }
+
+    #[test]
+    fn stream_stall_deadline_advances_on_output_progress() {
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::TextDelta("hello".to_string())
+        ));
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ThinkingDelta("thinking".to_string())
+        ));
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ReasonItem {
+                provider: "openai".to_string(),
+                model: Some("gpt-5.4".to_string()),
+                item_id: "item_1".to_string(),
+                encrypted_content: Some("encrypted".to_string()),
+                summary: vec![],
+                token_count: None,
+            }
+        ));
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ReasonItem {
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "item_2".to_string(),
+                encrypted_content: None,
+                summary: vec!["summary".to_string()],
+                token_count: None,
+            }
+        ));
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ReasonItem {
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "item_3".to_string(),
+                encrypted_content: None,
+                summary: vec![],
+                token_count: Some(1),
+            }
+        ));
+        assert!(stream_event_advances_stall_deadline(
+            &LlmStreamEvent::ToolCalls(vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "demo".to_string(),
+                arguments: json!({}),
+            }])
+        ));
     }
 
     #[tokio::test]
