@@ -1,10 +1,20 @@
 # everruns-a2ui
 
-A2UI component catalog and prompt generation for Everruns generative UI.
+> A2UI component catalog and prompt generator for Everruns generative UI.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It gives
-LLMs a compact catalog of A2UI JSON components and rules for emitting `a2ui`
-fenced blocks that Everruns clients can render.
+[![Crates.io](https://img.shields.io/crates/v/everruns-a2ui.svg)](https://crates.io/crates/everruns-a2ui)
+[![Documentation](https://docs.rs/everruns-a2ui/badge.svg)](https://docs.rs/everruns-a2ui)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-a2ui` gives an LLM a compact catalog of A2UI JSON components plus the
+rules for emitting `a2ui` fenced blocks — JSON component trees that Everruns
+clients can render as generative UI. It ships a default catalog with component
+and prop metadata, and lets you extend the prompt with your own rules.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. See
+[`everruns-openui`](https://crates.io/crates/everruns-openui) for the OpenUI Lang
+variant of generative UI.
 
 ## Quick Example
 
@@ -28,6 +38,11 @@ assert!(prompt.contains("```a2ui"));
 - Prompt generation for JSON component trees
 - Component and prop metadata for renderer-compatible output
 
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-a2ui)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

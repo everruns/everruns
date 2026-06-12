@@ -102,10 +102,10 @@ Get file metadata (size, type, timestamps).
 - `edit_file` applies all replacements against the original file content and rejects ambiguous or overlapping matches
 - `edit_file` preserves the file's existing BOM and newline style (`LF`, `CRLF`, or `CR`)
 - `edit_file` returns a unified diff capped to a bounded size; oversized diffs are truncated and marked as such
-- Shared filesystem with [Virtual Bash](/capabilities/virtual-bash/) (same `/workspace`)
+- Shared filesystem with [Bashkit Shell](/capabilities/bashkit-shell/) (same `/workspace`)
 
 ## See Also
 
-- [Virtual Bash](/capabilities/virtual-bash/) — execute commands against these files
+- [Bashkit Shell](/capabilities/bashkit-shell/) — execute commands against these files
 - [Storage](/capabilities/session-storage/) — key/value and secret storage
 - [Capabilities Overview](/capabilities/)

@@ -10,7 +10,9 @@
 //           access to Everruns documentation without DB writes per session while allowing
 //           the public core crate to build without repo-root files.
 
-use super::{Capability, CapabilityStatus, MountPoint, is_declarative_capability};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, MountPoint, is_declarative_capability,
+};
 use crate::app::{App, AppChannel, ChannelType};
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
@@ -96,13 +98,13 @@ const SYSTEM_PROMPT: &str = r#"Capabilities extend agent/harness functionality. 
 <platform-docs>
 Platform documentation is available at /workspace/docs in the session filesystem.
 Use `read_file`, `list_directory`, or `grep` to browse and search it.
-Virtual bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
+Bash commands like `cat /workspace/docs/...`, `ls /workspace/docs/`, and
 `grep -r "pattern" /workspace/docs/` also work.
 
 Key sections:
 - /workspace/docs/getting-started/ — Introduction, concepts, architecture, Docker setup
 - /workspace/docs/features/ — SDK, CLI, UI, events, harnesses, capabilities, apps, skills
-- /workspace/docs/capabilities/ — Per-capability reference (file-system, virtual-bash, web-fetch, etc.)
+- /workspace/docs/capabilities/ — Per-capability reference (file-system, bashkit-shell, web-fetch, etc.)
 - /workspace/docs/integrations/ — External integrations (Slack, Daytona, Browserless, etc.)
 - /workspace/docs/advanced/ — Budgets, compaction, embedding, network access, request signing
 - /workspace/docs/sre/ — Environment variables, admin container, runbooks
@@ -127,6 +129,14 @@ impl Capability for PlatformManagementCapability {
 
     fn description(&self) -> &str {
         "Tools to manage harnesses, agents, apps, channels, and sessions. Create, list, update, delete entities and interact with sessions programmatically."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Керування платформою",
+            "Інструменти для керування harness-ами, агентами, застосунками, каналами та сесіями. Створюйте, переглядайте, оновлюйте й видаляйте сутності та взаємодійте із сесіями програмно.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

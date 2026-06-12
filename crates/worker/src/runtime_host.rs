@@ -229,15 +229,17 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         self.adapters.session_resource_registry()
     }
 
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        self.adapters.session_task_registry()
+    }
+
     fn schedule_store(
         &self,
         org_id: i64,
     ) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
         Some(self.adapters.schedule_store(org_id))
-    }
-
-    fn memory_store(&self, org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
-        self.adapters.memory_store(org_id)
     }
 
     fn platform_store(
@@ -273,6 +275,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
         self.adapters.durable_tool_result_store()
+    }
+
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
+        self.adapters.subagent_spawn_store()
     }
 
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {

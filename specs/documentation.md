@@ -25,7 +25,7 @@ docs/
 │   └── introduction.md
 ├── capabilities/
 │   ├── index.md          # Capabilities overview + reference table
-│   └── *.md              # Per-capability pages (file-system, virtual-bash, etc.)
+│   └── *.md              # Per-capability pages (file-system, bashkit-shell, etc.)
 ├── features/
 │   └── capabilities.md
 ├── integrations/

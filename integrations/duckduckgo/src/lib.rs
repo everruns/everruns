@@ -24,7 +24,9 @@
 pub mod client;
 mod tools;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
+};
 use everruns_core::tools::Tool;
 
 use tools::DuckDuckGoSearchTool;
@@ -95,6 +97,16 @@ impl Capability for DuckDuckGoCapability {
 
     fn dependencies(&self) -> Vec<&'static str> {
         vec![]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "[Експериментально] DuckDuckGo",
+            "Шукайте миттєві відповіді через DuckDuckGo Instant Answer API. Агенти можуть \
+             отримувати анотації, визначення, пов'язані теми та прямі відповіді. \
+             ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
+        )]
     }
 }
 

@@ -188,6 +188,13 @@ export const queryKeys = {
     list: (sessionId: string) => ["session-resources", sessionId] as const,
   },
 
+  // Session task queries
+  sessionTasks: {
+    all: ["session-tasks"] as const,
+    list: (sessionId: string) => ["session-tasks", sessionId] as const,
+    detail: (sessionId: string, taskId: string) => ["session-task", sessionId, taskId] as const,
+  },
+
   // Command queries
   commands: {
     all: ["commands"] as const,
@@ -201,21 +208,14 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
-  // Workspace Volume queries
-  volumes: {
-    all: ["volumes"] as const,
+  // Memory queries — split list/detail roots to avoid prefix collision when
+  // setQueriesData matches by prefix (a detail query value is a single object,
+  // not an array, so a shared root would crash the list updater).
+  memory: {
+    all: ["memories"] as const,
     list: (includeArchived = false, search = "") =>
-      ["volumes", { includeArchived, search }] as const,
-    detail: (volumeId: string) => ["volume", volumeId] as const,
-  },
-
-  // Memory store queries
-  memoryStores: {
-    all: ["memory-stores"] as const,
-    list: () => ["memory-stores"] as const,
-    detail: (storeId: string) => ["memory-store", storeId] as const,
-    memories: (storeId: string, params: Record<string, unknown> = {}) =>
-      ["memory-store", storeId, "memories", params] as const,
+      ["memories", { includeArchived, search }] as const,
+    detail: (memoryId: string) => ["memory", memoryId] as const,
   },
 
   // Eval queries

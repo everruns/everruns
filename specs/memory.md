@@ -1,195 +1,373 @@
-# Memory Capability
+# Memory Specification
 
-Cross-session persistent memory that agents can write to and read from.
-Memories survive beyond individual sessions and are scoped to **memory stores**
-within an organization.
+## Abstract
+
+Memories are org-scoped, named, persistent stores that users mount into
+session workspaces through the `memory` capability. Memories provide shared,
+durable, governed state that survives across sessions and can be projected
+into many sessions either read-only as reference, or read-write as shared
+working state.
+
+This spec is the durable design intent for the Memory tier. The file surface
+is the only surface implemented today (it descends from the earlier
+"Workspace Volumes" concept). Future surfaces — tables, key-value, secrets,
+structured — are tracked under [Open Questions](#open-questions).
+
+## Model
+
+Everruns has two memory tiers, distinguished by lifetime and scope:
+
+* **Workspace** (`specs/workspace.md`) — the active working area for a
+  session. Today: per-session, singleton, ephemeral by default. Future:
+  may be shareable across sessions. Mounted at `/workspace`.
+* **Memory** (this spec) — org-scoped, named, durable, shared. Selected and
+  mounted into a Workspace at session creation. RO by default; RW where
+  trust permits.
+
+A Memory is a **named addressable thing**. An org can have many
+(`mem:crm`, `mem:legal`, `mem:runbooks`). Projects bundle multiple memories
+or subtrees under a single mount prefix — bundles are out of scope for V1
+but the mount API is shaped so they can be added without a breaking change.
 
 ## Concepts
 
-- **Memory Store** — Named, org-scoped container for memories. An org can have
-  many stores (e.g. "team-knowledge", "ops-runbooks"). Agents select which
-  store(s) to use via capability config. A default org-wide store is created
-  automatically.
-- **Memory** — A single unit of knowledge: short text content plus optional
-  rich content parts (images, references). Tagged, importance-scored,
-  validated on write.
-- **MemoryContentPart** — Reuses the same discriminated-union shape as message
-  `ContentPart` (text + image variants). Recall returns multicontent so the LLM
-  sees both text and images inline.
+| Name        | Description                                                       |
+|-------------|-------------------------------------------------------------------|
+| **Memory**  | Org-scoped, named store. Public ID prefix: `mem_`.                |
+| **Manual Memory** | User-managed Memory whose files can be edited directly.     |
+| **Source-backed Memory** | Provider-synced Memory populated from an external repository and exposed read-only. |
+| **Memory File** | A file or directory entry inside a Memory.                    |
+| **Mount**   | Binding of a Memory to a path under `/workspace` for a session.   |
+| **Capability config** | `mounts[]` array on the `memory` capability.            |
+| **Access mode** | `readonly` (default) or `readwrite`.                          |
 
-## Capability Config
+## Lifecycle
+
+Memories follow the standard building-block lifecycle from `specs/models.md`:
+
+* `active` — assignable and editable.
+* `archived` — read-only, hidden from default lists, not assignable to new mounts.
+* `deleted` — tombstone; detail/list APIs return 404 except for historical references.
+
+## Data Model
+
+### `memories`
+
+| Column                    | Type        | Notes                                                  |
+|---------------------------|-------------|--------------------------------------------------------|
+| `id`                      | UUID PK     | Internal primary key.                                  |
+| `org_id`                  | BIGINT FK   | Organization scope.                                    |
+| `public_id`               | TEXT        | `mem_<32-hex>`. Unique per `org_id`.                   |
+| `name`                    | VARCHAR     | Unique within `org_id` while not deleted.              |
+| `description`             | TEXT?       |                                                        |
+| `source_type`             | VARCHAR     | `manual` / `github` / `git`. Defaults to `manual`.     |
+| `source_config`           | JSONB       | Non-secret source coordinates. `{}` for manual.        |
+| `is_readonly`             | BOOL        | True for source-backed Memories.                       |
+| `sync_status`             | VARCHAR     | `idle` / `pending` / `syncing` / `synced` / `failed`.  |
+| `last_synced_at`          | TIMESTAMPTZ? | Last successful provider sync.                        |
+| `last_sync_error`         | TEXT?       | Sanitized last sync error for UI/admin debugging.      |
+| `owner_principal_id`      | TEXT?       | Principal that created the memory.                     |
+| `resolved_owner_user_id`  | UUID?       | Resolved user id, if known.                            |
+| `status`                  | VARCHAR     | `active` / `archived` / `deleted`.                     |
+| `created_at` / `updated_at` | TIMESTAMPTZ |                                                       |
+| `archived_at` / `deleted_at` | TIMESTAMPTZ? |                                                     |
+
+`UNIQUE(org_id, public_id)` and `UNIQUE(org_id, name) WHERE status != 'deleted'`.
+
+`source_config` never stores provider credentials. GitHub sources use the
+creator's GitHub connection or a future agent identity connection at sync time.
+Generic Git sources are limited to public URLs or credential-less SSH/HTTPS
+coordinates until a credential reference type exists.
+
+GitHub source example:
 
 ```json
 {
-  "ref": "memory",
-  "config": {
-    "store": "mst_abc123",
-    "passive_recall_count": 5
+  "provider": "github",
+  "repository": "everruns/everruns",
+  "branch": "main",
+  "root_folder": "specs"
+}
+```
+
+Generic Git source example:
+
+```json
+{
+  "provider": "git",
+  "url": "https://github.com/everruns/everruns.git",
+  "branch": "main",
+  "root_folder": null
+}
+```
+
+### `memory_files`
+
+Mirrors the Workspace file shape. Path validation matches workspace file
+validation: starts with `/`, no null bytes, no `..`, no `//`, unique per
+`(memory_id, path)`.
+
+| Column          | Type        | Notes                                |
+|-----------------|-------------|--------------------------------------|
+| `id`            | UUID PK     |                                      |
+| `memory_id`     | UUID FK     | `ON DELETE CASCADE`.                 |
+| `path`          | TEXT        | Absolute, normalized.                |
+| `content`       | BYTEA?      | NULL for directories.                |
+| `is_directory`  | BOOL        |                                      |
+| `size_bytes`    | BIGINT      |                                      |
+| `content_hash`  | TEXT?       | `sha256:...` for files.              |
+| `created_at` / `updated_at` | TIMESTAMPTZ |                          |
+
+### `session_memory_mounts`
+
+Snapshot of mount configuration at session creation time. Runtime behavior is
+stable even if the agent or harness config changes after session start, and
+memory archival/deletion is handled gracefully against this snapshot.
+
+| Column          | Type      | Notes                                       |
+|-----------------|-----------|---------------------------------------------|
+| `id`            | UUID PK   |                                             |
+| `session_id`    | UUID FK   | `ON DELETE CASCADE`.                        |
+| `memory_id`     | UUID FK   | Snapshot — survives memory archive/delete.  |
+| `mount_path`    | TEXT      | Normalized under `/workspace`.              |
+| `access`        | VARCHAR   | `readonly` / `readwrite`.                   |
+| `created_at`    | TIMESTAMPTZ |                                           |
+
+## Capability: `memory`
+
+* **ID:** `memory`
+* **Name:** `Memory`
+* **Category:** `Memory`
+* **Icon:** `brain`
+* **Dependencies:** `workspace`
+* **Features:** `file_system`
+* **Risk:** `Medium` — shared writeable mounts can let one session influence
+  future sessions.
+
+### Config Schema
+
+```json
+{
+  "mounts": [
+    {
+      "memory": "mem_abc123...",
+      "path": "/workspace/research",
+      "mode": "readonly"
+    },
+    {
+      "memory": "mem_def456...",
+      "path": "/workspace/team-notes",
+      "mode": "readwrite"
+    }
+  ]
+}
+```
+
+### Validation Rules
+
+* `memory` must reference an `active` Memory in the current org. Cross-org
+  references are rejected without leaking existence of other-org Memories.
+* `path` must normalize under `/workspace`.
+* `mode` defaults to `readonly` when omitted.
+* Reject duplicate mount paths.
+* Reject overlapping mount paths in V1 (one mount path cannot be a prefix of
+  another).
+* Reject mounts at reserved system paths and at the roots of existing
+  capability mounts.
+
+## Runtime Mount Semantics
+
+### Read
+
+* `read_file`, `list_directory`, `grep_files`, `stat_file`, the Workspace UI,
+  direct worker adapters, and `bashkit_shell` include mounted Memory files.
+* Path display remains under `/workspace`; storage paths are normalized
+  internally.
+* Directory listings merge workspace files and mounted Memory files
+  deterministically (mount overlay first, workspace file second when paths
+  collide; collisions are rejected at session creation, so this only matters
+  for new files written under the mount root).
+
+### Write
+
+* Source-backed Memories are read-only regardless of mount access. Capability
+  validation must reject `readwrite` mounts for `source_type != 'manual'`.
+  Direct Memory filesystem write APIs must return a read-only error.
+* Read-only mounted paths reject `write_file`, `edit_file`, `delete_file`,
+  moves into the mount root, and copies that overwrite mounted content.
+* Read-write mounted paths write through to `memory_files`. The Memory row's
+  `updated_at` is refreshed.
+* Stale-edit protection uses `content_hash` exactly like workspace files.
+* Writes outside mounted paths continue to use workspace-local files.
+
+## Source Sync
+
+Source-backed Memories populate `memory_files` by syncing an external
+repository into the same storage shape used by manual Memories. Consumers
+read them through the regular Memory mount and filesystem APIs; no
+source-specific read tool is introduced.
+
+### GitHub
+
+Creation accepts:
+
+```json
+{
+  "source": {
+    "type": "github",
+    "repository": "owner/repo",
+    "branch": "main",
+    "root_folder": "docs"
   }
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `store` | `MemoryStoreId?` | org default store | Which store to read/write |
-| `passive_recall_count` | `usize` | `5` | Memories auto-injected per turn (0 = disable) |
+`repository` may be `owner/repo` or a `github.com` repository URL. `branch`
+defaults to `main`; `root_folder` is optional and normalized as a relative path.
+Private repository access uses the existing GitHub user connection. If no
+connection is available or the installation cannot access the repository, sync
+sets `sync_status = failed` with a sanitized error and leaves previous files in
+place.
 
-When `store` is omitted, the agent uses the org's default memory store.
+### Generic Git
 
-## Tools
-
-### `remember`
-
-Create a memory in the active store.
+Creation accepts:
 
 ```json
 {
-  "type": "object",
-  "properties": {
-    "content": { "type": "string", "maxLength": 2000, "description": "1-3 sentence knowledge to persist" },
-    "kind": { "type": "string", "enum": ["fact", "preference", "correction", "procedure", "context"], "default": "fact" },
-    "importance": { "type": "integer", "minimum": 1, "maximum": 10, "default": 5 },
-    "tags": { "type": "array", "items": { "type": "string" }, "maxItems": 10 },
-    "images": { "type": "array", "items": { "type": "object", "properties": { "base64": { "type": "string" }, "media_type": { "type": "string" } }, "required": ["base64", "media_type"] }, "maxItems": 4, "description": "Optional image attachments" }
-  },
-  "required": ["content"],
-  "additionalProperties": false
+  "source": {
+    "type": "git",
+    "url": "https://example.com/org/repo.git",
+    "branch": "main",
+    "root_folder": "src"
+  }
 }
 ```
 
-Returns `{ "memory_id": "mem_xxx", "created": true }`.
+Generic Git URLs must not contain inline credentials. Credentialed generic Git
+sync should use a future connection reference rather than embedding secrets in
+the Memory row.
 
-### `recall`
+### Sync Semantics
 
-Search memories by keyword, tag, or kind. Returns multicontent parts.
+* Source-backed creation sets `sync_status = pending`; a background sync worker
+  claims pending/stale rows.
+* Sync checks out the configured branch/ref, snapshots `root_folder`, and
+  replaces the Memory file tree atomically so sessions never observe a partial
+  update.
+* Sync excludes VCS metadata (`.git/`) and applies the same path validation used
+  by `memory_files`.
+* If a sync fails, existing files remain readable, `sync_status = failed`, and
+  `last_sync_error` stores a sanitized operator-facing reason.
+* Consumers always see source-backed Memories as read-only regular Memories.
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "query": { "type": "string", "description": "Keyword search across memory content" },
-    "tags": { "type": "array", "items": { "type": "string" }, "description": "Filter by tags (AND)" },
-    "kind": { "type": "string", "enum": ["fact", "preference", "correction", "procedure", "context"] },
-    "limit": { "type": "integer", "minimum": 1, "maximum": 50, "default": 10 }
-  },
-  "additionalProperties": false
-}
-```
+### Mount lifecycle vs Memory lifecycle
 
-Response uses `MemoryContentPart` array per memory (same shape as message `ContentPart`):
+* If a mounted Memory is **archived** after session creation, existing reads
+  continue but writes fail with a `memory_archived` error.
+* If a mounted Memory is **deleted** after session creation, file access
+  fails with a `memory_deleted` error and the UI surfaces the missing mount.
 
-```json
-{
-  "memories": [
-    {
-      "id": "mem_xxx",
-      "kind": "correction",
-      "importance": 8,
-      "created_at": "2026-03-24T12:00:00Z",
-      "content_parts": [
-        { "type": "text", "text": "Don't use unwrap() in production code..." },
-        { "type": "image", "base64": "iVBORw0KGgo=...", "media_type": "image/png" }
-      ],
-      "tags": ["rust", "error-handling"]
-    }
-  ],
-  "total": 42
-}
-```
+## API
 
-### `forget`
+REST endpoints (see `specs/apis.md` for the full list, conventions, and
+OpenAPI exposure):
 
-Deactivate a memory by ID (soft-delete).
+* `GET    /v1/memories`
+* `POST   /v1/memories`
+* `GET    /v1/memories/{memory_id}`
+* `PATCH  /v1/memories/{memory_id}`
+* `DELETE /v1/memories/{memory_id}` — archive / delete per lifecycle
+* `GET    /v1/memories/{memory_id}/fs/...`
+* `POST   /v1/memories/{memory_id}/fs/...`
+* `PUT    /v1/memories/{memory_id}/fs/...`
+* `DELETE /v1/memories/{memory_id}/fs/...`
+* `POST   /v1/memories/{memory_id}/fs/_/{stat,grep}`
+* `GET    /v1/memories/{memory_id}/fs/_/download/{path}`
 
-```json
-{
-  "type": "object",
-  "properties": {
-    "memory_id": { "type": "string", "description": "Memory ID to forget" }
-  },
-  "required": ["memory_id"],
-  "additionalProperties": false
-}
-```
+`move` and `copy` actions are deferred — the spec leaves room for them but
+the file CRUD ships first; clients can compose them with create + delete.
+Filesystem sub-routes mirror `specs/workspace.md` request/response shapes so
+DTOs and UI components can be reused.
 
-## Data Model
+## UI
 
-See `crates/core/src/memory_store.rs` for full type definitions.
+* Top-level **Memory** page — list, search, archive toggle, create button.
+* **Memory detail** page — editable name/description, file browser/editor
+  reusing the Workspace tab components, archive/delete actions, and a usage
+  panel showing agents/harnesses/sessions currently mounting the Memory.
+* **Capability config UI** for `memory` — add/remove mount rows with
+  Memory selector, mount path input, access mode selector, and inline
+  validation for duplicate/overlapping paths and archived/deleted Memories.
+* **Session Workspace UI** — mounted files render with a `Memory` badge plus
+  a `Read-only` or `Read-write` mode badge; tooltip shows source Memory name
+  and mount path; read-only write attempts surface a clear error.
 
-Core types:
-- `MemoryStoreId` — prefixed typed ID (`mst_...`)
-- `MemoryId` — prefixed typed ID (`mem_...`)
-- `MemoryStore` — org-scoped named store with capacity config
-- `Memory` — content, kind, importance, tags, active flag, store FK
-- `MemoryContentPart` — text or image (same shape as `ContentPart`, minus tool variants)
+## Security
 
-## Capacity Limits
+See `specs/threat-model.md` for the canonical entries.
 
-| Limit | Default | Scope | Notes |
-|-------|---------|-------|-------|
-| Active memories per store | 10,000 | Per-store | Hard cap; `remember` returns error when full |
-| Stores per org | 50 | Per-org | |
-| Memory content length | 2,000 chars | Per-memory | Hard cap |
-| Tags per memory | 10 | Per-memory | |
-| Image attachments per memory | 4 | Per-memory | Inline base64 in content_parts |
-| Max single image | 5 MB | Per-image | |
-| Total image data per memory | 10 MB | Per-memory | Sum of all image parts |
+* **Cross-org reference:** Mount config validation MUST reject Memory IDs from
+  other orgs. Errors must not leak existence.
+* **Path traversal:** Memory file path validation mirrors workspace file
+  validation exactly.
+* **Reserved paths:** Mounts cannot shadow workspace system paths (e.g.
+  `/.agents/`, `/outputs/`).
+* **Read-write trust boundary:** Read-write mounts on shared agents/harnesses
+  let one session influence future sessions. Treat as a meaningful trust
+  boundary; capability risk level is `Medium`.
+* **Audit:** Memory CRUD (create, update, archive, delete) and mount
+  configuration changes are audited via the standard audit log domain.
 
-Enforcement: checked on write (`remember` tool + REST API). Returns clear
-`ToolError` when exceeded.
+## Permissions
 
-## Storage
+Memory CRUD is org-scoped. Standard org policies (`org.member`, `org.admin`)
+apply. Mount configuration is gated by the same policy that gates capability
+configuration on the parent agent or harness.
 
-In-memory implementation for dev mode (`InMemoryMemoryStore`) — used by
-embedded runtimes and tests; see `crates/core/src/memory.rs`.
+## Testing
 
-PostgreSQL implementation for production (`crates/server/migrations/032_memory_stores.sql`):
+Required coverage:
 
-- `memory_stores` — org-scoped containers with one default store per org.
-- `memories` — soft-delete via `active = FALSE`; carries `org_id` for fast
-  org-scoped queries and isolation checks.
+* Memory ID parsing/serialization.
+* Memory path validation mirrors workspace file validation.
+* Mount config parsing defaults `mode` to `readonly`.
+* Reject overlapping mount paths.
+* Reject cross-org / archived / deleted Memory references.
+* Read-only write attempts return readonly errors.
+* Read-write writes update Memory store.
+* Source-backed Memories cannot be mounted read-write.
+* Source-backed Memory filesystem write APIs return readonly errors.
+* GitHub/git source creation validates repository/ref/root-folder shape.
+* Source sync atomically replaces `memory_files` and preserves previous files
+  on sync failure.
+* Content-hash stale edits fail on read-write mounts.
+* Directory listing merge order is deterministic.
+* Grep searches mounted content and workspace-local content.
+* Storage parity (in-memory and Postgres) for `memories`, `memory_files`,
+  `session_memory_mounts`.
+* API CRUD permissions and org scoping.
+* OpenAPI export updated when API surface changes.
+* UI list/detail/capability-config/Workspace badge flows.
+* Manual test cases (`test_cases/memory/`).
 
-The server bridges the trait via `DbMemoryStore`
-(`crates/server/src/storage/memory_store_backend.rs`), which is an org-scoped
-adapter wired into `DirectWorkerAdapters::memory_store(org_id)` so the
-`remember`/`recall`/`forget` tools persist through the configured backend.
+## Open Questions
 
-## REST API
-
-Org-scoped CRUD lives at `/v1/memory-stores`:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/v1/memory-stores` | List org memory stores |
-| `POST` | `/v1/memory-stores` | Create a new store |
-| `GET` | `/v1/memory-stores/{store_id}` | Get a store with active memory count |
-| `PATCH` | `/v1/memory-stores/{store_id}` | Rename and/or change the org default (optional `name`, `is_default`) |
-| `GET` | `/v1/memory-stores/{store_id}/memories` | Search memories (`query`, `kind`, `tag[]`, `include_inactive`, `limit`) |
-| `DELETE` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Forget (soft-delete) a memory |
-
-`PATCH` accepts a partial body — supply `name`, `is_default`, or both. Names
-are unique per org case-insensitively (`idx_memory_stores_org_lower_name`); a
-duplicate returns `409`. Promoting a store to default
-(`is_default = true`) atomically demotes the previous default within the
-same transaction so the unique partial index `idx_memory_stores_org_default`
-stays satisfied. **Demoting the only default store is rejected** with `400`
-— move the default by promoting another store instead, which demotes the
-current one in the same transaction.
-
-All routes resolve org from the authenticated request; cross-org access
-returns `404` rather than disclosing existence. Full handlers in
-`crates/server/src/api/memory_stores.rs` and the Command implementations in
-`crates/server/src/domains/memory_stores/commands.rs`.
-
-## System Prompt
-
-When memory capability is enabled, a section is injected:
-
-```
-## Persistent Memory
-
-You have persistent memory across sessions via `remember` and `recall` tools.
-Use `remember` to save important facts, user preferences, corrections, or
-procedures. Use `recall` to search your memory before answering questions where
-prior context may help. Use `forget` to remove outdated or incorrect memories.
-```
+* **Additional surfaces.** Today a Memory has a single file surface. The
+  durable intent is to add tabular, key-value, secrets, and structured
+  (knowledge-base-like) surfaces under the same Memory entity, addressed as
+  `mem:<name>/<surface>/...`. Order and timing TBD.
+* **Project bundles.** A Project bundles multiple memories or subtrees under
+  one mount prefix. Not in V1; mount API is shaped to accept bundles later.
+* Should read-write mounts require admin role when configured on shared
+  agents/harnesses?
+* Should archived Memories remain readable for existing sessions, or become
+  inaccessible immediately?
+* Should V1 track Memory file version history, or defer to a future versioned
+  filesystem feature?
+* Should mount conflicts always fail, or should users be able to choose
+  precedence later?
+* What sync cadence should source-backed Memories use after the initial sync:
+  webhook-triggered, periodic polling, or both?
+* Should source-backed Memories bind to creator user connections, agent
+  identity connections, or explicit per-Memory connection references?

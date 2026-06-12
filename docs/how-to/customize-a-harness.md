@@ -36,7 +36,7 @@ curl -X POST http://localhost:9300/api/v1/harnesses/preview \
     "system_prompt": "You are a helpful assistant.",
     "capabilities": [
       {"ref": "session_file_system"},
-      {"ref": "virtual_bash"}
+      {"ref": "bashkit_shell"}
     ]
   }'
 ```

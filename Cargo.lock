@@ -862,9 +862,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.8.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e20c182deb47b8ce2c8ba724f602cf73bdd6a566971f0f3525b6af60ea2a4c6"
+checksum = "868968c065151d2eec3aaba899f01540723dce112dcb8e23428a0f08aee3d7d6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2303,11 +2303,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.10.0"
+version = "0.11.0"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2323,7 +2323,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2340,7 +2340,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2394,14 +2394,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2421,7 +2421,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2431,6 +2431,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "bashkit",
+ "bytes",
  "chrono",
  "ed25519-dalek",
  "eventsource-stream",
@@ -2475,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2500,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2514,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2530,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2551,7 +2552,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2566,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2583,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2606,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2621,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2636,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2663,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2680,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2693,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2709,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2726,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2745,16 +2746,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-macros"
-version = "0.10.0"
-dependencies = [
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "everruns-mcp"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2768,7 +2761,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2788,16 +2781,17 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.10.0"
+version = "0.11.0"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
  "everruns-mcp",
+ "futures",
  "ignore",
  "serde",
  "serde_json",
@@ -2830,7 +2824,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2921,7 +2915,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2938,7 +2932,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.10.0"
+version = "0.11.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3056,21 +3050,22 @@ dependencies = [
 
 [[package]]
 name = "fetchkit"
-version = "0.2.0"
+version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e551cfcd0082a9acbe9be3dc068f368ef6b5ea6546c47fdd76eb3216ddbf686"
+checksum = "82150b89249abf4f7a6bce136567c795803faa601fcb041157b7a43f4c1e856b"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
  "ed25519-dalek",
  "futures",
- "rand 0.8.6",
+ "libc",
+ "rand 0.10.1",
  "reqwest 0.13.4",
  "schemars",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tower",

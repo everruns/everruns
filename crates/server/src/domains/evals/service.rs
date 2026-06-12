@@ -385,7 +385,7 @@ impl EvalService {
             .into());
         }
 
-        // Volume cap: count cases before loading to avoid unnecessary DB I/O for oversized runs.
+        // Memory cap: count cases before loading to avoid unnecessary DB I/O for oversized runs.
         let case_count = self.db.count_eval_cases(eval.id).await?;
         if case_count > self.limits.max_cases_per_run as i64 {
             return Err(BadRequestError::new(format!(
@@ -1156,7 +1156,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn case_volume_limit_enforced() {
+    async fn case_memory_limit_enforced() {
         let db = StorageBackend::in_memory();
         let org_id = 2i64;
         let caller = Caller::internal(org_id);

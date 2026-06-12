@@ -2,7 +2,15 @@
 name = "everruns-integrations-e2b"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-e2b"
+readme = "README.md"
+keywords = ["everruns", "e2b", "sandbox", "agents"]
+categories = ["api-bindings", "development-tools"]
 description = "E2B cloud sandbox integration for Everruns"
 build = "build.rs"
 
@@ -23,7 +31,7 @@ buffa = "0.2.0"
 rustls.workspace = true
 rustls-native-certs = "0.8"
 
-everruns-core = { path = "../../crates/core" }
+everruns-core.workspace = true
 
 [package.metadata.cargo-machete]
 ignored = ["connectrpc-build", "futures", "http-body", "prost", "protox"]

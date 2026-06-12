@@ -13,9 +13,6 @@ use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
-use everruns_core::memory_store::{
-    Memory, MemoryContentPart, MemoryKind, MemoryQuery, MemoryStoreBackend, MemoryStoreEntity,
-};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
@@ -24,9 +21,7 @@ use everruns_core::traits::{
     ProviderCredentials, ResolvedImage, SessionFileSystem, SessionStore, StoredImage,
     StoredImageInfo,
 };
-use everruns_core::typed_id::{
-    AgentId, LeasedResourceId, MemoryId, MemoryStoreId, MessageId, ModelId, OrgId, SessionId,
-};
+use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
     Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
 };
@@ -49,16 +44,6 @@ const COMMAND_API_VERSION_V1: &str = "v1";
 struct CommandPage<T> {
     data: Vec<T>,
     total: u32,
-}
-
-struct GrpcMemoryCreateRequest {
-    org_id: i64,
-    store_id: MemoryStoreId,
-    content: String,
-    content_parts: Vec<MemoryContentPart>,
-    kind: MemoryKind,
-    importance: u8,
-    tags: Vec<String>,
 }
 
 /// Map a tonic gRPC status to the appropriate AgentLoopError variant.
@@ -257,6 +242,38 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    pub async fn set_subagent_metadata(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: everruns_core::session::SubagentStatus,
+    ) -> Result<Session> {
+        let request = proto::SetSubagentMetadataRequest {
+            org_id,
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            parent_session_id: Some(uuid_to_proto(parent_session_id.uuid())),
+            subagent_name: subagent_name.to_string(),
+            subagent_task: subagent_task.to_string(),
+            subagent_status: subagent_status.to_string(),
+        };
+
+        let mut client = self.inner.lock().await;
+        let response = client
+            .set_subagent_metadata(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let proto_session = response
+            .into_inner()
+            .session
+            .ok_or_else(|| grpc_missing_field("No session in response"))?;
+
+        proto_session_to_session(proto_session)
+    }
+
     pub async fn create_image_artifact(
         &self,
         org_id: i64,
@@ -355,134 +372,6 @@ impl GrpcClient {
             api_key: response.api_key,
             base_url: non_empty_string(response.base_url),
         }))
-    }
-
-    pub async fn memory_get_or_create_default_store(
-        &self,
-        org_id: i64,
-        public_org_id: OrgId,
-    ) -> Result<MemoryStoreEntity> {
-        let request = proto::MemoryGetOrCreateDefaultStoreRequest {
-            org_id,
-            public_org_id: public_org_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_get_or_create_default_store(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        proto_memory_store_to_schema(
-            response
-                .into_inner()
-                .store
-                .ok_or_else(|| grpc_missing_field("No memory store in response"))?,
-        )
-    }
-
-    pub async fn memory_get_store(
-        &self,
-        org_id: i64,
-        store_id: MemoryStoreId,
-    ) -> Result<Option<MemoryStoreEntity>> {
-        let request = proto::MemoryGetStoreRequest {
-            org_id,
-            store_id: store_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_get_store(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .store
-            .map(proto_memory_store_to_schema)
-            .transpose()
-    }
-
-    async fn memory_create(&self, params: GrpcMemoryCreateRequest) -> Result<Memory> {
-        let request = proto::MemoryCreateRequest {
-            org_id: params.org_id,
-            store_id: params.store_id.to_string(),
-            content: params.content,
-            content_parts_json: serde_json::to_vec(&params.content_parts).map_err(|e| {
-                AgentLoopError::store(format!("Failed to encode memory content parts: {e}"))
-            })?,
-            kind: params.kind.to_string(),
-            importance: params.importance as u32,
-            tags: params.tags,
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_create(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        proto_memory_to_schema(
-            response
-                .into_inner()
-                .memory
-                .ok_or_else(|| grpc_missing_field("No memory in response"))?,
-        )
-    }
-
-    pub async fn memory_recall(
-        &self,
-        org_id: i64,
-        query: MemoryQuery,
-    ) -> Result<(Vec<Memory>, usize)> {
-        let request = proto::MemoryRecallRequest {
-            org_id,
-            store_id: query.store_id.map(|id| id.to_string()),
-            query: query.query,
-            tags: query.tags.clone().unwrap_or_default(),
-            has_tags: query.tags.is_some(),
-            kind: query.kind.map(|kind| kind.to_string()),
-            limit: query.limit as u32,
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_recall(request)
-            .await
-            .map_err(grpc_status_to_error)?
-            .into_inner();
-        let memories = response
-            .memories
-            .into_iter()
-            .map(proto_memory_to_schema)
-            .collect::<Result<Vec<_>>>()?;
-        Ok((memories, response.total as usize))
-    }
-
-    pub async fn memory_forget(
-        &self,
-        org_id: i64,
-        store_id: MemoryStoreId,
-        memory_id: MemoryId,
-    ) -> Result<bool> {
-        let request = proto::MemoryForgetRequest {
-            org_id,
-            store_id: store_id.to_string(),
-            memory_id: memory_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_forget(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().forgotten)
-    }
-
-    pub async fn memory_count_active(&self, org_id: i64, store_id: MemoryStoreId) -> Result<usize> {
-        let request = proto::MemoryCountActiveRequest {
-            org_id,
-            store_id: store_id.to_string(),
-        };
-        let mut client = self.inner.lock().await;
-        let response = client
-            .memory_count_active(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-        Ok(response.into_inner().count as usize)
     }
 
     /// Get MCP server info by name prefix (for MCP tool execution)
@@ -785,6 +674,7 @@ pub type GrpcSessionStorageStore = GrpcAdapter;
 pub type GrpcConnectionResolver = GrpcAdapter;
 pub type GrpcLeasedResourceStore = GrpcAdapter;
 pub type GrpcSessionResourceRegistry = GrpcAdapter;
+pub type GrpcSessionTaskRegistry = GrpcAdapter;
 pub type GrpcSessionSqlDbStore = GrpcAdapter;
 
 pub type GrpcAgentStore = GrpcOrgAdapter;
@@ -796,7 +686,6 @@ pub type GrpcImageArtifactStore = GrpcOrgAdapter;
 pub type GrpcProviderCredentialStore = GrpcOrgAdapter;
 pub type GrpcSessionMutator = GrpcOrgAdapter;
 pub type GrpcScheduleStore = GrpcOrgAdapter;
-pub type GrpcMemoryStore = GrpcOrgAdapter;
 pub type GrpcPlatformStore = GrpcOrgAdapter;
 /// Budget checker that carries org_id and optional agent_id (captured at
 /// construction) for gRPC calls.
@@ -905,55 +794,6 @@ fn proto_stored_image_to_schema(proto_image: proto::StoredImage) -> Result<Store
     Ok(StoredImage {
         info: proto_stored_image_info_to_schema(info)?,
         data: proto_image.data,
-    })
-}
-
-fn proto_memory_kind(kind: &str) -> MemoryKind {
-    match kind {
-        "preference" => MemoryKind::Preference,
-        "correction" => MemoryKind::Correction,
-        "procedure" => MemoryKind::Procedure,
-        "context" => MemoryKind::Context,
-        _ => MemoryKind::Fact,
-    }
-}
-
-fn proto_memory_store_to_schema(proto_store: proto::MemoryStore) -> Result<MemoryStoreEntity> {
-    Ok(MemoryStoreEntity {
-        id: proto_store
-            .id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory store ID: {e}")))?,
-        org_id: proto_store
-            .org_id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid org ID: {e}")))?,
-        name: proto_store.name,
-        is_default: proto_store.is_default,
-        created_at: proto_timestamp_or_now(proto_store.created_at.as_ref()),
-    })
-}
-
-fn proto_memory_to_schema(proto_memory: proto::Memory) -> Result<Memory> {
-    Ok(Memory {
-        id: proto_memory
-            .id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory ID: {e}")))?,
-        store_id: proto_memory
-            .store_id
-            .parse()
-            .map_err(|e| AgentLoopError::store(format!("Invalid memory store ID: {e}")))?,
-        content: proto_memory.content,
-        content_parts: serde_json::from_slice(&proto_memory.content_parts_json).map_err(|e| {
-            AgentLoopError::store(format!("Invalid memory content parts JSON: {e}"))
-        })?,
-        kind: proto_memory_kind(&proto_memory.kind),
-        importance: proto_memory.importance.clamp(1, 10) as u8,
-        tags: proto_memory.tags,
-        active: proto_memory.active,
-        created_at: proto_timestamp_or_now(proto_memory.created_at.as_ref()),
-        updated_at: proto_timestamp_or_now(proto_memory.updated_at.as_ref()),
     })
 }
 
@@ -1411,6 +1251,19 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let parent_session_id = proto_session
+        .parent_session_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)).map(SessionId::from_uuid))
+        .transpose()?;
+    let subagent_status = proto_session
+        .subagent_status
+        .as_deref()
+        .map(everruns_core::session::SubagentStatus::from);
+    let blueprint_config = proto_session
+        .blueprint_config_json
+        .as_deref()
+        .and_then(|json| serde_json::from_str(json).ok());
 
     let status = match proto_session.status.to_lowercase().as_str() {
         "started" => everruns_core::SessionStatus::Started,
@@ -1479,12 +1332,12 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         is_pinned: None,
         active_schedule_count: None,
         features: vec![], // Computed at API read time, not in worker
-        parent_session_id: None,
-        subagent_name: None,
-        subagent_task: None,
-        subagent_status: None,
-        blueprint_id: None,
-        blueprint_config: None,
+        parent_session_id,
+        subagent_name: proto_session.subagent_name,
+        subagent_task: proto_session.subagent_task,
+        subagent_status,
+        blueprint_id: proto_session.blueprint_id,
+        blueprint_config,
     })
 }
 
@@ -1570,55 +1423,6 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
         self.client
             .get_default_provider_credentials(self.org_id, provider_type)
             .await
-    }
-}
-
-#[async_trait]
-impl MemoryStoreBackend for GrpcOrgAdapter {
-    async fn get_or_create_default_store(&self, org_id: OrgId) -> Result<MemoryStoreEntity> {
-        self.client
-            .memory_get_or_create_default_store(self.org_id, org_id)
-            .await
-    }
-
-    async fn get_store(&self, store_id: MemoryStoreId) -> Result<Option<MemoryStoreEntity>> {
-        self.client.memory_get_store(self.org_id, store_id).await
-    }
-
-    async fn create_memory(
-        &self,
-        store_id: MemoryStoreId,
-        content: String,
-        content_parts: Vec<MemoryContentPart>,
-        kind: MemoryKind,
-        importance: u8,
-        tags: Vec<String>,
-    ) -> Result<Memory> {
-        self.client
-            .memory_create(GrpcMemoryCreateRequest {
-                org_id: self.org_id,
-                store_id,
-                content,
-                content_parts,
-                kind,
-                importance,
-                tags,
-            })
-            .await
-    }
-
-    async fn recall(&self, query: MemoryQuery) -> Result<(Vec<Memory>, usize)> {
-        self.client.memory_recall(self.org_id, query).await
-    }
-
-    async fn forget(&self, store_id: MemoryStoreId, memory_id: MemoryId) -> Result<bool> {
-        self.client
-            .memory_forget(self.org_id, store_id, memory_id)
-            .await
-    }
-
-    async fn count_active(&self, store_id: MemoryStoreId) -> Result<usize> {
-        self.client.memory_count_active(self.org_id, store_id).await
     }
 }
 
@@ -3347,15 +3151,22 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
 
     async fn set_subagent_metadata(
         &self,
-        _session_id: SessionId,
-        _parent_session_id: SessionId,
-        _subagent_name: &str,
-        _subagent_task: &str,
-        _subagent_status: everruns_core::session::SubagentStatus,
+        session_id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: everruns_core::session::SubagentStatus,
     ) -> Result<Session> {
-        Err(AgentLoopError::store(
-            "set_subagent_metadata is not supported over grpc platform adapter",
-        ))
+        self.client
+            .set_subagent_metadata(
+                self.org_id,
+                session_id,
+                parent_session_id,
+                subagent_name,
+                subagent_task,
+                subagent_status,
+            )
+            .await
     }
 
     async fn delete_session(&self, id: SessionId) -> Result<()> {
@@ -3845,6 +3656,173 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
             response: body,
             receipt,
         })
+    }
+}
+
+// ============================================================================
+// GrpcSessionTaskRegistry - SessionTaskRegistry over gRPC
+// ============================================================================
+//
+// Task and message payloads travel as canonical core JSON (see worker.proto),
+// so lifecycle invariants stay server-side in DbSessionTaskRegistry and the
+// record shape is defined once in everruns-core.
+
+fn decode_task(bytes: &[u8]) -> Result<everruns_core::SessionTask> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
+}
+
+fn decode_task_message(bytes: &[u8]) -> Result<everruns_core::TaskMessage> {
+    serde_json::from_slice(bytes)
+        .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
+}
+
+#[async_trait]
+impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
+    async fn create(
+        &self,
+        input: everruns_core::CreateSessionTask,
+    ) -> Result<everruns_core::SessionTask> {
+        let create_json = serde_json::to_vec(&input)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task create: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .create_session_task(proto::CreateSessionTaskRequest { create_json })
+            .await
+            .map_err(grpc_status_to_error)?;
+        decode_task(&response.into_inner().task_json)
+    }
+
+    async fn update(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: everruns_core::SessionTaskUpdate,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let update_json = serde_json::to_vec(&update)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task update: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .update_session_task(proto::UpdateSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                update_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn get(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_session_task(proto::GetSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&everruns_core::SessionTaskFilter>,
+    ) -> Result<Vec<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_tasks(proto::ListSessionTasksRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                kind: filter.and_then(|f| f.kind.clone()),
+                state: filter.and_then(|f| f.state.map(|s| s.to_string())),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .iter()
+            .map(|bytes| decode_task(bytes))
+            .collect()
+    }
+
+    async fn request_cancel(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<everruns_core::SessionTask>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .request_cancel_session_task(proto::RequestCancelSessionTaskRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .task_json
+            .as_deref()
+            .map(decode_task)
+            .transpose()
+    }
+
+    async fn record_message(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        message: everruns_core::NewTaskMessage,
+    ) -> Result<everruns_core::TaskMessage> {
+        let message_json = serde_json::to_vec(&message)
+            .map_err(|e| AgentLoopError::store(format!("Failed to encode task message: {e}")))?;
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .record_session_task_message(proto::RecordSessionTaskMessageRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                message_json,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        decode_task_message(&response.into_inner().message_json)
+    }
+
+    async fn list_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<everruns_core::TaskMessage>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .list_session_task_messages(proto::ListSessionTaskMessagesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                task_id: task_id.to_string(),
+                limit,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        response
+            .into_inner()
+            .message_json
+            .iter()
+            .map(|bytes| decode_task_message(bytes))
+            .collect()
     }
 }
 

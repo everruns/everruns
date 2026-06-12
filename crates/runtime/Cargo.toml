@@ -30,11 +30,12 @@ lua = ["everruns-core/lua"]
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+futures.workspace = true
 ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-tokio = { workspace = true, features = ["fs", "sync"] }
+tokio = { workspace = true, features = ["fs", "rt", "sync"] }
 tracing.workspace = true
 uuid.workspace = true
 

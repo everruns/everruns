@@ -13,7 +13,7 @@ Agents *compose* capabilities. Enable as many as you need; leave the rest disabl
 
 ## Why capabilities, not just tools
 
-A bare tool registration is a function with a JSON schema. Capabilities exist because real tools need more than that. To use `virtual_bash` effectively, the agent needs both the `bash` tool *and* the prompt fragment explaining the sandbox model *and* the session filesystem (a dependency). Capabilities bundle those concerns into one enable/disable unit.
+A bare tool registration is a function with a JSON schema. Capabilities exist because real tools need more than that. To use `bashkit_shell` effectively, the agent needs both the `bash` tool *and* the prompt fragment explaining the sandbox model *and* the session filesystem (a dependency). Capabilities bundle those concerns into one enable/disable unit.
 
 See [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class) for the full rationale.
 

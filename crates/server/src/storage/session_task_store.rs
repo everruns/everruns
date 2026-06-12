@@ -1,0 +1,915 @@
+// Database-backed session task registry.
+//
+// Implements the core SessionTaskRegistry trait over StorageBackend (both
+// PostgreSQL and in-memory) and emits snapshot-carrying task.* events on the
+// owning session's event stream. Event emission is best-effort: failures are
+// logged and never fail the storage operation.
+//
+// Wake policy: after a state transition the registry calls the optional waker
+// best-effort (log on error, never fail the operation).
+
+use async_trait::async_trait;
+use chrono::Utc;
+use everruns_core::events::{
+    EventContext, EventData, EventRequest, SessionTaskEventData, TaskMessageEventData,
+};
+use everruns_core::session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
+    SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection,
+    generate_task_message_id, new_session_task, task_message_text,
+};
+use everruns_core::traits::EventEmitter;
+use everruns_core::{AgentLoopError, Result, SessionId};
+
+use super::backend::StorageBackend;
+use super::models::NewSessionTaskMessageRow;
+use std::sync::Arc;
+
+// ============================================================================
+// SessionTaskWaker — server-side concern for injecting messages into sessions
+// ============================================================================
+
+/// Wake the owning session's agent by injecting a synthetic message. Errors
+/// are treated best-effort: the caller logs and continues.
+#[async_trait]
+pub trait SessionTaskWaker: Send + Sync {
+    async fn wake(&self, session_id: SessionId, text: &str) -> anyhow::Result<()>;
+}
+
+// ============================================================================
+// DbSessionTaskRegistry
+// ============================================================================
+
+/// Database-backed session task registry.
+#[derive(Clone)]
+pub struct DbSessionTaskRegistry {
+    db: Arc<StorageBackend>,
+    emitter: Option<Arc<dyn EventEmitter>>,
+    waker: Option<Arc<dyn SessionTaskWaker>>,
+}
+
+impl DbSessionTaskRegistry {
+    pub fn new(db: Arc<StorageBackend>) -> Self {
+        Self {
+            db,
+            emitter: None,
+            waker: None,
+        }
+    }
+
+    pub fn with_event_emitter(mut self, emitter: Arc<dyn EventEmitter>) -> Self {
+        self.emitter = Some(emitter);
+        self
+    }
+
+    /// Attach a waker so the registry can inject wake messages into sessions
+    /// on qualifying state transitions. Only registries constructed with an
+    /// event emitter should also have a waker (worker/gRPC paths); the API
+    /// path (user-initiated mutations) must not wake.
+    pub fn with_waker(mut self, waker: Arc<dyn SessionTaskWaker>) -> Self {
+        self.waker = Some(waker);
+        self
+    }
+
+    async fn emit(&self, session_id: SessionId, data: EventData) {
+        let Some(emitter) = &self.emitter else {
+            return;
+        };
+        let request = EventRequest {
+            event_type: data.event_type().to_string(),
+            ts: Utc::now(),
+            session_id,
+            context: EventContext::default(),
+            data,
+            metadata: None,
+            tags: None,
+        };
+        if let Err(e) = emitter.emit(request).await {
+            tracing::warn!(session_id = %session_id, "Failed to emit task event: {e}");
+        }
+    }
+
+    async fn emit_task_snapshot(&self, task: &SessionTask, created: bool) {
+        let data = if created {
+            EventData::TaskCreated(SessionTaskEventData { task: task.clone() })
+        } else {
+            EventData::TaskUpdated(SessionTaskEventData { task: task.clone() })
+        };
+        self.emit(task.session_id, data).await;
+    }
+
+    /// Deliver a wake message to the owning session (best-effort, log on error).
+    async fn try_wake(&self, session_id: SessionId, text: &str) {
+        let Some(waker) = &self.waker else {
+            return;
+        };
+        if let Err(e) = waker.wake(session_id, text).await {
+            tracing::warn!(
+                session_id = %session_id,
+                "SessionTaskWaker failed (best-effort): {e}"
+            );
+        }
+    }
+
+    /// Compose the wake text for a terminal transition and wake if policy requires.
+    ///
+    /// Called after a successful `update` that moved a non-terminal task to a
+    /// terminal state. Never double-wakes: we only fire when `prior` was
+    /// non-terminal AND `task` is terminal.
+    async fn maybe_wake_on_terminal(&self, prior: &SessionTask, task: &SessionTask) {
+        use everruns_core::session_task::TaskWakePolicy;
+        if prior.state.is_terminal() || !task.state.is_terminal() {
+            return;
+        }
+        match task.wake_policy {
+            TaskWakePolicy::Silent => {}
+            TaskWakePolicy::OnTerminal | TaskWakePolicy::OnActivity => {
+                let mut parts = vec![format!(
+                    "Task \"{}\" ({}) finished: {}.",
+                    task.display_name, task.id, task.state
+                )];
+                if let Some(summary) = &task.summary {
+                    parts.push(format!("- summary: {summary}"));
+                }
+                if let Some(result_path) = &task.result_path {
+                    parts.push(format!("- result_path: {result_path}"));
+                }
+                self.try_wake(task.session_id, &parts.join("\n")).await;
+            }
+        }
+    }
+
+    /// Wake on a transition INTO `awaiting_input` (OnActivity only).
+    async fn maybe_wake_on_awaiting_input(&self, prior: &SessionTask, task: &SessionTask) {
+        use everruns_core::session_task::TaskWakePolicy;
+        if task.wake_policy != TaskWakePolicy::OnActivity {
+            return;
+        }
+        if prior.state == SessionTaskState::AwaitingInput
+            || task.state != SessionTaskState::AwaitingInput
+        {
+            return;
+        }
+        let prompt = task
+            .input_request
+            .as_ref()
+            .map(|r| r.prompt.as_str())
+            .unwrap_or("Task is awaiting input.");
+        let text = format!(
+            "Task \"{}\" ({}) is awaiting input: {}",
+            task.display_name, task.id, prompt
+        );
+        self.try_wake(task.session_id, &text).await;
+    }
+
+    /// Wake on an outbound message (OnActivity only).
+    async fn maybe_wake_on_outbound_message(&self, task: &SessionTask, message_text: &str) {
+        use everruns_core::session_task::TaskWakePolicy;
+        if task.wake_policy != TaskWakePolicy::OnActivity {
+            return;
+        }
+        let text = format!(
+            "Task \"{}\" ({}) sent a message: {}",
+            task.display_name, task.id, message_text
+        );
+        self.try_wake(task.session_id, &text).await;
+    }
+}
+
+#[async_trait]
+impl SessionTaskRegistry for DbSessionTaskRegistry {
+    async fn create(&self, input: CreateSessionTask) -> Result<SessionTask> {
+        let task = new_session_task(input, Utc::now());
+        let (row, inserted) =
+            self.db.create_session_task(&task).await.map_err(|e| {
+                AgentLoopError::store(format!("Failed to create session task: {e}"))
+            })?;
+        let task = row
+            .to_task()
+            .map_err(|e| AgentLoopError::store(format!("Invalid session task row: {e}")))?;
+        if inserted {
+            self.emit_task_snapshot(&task, true).await;
+        }
+        Ok(task)
+    }
+
+    async fn update(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: SessionTaskUpdate,
+    ) -> Result<Option<SessionTask>> {
+        // Only THIS update's intent can trigger a wake: an unrelated update
+        // (heartbeat/progress) racing with another worker's transition must
+        // not observe prior=non-terminal/new=terminal and wake on its behalf.
+        let wants_terminal_wake = update.state.is_some_and(|s| s.is_terminal());
+        let wants_awaiting_input_wake =
+            update.input_request.is_some() || update.state == Some(SessionTaskState::AwaitingInput);
+
+        // Read prior state so we can detect the transition this update makes.
+        // Best-effort: if the read fails we still proceed with the update.
+        let prior = if self.waker.is_some() && (wants_terminal_wake || wants_awaiting_input_wake) {
+            self.get(session_id, task_id).await.ok().flatten()
+        } else {
+            None
+        };
+
+        let row = self
+            .db
+            .update_session_task(session_id, task_id, update)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to update session task: {e}")))?;
+        let task = row
+            .as_ref()
+            .map(|r| r.to_task())
+            .transpose()
+            .map_err(|e| AgentLoopError::store(format!("Invalid session task row: {e}")))?;
+        if let Some(task) = &task {
+            self.emit_task_snapshot(task, false).await;
+
+            // Wake enforcement: fire at most one wake per transition, gated
+            // on the intent of this specific update.
+            if let Some(prior) = &prior {
+                if wants_terminal_wake {
+                    self.maybe_wake_on_terminal(prior, task).await;
+                }
+                if wants_awaiting_input_wake {
+                    self.maybe_wake_on_awaiting_input(prior, task).await;
+                }
+            }
+        }
+        Ok(task)
+    }
+
+    async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
+        let row = self
+            .db
+            .get_session_task(session_id, task_id)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to get session task: {e}")))?;
+        row.as_ref()
+            .map(|r| r.to_task())
+            .transpose()
+            .map_err(|e| AgentLoopError::store(format!("Invalid session task row: {e}")))
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&SessionTaskFilter>,
+    ) -> Result<Vec<SessionTask>> {
+        let kind = filter.and_then(|f| f.kind.as_deref());
+        let state = filter.and_then(|f| f.state.map(|s| s.to_string()));
+        let rows = self
+            .db
+            .list_session_tasks(session_id, kind, state.as_deref())
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to list session tasks: {e}")))?;
+        rows.iter()
+            .map(|r| {
+                r.to_task()
+                    .map_err(|e| AgentLoopError::store(format!("Invalid session task row: {e}")))
+            })
+            .collect()
+    }
+
+    async fn request_cancel(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Option<SessionTask>> {
+        let row = self
+            .db
+            .request_cancel_session_task(session_id, task_id)
+            .await
+            .map_err(|e| {
+                AgentLoopError::store(format!("Failed to request session task cancel: {e}"))
+            })?;
+        let Some((row, changed)) = row else {
+            return Ok(None);
+        };
+        let task = row
+            .to_task()
+            .map_err(|e| AgentLoopError::store(format!("Invalid session task row: {e}")))?;
+        if changed {
+            self.emit_task_snapshot(&task, false).await;
+        }
+        Ok(Some(task))
+    }
+
+    async fn record_message(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        message: NewTaskMessage,
+    ) -> Result<TaskMessage> {
+        let task = self
+            .get(session_id, task_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::store(format!("Session task not found: {task_id}")))?;
+
+        let row = self
+            .db
+            .insert_session_task_message(NewSessionTaskMessageRow {
+                id: generate_task_message_id(),
+                task_id: task_id.to_string(),
+                session_id,
+                direction: message.direction.to_string(),
+                content: serde_json::to_value(&message.content).map_err(|e| {
+                    AgentLoopError::store(format!("Invalid task message content: {e}"))
+                })?,
+                in_reply_to: message.in_reply_to.clone(),
+            })
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to record task message: {e}")))?;
+        let stored = row
+            .to_message()
+            .map_err(|e| AgentLoopError::store(format!("Invalid task message row: {e}")))?;
+
+        let data = match stored.direction {
+            TaskMessageDirection::Inbound => EventData::TaskMessageSent(TaskMessageEventData {
+                task_id: task_id.to_string(),
+                message: stored.clone(),
+            }),
+            TaskMessageDirection::Outbound => {
+                EventData::TaskMessageReceived(TaskMessageEventData {
+                    task_id: task_id.to_string(),
+                    message: stored.clone(),
+                })
+            }
+        };
+        self.emit(session_id, data).await;
+
+        // Wake on outbound messages for OnActivity tasks.
+        if stored.direction == TaskMessageDirection::Outbound {
+            let msg_text = task_message_text(&stored.content);
+            self.maybe_wake_on_outbound_message(&task, &msg_text).await;
+        }
+
+        // An inbound answer to the pending input request resumes the task.
+        if stored.direction == TaskMessageDirection::Inbound
+            && let (Some(in_reply_to), Some(pending)) = (&stored.in_reply_to, &task.input_request)
+            && in_reply_to == &pending.id
+        {
+            self.update(
+                session_id,
+                task_id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        }
+
+        Ok(stored)
+    }
+
+    async fn list_messages(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        limit: Option<u32>,
+    ) -> Result<Vec<TaskMessage>> {
+        let rows = self
+            .db
+            .list_session_task_messages(session_id, task_id, limit)
+            .await
+            .map_err(|e| AgentLoopError::store(format!("Failed to list task messages: {e}")))?;
+        rows.iter()
+            .map(|r| {
+                r.to_message()
+                    .map_err(|e| AgentLoopError::store(format!("Invalid task message row: {e}")))
+            })
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_core::session_task::{TaskInputRequest, TaskLinks, TaskWakePolicy};
+    use std::sync::Mutex;
+
+    // -------------------------------------------------------------------------
+    // Recording test waker
+    // -------------------------------------------------------------------------
+
+    #[derive(Default, Clone)]
+    struct RecordingWaker {
+        calls: Arc<Mutex<Vec<(SessionId, String)>>>,
+    }
+
+    impl RecordingWaker {
+        fn recorded(&self) -> Vec<(SessionId, String)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl SessionTaskWaker for RecordingWaker {
+        async fn wake(&self, session_id: SessionId, text: &str) -> anyhow::Result<()> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((session_id, text.to_string()));
+            Ok(())
+        }
+    }
+
+    fn registry_with_waker(waker: Arc<dyn SessionTaskWaker>) -> DbSessionTaskRegistry {
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory())).with_waker(waker)
+    }
+
+    fn registry() -> DbSessionTaskRegistry {
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory()))
+    }
+
+    fn create_input(session_id: SessionId) -> CreateSessionTask {
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: "background_tool".to_string(),
+            display_name: "Test run".to_string(),
+            spec: serde_json::json!({"tool": "demo"}),
+            state: SessionTaskState::Queued,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_is_idempotent_on_id() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let mut input = create_input(session_id);
+        input.id = Some("task_fixed".to_string());
+
+        let first = registry.create(input.clone()).await.unwrap();
+        let mut second_input = input.clone();
+        second_input.display_name = "Changed".to_string();
+        let second = registry.create(second_input).await.unwrap();
+
+        assert_eq!(first.id, second.id);
+        assert_eq!(second.display_name, "Test run");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_id_reuse_across_sessions() {
+        let registry = registry();
+        let mut input = create_input(SessionId::new());
+        input.id = Some("task_shared".to_string());
+        registry.create(input.clone()).await.unwrap();
+
+        let mut other = create_input(SessionId::new());
+        other.id = Some("task_shared".to_string());
+        assert!(registry.create(other).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn update_applies_lifecycle_invariants() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let task = registry.create(create_input(session_id)).await.unwrap();
+        assert!(task.started_at.is_none());
+
+        let task = registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, SessionTaskState::Running);
+        assert!(task.started_at.is_some());
+
+        let task = registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    summary: Some("done".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(task.finished_at.is_some());
+
+        // Terminal is final.
+        let task = registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, SessionTaskState::Succeeded);
+    }
+
+    #[tokio::test]
+    async fn request_cancel_is_idempotent() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let task = registry.create(create_input(session_id)).await.unwrap();
+
+        let first = registry
+            .request_cancel(session_id, &task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let stamp = first.cancel_requested_at.unwrap();
+        let second = registry
+            .request_cancel(session_id, &task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(second.cancel_requested_at, Some(stamp));
+        assert_eq!(second.state, SessionTaskState::Queued);
+    }
+
+    #[tokio::test]
+    async fn answering_input_request_resumes_task() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let task = registry.create(create_input(session_id)).await.unwrap();
+
+        let task = registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "req_1".to_string(),
+                        prompt: "Proceed?".to_string(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, SessionTaskState::AwaitingInput);
+
+        let mut answer = NewTaskMessage::inbound_text("yes");
+        answer.in_reply_to = Some("req_1".to_string());
+        registry
+            .record_message(session_id, &task.id, answer)
+            .await
+            .unwrap();
+
+        let task = registry.get(session_id, &task.id).await.unwrap().unwrap();
+        assert_eq!(task.state, SessionTaskState::Running);
+        assert!(task.input_request.is_none());
+
+        let messages = registry
+            .list_messages(session_id, &task.id, None)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].in_reply_to.as_deref(), Some("req_1"));
+    }
+
+    #[tokio::test]
+    async fn list_filters_by_kind_and_state() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let mut a = create_input(session_id);
+        a.kind = "subagent".to_string();
+        let mut b = create_input(session_id);
+        b.kind = "background_tool".to_string();
+        b.state = SessionTaskState::Running;
+        registry.create(a).await.unwrap();
+        registry.create(b).await.unwrap();
+
+        let subagents = registry
+            .list(
+                session_id,
+                Some(&SessionTaskFilter {
+                    kind: Some("subagent".to_string()),
+                    state: None,
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(subagents.len(), 1);
+
+        let running = registry
+            .list(
+                session_id,
+                Some(&SessionTaskFilter {
+                    kind: None,
+                    state: Some(SessionTaskState::Running),
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(running.len(), 1);
+        assert_eq!(running[0].kind, "background_tool");
+    }
+
+    #[tokio::test]
+    async fn message_limit_returns_most_recent_oldest_first() {
+        let registry = registry();
+        let session_id = SessionId::new();
+        let task = registry.create(create_input(session_id)).await.unwrap();
+        for i in 0..5 {
+            registry
+                .record_message(
+                    session_id,
+                    &task.id,
+                    NewTaskMessage::inbound_text(format!("m{i}")),
+                )
+                .await
+                .unwrap();
+        }
+        let messages = registry
+            .list_messages(session_id, &task.id, Some(2))
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 2);
+        let texts: Vec<String> = messages
+            .iter()
+            .map(|m| everruns_core::session_task::task_message_text(&m.content))
+            .collect();
+        assert_eq!(texts, vec!["m3", "m4"]);
+    }
+
+    // -------------------------------------------------------------------------
+    // Wake policy tests
+    // -------------------------------------------------------------------------
+
+    fn create_input_with_policy(
+        session_id: SessionId,
+        policy: TaskWakePolicy,
+    ) -> CreateSessionTask {
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: "background_tool".to_string(),
+            display_name: "Test task".to_string(),
+            spec: serde_json::json!({}),
+            state: SessionTaskState::Queued,
+            links: TaskLinks::default(),
+            wake_policy: policy,
+        }
+    }
+
+    #[tokio::test]
+    async fn silent_policy_never_wakes() {
+        let waker = Arc::new(RecordingWaker::default());
+        let registry = registry_with_waker(waker.clone());
+        let session_id = SessionId::new();
+
+        let task = registry
+            .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        // Record an outbound message to verify no wake fires.
+        registry
+            .record_message(session_id, &task.id, NewTaskMessage::outbound_text("hello"))
+            .await
+            .unwrap();
+
+        assert!(waker.recorded().is_empty(), "Silent should never wake");
+    }
+
+    #[tokio::test]
+    async fn on_terminal_wakes_exactly_once_on_terminal_transition() {
+        let waker = Arc::new(RecordingWaker::default());
+        let registry = registry_with_waker(waker.clone());
+        let session_id = SessionId::new();
+
+        let task = registry
+            .create(create_input_with_policy(
+                session_id,
+                TaskWakePolicy::OnTerminal,
+            ))
+            .await
+            .unwrap();
+
+        // Non-terminal transition: no wake.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(waker.recorded().is_empty(), "Should not wake on running");
+
+        // Terminal transition: one wake.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    summary: Some("done".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let calls = waker.recorded();
+        assert_eq!(calls.len(), 1, "Should wake exactly once on terminal");
+        assert!(
+            calls[0].1.contains("finished: succeeded"),
+            "Wake text should describe terminal state"
+        );
+        assert!(
+            calls[0].1.contains("summary: done"),
+            "Wake text should include summary"
+        );
+
+        // Second update on already-terminal task: no second wake.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    result_path: Some("/.tasks/x/result.json".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(waker.recorded().len(), 1, "No double-wake after terminal");
+    }
+
+    #[tokio::test]
+    async fn on_activity_wakes_on_awaiting_input_and_outbound_message() {
+        let waker = Arc::new(RecordingWaker::default());
+        let registry = registry_with_waker(waker.clone());
+        let session_id = SessionId::new();
+
+        let task = registry
+            .create(create_input_with_policy(
+                session_id,
+                TaskWakePolicy::OnActivity,
+            ))
+            .await
+            .unwrap();
+
+        // Running transition: no wake.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert!(waker.recorded().is_empty());
+
+        // Outbound message: one wake.
+        registry
+            .record_message(
+                session_id,
+                &task.id,
+                NewTaskMessage::outbound_text("task says hi"),
+            )
+            .await
+            .unwrap();
+        let calls = waker.recorded();
+        assert_eq!(calls.len(), 1, "Should wake on outbound message");
+        assert!(calls[0].1.contains("task says hi"));
+
+        // Awaiting input: another wake.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "req_1".to_string(),
+                        prompt: "Approve?".to_string(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let calls = waker.recorded();
+        assert_eq!(calls.len(), 2, "Should wake on awaiting_input transition");
+        assert!(calls[1].1.contains("Approve?"));
+
+        // Second awaiting_input update (idempotent input_request churn from
+        // polling): no extra wake because state is already awaiting_input.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "req_1".to_string(),
+                        prompt: "Approve?".to_string(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            waker.recorded().len(),
+            2,
+            "No duplicate wake for repeated awaiting_input"
+        );
+
+        // Terminal transition also wakes.
+        let mut answer = NewTaskMessage::inbound_text("yes");
+        answer.in_reply_to = Some("req_1".to_string());
+        registry
+            .record_message(session_id, &task.id, answer)
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        let calls = waker.recorded();
+        assert_eq!(
+            calls.len(),
+            3,
+            "Should also wake on terminal for OnActivity"
+        );
+    }
+
+    #[tokio::test]
+    async fn inbound_messages_do_not_wake() {
+        let waker = Arc::new(RecordingWaker::default());
+        let registry = registry_with_waker(waker.clone());
+        let session_id = SessionId::new();
+
+        let task = registry
+            .create(create_input_with_policy(
+                session_id,
+                TaskWakePolicy::OnActivity,
+            ))
+            .await
+            .unwrap();
+        registry
+            .record_message(
+                session_id,
+                &task.id,
+                NewTaskMessage::inbound_text("steering"),
+            )
+            .await
+            .unwrap();
+        assert!(
+            waker.recorded().is_empty(),
+            "Inbound messages should not wake"
+        );
+    }
+}

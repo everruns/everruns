@@ -317,7 +317,7 @@ For the complete request/response schemas, run `./scripts/export-openapi.sh` or 
 
 ### Session Filesystem
 
-Virtual filesystem scoped to each session. See [session-filesystem.md](session-filesystem.md) for full specification.
+Virtual filesystem scoped to each session. See [workspace.md](workspace.md) for full specification.
 
 | Method | Path | Description |
 |--------|------|-------------|

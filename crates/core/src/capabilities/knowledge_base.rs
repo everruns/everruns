@@ -13,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 
 /// Stable string id for the knowledge base capability.
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
@@ -117,6 +117,8 @@ impl Capability for KnowledgeBaseCapability {
                     "description": "Knowledge Base IDs the agent can search.",
                     "items": {
                         "type": "string",
+                        "title": "Knowledge Base ID",
+                        "description": "Knowledge Base ID (kb_<32-hex>).",
                         "pattern": "^kb_[0-9a-f]{32}$"
                     }
                 },
@@ -126,11 +128,75 @@ impl Capability for KnowledgeBaseCapability {
                     "description": "Optional kind filter applied when the agent does not pass `kind`.",
                     "items": {
                         "type": "string",
-                        "enum": ENTRY_KINDS
+                        "title": "Entry kind",
+                        "description": "Knowledge Base entry kind to include.",
+                        // Values must stay in sync with ENTRY_KINDS (enforced by test).
+                        "oneOf": [
+                            { "const": "note", "title": "Note" },
+                            { "const": "table", "title": "Table doc" },
+                            { "const": "business", "title": "Business rule" },
+                            { "const": "query", "title": "Query template" },
+                            { "const": "runbook", "title": "Runbook" }
+                        ]
                     }
                 }
             }
         }))
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Selects which Knowledge Bases the agent can search and an optional \
+                     default entry-kind filter.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("База знань"),
+                description: Some(
+                    "Прив'язує агента до курованих Баз знань організації, щоб відповіді \
+                     спиралися на редаговані людьми описи таблиць, бізнес-правила, \
+                     перевірені SQL-шаблони та runbook-и.",
+                ),
+                config_description: Some(
+                    "Визначає, у яких Базах знань агент може шукати, та необов'язковий \
+                     типовий фільтр за видом записів.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "bases": {
+                            "title": "Бази знань",
+                            "description": "Ідентифікатори Баз знань, у яких агент може шукати.",
+                            "items": {
+                                "title": "Ідентифікатор Бази знань",
+                                "description": "Ідентифікатор Бази знань (kb_<32-hex>)."
+                            }
+                        },
+                        "kinds": {
+                            "title": "Типовий фільтр виду",
+                            "description": "Необов'язковий фільтр за видом записів, що застосовується, коли агент не передає kind явно.",
+                            "items": {
+                                "title": "Вид запису",
+                                "description": "Вид записів Бази знань, який потрібно включити.",
+                                "enum_labels": {
+                                    "note": "Нотатка",
+                                    "table": "Опис таблиці",
+                                    "business": "Бізнес-правило",
+                                    "query": "Шаблон запиту",
+                                    "runbook": "Runbook"
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
@@ -175,7 +241,7 @@ mod tests {
     #[test]
     fn validate_rejects_malformed_kb_id() {
         let cap = KnowledgeBaseCapability;
-        let cfg = json!({ "bases": ["vol_00000000000000000000000000000001"] });
+        let cfg = json!({ "bases": ["mem_00000000000000000000000000000001"] });
         let err = cap.validate_config(&cfg).unwrap_err();
         assert!(err.contains("kb_"));
     }
@@ -199,5 +265,30 @@ mod tests {
         let cfg = json!({ "kinds": ["nope"] });
         let err = cap.validate_config(&cfg).unwrap_err();
         assert!(err.contains("kinds"));
+    }
+
+    #[test]
+    fn uk_localization_and_schema_one_of_match_validation() {
+        let cap = KnowledgeBaseCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "База знань");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("Баз знань")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
+
+        // The kinds oneOf consts must be exactly the values validate_config accepts.
+        let schema = cap.config_schema().expect("config schema");
+        let consts: Vec<&str> = schema["properties"]["kinds"]["items"]["oneOf"]
+            .as_array()
+            .expect("oneOf")
+            .iter()
+            .map(|v| v["const"].as_str().expect("const"))
+            .collect();
+        assert_eq!(consts, ENTRY_KINDS);
+        for kind in consts {
+            assert!(cap.validate_config(&json!({ "kinds": [kind] })).is_ok());
+        }
     }
 }

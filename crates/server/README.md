@@ -1,6 +1,10 @@
 # Everruns Server (Control Plane)
 
-The control plane component of Everruns. Provides REST API and gRPC server for managing AI agents, sessions, and runs. Workers connect to this server via gRPC for all database operations.
+> The Everruns control plane: REST API and gRPC server for agents, sessions, and runs.
+
+The control plane component of Everruns. Provides a REST API and gRPC server for managing AI agents, sessions, and runs. Workers connect to this server via gRPC for all database operations.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic harness engine for building unstoppable agents. The execution workers that connect to this server live in `everruns-worker`.
 
 ## Features
 
@@ -193,3 +197,14 @@ Check if another process is using port 9301:
 ```bash
 lsof -i :9301
 ```
+
+## Documentation
+
+- [Architecture](https://docs.everruns.com/explanation/architecture/)
+- [Docker Compose deployment](https://docs.everruns.com/getting-started/docker-compose/)
+- [API reference](https://docs.everruns.com/api/)
+- [Everruns documentation](https://docs.everruns.com)
+
+## License
+
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

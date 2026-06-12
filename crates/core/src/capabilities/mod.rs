@@ -89,6 +89,7 @@ mod agent_instructions;
 pub mod attach_skill;
 mod auto_tool_search;
 mod background_execution;
+mod bashkit_shell;
 mod btw;
 mod budgeting;
 pub mod compaction;
@@ -107,11 +108,13 @@ mod loop_detection;
 mod lua;
 mod lua_code_mode;
 pub mod mcp;
+mod memory;
+mod message_metadata;
+mod monitors;
 mod noop;
 mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
-pub mod persistent_memory;
 mod platform_management;
 mod prompt_caching;
 mod prompt_canary_guardrail;
@@ -123,6 +126,7 @@ mod session_sandbox;
 mod session_schedule;
 mod session_sql_database;
 mod session_storage;
+mod session_tasks;
 mod skills;
 mod stateless_todo_list;
 mod subagents;
@@ -132,9 +136,8 @@ mod test_weather;
 mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
-mod virtual_bash;
 mod web_fetch;
-mod workspace_volumes;
+mod web_fetch_egress;
 
 // Re-export capabilities
 pub use a2a_delegation::{
@@ -219,6 +222,11 @@ pub use mcp::{
     MCP_CAPABILITY_PREFIX, McpCapability, is_mcp_capability, mcp_capability_id,
     parse_mcp_capability_id,
 };
+pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
+pub use message_metadata::{
+    MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
+    MessageMetadataField, render_annotation,
+};
 pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
@@ -226,9 +234,6 @@ pub use openai_tool_search::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
-pub use persistent_memory::{
-    ForgetTool, MEMORY_CAPABILITY_ID, MemoryCapability, MemoryConfig, RecallTool, RememberTool,
-};
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
     ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
@@ -256,10 +261,12 @@ pub use session_sql_database::{
     SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
 };
 pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
+pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
 pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
 pub use subagents::SubagentCapability;
 // Blueprint types are exported directly from the trait definitions above
+pub use bashkit_shell::{BashTool, BashkitShellCapability, SessionFileSystemAdapter};
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
@@ -268,11 +275,9 @@ pub use tool_search::{
     TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
 };
 pub use user_hooks::UserHooksCapability;
-pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
 };
-pub use workspace_volumes::{WORKSPACE_VOLUMES_CAPABILITY_ID, WorkspaceVolumesCapability};
 
 // ============================================================================
 // System Prompt Context
@@ -362,16 +367,135 @@ impl SystemPromptContext {
 ///     }
 /// }
 /// ```
+/// Localized display strings for one locale.
+///
+/// Base English strings stay in `name()` / `description()` / `config_schema()`;
+/// localizations are additive overlays, so adding a locale never changes the
+/// `Capability` trait contract for existing implementations.
+#[derive(Debug, Clone)]
+pub struct CapabilityLocalization {
+    /// Language tag this entry applies to, lowercase (e.g. `"uk"` or `"uk-ua"`).
+    pub locale: &'static str,
+    /// Localized display name; `None` falls back to `name()`.
+    pub name: Option<&'static str>,
+    /// Localized description; `None` falls back to `description()`.
+    pub description: Option<&'static str>,
+    /// One-line summary of what this capability's config controls.
+    ///
+    /// Provide an `"en"` entry for the base locale; capabilities without
+    /// config leave this `None` everywhere.
+    pub config_description: Option<&'static str>,
+    /// Overlay merged into `config_schema()` by clients before rendering.
+    ///
+    /// Mirrors JSON Schema structure (`properties` / `items` nesting); nodes
+    /// carry `title`, `description`, and `enum_labels` (map from enum value
+    /// to localized label, applied to `oneOf` `const`/`title` entries).
+    pub config_overlay: Option<serde_json::Value>,
+}
+
+impl CapabilityLocalization {
+    /// Entry with only display strings (no config).
+    pub fn text(locale: &'static str, name: &'static str, description: &'static str) -> Self {
+        Self {
+            locale,
+            name: Some(name),
+            description: Some(description),
+            config_description: None,
+            config_overlay: None,
+        }
+    }
+}
+
+/// Resolve a localized field with the standard fallback chain:
+/// exact tag → language family → `"en"`. Returns `None` when no entry
+/// provides the field; callers fall back to the unlocalized trait values.
+pub fn resolve_localized_field<T>(
+    localizations: &[CapabilityLocalization],
+    locale: Option<&str>,
+    field: impl Fn(&CapabilityLocalization) -> Option<T>,
+) -> Option<T> {
+    let mut candidates: Vec<String> = Vec::new();
+    if let Some(raw) = locale {
+        let normalized = raw.trim().replace('_', "-").to_lowercase();
+        if !normalized.is_empty() {
+            if let Some((language, _)) = normalized.split_once('-') {
+                let language = language.to_string();
+                candidates.push(normalized);
+                candidates.push(language);
+            } else {
+                candidates.push(normalized);
+            }
+        }
+    }
+    candidates.push("en".to_string());
+
+    for candidate in candidates {
+        let hit = localizations
+            .iter()
+            .find(|entry| entry.locale.eq_ignore_ascii_case(&candidate))
+            .and_then(&field);
+        if hit.is_some() {
+            return hit;
+        }
+    }
+    None
+}
+
 #[async_trait]
 pub trait Capability: Send + Sync {
     /// Returns the unique capability identifier as a string
     fn id(&self) -> &str;
+
+    /// Returns legacy identifiers that resolve to this capability.
+    ///
+    /// Aliases exist so a capability can be renamed without breaking persisted
+    /// agent configs: registry lookups (`get`, `has`) and dependency resolution
+    /// treat an alias exactly like the canonical `id()`. Resolution always
+    /// normalizes aliases to the canonical ID, so an alias and its canonical
+    /// ID never activate the capability twice. New code must use `id()`;
+    /// aliases are a compatibility surface only.
+    fn aliases(&self) -> Vec<&'static str> {
+        vec![]
+    }
 
     /// Returns the display name
     fn name(&self) -> &str;
 
     /// Returns a description of what this capability provides
     fn description(&self) -> &str;
+
+    /// Returns localization overlays for this capability's display strings.
+    ///
+    /// Include an `"en"` entry when providing `config_description` for the
+    /// base locale. Lookup follows `resolve_localized_field` fallback rules.
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![]
+    }
+
+    /// Display name resolved for `locale`; `None` or unknown locales fall
+    /// back to `name()`.
+    fn localized_name(&self, locale: Option<&str>) -> String {
+        resolve_localized_field(&self.localizations(), locale, |entry| entry.name)
+            .unwrap_or_else(|| self.name())
+            .to_string()
+    }
+
+    /// Description resolved for `locale`; falls back to `description()`.
+    fn localized_description(&self, locale: Option<&str>) -> String {
+        resolve_localized_field(&self.localizations(), locale, |entry| entry.description)
+            .unwrap_or_else(|| self.description())
+            .to_string()
+    }
+
+    /// One-line human-readable summary of what this capability's config
+    /// controls, resolved for `locale`. `None` when the capability exposes
+    /// no per-agent config.
+    fn describe_schema(&self, locale: Option<&str>) -> Option<String> {
+        resolve_localized_field(&self.localizations(), locale, |entry| {
+            entry.config_description
+        })
+        .map(str::to_string)
+    }
 
     /// Returns the current status of this capability
     fn status(&self) -> CapabilityStatus {
@@ -647,6 +771,23 @@ pub trait Capability: Send + Sync {
         self.tool_definition_hooks()
     }
 
+    /// Returns tool definition hooks adapted to per-capability config and the
+    /// collection context (session id, model, ...).
+    ///
+    /// Default delegates to [`Self::tool_definition_hooks_with_config`], which
+    /// ignores the context. Capabilities whose hooks carry session-scoped state
+    /// override this to capture `ctx` — e.g. `tool_search` keys its
+    /// progressive-disclosure reveal set by `ctx.session_id`, since the
+    /// capability is a process-global singleton shared across sessions and a
+    /// `ToolDefinitionHook::transform` has no session context of its own.
+    fn tool_definition_hooks_with_context(
+        &self,
+        _ctx: &SystemPromptContext,
+        config: &serde_json::Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        self.tool_definition_hooks_with_config(config)
+    }
+
     /// Returns tool call hooks provided by this capability.
     ///
     /// These hooks run after the model has produced a tool call. They can read
@@ -720,10 +861,10 @@ pub trait Capability: Send + Sync {
     /// references they captured at construction time to mutate any external
     /// state (provider store, file system, etc.).
     ///
-    /// The server's `/btw` flow does not route through this method — it has
-    /// its own bespoke executor because it needs to construct an out-of-band
-    /// LLM call with the session's prompt context. This hook is for
-    /// commands that can execute purely from the capability's own state.
+    /// Commands that need the session's assembled context or an out-of-band
+    /// LLM call (e.g. `/btw`) use the host facilities on
+    /// [`CommandExecutionContext::host`] — see
+    /// [`crate::command_host::CommandHost`] and specs/commands.md.
     async fn execute_command(
         &self,
         request: &ExecuteCommandRequest,
@@ -909,6 +1050,8 @@ impl std::fmt::Debug for AgentBlueprint {
 #[derive(Clone)]
 pub struct CapabilityRegistry {
     capabilities: HashMap<String, Arc<dyn Capability>>,
+    /// Alias ID -> canonical ID (see [`Capability::aliases`]).
+    aliases: HashMap<String, String>,
 }
 
 impl CapabilityRegistry {
@@ -916,6 +1059,7 @@ impl CapabilityRegistry {
     pub fn new() -> Self {
         Self {
             capabilities: HashMap::new(),
+            aliases: HashMap::new(),
         }
     }
 
@@ -939,10 +1083,11 @@ impl CapabilityRegistry {
         registry.register(HumanIntentCapability);
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
+        registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
-        registry.register(WorkspaceVolumesCapability);
+        registry.register(MemoryCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
@@ -950,7 +1095,7 @@ impl CapabilityRegistry {
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability::from_env());
-        registry.register(VirtualBashCapability);
+        registry.register(BashkitShellCapability);
         registry.register(BackgroundExecutionCapability);
         registry.register(SessionScheduleCapability);
         registry.register(BtwCapability);
@@ -958,7 +1103,6 @@ impl CapabilityRegistry {
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);
         registry.register(CompactionCapability);
-        registry.register(MemoryCapability);
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
@@ -973,6 +1117,9 @@ impl CapabilityRegistry {
 
         // Subagents (spawn child agent sessions, all environments)
         registry.register(SubagentCapability);
+
+        // Session tasks (inspect/steer background work, all environments)
+        registry.register(SessionTasksCapability);
 
         // Outbound agent delegation — experimental (dev-only by default).
         // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
@@ -1051,35 +1198,56 @@ impl CapabilityRegistry {
 
     /// Register a capability
     pub fn register(&mut self, capability: impl Capability + 'static) {
-        self.capabilities
-            .insert(capability.id().to_string(), Arc::new(capability));
+        self.register_arc(Arc::new(capability));
     }
 
     /// Register a boxed capability
     pub fn register_boxed(&mut self, capability: Box<dyn Capability>) {
-        self.capabilities
-            .insert(capability.id().to_string(), Arc::from(capability));
+        self.register_arc(Arc::from(capability));
     }
 
     /// Register an Arc-wrapped capability
     pub fn register_arc(&mut self, capability: Arc<dyn Capability>) {
-        self.capabilities
-            .insert(capability.id().to_string(), capability);
+        let canonical = capability.id().to_string();
+        for alias in capability.aliases() {
+            self.aliases.insert(alias.to_string(), canonical.clone());
+        }
+        self.capabilities.insert(canonical, capability);
     }
 
-    /// Get a capability by ID
+    /// Get a capability by ID or alias
     pub fn get(&self, id: &str) -> Option<&Arc<dyn Capability>> {
-        self.capabilities.get(id)
+        self.capabilities
+            .get(id)
+            .or_else(|| self.aliases.get(id).and_then(|c| self.capabilities.get(c)))
     }
 
-    /// Remove a capability from the registry.
+    /// Resolve an ID or alias to the canonical capability ID.
+    ///
+    /// Returns `None` for IDs that are neither registered nor an alias of a
+    /// registered capability (e.g. declarative or MCP refs).
+    pub fn canonical_id<'a>(&'a self, id: &'a str) -> Option<&'a str> {
+        if self.capabilities.contains_key(id) {
+            Some(id)
+        } else {
+            self.aliases
+                .get(id)
+                .filter(|c| self.capabilities.contains_key(*c))
+                .map(String::as_str)
+        }
+    }
+
+    /// Remove a capability from the registry by ID or alias.
     pub fn unregister(&mut self, id: &str) -> Option<Arc<dyn Capability>> {
-        self.capabilities.remove(id)
+        let canonical = self.canonical_id(id)?.to_string();
+        let removed = self.capabilities.remove(&canonical);
+        self.aliases.retain(|_, target| *target != canonical);
+        removed
     }
 
-    /// Check if a capability is registered
+    /// Check if a capability is registered (by ID or alias)
     pub fn has(&self, id: &str) -> bool {
-        self.capabilities.contains_key(id)
+        self.get(id).is_some()
     }
 
     /// Get all registered capabilities
@@ -1547,7 +1715,11 @@ pub fn resolve_dependencies(
 ) -> Result<ResolvedCapabilities, DependencyError> {
     use std::collections::HashSet;
 
-    let user_selected: HashSet<String> = selected_ids.iter().cloned().collect();
+    // Canonicalize so capabilities selected via alias match their resolved IDs.
+    let user_selected: HashSet<String> = selected_ids
+        .iter()
+        .map(|id| registry.canonical_id(id).unwrap_or(id).to_string())
+        .collect();
     let mut resolved: Vec<String> = Vec::new();
     let mut resolved_set: HashSet<String> = HashSet::new();
     let mut added_as_dependencies: Vec<String> = Vec::new();
@@ -1600,9 +1772,15 @@ pub fn resolve_capability_configs(
     }
     let resolved = resolve_dependencies(&selected_ids, registry)?;
 
+    // Key explicit configs by canonical ID so config supplied under an alias
+    // still attaches to the (canonical) resolved capability ID.
     let explicit_configs: std::collections::HashMap<String, serde_json::Value> = selected_configs
         .iter()
-        .map(|config| (config.capability_id().to_string(), config.config.clone()))
+        .map(|config| {
+            let id = config.capability_id();
+            let id = registry.canonical_id(id).unwrap_or(id);
+            (id.to_string(), config.config.clone())
+        })
         .collect();
 
     Ok(resolved
@@ -1628,6 +1806,11 @@ fn resolve_single_capability(
     user_selected: &std::collections::HashSet<String>,
     visiting: &mut Vec<String>,
 ) -> Result<(), DependencyError> {
+    // Normalize aliases to the canonical ID so an alias and its canonical ID
+    // resolve (and dedupe) to the same capability. Unknown IDs (declarative,
+    // MCP, skill refs) pass through unchanged.
+    let cap_id = registry.canonical_id(cap_id).unwrap_or(cap_id);
+
     // Already resolved
     if resolved_set.contains(cap_id) {
         return Ok(());
@@ -1875,7 +2058,7 @@ pub async fn collect_capabilities_with_configs(
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
             tools.extend(effective.tools_with_config(&cap_config.config));
             tool_definition_hooks
-                .extend(effective.tool_definition_hooks_with_config(&cap_config.config));
+                .extend(effective.tool_definition_hooks_with_context(ctx, &cap_config.config));
             tool_call_hooks.extend(effective.tool_call_hooks());
             // Output guardrails are NOT collected here — see CollectedCapabilities
             // for rationale. ReasonAtom re-derives them at stream-arming time.
@@ -1960,7 +2143,7 @@ pub async fn collect_capabilities_with_configs(
     //
     // This is the generic cross-cutting capability contract — meta-tools that
     // wrap other tools based on hints should hook in here, not attach to a
-    // single owner capability (e.g. `virtual_bash`).
+    // single owner capability (e.g. `bashkit_shell`).
     //
     // Lockstep: we extend both `tools` (execution registry) and
     // `tool_definitions` (model-visible) so the model can see and the worker
@@ -2140,7 +2323,6 @@ mod tests {
             "research",
             "platform_management",
             "session_file_system",
-            "workspace_volumes",
             "session_storage",
             "session",
             "session_sql_database",
@@ -2148,17 +2330,19 @@ mod tests {
             "test_weather",
             "stateless_todo_list",
             "web_fetch",
-            "virtual_bash",
+            "bashkit_shell",
             "background_execution",
             "session_schedule",
             "btw",
             "infinity_context",
             "compaction",
             "memory",
+            "message_metadata",
             "openai_tool_search",
             "tool_search",
             "auto_tool_search",
             "prompt_caching",
+            "session_tasks",
             "skills",
             "subagents",
             "system_commands",
@@ -3642,10 +3826,10 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn test_virtual_bash_capability_produces_bash_tool() {
+    async fn test_bashkit_shell_capability_produces_bash_tool() {
         let registry = CapabilityRegistry::with_builtins();
         let collected =
-            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
+            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
         let tool_names: Vec<&str> = collected
             .tool_definitions
@@ -3654,12 +3838,12 @@ mod tests {
             .collect();
         assert!(
             tool_names.contains(&"bash"),
-            "virtual_bash capability must produce 'bash' tool, got: {:?}",
+            "bashkit_shell capability must produce 'bash' tool, got: {:?}",
             tool_names
         );
         assert!(
             !collected.tools.is_empty(),
-            "virtual_bash must provide tool implementations"
+            "bashkit_shell must provide tool implementations"
         );
     }
 
@@ -3669,7 +3853,7 @@ mod tests {
         // If any are renamed or removed, this test catches the regression.
         let generic_harness_caps = vec![
             "session_file_system".to_string(),
-            "virtual_bash".to_string(),
+            "bashkit_shell".to_string(),
             "web_fetch".to_string(),
             "session_storage".to_string(),
             "session".to_string(),
@@ -3700,7 +3884,7 @@ mod tests {
         // A mismatch means some tools won't be executable at runtime.
         let registry = CapabilityRegistry::with_builtins();
         let collected =
-            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
+            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
         assert_eq!(
             collected.tools.len(),
@@ -3760,7 +3944,7 @@ mod tests {
         let registry = crate::ToolRegistry::with_defaults();
         assert!(
             !registry.has("bash"),
-            "with_defaults() must not include 'bash' — it comes from virtual_bash capability"
+            "with_defaults() must not include 'bash' — it comes from bashkit_shell capability"
         );
     }
 
@@ -3771,10 +3955,10 @@ mod tests {
     /// Auto-activation: any collected tool with `supports_background=true`
     /// causes `spawn_background` to appear in both tool_definitions and tools.
     #[tokio::test]
-    async fn test_background_execution_auto_activates_with_virtual_bash() {
+    async fn test_background_execution_auto_activates_with_bashkit_shell() {
         let registry = CapabilityRegistry::with_builtins();
         let collected =
-            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
+            collect_capabilities(&["bashkit_shell".to_string()], &registry, &test_ctx()).await;
 
         let tool_names: Vec<&str> = collected
             .tool_definitions
@@ -3783,7 +3967,7 @@ mod tests {
             .collect();
         assert!(
             tool_names.contains(&"spawn_background"),
-            "spawn_background must be auto-activated when virtual_bash (a \
+            "spawn_background must be auto-activated when bashkit_shell (a \
              background-capable tool) is in the agent's capability set; got: {:?}",
             tool_names
         );
@@ -3847,7 +4031,7 @@ mod tests {
         let registry = CapabilityRegistry::with_builtins();
         let collected = collect_capabilities(
             &[
-                "virtual_bash".to_string(),
+                "bashkit_shell".to_string(),
                 BACKGROUND_EXECUTION_CAPABILITY_ID.to_string(),
             ],
             &registry,
@@ -3916,11 +4100,77 @@ mod tests {
     }
 
     #[test]
-    fn test_virtual_bash_capability_features() {
+    fn test_bashkit_shell_capability_features() {
         let registry = CapabilityRegistry::with_builtins();
 
-        let bash = registry.get("virtual_bash").unwrap();
+        let bash = registry.get("bashkit_shell").unwrap();
         assert_eq!(bash.features(), vec!["file_system"]);
+    }
+
+    #[test]
+    fn test_alias_resolves_to_canonical_capability() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Legacy `virtual_bash` ID (persisted agent configs) must keep working.
+        let via_alias = registry.get("virtual_bash").unwrap();
+        assert_eq!(via_alias.id(), "bashkit_shell");
+        assert!(registry.has("virtual_bash"));
+        assert_eq!(registry.canonical_id("virtual_bash"), Some("bashkit_shell"));
+        assert_eq!(
+            registry.canonical_id("bashkit_shell"),
+            Some("bashkit_shell")
+        );
+        assert_eq!(registry.canonical_id("nonexistent"), None);
+    }
+
+    #[test]
+    fn test_alias_dedupes_with_canonical_in_dependency_resolution() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Selecting both the alias and the canonical ID must resolve to a
+        // single activation under the canonical ID.
+        let resolved = resolve_dependencies(
+            &["virtual_bash".to_string(), "bashkit_shell".to_string()],
+            &registry,
+        )
+        .unwrap();
+        let bash_ids: Vec<_> = resolved
+            .resolved_ids
+            .iter()
+            .filter(|id| id.as_str() == "bashkit_shell" || id.as_str() == "virtual_bash")
+            .collect();
+        assert_eq!(bash_ids, vec!["bashkit_shell"]);
+        // Selected via alias => not reported as "added as dependency".
+        assert!(
+            !resolved
+                .added_as_dependencies
+                .contains(&"bashkit_shell".to_string())
+        );
+    }
+
+    #[test]
+    fn test_alias_preserves_explicit_config_in_resolution() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig::with_config(
+            "virtual_bash".to_string(),
+            serde_json::json!({"key": "value"}),
+        )];
+        let resolved = resolve_capability_configs(&configs, &registry).unwrap();
+        let bash = resolved
+            .iter()
+            .find(|c| c.capability_id() == "bashkit_shell")
+            .expect("alias must resolve to canonical bashkit_shell config");
+        assert_eq!(bash.config, serde_json::json!({"key": "value"}));
+    }
+
+    #[test]
+    fn test_unregister_by_alias_removes_capability_and_aliases() {
+        let mut registry = CapabilityRegistry::with_builtins();
+
+        assert!(registry.unregister("virtual_bash").is_some());
+        assert!(!registry.has("bashkit_shell"));
+        assert!(!registry.has("virtual_bash"));
     }
 
     #[test]
@@ -3995,11 +4245,11 @@ mod tests {
     fn test_compute_features_deduplicates() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // Both session_file_system and virtual_bash contribute "file_system"
+        // Both session_file_system and bashkit_shell contribute "file_system"
         let features = compute_features(
             &[
                 "session_file_system".to_string(),
-                "virtual_bash".to_string(),
+                "bashkit_shell".to_string(),
             ],
             &registry,
         );
@@ -4011,8 +4261,8 @@ mod tests {
     fn test_compute_features_includes_dependency_features() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // virtual_bash depends on session_file_system; both contribute "file_system"
-        let features = compute_features(&["virtual_bash".to_string()], &registry);
+        // bashkit_shell depends on session_file_system; both contribute "file_system"
+        let features = compute_features(&["bashkit_shell".to_string()], &registry);
         assert!(features.contains(&"file_system".to_string()));
     }
 
@@ -4024,7 +4274,7 @@ mod tests {
         let features = compute_features(
             &[
                 "session_file_system".to_string(),
-                "virtual_bash".to_string(),
+                "bashkit_shell".to_string(),
                 "session_storage".to_string(),
                 "session".to_string(),
                 "session_schedule".to_string(),
@@ -4067,8 +4317,8 @@ mod tests {
     fn test_capability_risk_levels() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // virtual_bash is High (code execution requires admin gating)
-        let bash = registry.get("virtual_bash").unwrap();
+        // bashkit_shell is High (code execution requires admin gating)
+        let bash = registry.get("bashkit_shell").unwrap();
         assert_eq!(bash.risk_level(), RiskLevel::High);
 
         // web_fetch is High (network access requires admin gating)
@@ -4467,5 +4717,72 @@ mod tests {
                 .iter()
                 .all(|m| !m.path.starts_with("/.agents/skills/"))
         );
+    }
+
+    struct LocalizedCapability;
+
+    impl Capability for LocalizedCapability {
+        fn id(&self) -> &str {
+            "localized"
+        }
+        fn name(&self) -> &str {
+            "Localized"
+        }
+        fn description(&self) -> &str {
+            "English description"
+        }
+        fn localizations(&self) -> Vec<CapabilityLocalization> {
+            vec![
+                CapabilityLocalization {
+                    locale: "en",
+                    name: None,
+                    description: None,
+                    config_description: Some("Controls things."),
+                    config_overlay: None,
+                },
+                CapabilityLocalization {
+                    locale: "uk",
+                    name: Some("Локалізована"),
+                    description: Some("Український опис"),
+                    config_description: Some("Керує налаштуваннями."),
+                    config_overlay: None,
+                },
+            ]
+        }
+    }
+
+    #[test]
+    fn localized_name_falls_back_exact_language_then_base() {
+        let cap = LocalizedCapability;
+        // Region tag resolves through the language family.
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Локалізована");
+        assert_eq!(cap.localized_name(Some("uk")), "Локалізована");
+        // Underscore-separated tags are normalized.
+        assert_eq!(cap.localized_name(Some("uk_UA")), "Локалізована");
+        // Unsupported locales and None fall back to the base name.
+        assert_eq!(cap.localized_name(Some("fr-FR")), "Localized");
+        assert_eq!(cap.localized_name(None), "Localized");
+        assert_eq!(cap.localized_description(Some("uk")), "Український опис");
+        assert_eq!(cap.localized_description(Some("de")), "English description");
+    }
+
+    #[test]
+    fn describe_schema_resolves_config_description_per_locale() {
+        let cap = LocalizedCapability;
+        assert_eq!(
+            cap.describe_schema(Some("uk-UA")).as_deref(),
+            Some("Керує налаштуваннями.")
+        );
+        // Unsupported locales fall back to the "en" entry.
+        assert_eq!(
+            cap.describe_schema(Some("pl")).as_deref(),
+            Some("Controls things.")
+        );
+        assert_eq!(
+            cap.describe_schema(None).as_deref(),
+            Some("Controls things.")
+        );
+        // Capabilities without localizations have no config description.
+        assert_eq!(NoopCapability.describe_schema(Some("uk")), None);
     }
 }

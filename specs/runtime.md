@@ -202,6 +202,18 @@ Use `RuntimeBackends::in_memory()` for the all-in-memory default, then chain
 `.with_message_store(...)`, `.with_storage_store(...)`, etc. to override
 individual non-filesystem stores.
 
+`RuntimeBackends` also carries an optional
+`connection_resolver: Option<Arc<dyn UserConnectionResolver>>`
+(set via `.with_connection_resolver(...)`). When supplied, the runtime exposes
+it through `ToolContext.connection_resolver` so connection-aware capabilities
+(for example the Daytona integration) resolve user connection tokens lazily at
+tool execution time. There is no in-memory default: a resolver implies a real
+credential source the embedder owns. When unset, `ToolContext.connection_resolver`
+stays `None` and connection-aware tools fall back to their own guidance
+(session secret, then "connect the provider"). See
+`crates/server/specs/user-connections.md` for the connection model the resolver
+serves.
+
 Session files are a platform service: `PlatformDefinition` carries a
 `SessionFileSystemFactory`, and the runtime always resolves the concrete
 filesystem from that factory before seeding files or executing turns. Embedders

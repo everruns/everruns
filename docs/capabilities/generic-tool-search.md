@@ -25,8 +25,9 @@ Unlike [OpenAI Tool Search](/capabilities/openai-tool-search/), which relies on 
 1. **Threshold check** — deferral only activates when the total tool count meets or exceeds the threshold (default: 15). Below it, full schemas are sent unchanged.
 2. **Schema stripping** — a tool-definition hook replaces the parameter schema of every deferrable tool with a small stub (name + description survive). This runs when the runtime agent is built, so the model never receives the full schemas upfront.
 3. **`tool_search` tool** — a real tool is added to the agent. When the model calls it with a query, the tool inspects its sibling tools and returns the full JSON parameter schemas of the matches.
-4. **System-prompt guidance** — a short note instructs the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
-5. **Transparent execution** — the underlying tools stay registered and executable. Tool calls and results work identically; only how schemas reach the model changes.
+4. **Progressive disclosure** — `tool_search` also records the matched tools as *revealed*. The hook re-runs on every reasoning iteration, so on the next step the revealed tools are advertised with their full, authoritative schema on the *registered* definition. This is what lets a structured tool caller actually pass arguments to a previously deferred tool, rather than only reading its schema as text.
+5. **System-prompt guidance** — a short note instructs the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
+6. **Transparent execution** — the underlying tools stay registered and executable. Tool calls and results work identically; only how schemas reach the model changes.
 
 ### DeferrablePolicy
 
@@ -40,6 +41,15 @@ Each tool has a `deferrable` policy that controls whether its schema can be defe
 
 The `tool_search` tool itself is never deferred.
 
+### Never-defer allowlist
+
+`DeferrablePolicy::Never` is set by the tool's *owner*. An embedder that composes tools it does not own (for example file/shell tools from another crate) can instead keep specific tools fully loaded by name:
+
+- Programmatically: `ToolSearchCapability::with_never_defer(["read_file", "bash", ...])`.
+- By configuration: a `never_defer` array (merged with any programmatic list).
+
+Allowlisted tools behave exactly like `DeferrablePolicy::Never` tools — their full schema is always sent — so the agent is never forced through a `tool_search` round-trip before its first read/edit/shell call.
+
 ### Model Support
 
 None required. Because deferral and search are implemented client-side, every model works the same way. For GPT-5.4+ you may prefer [OpenAI Tool Search](/capabilities/openai-tool-search/), which uses the provider's hosted index; use this capability for all other models.
@@ -52,7 +62,18 @@ None required. Because deferral and search are implemented client-side, every mo
 }
 ```
 
-The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
+The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`). Both the threshold and a never-defer allowlist can be set via capability config:
+
+```json
+{
+  "capabilities": {
+    "tool_search": {
+      "threshold": 20,
+      "never_defer": ["read_file", "write_file", "edit_file", "list_directory", "grep_files", "bash"]
+    }
+  }
+}
+```
 
 ## Limitations
 

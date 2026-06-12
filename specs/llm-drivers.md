@@ -312,6 +312,12 @@ tell they support reasoning and hides the effort selector. The discovered profil
 is persisted via the model-sync pipeline and surfaces on existing rows on the next
 sync. Cost is left to hardcoded profiles.
 
+OpenRouter-specific routing controls (`models`, `route`, and `provider`) are
+represented as typed `LlmCallConfig` fields. The Open Responses protocol driver
+serializes them only when the resolved provider type is OpenRouter, so ordinary
+OpenAI-compatible requests do not receive non-standard OpenRouter routing
+extensions.
+
 ### Stateful Continuation Invariant
 
 When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input` — that double-counts context and inflates prompt-cache keys.
