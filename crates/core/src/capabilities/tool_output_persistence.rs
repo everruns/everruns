@@ -181,11 +181,23 @@ pub fn compact_persisted_result_for_model(
     }
 
     // Compact stderr inline if present (no separate file pointer needed — already in output_files).
-    if let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str()) {
-        if stderr_text.len() > budget {
-            let compacted = priority_aware_truncate(stderr_text, budget);
-            obj.insert("stderr".to_string(), json!(compacted));
-        }
+    compact_stderr_inline(obj, budget);
+}
+
+/// Compact the inline `stderr` field to `budget` bytes using priority-aware truncation.
+///
+/// Called from `compact_persisted_result_for_model` and also directly when stderr was
+/// persisted but there is no stdout file (so `compact_persisted_result_for_model` was
+/// not invoked).
+fn compact_stderr_inline(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    budget: usize,
+) {
+    if let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str())
+        && stderr_text.len() > budget
+    {
+        let compacted = priority_aware_truncate(stderr_text, budget);
+        obj.insert("stderr".to_string(), json!(compacted));
     }
 }
 
@@ -330,6 +342,16 @@ impl PostToolExecHook for PersistOutputHook {
 
                 if let Some(ref path) = persist_result.stderr_path {
                     output_files.push(format!("/workspace{path}"));
+                    // Compact stderr inline when stdout was not persisted (if stdout was
+                    // persisted, compact_persisted_result_for_model already handled this).
+                    if persist_result.stdout_path.is_none() {
+                        let budget = if is_success_result(obj) {
+                            AUTO_SUCCESS_BUDGET
+                        } else {
+                            NORMAL_BUDGET
+                        };
+                        compact_stderr_inline(obj, budget);
+                    }
                 }
 
                 if !output_files.is_empty() {
@@ -717,11 +739,12 @@ mod tests {
     #[test]
     fn test_compact_success_caps_stdout_to_auto_success_budget() {
         let large_stdout = "x".repeat(NORMAL_BUDGET + 1);
+        let large_stdout_len = large_stdout.len();
         let mut obj = serde_json::Map::new();
         obj.insert("stdout".to_string(), json!(large_stdout));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
 
         let inline = obj["stdout"].as_str().unwrap();
         // Inline stdout must be compact (budget + annotation pointer).
@@ -739,11 +762,12 @@ mod tests {
     #[test]
     fn test_compact_failure_caps_stdout_to_normal_budget() {
         let large_stdout = "y".repeat(NORMAL_BUDGET * 2);
+        let large_stdout_len = large_stdout.len();
         let mut obj = serde_json::Map::new();
         obj.insert("stdout".to_string(), json!(large_stdout));
         obj.insert("exit_code".to_string(), json!(1));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
 
         let inline = obj["stdout"].as_str().unwrap();
         assert!(
@@ -782,11 +806,12 @@ mod tests {
         // Explicit "full" mode would have left large inline stdout; persistence
         // must compact it regardless of the verbosity mode.
         let large = "z".repeat(NORMAL_BUDGET * 3);
+        let large_len = large.len();
         let mut obj = serde_json::Map::new();
         obj.insert("stdout".to_string(), json!(large));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_len);
 
         let inline = obj["stdout"].as_str().unwrap();
         assert!(
@@ -799,12 +824,13 @@ mod tests {
     fn test_compact_large_stderr_capped_on_failure() {
         let large_stderr = "e".repeat(NORMAL_BUDGET * 2);
         let large_stdout = "o".repeat(100);
+        let large_stdout_len = large_stdout.len();
         let mut obj = serde_json::Map::new();
         obj.insert("stdout".to_string(), json!(large_stdout));
         obj.insert("stderr".to_string(), json!(large_stderr));
         obj.insert("exit_code".to_string(), json!(1));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
 
         let inline_stderr = obj["stderr"].as_str().unwrap();
         assert!(
@@ -818,11 +844,12 @@ mod tests {
     fn test_compact_non_exec_output_field() {
         // daytona_exec uses "output" instead of "stdout"
         let large_output = "d".repeat(NORMAL_BUDGET + 1);
+        let large_output_len = large_output.len();
         let mut obj = serde_json::Map::new();
         obj.insert("output".to_string(), json!(large_output));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_output.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_output_len);
 
         let inline = obj["output"].as_str().unwrap();
         assert!(
@@ -845,5 +872,23 @@ mod tests {
         assert_eq!(obj.get("stdout"), None);
         assert_eq!(obj.get("output"), None);
         assert_eq!(obj["result"].as_str(), Some("ok"));
+    }
+
+    #[test]
+    fn test_compact_stderr_inline_caps_stderr() {
+        // Exercises the compact_stderr_inline helper directly, which is also called
+        // in after_exec when stderr is persisted but stdout is not.
+        let large = "e".repeat(NORMAL_BUDGET * 2);
+        let mut obj = serde_json::Map::new();
+        obj.insert("stderr".to_string(), json!(large));
+
+        compact_stderr_inline(&mut obj, NORMAL_BUDGET);
+
+        let inline = obj["stderr"].as_str().unwrap();
+        assert!(
+            inline.len() <= NORMAL_BUDGET + 200,
+            "compact_stderr_inline must cap stderr to budget ({} bytes got)",
+            inline.len()
+        );
     }
 }
