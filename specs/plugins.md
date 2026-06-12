@@ -212,8 +212,8 @@ capability threat model:
 - MCP servers declared by a plugin use existing scoped-MCP auth (OAuth /
   API key) with per-org consent, analogous to Claude Code's connector
   enablement step.
-- Threat model entries to be added under [threat-model.md](threat-model.md)
-  alongside the existing declarative-capability entries.
+- Threat model entries: see `TM-PLUGIN-*` in
+  [threat-model.md](threat-model.md) § 26.
 
 ## Phasing
 

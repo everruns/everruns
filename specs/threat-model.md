@@ -1326,6 +1326,25 @@ This ensures GitHub never instantiates the secret value into a runner that is ex
 **TM-CI-006 — Outside-collaborator approval gate:**
 Even with per-secret scoping, an attacker who controls a previously-approved fork can submit malicious PRs that the workflow base-branch YAML still runs. The remaining defense layer is the GitHub org setting "Require approval for all outside collaborators" under Actions → General → Fork pull request workflows. This is a repo/org-level operational control, not a workflow change, and is therefore tracked here for visibility.
 
+## 26. Plugins (TM-PLUGIN)
+
+Installed plugins (`specs/plugins.md`) compile third-party remote content into agent context: marketplace catalogs and plugin directories are fetched from external sources and become system prompt text, skills, and scoped MCP config. This is a supply-chain and prompt-injection surface layered on the declarative-capability model; everything compiled passes the same declarative validation (size/count limits, text-only files, traversal rejection, scoped-MCP URL checks).
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-PLUGIN-001 | Prompt injection via marketplace plugin content (agents/skills/commands compiled into system prompt and skill mounts) | High | Same class as TM-AGENT-001/002 — no complete defense. Adding marketplaces and installing plugins are admin-gated org actions; content is pinned at install time and reviewable; install warnings surface dropped components | **ACCEPTED** |
+| TM-PLUGIN-002 | Supply-chain mutation of an installed plugin (upstream force-push or tag move) | High | GitHub installs pin a commit SHA at install time; the running capability is the persisted compiled definition, never re-fetched implicitly; updates are explicit, re-fetched at the marketplace's current synced SHA, and recompiled through full validation | MITIGATED |
+| TM-PLUGIN-003 | SSRF via `url` marketplace source or plugin-declared MCP servers | High | `url` sources are HTTPS-only and SSRF-validated before fetch; plugin `.mcp.json` passes the same SSRF-safe scoped-MCP validation as agent/harness `mcpServers` (TM-MCP) | MITIGATED |
+| TM-PLUGIN-004 | Resource exhaustion via oversized catalog or plugin archive (zip bomb) | Medium | Size cap on fetched `marketplace.json`; tarball extraction enforces per-file (64 KB), total (4 MB), and file-count (256) caps and rejects symlink/hardlink entries | MITIGATED |
+| TM-PLUGIN-005 | Code-execution smuggling via plugin components | High | v1 compiles data-only contributions; `hooks`, `lspServers`, `monitors` and other executable components are dropped with install warnings and never executed server-side; MCP tools execute remotely under existing TM-MCP controls | MITIGATED |
+| TM-PLUGIN-006 | Server filesystem read via `local_path` marketplace source | High | `local_path` is rejected unless the deployment is dev-grade (`DeploymentGrade::from_env().is_dev()`); production deployments only accept `github`/`url` sources | MITIGATED |
+| TM-PLUGIN-007 | Typosquatting / spoofed plugin names in an org's marketplaces | Medium | Marketplace registration is admin-gated; plugin and marketplace names are unique per org; no global plugin namespace exists in v1, so impersonation requires an admin to register the hostile marketplace | **ACCEPTED** |
+
+### Mitigation Details
+
+**TM-PLUGIN-002 — Pinned compile-at-install model:**
+The capability that agents execute is the compiled `definition` JSONB persisted in `plugin_installs` at install/update time. Upstream changes to the source repository have no effect on running agents until an admin explicitly updates, at which point the content is re-fetched at the marketplace's current synced SHA and re-validated end to end. This is the same trust shape as a lockfile: sync moves the candidate version; update moves the installed one.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
