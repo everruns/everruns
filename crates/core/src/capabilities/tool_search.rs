@@ -19,7 +19,7 @@
 //      it, the tool inspects its sibling tools via `ToolContext::tool_registry`
 //      (the same mechanism `spawn_background` uses) and returns the full
 //      parameter schemas of the tools matching the query. It also records those
-//      tools as *revealed* (see below).
+//      tools as *revealed* for the calling session (see below).
 //   3. A short system-prompt note tells the model to call `tool_search` before
 //      using a tool whose parameters it has not loaded yet.
 //
@@ -27,21 +27,26 @@
 // results work exactly as before — the only difference is how schemas reach the
 // model. No driver or agent-loop changes are required.
 //
-// Progressive disclosure
-// ----------------------
+// Progressive disclosure (session-scoped)
+// ---------------------------------------
 // Structured tool calling makes the model emit arguments against a tool's
 // *registered* schema. If a deferred tool's registered schema stayed the stub
 // forever, the model could read the real schema from a `tool_search` *result*
 // but still have no registered schema to emit arguments against. To close that
-// gap, a shared `RevealedTools` set is threaded through the capability, its
-// `DeferSchemaHook`, and the `tool_search` tool. When `tool_search` matches a
-// tool it records it as revealed; because `RuntimeAgentBuilder::build()` re-runs
-// the hook on every reason iteration, the next iteration advertises that tool
-// with its full, authoritative schema on the *registered* definition — so the
-// model can finally pass arguments. Tool execution always uses the real tool, so
-// only the advertised schema ever changes. The permissive stub
-// (`additionalProperties: true`) remains as a belt-and-suspenders for the first
-// call before a reveal lands.
+// gap, `tool_search` records its matches as revealed; because the hook re-runs
+// when turn context is reassembled, a later pass advertises those tools with
+// their full, authoritative schema on the *registered* definition — so the model
+// can finally pass arguments. The permissive stub (`additionalProperties: true`)
+// remains as a belt-and-suspenders for the first call before a reveal lands.
+//
+// The capability is registered once and shared across every session/agent (see
+// `CapabilityRegistry::with_builtins`), so the revealed set MUST be keyed by
+// session — otherwise reveals would leak across sessions and gradually disable
+// deferral process-wide. `DeferSchemaHook::transform` has no session context of
+// its own, so the hook captures its `session_id` at construction time via
+// `Capability::tool_definition_hooks_with_context`, and the `tool_search` tool
+// keys writes by `ToolContext::session_id`. Both share one process-global
+// `RevealRegistry` (keyed by session, bounded by `MAX_REVEAL_SESSIONS`).
 //
 // Never-defer allowlist
 // ---------------------
@@ -53,14 +58,17 @@
 // round-trip before its first read/edit/shell call. Equivalent in effect to
 // marking those tools `DeferrablePolicy::Never`, but settable from outside.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, ToolDefinitionHook};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
+};
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
+use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::collections::HashSet;
-use std::sync::{Arc, Mutex};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
@@ -73,11 +81,63 @@ pub const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 /// Maximum number of tools returned (and revealed) by a single `tool_search` call.
 const MAX_SEARCH_RESULTS: usize = 12;
 
-/// Names of tools the model has loaded via `tool_search` this session. Shared
-/// (by `Arc`) between the capability, its `DeferSchemaHook`, and its
-/// `tool_search` tool so a reveal during tool execution is visible to the next
-/// context assembly. See the "Progressive disclosure" note above.
-type RevealedTools = Arc<Mutex<HashSet<String>>>;
+/// Upper bound on the number of sessions tracked in the revealed registry. The
+/// capability is a process-global singleton with no session-end callback, so the
+/// registry evicts the oldest sessions past this bound. An evicted session
+/// simply re-runs `tool_search` if it is still active — correct, just slightly
+/// less optimal. Each entry holds only a handful of tool-name strings.
+const MAX_REVEAL_SESSIONS: usize = 4096;
+
+/// Session-keyed set of tool names revealed via `tool_search`. Shared (by `Arc`)
+/// between the capability, its `DeferSchemaHook`s, and its `tool_search` tool so
+/// a reveal during tool execution is visible to the next context assembly for
+/// the *same* session. See the "Progressive disclosure" note above.
+#[derive(Default)]
+struct RevealRegistry {
+    sets: HashMap<SessionId, HashSet<String>>,
+    /// Insertion order of session keys, for bounded eviction.
+    order: VecDeque<SessionId>,
+}
+
+impl RevealRegistry {
+    /// Record `names` as revealed for `session`, evicting the oldest sessions if
+    /// the registry has grown past `MAX_REVEAL_SESSIONS`.
+    fn reveal(&mut self, session: SessionId, names: impl IntoIterator<Item = String>) {
+        if !self.sets.contains_key(&session) {
+            self.order.push_back(session);
+            self.sets.insert(session, HashSet::new());
+        }
+        // Just inserted if absent, so the entry is always present here.
+        if let Some(set) = self.sets.get_mut(&session) {
+            set.extend(names);
+        }
+
+        while self.sets.len() > MAX_REVEAL_SESSIONS {
+            match self.order.pop_front() {
+                Some(old) => {
+                    self.sets.remove(&old);
+                }
+                None => break,
+            }
+        }
+    }
+
+    /// Names revealed for `session` so far (empty if none / evicted).
+    fn revealed(&self, session: SessionId) -> HashSet<String> {
+        self.sets.get(&session).cloned().unwrap_or_default()
+    }
+}
+
+type SharedReveals = Arc<Mutex<RevealRegistry>>;
+
+/// Lock the revealed registry, recovering from a poisoned mutex rather than
+/// panicking: the revealed set is an optimization and must never take down agent
+/// construction or a worker.
+fn lock_reveals(reveals: &SharedReveals) -> MutexGuard<'_, RevealRegistry> {
+    reveals
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 const SYSTEM_PROMPT: &str = "Many of your tools are loaded lazily to save context: \
 you can see their names and descriptions, but their parameter schemas are hidden \
@@ -97,7 +157,7 @@ searched for.";
 pub struct ToolSearchCapability {
     threshold: usize,
     never_defer: Arc<HashSet<String>>,
-    revealed: RevealedTools,
+    revealed: SharedReveals,
 }
 
 impl ToolSearchCapability {
@@ -109,7 +169,7 @@ impl ToolSearchCapability {
         Self {
             threshold,
             never_defer: Arc::new(HashSet::new()),
-            revealed: RevealedTools::default(),
+            revealed: SharedReveals::default(),
         }
     }
 
@@ -128,17 +188,41 @@ impl ToolSearchCapability {
         self
     }
 
-    /// Build a `DeferSchemaHook` sharing this capability's revealed set, with the
-    /// given threshold and never-defer allowlist.
+    /// Resolve the effective threshold and never-defer allowlist from config,
+    /// merging the config `never_defer` array onto the constructor set.
+    fn resolve_config(&self, config: &Value) -> (usize, Arc<HashSet<String>>) {
+        let threshold = config
+            .get("threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(self.threshold);
+
+        let extra = config.get("never_defer").and_then(|v| v.as_array());
+        let never_defer = match extra {
+            Some(arr) if !arr.is_empty() => {
+                let mut merged: HashSet<String> = self.never_defer.as_ref().clone();
+                merged.extend(arr.iter().filter_map(|v| v.as_str().map(str::to_string)));
+                Arc::new(merged)
+            }
+            // No config override: reuse the constructor set without cloning.
+            _ => self.never_defer.clone(),
+        };
+        (threshold, never_defer)
+    }
+
+    /// Build a `DeferSchemaHook` for `session`, sharing this capability's
+    /// revealed registry.
     fn hook(
         &self,
         threshold: usize,
         never_defer: Arc<HashSet<String>>,
+        session: SessionId,
     ) -> Arc<dyn ToolDefinitionHook> {
         Arc::new(DeferSchemaHook {
             threshold,
             never_defer,
             revealed: self.revealed.clone(),
+            session,
         })
     }
 }
@@ -191,27 +275,27 @@ impl Capability for ToolSearchCapability {
     }
 
     fn tool_definition_hooks(&self) -> Vec<Arc<dyn ToolDefinitionHook>> {
-        vec![self.hook(self.threshold, self.never_defer.clone())]
+        // No collection context: progressive disclosure is keyed to an ephemeral
+        // session (deferral still works; reveals just won't restore). Production
+        // goes through `tool_definition_hooks_with_context`.
+        vec![self.hook(self.threshold, self.never_defer.clone(), SessionId::new())]
     }
 
     fn tool_definition_hooks_with_config(
         &self,
         config: &Value,
     ) -> Vec<Arc<dyn ToolDefinitionHook>> {
-        let threshold = config
-            .get("threshold")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(self.threshold);
+        let (threshold, never_defer) = self.resolve_config(config);
+        vec![self.hook(threshold, never_defer, SessionId::new())]
+    }
 
-        // `never_defer` from config augments (does not replace) the constructor
-        // set, so an operator can extend the embedder's hot-path allowlist.
-        let mut never_defer: HashSet<String> = self.never_defer.as_ref().clone();
-        if let Some(arr) = config.get("never_defer").and_then(|v| v.as_array()) {
-            never_defer.extend(arr.iter().filter_map(|v| v.as_str().map(str::to_string)));
-        }
-
-        vec![self.hook(threshold, Arc::new(never_defer))]
+    fn tool_definition_hooks_with_context(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        let (threshold, never_defer) = self.resolve_config(config);
+        vec![self.hook(threshold, never_defer, ctx.session_id)]
     }
 }
 
@@ -237,7 +321,9 @@ fn deferred_stub_schema(tool_name: &str) -> Value {
 pub(crate) struct DeferSchemaHook {
     threshold: usize,
     never_defer: Arc<HashSet<String>>,
-    revealed: RevealedTools,
+    revealed: SharedReveals,
+    /// Session this hook was built for; used to read the right reveal set.
+    session: SessionId,
 }
 
 impl DeferSchemaHook {
@@ -260,10 +346,7 @@ impl ToolDefinitionHook for DeferSchemaHook {
             return tools;
         }
 
-        let revealed = self
-            .revealed
-            .lock()
-            .expect("tool_search revealed set poisoned");
+        let revealed = lock_reveals(&self.revealed).revealed(self.session);
 
         tools
             .into_iter()
@@ -310,10 +393,11 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
 // ============================================================================
 
 /// Tool that returns full parameter schemas for tools matching a query and
-/// records them as revealed so the schema hook restores them on the next pass.
+/// records them as revealed (per session) so the schema hook restores them on
+/// the next pass.
 #[derive(Default)]
 pub struct ToolSearchTool {
-    revealed: RevealedTools,
+    revealed: SharedReveals,
 }
 
 impl ToolSearchTool {
@@ -471,19 +555,16 @@ impl Tool for ToolSearchTool {
             }));
         }
 
-        // Record the matched tools as revealed so the schema hook advertises
-        // their full schema on the *registered* definition next iteration. This
-        // is what lets a structured caller actually pass arguments to them.
+        // Record the matched tools as revealed for this session so the schema
+        // hook advertises their full schema on the *registered* definition next
+        // iteration. This is what lets a structured caller actually pass
+        // arguments to them.
         let loaded: Vec<String> = matches
             .iter()
             .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_string))
             .collect();
         if !loaded.is_empty() {
-            let mut revealed = self
-                .revealed
-                .lock()
-                .expect("tool_search revealed set poisoned");
-            revealed.extend(loaded.iter().cloned());
+            lock_reveals(&self.revealed).reveal(context.session_id, loaded.iter().cloned());
         }
 
         ToolExecutionResult::success(json!({
@@ -531,13 +612,18 @@ mod tests {
             .collect()
     }
 
-    /// A bare hook with an empty allowlist and a fresh revealed set.
+    /// A bare hook with an empty allowlist, a fresh registry, and a fresh session.
     fn hook(threshold: usize) -> DeferSchemaHook {
         DeferSchemaHook {
             threshold,
             never_defer: Arc::new(HashSet::new()),
-            revealed: RevealedTools::default(),
+            revealed: SharedReveals::default(),
+            session: SessionId::new(),
         }
+    }
+
+    fn ctx_for(session: SessionId) -> SystemPromptContext {
+        SystemPromptContext::without_file_store(session)
     }
 
     fn is_stubbed(tool: &ToolDefinition) -> bool {
@@ -629,7 +715,7 @@ mod tests {
         // An embedder allowlist keeps a tool full even though its policy is
         // Automatic (i.e. the embedder does not own its definition).
         let cap = ToolSearchCapability::with_threshold(3).with_never_defer(["tool_1"]);
-        let hooks = cap.tool_definition_hooks();
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(SessionId::new()), &json!({}));
         let out = hooks[0].transform(many_tools(5));
 
         let kept = out.iter().find(|t| t.name() == "tool_1").unwrap();
@@ -646,7 +732,7 @@ mod tests {
         // Constructor allowlist plus a config-provided one are both honored.
         let cap = ToolSearchCapability::with_threshold(3).with_never_defer(["tool_0"]);
         let config = json!({ "never_defer": ["tool_2"] });
-        let hooks = cap.tool_definition_hooks_with_config(&config);
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(SessionId::new()), &config);
         let out = hooks[0].transform(many_tools(5));
 
         assert!(!is_stubbed(
@@ -665,7 +751,7 @@ mod tests {
         let cap = ToolSearchCapability::with_threshold(100);
         // Config lowers the threshold so deferral activates.
         let config = json!({ "threshold": 3 });
-        let hooks = cap.tool_definition_hooks_with_config(&config);
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(SessionId::new()), &config);
         let out = hooks[0].transform(many_tools(5));
         assert!(out.iter().any(is_stubbed));
     }
@@ -673,10 +759,12 @@ mod tests {
     #[test]
     fn test_revealed_tool_regains_full_schema_next_pass() {
         // The end-to-end progressive-disclosure invariant: once a tool is
-        // revealed, its *registered* schema (not just the tool_search result
-        // text) is restored on the next hook pass.
+        // revealed for a session, its *registered* schema (not just the
+        // tool_search result text) is restored on the next hook pass for that
+        // session.
         let cap = ToolSearchCapability::with_threshold(3);
-        let hooks = cap.tool_definition_hooks();
+        let session = SessionId::new();
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(session), &json!({}));
 
         // First pass: tool_0 is deferred.
         let before = hooks[0].transform(many_tools(5));
@@ -685,8 +773,8 @@ mod tests {
             "precondition: tool_0 starts deferred"
         );
 
-        // Simulate tool_search revealing it (what execute_with_context records).
-        cap.revealed.lock().unwrap().insert("tool_0".to_string());
+        // Simulate tool_search revealing it for this session.
+        lock_reveals(&cap.revealed).reveal(session, ["tool_0".to_string()]);
 
         // Next pass (same hook, re-run by the reason atom): full schema restored.
         let after = hooks[0].transform(many_tools(5));
@@ -698,6 +786,43 @@ mod tests {
             is_stubbed(after.iter().find(|t| t.name() == "tool_1").unwrap()),
             "unrevealed tools stay deferred"
         );
+    }
+
+    #[test]
+    fn test_reveals_are_isolated_per_session() {
+        // A reveal in one session must not affect another session's hook (the
+        // capability is a process-global singleton shared across sessions).
+        let cap = ToolSearchCapability::with_threshold(3);
+        let session_a = SessionId::new();
+        let session_b = SessionId::new();
+        let hook_a = cap.tool_definition_hooks_with_context(&ctx_for(session_a), &json!({}));
+        let hook_b = cap.tool_definition_hooks_with_context(&ctx_for(session_b), &json!({}));
+
+        lock_reveals(&cap.revealed).reveal(session_a, ["tool_0".to_string()]);
+
+        let out_a = hook_a[0].transform(many_tools(5));
+        let out_b = hook_b[0].transform(many_tools(5));
+        assert!(
+            !is_stubbed(out_a.iter().find(|t| t.name() == "tool_0").unwrap()),
+            "session A revealed tool_0"
+        );
+        assert!(
+            is_stubbed(out_b.iter().find(|t| t.name() == "tool_0").unwrap()),
+            "session B must not see session A's reveal"
+        );
+    }
+
+    #[test]
+    fn test_reveal_registry_evicts_oldest_sessions() {
+        let mut reg = RevealRegistry::default();
+        let first = SessionId::new();
+        reg.reveal(first, ["tool_0".to_string()]);
+        for _ in 0..MAX_REVEAL_SESSIONS {
+            reg.reveal(SessionId::new(), ["tool_x".to_string()]);
+        }
+        // The oldest session was evicted once we exceeded the bound.
+        assert!(reg.revealed(first).is_empty());
+        assert!(reg.sets.len() <= MAX_REVEAL_SESSIONS);
     }
 
     #[test]
@@ -859,12 +984,14 @@ mod tests {
     #[tokio::test]
     async fn test_search_records_reveal_and_restores_registered_schema() {
         // The cross-cutting invariant EVE-527 asked for: a tool_search call
-        // reveals the matched tool, and the *same* capability's hook then
-        // restores its registered schema on the next pass.
+        // reveals the matched tool for its session, and the *same* capability's
+        // hook for that session then restores its registered schema on the next
+        // pass.
         use crate::tools::ToolRegistry;
 
         let cap = ToolSearchCapability::with_threshold(3);
-        let hooks = cap.tool_definition_hooks();
+        let session: SessionId = uuid::Uuid::new_v4().into();
+        let hooks = cap.tool_definition_hooks_with_context(&ctx_for(session), &json!({}));
 
         // Precondition: read_file is deferred among a surface above threshold.
         let mut surface = many_tools(4);
@@ -878,11 +1005,11 @@ mod tests {
             before.iter().find(|t| t.name() == "read_file").unwrap()
         ));
 
-        // Run the capability's own tool_search tool.
+        // Run the capability's own tool_search tool, scoped to this session.
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
         let tool = &cap.tools()[0];
-        let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
+        let mut ctx = ToolContext::new(session);
         ctx.tool_registry = Some(Arc::new(registry));
         ctx.visible_tool_names = Some(Arc::new(["read_file".to_string()].into_iter().collect()));
 
