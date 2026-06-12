@@ -31,6 +31,11 @@ export async function listDeclarativeCapabilities(): Promise<DeclarativeCapabili
   return response.data.data;
 }
 
+export async function getDeclarativeCapability(id: string): Promise<DeclarativeCapability> {
+  const response = await api.get<DeclarativeCapability>(`/v1/capabilities/declarative/${id}`);
+  return response.data;
+}
+
 export async function createDeclarativeCapability(
   request: CreateDeclarativeCapabilityRequest,
 ): Promise<DeclarativeCapability> {
