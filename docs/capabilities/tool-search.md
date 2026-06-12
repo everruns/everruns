@@ -22,6 +22,10 @@ Unlike [OpenAI Tool Search](/capabilities/openai-tool-search/), which relies on 
 
 ## How It Works
 
+The diagram below traces one deferred tool through a full round-trip — from schema stripping at context-assembly time, through the `tool_search` call, to calling the real tool with its restored parameters.
+
+![Tool Search deferred-loading flow: the Agent Runtime strips parameter schemas to stubs before sending tools to the model; the model calls tool_search, which ranks visible tools in the registry and returns full schemas while recording a session-scoped reveal; on the next iteration the hook restores the revealed tool's registered schema so the model can call it with full parameters.](../images/capabilities/tool-search-flow.svg)
+
 1. **Threshold check** — deferral only activates when the total tool count meets or exceeds the threshold (default: 15). Below it, full schemas are sent unchanged.
 2. **Schema stripping** — a tool-definition hook replaces the parameter schema of every deferrable tool with a small stub (name + description survive). This runs when the runtime agent is built, so the model never receives the full schemas upfront.
 3. **`tool_search` tool** — a real tool is added to the agent. When the model calls it with a query, the tool inspects its sibling tools and returns the full JSON parameter schemas of the matches.

@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant M as Model
+    participant R as Agent Runtime
+    participant T as tool_search
+    participant G as Tool Registry
+
+    R->>R: Strip schemas: 18/19 → stubs
+    R->>M: Send names + descriptions only
+    M->>T: tool_search("read file")
+    T->>G: Rank visible tools by keyword
+    G->>T: Top matches + full schemas
+    T->>T: Record reveal (session-scoped)
+    T->>M: Return matching schemas
+    R->>R: Re-run hook → restore schema
+    M->>G: Call read_file(path), full params
+    G-->>M: Result
