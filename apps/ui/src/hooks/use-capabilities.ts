@@ -9,6 +9,7 @@ import {
   createDeclarativeCapability,
   deleteDeclarativeCapability,
   getCapability,
+  getDeclarativeCapability,
   listCapabilities,
   listDeclarativeCapabilities,
   updateDeclarativeCapability,
@@ -75,6 +76,28 @@ export function useDeclarativeCapabilities() {
   return {
     ...query,
     isLoading: orgLoading || query.isLoading,
+  };
+}
+
+export function useDeclarativeCapability(id: string | undefined) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: [...queryKeys.declarativeCapabilities.detail(id ?? ""), org],
+    queryFn: () => getDeclarativeCapability(id!),
+    enabled: !!org && !!id,
+  });
+
+  const fallback = useResourceOrgFallback({
+    resourceId: id,
+    error: query.error,
+    isLoading: orgLoading || query.isLoading,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
   };
 }
 
