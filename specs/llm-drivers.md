@@ -1,5 +1,12 @@
 # LLM Drivers Specification
 
+> **Domain model note:** the canonical provider domain model (drivers, services,
+> providers, models, model profiles) is [providers.md](providers.md). That spec
+> renames `LlmDriver` → `ChatDriver` and moves the entity/resolution content out
+> of this document; this spec remains the chat-service wire contract (streaming,
+> error types, retries, thinking, prompt cache, compaction) and is restructured
+> as the refactor slices land.
+
 ## Abstract
 
 LLM drivers provide a provider-agnostic interface for interacting with Large Language Model APIs. The driver abstraction enables dependency inversion - provider implementations (OpenAI, Anthropic) register their drivers at startup, while core business logic operates against the trait interface.
