@@ -74,8 +74,7 @@ pub async fn tool_context_for_ctx(
     // panics when harness_id is absent and no fallback is provided.
     let session_overlay = AgentConfigOverlay {
         system_prompt: session_row.system_prompt.clone(),
-        capabilities: serde_json::from_value(session_row.capabilities.clone())
-            .unwrap_or_default(),
+        capabilities: serde_json::from_value(session_row.capabilities.clone()).unwrap_or_default(),
         initial_files: serde_json::from_value(session_row.initial_files.clone())
             .unwrap_or_default(),
         network_access: session_row
