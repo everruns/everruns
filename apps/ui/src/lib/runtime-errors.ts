@@ -62,7 +62,8 @@ export function localizeRuntimeError(
   // `detail` field; the backend fallback text already includes it, so append
   // it only when the text was replaced with a localized template.
   const detail = stringField(error.fields, "detail");
-  return detail ? `${localized}\n\nDetails: ${detail}` : localized;
+  if (!detail) return localized;
+  return `${localized}\n\n${formatMessage(locale, "runtime_error_details_label")}: ${detail}`;
 }
 
 function localizeRuntimeErrorBase(

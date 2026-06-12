@@ -104,6 +104,7 @@ const messages = {
       "There is a misconfiguration with the AI provider. Please contact support.",
     runtime_error_provider_quota_exhausted:
       "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    runtime_error_details_label: "Details",
     runtime_error_provider_unavailable:
       "The AI provider is experiencing issues. Please try again shortly.",
     runtime_error_processing_error:
@@ -283,6 +284,7 @@ const messages = {
       "AI-провайдер налаштований некоректно. Зверніться до підтримки.",
     runtime_error_provider_quota_exhausted:
       "На обліковому записі AI-провайдера закінчилися кредити або квота. Поповніть рахунок або збільште ліміти, щоб продовжити.",
+    runtime_error_details_label: "Деталі",
     runtime_error_provider_unavailable:
       "AI-провайдер зараз недоступний. Спробуйте ще раз трохи пізніше.",
     runtime_error_processing_error:

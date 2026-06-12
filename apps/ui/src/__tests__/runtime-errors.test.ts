@@ -63,4 +63,19 @@ describe("runtime error localization", () => {
     expect(text).toContain("out of credits or quota");
     expect(text).toContain("Details: OpenAI API error (429): insufficient_quota");
   });
+
+  it("localizes the detail label for non-English locales", () => {
+    const text = localizeRuntimeError(
+      "uk",
+      {
+        code: "provider_quota_exhausted",
+        fields: { detail: "OpenAI API error (429): insufficient_quota" },
+      },
+      "backend fallback",
+    );
+
+    expect(text).toContain("кредити або квота");
+    expect(text).toContain("Деталі: OpenAI API error (429): insufficient_quota");
+    expect(text).not.toContain("Details:");
+  });
 });
