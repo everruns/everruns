@@ -1049,7 +1049,11 @@ impl LlmMessage {
 // Driver Factory Types
 // ============================================================================
 
-/// Provider type enumeration matching the database/contracts
+/// Provider type enumeration matching the database/contracts.
+///
+/// Built-in variants are compiled into everruns. [`ProviderType::External`]
+/// (or [`ProviderType::external`]) identifies providers an embedder defines and
+/// registers itself, keyed by their canonical wire id.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
@@ -1069,39 +1073,88 @@ pub enum ProviderType {
     LlmSim,
     /// AWS Bedrock Runtime (ConverseStream API)
     Bedrock,
+    /// Embedder-defined provider identified by its canonical wire id.
+    External(Arc<str>),
+}
+
+impl ProviderType {
+    /// Construct an external provider type from its canonical id.
+    ///
+    /// The id is normalized to lowercase so registration and lookup match
+    /// case-insensitively, consistent with built-in parsing.
+    ///
+    /// ```
+    /// use everruns_core::llm_driver_registry::ProviderType;
+    /// let p = ProviderType::external("OpenAI-Codex");
+    /// assert_eq!(p.as_str(), "openai-codex");
+    /// ```
+    pub fn external(id: impl Into<Arc<str>>) -> Self {
+        let id: Arc<str> = id.into();
+        // Avoid reallocating when the id is already lowercase.
+        if id.bytes().any(|b| b.is_ascii_uppercase()) {
+            ProviderType::External(Arc::from(id.to_lowercase().as_str()))
+        } else {
+            ProviderType::External(id)
+        }
+    }
+
+    /// Canonical string identifier for this provider.
+    pub fn as_str(&self) -> &str {
+        match self {
+            ProviderType::OpenAI => "openai",
+            ProviderType::OpenRouter => "openrouter",
+            ProviderType::AzureOpenAI => "azure_openai",
+            ProviderType::OpenAICompletions => "openai_completions",
+            ProviderType::Anthropic => "anthropic",
+            ProviderType::Gemini => "gemini",
+            ProviderType::LlmSim => "llmsim",
+            ProviderType::Bedrock => "bedrock",
+            ProviderType::External(id) => id.as_ref(),
+        }
+    }
 }
 
 impl std::str::FromStr for ProviderType {
-    type Err = String;
+    // Parsing never fails: unknown ids become `External`.
+    type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "openai" => Ok(ProviderType::OpenAI),
-            "openrouter" => Ok(ProviderType::OpenRouter),
-            "azure_openai" => Ok(ProviderType::AzureOpenAI),
-            "openai_completions" => Ok(ProviderType::OpenAICompletions),
-            "anthropic" => Ok(ProviderType::Anthropic),
-            "gemini" => Ok(ProviderType::Gemini),
-            "llmsim" => Ok(ProviderType::LlmSim),
-            "bedrock" => Ok(ProviderType::Bedrock),
-            _ => Err(format!("Unknown provider type: {}", s)),
-        }
+        // Normalize once: built-in matching and the External id share the same
+        // lowercased form so casing variance never produces duplicate externals.
+        let lower = s.to_lowercase();
+        Ok(match lower.as_str() {
+            "openai" => ProviderType::OpenAI,
+            "openrouter" => ProviderType::OpenRouter,
+            "azure_openai" => ProviderType::AzureOpenAI,
+            "openai_completions" => ProviderType::OpenAICompletions,
+            "anthropic" => ProviderType::Anthropic,
+            "gemini" => ProviderType::Gemini,
+            "llmsim" => ProviderType::LlmSim,
+            "bedrock" => ProviderType::Bedrock,
+            _ => ProviderType::External(Arc::from(lower.as_str())),
+        })
     }
 }
 
 impl std::fmt::Display for ProviderType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ProviderType::OpenAI => write!(f, "openai"),
-            ProviderType::OpenRouter => write!(f, "openrouter"),
-            ProviderType::AzureOpenAI => write!(f, "azure_openai"),
-            ProviderType::OpenAICompletions => write!(f, "openai_completions"),
-            ProviderType::Anthropic => write!(f, "anthropic"),
-            ProviderType::Gemini => write!(f, "gemini"),
-            ProviderType::LlmSim => write!(f, "llmsim"),
-            ProviderType::Bedrock => write!(f, "bedrock"),
-        }
+        f.write_str(self.as_str())
     }
+}
+
+/// Extra provider-specific authentication/metadata beyond an API key.
+///
+/// Built-in providers ignore this; embedder-defined ([`ProviderType::External`])
+/// providers use it to carry OAuth tokens, account ids, or arbitrary extras
+/// their driver factory needs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProviderMetadata {
+    /// OAuth refresh token, when the provider authenticates via OAuth.
+    pub refresh_token: Option<String>,
+    /// Provider-side account identifier, when required.
+    pub account_id: Option<String>,
+    /// Arbitrary extra fields the driver factory understands.
+    pub extra: Option<serde_json::Value>,
 }
 
 /// Configuration for creating an LLM provider
@@ -1113,6 +1166,8 @@ pub struct ProviderConfig {
     pub api_key: Option<String>,
     /// Base URL override (optional)
     pub base_url: Option<String>,
+    /// Extra provider-specific metadata (OAuth tokens, account ids, etc.).
+    pub metadata: ProviderMetadata,
 }
 
 impl ProviderConfig {
@@ -1122,6 +1177,7 @@ impl ProviderConfig {
             provider_type,
             api_key: None,
             base_url: None,
+            metadata: ProviderMetadata::default(),
         }
     }
 
@@ -1136,6 +1192,30 @@ impl ProviderConfig {
         self.base_url = Some(base_url.into());
         self
     }
+
+    /// Set provider-specific metadata.
+    pub fn with_metadata(mut self, metadata: ProviderMetadata) -> Self {
+        self.metadata = metadata;
+        self
+    }
+}
+
+/// Everything a [`DriverFactory`] receives to build a driver instance.
+///
+/// Replaces the old `(api_key, base_url)` factory arguments so that
+/// embedder-defined providers can receive richer auth via [`ProviderMetadata`]
+/// without changing the factory signature again.
+#[derive(Debug, Clone)]
+pub struct DriverConfig {
+    /// Provider type being created.
+    pub provider_type: ProviderType,
+    /// API key, when one is configured. `None` for keyless providers (LlmSim,
+    /// or external providers that authenticate via [`ProviderMetadata`]).
+    pub api_key: Option<String>,
+    /// Base URL override, when configured.
+    pub base_url: Option<String>,
+    /// Extra provider-specific metadata.
+    pub metadata: ProviderMetadata,
 }
 
 impl From<crate::llm_models::LlmProviderType> for ProviderType {
@@ -1150,6 +1230,7 @@ impl From<crate::llm_models::LlmProviderType> for ProviderType {
             LlmProviderType::Gemini => ProviderType::Gemini,
             LlmProviderType::LlmSim => ProviderType::LlmSim,
             LlmProviderType::Bedrock => ProviderType::Bedrock,
+            LlmProviderType::External(id) => ProviderType::External(id),
         }
     }
 }
@@ -1160,6 +1241,7 @@ impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
             provider_type: model.provider_type.clone().into(),
             api_key: model.api_key.clone(),
             base_url: model.base_url.clone(),
+            metadata: model.provider_metadata.clone().unwrap_or_default(),
         }
     }
 }
@@ -1171,10 +1253,11 @@ pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 // Driver Registry
 // ============================================================================
 
-/// Factory function type for creating LLM drivers
+/// Factory function type for creating LLM drivers.
 ///
-/// Takes api_key and optional base_url, returns a boxed driver
-pub type DriverFactory = Arc<dyn Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync>;
+/// Receives a [`DriverConfig`] (provider type, optional key/base URL, and
+/// provider metadata) and returns a boxed driver.
+pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync>;
 
 /// Registry for LLM drivers
 ///
@@ -1208,33 +1291,68 @@ impl DriverRegistry {
         }
     }
 
-    /// Register a driver factory for a provider type
-    pub fn register<F>(&mut self, provider_type: ProviderType, factory: F)
+    /// Register a driver factory for a provider type.
+    ///
+    /// Panics if a factory is already registered for `provider_type` — silent
+    /// overwrites hide double-registration bugs. Use
+    /// [`Self::register_or_replace`] to overwrite intentionally.
+    pub fn register<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
     where
-        F: Fn(&str, Option<&str>) -> BoxedLlmDriver + Send + Sync + 'static,
+        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
     {
+        let provider_type = provider_type.into();
+        if self.factories.contains_key(&provider_type) {
+            panic!(
+                "driver already registered for provider '{provider_type}'; \
+                 use register_or_replace to overwrite intentionally"
+            );
+        }
         self.factories.insert(provider_type, Arc::new(factory));
+    }
+
+    /// Register a driver factory, replacing any existing one for the provider.
+    ///
+    /// Use when overwriting is intentional (e.g. swapping in an `LlmSim` driver
+    /// for tests). Prefer [`Self::register`] otherwise so duplicates surface.
+    pub fn register_or_replace<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
+    where
+        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
+    {
+        self.factories
+            .insert(provider_type.into(), Arc::new(factory));
+    }
+
+    /// Register a driver factory for an embedder-defined external provider,
+    /// keyed by its canonical id. The id is normalized to lowercase (via
+    /// [`ProviderType::external`]) so it matches parsed lookups regardless of
+    /// the casing stored in the database or sent on the wire.
+    pub fn register_external<F>(&mut self, id: impl Into<Arc<str>>, factory: F)
+    where
+        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
+    {
+        self.register(ProviderType::external(id), factory);
     }
 
     /// Create an LLM driver based on configuration
     ///
     /// API keys must be provided in the config for real providers. This function does NOT fall back to
     /// environment variables. Keys should be decrypted from the database and passed here.
-    /// Exception: LlmSim provider does not require an API key.
+    /// Exception: `LlmSim` and `External` providers do not require an API key
+    /// (external providers may authenticate via [`ProviderMetadata`]).
     ///
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_driver(&self, config: &ProviderConfig) -> Result<BoxedLlmDriver> {
-        // API key is required for real providers, but not for LlmSim (testing)
-        let api_key = if config.provider_type == ProviderType::LlmSim {
-            // LlmSim doesn't need a real API key
-            config.api_key.as_deref().unwrap_or("")
-        } else {
-            config.api_key.as_ref().ok_or_else(|| {
-                AgentLoopError::llm(
-                    "API key is required. Configure the API key in provider settings.",
-                )
-            })?
-        };
+        // API key is required for real built-in providers, but not for LlmSim
+        // (testing) or External providers (which may use metadata-based auth).
+        let requires_api_key = !matches!(
+            config.provider_type,
+            ProviderType::LlmSim | ProviderType::External(_)
+        );
+        if requires_api_key && config.api_key.is_none() {
+            return Err(AgentLoopError::llm(
+                "API key is required. Configure the API key in provider settings.",
+            ));
+        }
 
         // Look up the factory for this provider type
         let factory = self.factories.get(&config.provider_type).ok_or_else(|| {
@@ -1242,7 +1360,13 @@ impl DriverRegistry {
         })?;
 
         // Create the driver using the factory
-        Ok(factory(api_key, config.base_url.as_deref()))
+        let driver_config = DriverConfig {
+            provider_type: config.provider_type.clone(),
+            api_key: config.api_key.clone(),
+            base_url: config.base_url.clone(),
+            metadata: config.metadata.clone(),
+        };
+        Ok(factory(&driver_config))
     }
 
     /// Check if a driver is registered for a provider type
@@ -1497,9 +1621,38 @@ mod tests {
             "gemini".parse::<ProviderType>().unwrap(),
             ProviderType::Gemini
         );
-        // Ollama and Custom are no longer supported
-        assert!("ollama".parse::<ProviderType>().is_err());
-        assert!("custom".parse::<ProviderType>().is_err());
+        // Unknown ids parse to External rather than erroring.
+        assert_eq!(
+            "ollama".parse::<ProviderType>().unwrap(),
+            ProviderType::external("ollama")
+        );
+        assert_eq!(
+            "custom".parse::<ProviderType>().unwrap(),
+            ProviderType::external("custom")
+        );
+    }
+
+    #[test]
+    fn test_external_provider_id_is_case_insensitive() {
+        // Built-in matching and external normalization are both case-folding,
+        // so the same id in different casing resolves to one provider.
+        assert_eq!(
+            "OpenAI".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenAI
+        );
+        assert_eq!(
+            "Ollama".parse::<ProviderType>().unwrap(),
+            "ollama".parse::<ProviderType>().unwrap()
+        );
+        assert_eq!(
+            ProviderType::external("OpenAI-Codex").as_str(),
+            "openai-codex"
+        );
+        // Registration and parsed lookup agree regardless of casing.
+        assert_eq!(
+            ProviderType::external("MyProvider"),
+            "myprovider".parse::<ProviderType>().unwrap()
+        );
     }
 
     #[test]
@@ -1530,7 +1683,7 @@ mod tests {
     fn test_driver_registry_requires_api_key() {
         // Register a mock factory
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::OpenAI, |_api_key, _base_url| {
+        registry.register(ProviderType::OpenAI, |_config| {
             // Return a mock driver - just need something that compiles
             struct MockDriver;
             #[async_trait]
@@ -1579,7 +1732,7 @@ mod tests {
         assert!(!registry.has_driver(&ProviderType::OpenAI));
         assert!(!registry.has_driver(&ProviderType::Anthropic));
 
-        registry.register(ProviderType::OpenAI, |_, _| {
+        registry.register(ProviderType::OpenAI, |_config| {
             struct MockDriver;
             #[async_trait]
             impl LlmDriver for MockDriver {
@@ -1596,6 +1749,81 @@ mod tests {
 
         assert!(registry.has_driver(&ProviderType::OpenAI));
         assert!(!registry.has_driver(&ProviderType::Anthropic));
+    }
+
+    #[test]
+    fn test_register_external_and_create_driver_without_api_key() {
+        struct MockDriver;
+        #[async_trait]
+        impl LlmDriver for MockDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unimplemented!()
+            }
+        }
+
+        let mut registry = DriverRegistry::new();
+        registry.register_external("openai-codex", |config| {
+            // External providers may authenticate via metadata, not an api_key.
+            assert_eq!(config.provider_type, ProviderType::external("openai-codex"));
+            Box::new(MockDriver)
+        });
+
+        assert!(registry.has_driver(&ProviderType::external("openai-codex")));
+
+        // No api_key required for external providers.
+        let config = ProviderConfig::new(ProviderType::external("openai-codex")).with_metadata(
+            ProviderMetadata {
+                refresh_token: Some("rt".into()),
+                ..Default::default()
+            },
+        );
+        assert!(registry.create_driver(&config).is_ok());
+    }
+
+    #[test]
+    #[should_panic(expected = "already registered")]
+    fn test_register_duplicate_panics() {
+        struct MockDriver;
+        #[async_trait]
+        impl LlmDriver for MockDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unimplemented!()
+            }
+        }
+
+        let mut registry = DriverRegistry::new();
+        registry.register(ProviderType::OpenAI, |_config| Box::new(MockDriver));
+        // Second registration for the same provider must panic.
+        registry.register(ProviderType::OpenAI, |_config| Box::new(MockDriver));
+    }
+
+    #[test]
+    fn test_register_or_replace_overwrites() {
+        struct MockDriver;
+        #[async_trait]
+        impl LlmDriver for MockDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unimplemented!()
+            }
+        }
+
+        let mut registry = DriverRegistry::new();
+        registry.register(ProviderType::LlmSim, |_config| Box::new(MockDriver));
+        // Replacing intentionally must not panic.
+        registry.register_or_replace(ProviderType::LlmSim, |_config| Box::new(MockDriver));
+        assert!(registry.has_driver(&ProviderType::LlmSim));
     }
 
     // ========================================================================

@@ -132,6 +132,9 @@ pub struct ModelWithProvider {
     pub api_key: Option<String>,
     /// Optional base URL override
     pub base_url: Option<String>,
+    /// Extra provider-specific metadata (OAuth tokens, account ids, etc.).
+    /// Used by embedder-defined providers that authenticate without an API key.
+    pub provider_metadata: Option<crate::llm_driver_registry::ProviderMetadata>,
 }
 
 /// Trait for retrieving LLM provider and model configurations

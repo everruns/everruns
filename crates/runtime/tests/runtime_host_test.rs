@@ -516,6 +516,7 @@ async fn set_default_model(adapter: &MockHostAdapter) {
             provider_type: LlmProviderType::LlmSim,
             api_key: None,
             base_url: None,
+            provider_metadata: None,
         })
         .await;
 }

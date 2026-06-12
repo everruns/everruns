@@ -401,9 +401,11 @@ impl InProcessRuntimeBuilder {
 
         if let Some(config) = self.llm_sim_config.take() {
             let driver = LlmSimDriver::new(config);
+            // Replace intentionally: the platform may already register a
+            // built-in LlmSim driver, and the builder's config takes precedence.
             self.platform_definition
                 .driver_registry_mut()
-                .register(ProviderType::LlmSim, move |_api_key, _base_url| {
+                .register_or_replace(ProviderType::LlmSim, move |_config| {
                     Box::new(driver.clone())
                 });
 
@@ -413,6 +415,7 @@ impl InProcessRuntimeBuilder {
                     provider_type: LlmProviderType::LlmSim,
                     api_key: Some("fake-key".to_string()),
                     base_url: None,
+                    provider_metadata: None,
                 });
             }
         }

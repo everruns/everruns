@@ -650,6 +650,7 @@ mod tests {
                 provider_type: LlmProviderType::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
+                provider_metadata: None,
             })
             .await;
 
@@ -658,7 +659,7 @@ mod tests {
 
         let mut driver_registry = DriverRegistry::new();
         let driver = LlmSimDriver::new(LlmSimConfig::fixed(response));
-        driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        driver_registry.register(ProviderType::LlmSim, move |_config| {
             Box::new(driver.clone())
         });
 

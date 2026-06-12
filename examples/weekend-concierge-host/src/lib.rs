@@ -365,6 +365,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness(harness_id))
         .agent(agent(agent_id, None))

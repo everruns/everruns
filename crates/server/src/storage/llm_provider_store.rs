@@ -86,6 +86,7 @@ impl LlmProviderStore for DbLlmProviderStore {
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,
+            provider_metadata: None,
         }))
     }
 
@@ -128,26 +129,24 @@ impl LlmProviderStore for DbLlmProviderStore {
             provider_type,
             api_key: provider_with_key.api_key,
             base_url: provider_with_key.base_url,
+            provider_metadata: None,
         }))
     }
 }
 
-/// Parse provider type string to enum
+/// Parse a provider type string to its enum. Unknown non-empty ids map to the
+/// open `External` variant so embedder-defined providers stored in the database
+/// resolve to a usable provider type instead of erroring. An empty/whitespace
+/// value is a corrupt row and surfaces as a configuration error rather than a
+/// silent `External("")`.
 fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
-    match provider_type_str.to_lowercase().as_str() {
-        "openai" => Ok(LlmProviderType::Openai),
-        "openrouter" => Ok(LlmProviderType::Openrouter),
-        "azure_openai" => Ok(LlmProviderType::AzureOpenai),
-        "openai_completions" => Ok(LlmProviderType::OpenaiCompletions),
-        "anthropic" => Ok(LlmProviderType::Anthropic),
-        "gemini" => Ok(LlmProviderType::Gemini),
-        "llmsim" => Ok(LlmProviderType::LlmSim),
-        "bedrock" => Ok(LlmProviderType::Bedrock),
-        _ => Err(AgentLoopError::Configuration(format!(
-            "Unsupported provider_type in database: {}",
-            provider_type_str
-        ))),
+    if provider_type_str.trim().is_empty() {
+        return Err(AgentLoopError::Configuration(
+            "empty provider_type in database".to_string(),
+        ));
     }
+    // FromStr is infallible: unknown ids become External.
+    Ok(provider_type_str.parse().unwrap_or_else(|_| unreachable!()))
 }
 
 // ============================================================================
@@ -168,12 +167,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_provider_type_returns_error_for_unknown_value() {
-        let err = parse_provider_type("totally-custom").unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("Unsupported provider_type in database")
-        );
+    fn parse_provider_type_returns_external_for_unknown_value() {
+        // Unknown ids resolve to External, preserving the stored id.
+        let parsed = parse_provider_type("totally-custom").unwrap();
+        assert_eq!(parsed.to_string(), "totally-custom");
+    }
+
+    #[test]
+    fn parse_provider_type_rejects_empty_value() {
+        // Empty/whitespace is a corrupt row, not a valid external provider.
+        assert!(parse_provider_type("").is_err());
+        assert!(parse_provider_type("   ").is_err());
     }
 
     #[test]

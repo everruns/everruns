@@ -93,24 +93,19 @@ impl ModelSyncService {
             });
         };
 
-        // Create driver for the provider
-        let driver_type = match provider_type {
-            LlmProviderType::Openai => ProviderType::OpenAI,
-            LlmProviderType::Openrouter => ProviderType::OpenRouter,
-            LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
-            LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
-            LlmProviderType::Anthropic => ProviderType::Anthropic,
-            LlmProviderType::Gemini => ProviderType::Gemini,
-            LlmProviderType::LlmSim => {
-                return Ok(SyncResult::NotSupported);
-            }
-            LlmProviderType::Bedrock => ProviderType::Bedrock,
-        };
+        // Create driver for the provider; the open conversion handles built-in
+        // and External providers uniformly.
+        let driver_type: ProviderType = provider_type.into();
+        // LlmSim is a test-only provider with no models to sync.
+        if driver_type == ProviderType::LlmSim {
+            return Ok(SyncResult::NotSupported);
+        }
 
         let config = ProviderConfig {
             provider_type: driver_type,
             api_key: Some(api_key),
             base_url: provider_row.base_url.clone(),
+            metadata: Default::default(),
         };
 
         let driver = self
@@ -283,6 +278,9 @@ fn supports_sync_with_base_url(provider_type: &LlmProviderType) -> bool {
             | LlmProviderType::Openrouter
             | LlmProviderType::AzureOpenai
             | LlmProviderType::OpenaiCompletions
+            // External providers are custom by nature: a configured base URL is
+            // the embedder's endpoint, so do not skip discovery for them.
+            | LlmProviderType::External(_)
     )
 }
 
