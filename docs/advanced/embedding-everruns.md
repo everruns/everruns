@@ -186,11 +186,13 @@ let model = ModelWithProvider {
 Notes:
 
 - **Built-in vs custom ids.** Use the built-in ids (`openai`, `openrouter`,
-  `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`) for the
-  providers everruns ships. Reach for a custom `External` id only when adding a
-  provider that is not in core — that keeps your driver from colliding with a
-  built-in slot, and unknown ids round-trip cleanly through the database and the
-  worker boundary instead of erroring.
+  `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`, and
+  `llmsim` for the test simulator) for the providers everruns ships. Reach for a
+  custom `External` id only when adding a provider that is not in core — that
+  keeps your driver from colliding with a built-in slot, and non-empty unknown
+  ids round-trip cleanly through the database and the worker boundary instead of
+  erroring. (An empty or whitespace provider id is rejected as a configuration
+  error rather than becoming a nameless external provider.)
 - **Replacing a built-in driver.** `register` panics on a duplicate provider id
   so double-registration surfaces loudly. To intentionally swap a built-in driver
   — for tests or a specialized deployment — use `register_or_replace`.
