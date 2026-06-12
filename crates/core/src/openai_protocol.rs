@@ -478,7 +478,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                             // in the reported finish_reason.
                             {
                                 let mut acc = accumulated_tool_calls.lock().unwrap();
-                                if let Some(event) = take_pending_tool_calls(&mut acc) {
+                                if let Some(event) =
+                                    take_pending_tool_calls(&mut acc, reason.as_deref())
+                                {
                                     events.push(Ok(event));
                                     reason.get_or_insert_with(|| "tool_calls".to_string());
                                 }
@@ -823,12 +825,41 @@ fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
 /// is pending (the common case, since the finish chunk normally drains them).
-fn take_pending_tool_calls(accumulated_tool_calls: &mut Vec<ToolCall>) -> Option<LlmStreamEvent> {
+///
+/// The fallback may only emit calls when the provider omitted a finish reason or
+/// reported `tool_calls`. Non-tool finish reasons such as `length` and
+/// `content_filter` indicate an incomplete or rejected response, so pending
+/// calls are discarded instead of being executed.
+fn take_pending_tool_calls(
+    accumulated_tool_calls: &mut Vec<ToolCall>,
+    finish_reason: Option<&str>,
+) -> Option<LlmStreamEvent> {
     if accumulated_tool_calls.is_empty() {
         return None;
     }
+
     let calls = std::mem::take(accumulated_tool_calls);
-    Some(LlmStreamEvent::ToolCalls(finalize_tool_calls(calls)))
+    if !matches!(finish_reason, None | Some("tool_calls")) {
+        return None;
+    }
+
+    finalize_pending_tool_calls(calls).map(LlmStreamEvent::ToolCalls)
+}
+
+/// Finalizes fallback-flushed tool calls. Unlike the normal `tool_calls` finish
+/// path, this rejects malformed streamed argument JSON instead of converting it
+/// to `{}` because fallback flushing happens without an explicit final tool-call
+/// completion chunk.
+fn finalize_pending_tool_calls(tool_calls: Vec<ToolCall>) -> Option<Vec<ToolCall>> {
+    tool_calls
+        .into_iter()
+        .map(|mut tc| {
+            if let Some(args_str) = tc.arguments.as_str() {
+                tc.arguments = serde_json::from_str(args_str).ok()?;
+            }
+            Some(tc)
+        })
+        .collect()
 }
 
 /// Processes a single chat-completion stream choice, updating the running
@@ -1434,17 +1465,18 @@ mod tests {
         }
     }
 
-    /// The [DONE] fallback flushes accumulated-but-unemitted tool calls and
-    /// drains the accumulator; once drained it returns None.
+    /// The [DONE] fallback flushes accumulated-but-unemitted tool calls when no
+    /// finish reason was reported and drains the accumulator; once drained it
+    /// returns None.
     #[test]
-    fn test_take_pending_tool_calls_flushes_then_drains() {
+    fn test_take_pending_tool_calls_flushes_then_drains_without_finish_reason() {
         let mut acc = vec![ToolCall {
             id: "call_1".to_string(),
             name: "read_file".to_string(),
             arguments: json!(r#"{"path":"Cargo.toml"}"#),
         }];
 
-        match take_pending_tool_calls(&mut acc) {
+        match take_pending_tool_calls(&mut acc, None) {
             Some(LlmStreamEvent::ToolCalls(calls)) => {
                 assert_eq!(calls.len(), 1);
                 assert_eq!(calls[0].name, "read_file");
@@ -1453,7 +1485,65 @@ mod tests {
             other => panic!("expected ToolCalls, got {:?}", other),
         }
         assert!(acc.is_empty(), "accumulator must be drained after flush");
-        assert!(take_pending_tool_calls(&mut acc).is_none());
+        assert!(take_pending_tool_calls(&mut acc, None).is_none());
+    }
+
+    #[test]
+    fn test_take_pending_tool_calls_discards_non_tool_finish_reason() {
+        let mut acc = vec![ToolCall {
+            id: "call_cut".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!(r#"{"path":"#),
+        }];
+
+        assert!(take_pending_tool_calls(&mut acc, Some("length")).is_none());
+        assert!(
+            acc.is_empty(),
+            "discarded unsafe fallback calls must still drain the accumulator"
+        );
+    }
+
+    #[test]
+    fn test_take_pending_tool_calls_rejects_malformed_fallback_arguments() {
+        let mut acc = vec![ToolCall {
+            id: "call_cut".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!(r#"{"path":"#),
+        }];
+
+        assert!(take_pending_tool_calls(&mut acc, None).is_none());
+        assert!(
+            acc.is_empty(),
+            "malformed fallback calls must be drained instead of re-emitted"
+        );
+    }
+
+    #[test]
+    fn test_non_tool_finish_reason_leaves_pending_calls_for_done_discard() {
+        let mut total_tokens = 0u32;
+        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+
+        process_stream_choice(
+            &choice(
+                r#"{"delta":{"tool_calls":[{"index":0,"id":"call_cut","function":{"name":"read_file","arguments":"{\"path\":"}}]},"finish_reason":null}"#,
+            ),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{},"finish_reason":"length"}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+
+        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+        assert_eq!(finish_reason.as_deref(), Some("length"));
+        assert!(take_pending_tool_calls(&mut acc, finish_reason.as_deref()).is_none());
+        assert!(acc.is_empty());
     }
 
     #[test]
