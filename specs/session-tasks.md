@@ -324,10 +324,12 @@ No backward compatibility is required; data migrates forward once:
   default activity types. Stale-attempt fencing is built: `SessionTaskUpdate`
   carries an optional `expected_attempt` field; `apply_task_update` silently
   drops any update where `expected_attempt` is set but does not match
-  `task.attempt`, so heartbeats and state writes from a superseded executor are
-  rejected once the reaper has marked the task. Writers that do not track
-  attempts (e.g. `cancel_task` from the API) leave `expected_attempt: None` and
-  are unaffected. Re-attach (attempt+1 restart) remains deferred.
+  `task.attempt`. When the reaper fails an orphan it sets `increment_attempt`,
+  bumping `task.attempt` so the superseded executor's heartbeats, state writes,
+  and message posts (`NewTaskMessage.expected_attempt`, enforced in
+  `record_message`) are rejected. Writers that do not track attempts
+  (e.g. `cancel_task` from the API) leave `expected_attempt: None` and are
+  unaffected. Re-attach (attempt+1 restart) remains deferred.
 - Wake-ups: `wake_policy` is enforced at the registry level
   (`DbSessionTaskRegistry`). `OnTerminal` wakes on any transition into
   `succeeded`/`failed`/`canceled`. `OnActivity` additionally wakes on

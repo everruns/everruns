@@ -746,6 +746,15 @@ pub(crate) mod tests {
                 };
                 task.clone()
             };
+            // Stale-attempt fence (mirrors DbSessionTaskRegistry).
+            if let Some(expected) = message.expected_attempt
+                && expected != stored.attempt
+            {
+                return Err(crate::error::AgentLoopError::store(format!(
+                    "Stale attempt {expected} for task {task_id} (current attempt {})",
+                    stored.attempt
+                )));
+            }
             let recorded = TaskMessage {
                 id: generate_task_message_id(),
                 task_id: task_id.to_string(),

@@ -163,6 +163,9 @@ impl Command for PostSessionTaskMessage {
             direction: everruns_core::session_task::TaskMessageDirection::Inbound,
             content,
             in_reply_to: self.in_reply_to,
+            // API writers are unfenced: user messages apply regardless of
+            // executor attempt.
+            expected_attempt: None,
         };
         message.in_reply_to = message.in_reply_to.filter(|s| !s.is_empty());
 

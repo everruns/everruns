@@ -2015,7 +2015,8 @@ message ListOrphanedSessionTasksRequest {
 
 // One (session_id, task_id) pair from the orphan scan.
 message OrphanedSessionTaskEntry {
-    // session_id as a UUID string (no prefix; the prefix is added by the server).
+    // session_id as a raw UUID string. The typed-id prefix ("ses_") is
+    // applied client-side when parsing into a SessionId.
     string session_id = 1;
     string task_id = 2;
 }
