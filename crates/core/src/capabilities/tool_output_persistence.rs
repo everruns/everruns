@@ -189,10 +189,7 @@ pub fn compact_persisted_result_for_model(
 /// Called from `compact_persisted_result_for_model` and also directly when stderr was
 /// persisted but there is no stdout file (so `compact_persisted_result_for_model` was
 /// not invoked).
-fn compact_stderr_inline(
-    obj: &mut serde_json::Map<String, serde_json::Value>,
-    budget: usize,
-) {
+fn compact_stderr_inline(obj: &mut serde_json::Map<String, serde_json::Value>, budget: usize) {
     if let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str())
         && stderr_text.len() > budget
     {
