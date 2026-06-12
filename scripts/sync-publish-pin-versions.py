@@ -32,6 +32,7 @@ INNER_PINS: dict[str, list[str]] = {
         "everruns-openui",
         "everruns-a2ui",
     ],
+    "crates/mcp/Cargo.toml": ["everruns-core"],
     "crates/runtime/Cargo.toml": ["everruns-core"],
     "crates/openai/Cargo.toml": ["everruns-core"],
     "crates/anthropic/Cargo.toml": ["everruns-core"],
