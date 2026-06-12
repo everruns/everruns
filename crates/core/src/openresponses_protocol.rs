@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent, OpenRouterProviderRouting,
 };
 use crate::llm_models::LlmProviderType;
 use crate::llm_retry::{
@@ -781,9 +781,30 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         };
         let prompt_cache_key =
             Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
+        let openrouter_routing = if self.provider_type == LlmProviderType::Openrouter {
+            config.openrouter_routing.as_ref()
+        } else {
+            None
+        };
+        if let Some(routing) = openrouter_routing {
+            routing
+                .validate_for_primary_model(&config.model)
+                .map_err(AgentLoopError::llm)?;
+        }
+        let openrouter_provider = openrouter_routing.and_then(|routing| {
+            routing
+                .provider
+                .as_ref()
+                .filter(|provider| !provider.is_empty())
+                .cloned()
+        });
 
         let request = ResponsesRequest {
             model: config.model.clone(),
+            models: openrouter_routing
+                .and_then(|routing| (!routing.models.is_empty()).then_some(routing.models.clone())),
+            route: openrouter_routing.and_then(|routing| routing.route),
+            provider: openrouter_provider,
             input: input_items,
             instructions,
             previous_response_id,
@@ -1787,6 +1808,12 @@ pub fn compact_output_to_messages(
 #[derive(Debug, Serialize)]
 struct ResponsesRequest {
     model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    models: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    route: Option<crate::llm_driver_registry::OpenRouterRoute>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    provider: Option<OpenRouterProviderRouting>,
     input: Vec<ResponsesInputItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
@@ -1942,6 +1969,9 @@ mod tests {
     fn test_request_serialization() {
         let request = ResponsesRequest {
             model: "gpt-4o".to_string(),
+            models: None,
+            route: None,
+            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -1970,6 +2000,9 @@ mod tests {
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
             model: "o3".to_string(),
+            models: None,
+            route: None,
+            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2003,6 +2036,9 @@ mod tests {
 
         let request = ResponsesRequest {
             model: "gpt-4o".to_string(),
+            models: None,
+            route: None,
+            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2043,6 +2079,7 @@ mod tests {
                 strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2080,6 +2117,7 @@ mod tests {
                 strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
         let first_input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2130,6 +2168,7 @@ mod tests {
                 strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2170,6 +2209,7 @@ mod tests {
                 strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2895,6 +2935,7 @@ mod tests {
             previous_response_id: Some("gen-turn-1".to_string()),
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -2978,6 +3019,7 @@ mod tests {
                 threshold: 15,
             }),
             prompt_cache: None,
+            openrouter_routing: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3002,6 +3044,229 @@ mod tests {
         assert_eq!(
             body["input"],
             json!([{"type": "message", "role": "user", "content": "hello"}])
+        );
+    }
+
+    #[tokio::test]
+    async fn openrouter_provider_sends_routing_controls() {
+        use crate::llm_driver_registry::{
+            OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterProviderSort,
+            OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,
+            OpenRouterRoutingConfig, OpenRouterSortPartition,
+        };
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+            .with_provider_type(LlmProviderType::Openrouter);
+
+        let config = LlmCallConfig {
+            model: "openai/gpt-5-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: Some(OpenRouterRoutingConfig {
+                models: vec![
+                    "openai/gpt-5-mini".to_string(),
+                    "anthropic/claude-sonnet-4.5".to_string(),
+                ],
+                route: Some(OpenRouterRoute::Fallback),
+                provider: Some(OpenRouterProviderRouting {
+                    order: vec!["openai".to_string()],
+                    allow_fallbacks: Some(false),
+                    require_parameters: Some(true),
+                    data_collection: Some(OpenRouterDataCollection::Deny),
+                    zdr: Some(true),
+                    sort: Some(OpenRouterProviderSort::Advanced(
+                        OpenRouterProviderSortOptions {
+                            by: OpenRouterProviderSortBy::Latency,
+                            partition: Some(OpenRouterSortPartition::None),
+                        },
+                    )),
+                    max_price: Some(OpenRouterMaxPrice {
+                        prompt: Some(1.0),
+                        completion: Some(2.0),
+                        ..Default::default()
+                    }),
+                    ..Default::default()
+                }),
+            }),
+        };
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+        let _ = driver.chat_completion_stream(messages, &config).await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+
+        assert_eq!(
+            body["models"],
+            json!(["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"])
+        );
+        assert_eq!(body["route"], "fallback");
+        assert_eq!(
+            body["provider"],
+            json!({
+                "order": ["openai"],
+                "allow_fallbacks": false,
+                "require_parameters": true,
+                "data_collection": "deny",
+                "zdr": true,
+                "sort": {
+                    "by": "latency",
+                    "partition": "none"
+                },
+                "max_price": {
+                    "prompt": 1.0,
+                    "completion": 2.0
+                }
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_provider_omits_openrouter_routing_controls() {
+        use crate::llm_driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url);
+
+        let config = LlmCallConfig {
+            model: "gpt-5-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: Some(OpenRouterRoutingConfig {
+                models: vec!["openai/gpt-5-mini".to_string()],
+                route: Some(OpenRouterRoute::Fallback),
+                provider: None,
+            }),
+        };
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+        let _ = driver.chat_completion_stream(messages, &config).await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+
+        assert!(body.get("models").is_none(), "body: {body}");
+        assert!(body.get("route").is_none(), "body: {body}");
+        assert!(body.get("provider").is_none(), "body: {body}");
+    }
+
+    #[tokio::test]
+    async fn openrouter_provider_rejects_invalid_routing_controls() {
+        use crate::llm_driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+            .with_provider_type(LlmProviderType::Openrouter);
+
+        let mismatch_config = LlmCallConfig {
+            model: "openai/gpt-5-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: Some(OpenRouterRoutingConfig {
+                models: vec!["anthropic/claude-sonnet-4.5".to_string()],
+                route: Some(OpenRouterRoute::Fallback),
+                provider: None,
+            }),
+        };
+        let err = match driver
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                &mismatch_config,
+            )
+            .await
+        {
+            Ok(_) => panic!("invalid OpenRouter routing should fail before dispatch"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("models[0]"));
+
+        let empty_fallback_config = LlmCallConfig {
+            model: "openai/gpt-5-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: Some(OpenRouterRoutingConfig {
+                models: vec![],
+                route: Some(OpenRouterRoute::Fallback),
+                provider: None,
+            }),
+        };
+        let err = match driver
+            .chat_completion_stream(
+                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
+                &empty_fallback_config,
+            )
+            .await
+        {
+            Ok(_) => panic!("empty OpenRouter fallback routing should fail before dispatch"),
+            Err(err) => err,
+        };
+        assert!(err.to_string().contains("requires at least one model"));
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert!(
+            requests.is_empty(),
+            "invalid routing must be rejected before request dispatch"
         );
     }
 
@@ -3574,6 +3839,7 @@ mod tests {
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
         };
 
         // Simulate the driver's filter logic
@@ -3605,6 +3871,7 @@ mod tests {
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
         };
 
         let reasoning = config

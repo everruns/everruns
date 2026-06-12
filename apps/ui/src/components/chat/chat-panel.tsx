@@ -23,6 +23,7 @@ import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { MessageContent } from "@/components/chat/message-content";
+import { SessionTaskChips } from "@/components/session/session-task-chips";
 import { StreamingMessage } from "@/components/streaming-message";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,7 @@ export function ChatPanel() {
     agentId,
     events,
     sessionId,
+    session,
     llmModel,
     chatEvents,
     toolResultsMap,
@@ -188,6 +190,11 @@ export function ChatPanel() {
     typeof navigator !== "undefined" &&
     !!navigator.mediaDevices?.getUserMedia &&
     typeof RTCPeerConnection !== "undefined";
+
+  // Task chips: shown only when the leased_resources session feature is present
+  // (same gate as the Tasks / resources nav tab).
+  const hasTasksFeature = session?.features?.includes("leased_resources") ?? false;
+  const sessionBasePath = `/sessions/${sessionId}`;
 
   useEffect(() => {
     if (!eventsLoading) {
@@ -529,6 +536,12 @@ export function ChatPanel() {
           </button>
         )}
       </div>
+
+      <SessionTaskChips
+        sessionId={sessionId}
+        basePath={sessionBasePath}
+        hasTasksFeature={hasTasksFeature}
+      />
 
       <ChatComposer
         commands={commands}

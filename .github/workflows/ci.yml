@@ -272,6 +272,9 @@ jobs:
             -p everruns-anthropic \
             -p everruns-integrations-duckduckgo \
             -p everruns-integrations-github \
+            -p everruns-integrations-daytona \
+            -p everruns-integrations-e2b \
+            -p everruns-integrations-parallel \
             -p everruns-runtime
 
   migration-immutability:

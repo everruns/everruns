@@ -1,12 +1,23 @@
 # everruns-core
 
-Core agent abstractions for Everruns: agents, sessions, events, tools,
-capabilities, LLM driver traits, runtime context assembly, and shared domain
-types.
+> Core agent abstractions for the Everruns durable agentic harness engine.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. Provider
-crates such as `everruns-openai` and host crates such as `everruns-runtime`
-build on these contracts instead of depending on server internals.
+[![Crates.io](https://img.shields.io/crates/v/everruns-core.svg)](https://crates.io/crates/everruns-core)
+[![Documentation](https://docs.rs/everruns-core/badge.svg)](https://docs.rs/everruns-core)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-core` defines the provider-neutral contracts that every other Everruns
+crate builds on: agents, harnesses, sessions, messages, events, typed IDs,
+capabilities and tools, the LLM driver registry, and the context assembly that
+drives the `input → reason → act` agent loop. It carries no server, database, or
+network runtime of its own — hosts and providers wire these abstractions
+together.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. Provider crates such as
+[`everruns-openai`](https://crates.io/crates/everruns-openai) and host crates
+such as [`everruns-runtime`](https://crates.io/crates/everruns-runtime) depend on
+these contracts instead of on server internals.
 
 ## Quick Example
 
@@ -25,12 +36,19 @@ assert!(platform.capability_registry().get("test_math").is_some());
 
 ## What It Provides
 
-- Agent, harness, session, message, event, and typed ID models
-- Capability and tool traits
-- LLM driver registry and provider-neutral message types
-- Context assembly used by embedded, worker, and server execution paths
-- In-memory helpers and deterministic LLM simulation for tests
+- Agent, harness, session, message, event, and typed ID domain models
+- Capability and tool traits for extending what agents can do
+- An LLM driver registry and provider-neutral message, tool, and reasoning types
+- Context assembly shared by embedded, worker, and server execution paths
+- In-memory helpers and a deterministic LLM simulation driver for tests
+
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-core)
+- [Core concepts and execution model](https://docs.everruns.com/getting-started/concepts/)
+- [The agentic loop](https://docs.everruns.com/explanation/agentic-loop/)
+- [Everruns documentation](https://docs.everruns.com)
 
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

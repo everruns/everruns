@@ -10,7 +10,7 @@
 //! Ref: https://github.com/thesysdev/openui
 //! Ref: specs/openui.md
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 /// Capability ID constant for external reference.
 pub const OPENUI_CAPABILITY_ID: &str = "openui";
@@ -29,6 +29,14 @@ impl Capability for OpenUiCapability {
 
     fn description(&self) -> &str {
         "Enables the agent to generate rich interactive UI components (charts, tables, forms, cards, etc.) using OpenUI Lang."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "OpenUI",
+            "Дає агенту змогу генерувати насичені інтерактивні UI-компоненти (графіки, таблиці, форми, картки тощо) за допомогою OpenUI Lang.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

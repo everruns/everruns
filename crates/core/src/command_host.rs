@@ -15,8 +15,8 @@ use crate::capabilities::CapabilityRegistry;
 use crate::command::CommandResult;
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
-    DriverRegistry, LlmCallConfigBuilder, LlmMessage, LlmMessageRole, ProviderConfig,
-    ToolSearchConfig,
+    BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
+    LlmMessageRole, LlmResponseStream, ProviderConfig, ToolSearchConfig,
 };
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
 use crate::message_retriever::MessageRetriever;
@@ -83,12 +83,36 @@ pub struct SessionCompletion {
     pub text: String,
 }
 
+/// Streaming variant of [`SessionCompletion`]: provider stream events for
+/// progressive output, aligned with [`crate::utility_llm::UtilityLlmService`]'s
+/// streaming shape.
+pub struct SessionCompletionStream {
+    /// Provider stream events (`TextDelta`, thinking deltas, `Done` metadata).
+    pub events: LlmResponseStream,
+    /// Classification context (provider, model) for mid-stream errors — pair
+    /// with [`classify_runtime_error_message`] to produce stable user-facing
+    /// error codes, mirroring [`SessionCompletionError::into_command_result`].
+    pub context: UserFacingErrorContext,
+}
+
+impl std::fmt::Debug for SessionCompletionStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SessionCompletionStream")
+            .field("context", &self.context)
+            .finish()
+    }
+}
+
 /// Completion failure.
 #[derive(Debug)]
 pub enum SessionCompletionError {
     /// Request-level failure (e.g. unknown model override). Capabilities
     /// should surface these as hard errors, not classified command results.
     InvalidRequest(AgentLoopError),
+    /// The host does not implement [`CommandHost::completion_stream`].
+    /// A stable, matchable signal so commands can fall back to
+    /// [`CommandHost::completion`] without string matching.
+    StreamingUnsupported,
     /// Provider/runtime failure carrying the resolved provider/model identity
     /// so callers can classify it into stable user-facing error codes.
     Completion {
@@ -106,6 +130,9 @@ impl SessionCompletionError {
     pub fn into_command_result(self) -> Result<CommandResult> {
         match self {
             Self::InvalidRequest(error) => Err(error),
+            Self::StreamingUnsupported => Err(AgentLoopError::config(
+                "command host does not support streaming completions",
+            )),
             Self::Completion { error, context } => {
                 let classified = classify_runtime_error_message(&error, &context);
                 Ok(CommandResult {
@@ -134,6 +161,20 @@ pub trait CommandHost: Send + Sync {
         &self,
         request: SessionCompletionRequest,
     ) -> std::result::Result<SessionCompletion, SessionCompletionError>;
+
+    /// Streaming variant of [`Self::completion`] for commands that surface
+    /// progressive output. Same request semantics, same out-of-band guarantee:
+    /// nothing is persisted.
+    ///
+    /// Default: [`SessionCompletionError::StreamingUnsupported`]. Hosts that
+    /// can stream override this; commands match on that variant to fall back
+    /// to [`Self::completion`].
+    async fn completion_stream(
+        &self,
+        _request: SessionCompletionRequest,
+    ) -> std::result::Result<SessionCompletionStream, SessionCompletionError> {
+        Err(SessionCompletionError::StreamingUnsupported)
+    }
 }
 
 /// Host stub for embedders that dispatch commands without turn-context/LLM
@@ -293,26 +334,14 @@ impl StoreCommandHost {
             _ => Ok(assembled.model_with_provider.clone()),
         }
     }
-}
 
-#[async_trait]
-impl CommandHost for StoreCommandHost {
-    async fn turn_context(&self) -> Result<CommandTurnContext> {
-        let assembled = self.assembled().await?;
-        Ok(CommandTurnContext {
-            session: assembled.session.clone(),
-            messages: assembled.messages.clone(),
-            system_prompt: assembled.runtime_agent.system_prompt.clone(),
-            model: assembled.model_with_provider.model.clone(),
-            provider_type: assembled.model_with_provider.provider_type.to_string(),
-            resolved_locale: assembled.resolved_locale.clone(),
-        })
-    }
-
-    async fn completion(
+    /// Shared preparation for [`CommandHost::completion`] and
+    /// [`CommandHost::completion_stream`]: resolve the model, convert
+    /// messages, build the tool-less call config, and create the driver.
+    async fn prepare_completion(
         &self,
         request: SessionCompletionRequest,
-    ) -> std::result::Result<SessionCompletion, SessionCompletionError> {
+    ) -> std::result::Result<PreparedCompletion, SessionCompletionError> {
         let assembled = self
             .assembled()
             .await
@@ -324,10 +353,6 @@ impl CommandHost for StoreCommandHost {
         let context = UserFacingErrorContext::default()
             .with_provider(model.provider_type.to_string())
             .with_model_id(model.model.clone());
-        let completion_error = |error: String| SessionCompletionError::Completion {
-            error,
-            context: context.clone(),
-        };
 
         let messages = patch_dangling_tool_calls(&request.messages);
         let resolved_images = self.resolve_images(&messages).await;
@@ -374,9 +399,56 @@ impl CommandHost for StoreCommandHost {
         let driver = self
             .driver_registry
             .create_driver(&ProviderConfig::from(&model))
-            .map_err(|error| completion_error(error.to_string()))?;
-        let response = driver
-            .chat_completion(llm_messages, &llm_config)
+            .map_err(|error| SessionCompletionError::Completion {
+                error: error.to_string(),
+                context: context.clone(),
+            })?;
+
+        Ok(PreparedCompletion {
+            llm_messages,
+            llm_config,
+            driver,
+            context,
+        })
+    }
+}
+
+/// Output of [`StoreCommandHost::prepare_completion`]: everything needed to
+/// run the provider call, with credentials confined to the driver.
+struct PreparedCompletion {
+    llm_messages: Vec<LlmMessage>,
+    llm_config: LlmCallConfig,
+    driver: BoxedLlmDriver,
+    context: UserFacingErrorContext,
+}
+
+#[async_trait]
+impl CommandHost for StoreCommandHost {
+    async fn turn_context(&self) -> Result<CommandTurnContext> {
+        let assembled = self.assembled().await?;
+        Ok(CommandTurnContext {
+            session: assembled.session.clone(),
+            messages: assembled.messages.clone(),
+            system_prompt: assembled.runtime_agent.system_prompt.clone(),
+            model: assembled.model_with_provider.model.clone(),
+            provider_type: assembled.model_with_provider.provider_type.to_string(),
+            resolved_locale: assembled.resolved_locale.clone(),
+        })
+    }
+
+    async fn completion(
+        &self,
+        request: SessionCompletionRequest,
+    ) -> std::result::Result<SessionCompletion, SessionCompletionError> {
+        let prepared = self.prepare_completion(request).await?;
+        let completion_error = |error: String| SessionCompletionError::Completion {
+            error,
+            context: prepared.context.clone(),
+        };
+
+        let response = prepared
+            .driver
+            .chat_completion(prepared.llm_messages, &prepared.llm_config)
             .await
             .map_err(|error| completion_error(error.to_string()))?;
 
@@ -388,11 +460,45 @@ impl CommandHost for StoreCommandHost {
         }
         Ok(SessionCompletion { text })
     }
+
+    async fn completion_stream(
+        &self,
+        request: SessionCompletionRequest,
+    ) -> std::result::Result<SessionCompletionStream, SessionCompletionError> {
+        let prepared = self.prepare_completion(request).await?;
+        let events = prepared
+            .driver
+            .chat_completion_stream(prepared.llm_messages, &prepared.llm_config)
+            .await
+            .map_err(|error| SessionCompletionError::Completion {
+                error: error.to_string(),
+                context: prepared.context.clone(),
+            })?;
+        Ok(SessionCompletionStream {
+            events,
+            context: prepared.context,
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{Agent, AgentStatus};
+    use crate::capabilities::TestMathCapability;
+    use crate::harness::{Harness, HarnessStatus};
+    use crate::in_memory::{
+        InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore,
+        InMemoryMessageRetriever, InMemorySessionStore,
+    };
+    use crate::llm_driver_registry::{LlmStreamEvent, ProviderType};
+    use crate::llm_models::LlmProviderType;
+    use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
+    use crate::message_retriever::InputMessage;
+    use crate::session::SessionStatus;
+    use crate::typed_id::{AgentId, HarnessId};
+    use chrono::Utc;
+    use futures::StreamExt;
 
     #[tokio::test]
     async fn disabled_host_errors_clearly() {
@@ -405,6 +511,227 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(error, SessionCompletionError::InvalidRequest(_)));
+
+        // The default trait impl covers hosts that never override streaming:
+        // a stable variant commands can match to fall back to completion().
+        let error = host
+            .completion_stream(SessionCompletionRequest::default())
+            .await
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            SessionCompletionError::StreamingUnsupported
+        ));
+        let error = error.into_command_result().unwrap_err();
+        assert!(error.to_string().contains("streaming"));
+    }
+
+    fn test_harness(harness_id: HarnessId) -> Harness {
+        Harness {
+            id: harness_id,
+            name: "h".into(),
+            display_name: None,
+            description: None,
+            system_prompt: "You are a test harness.".into(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![crate::AgentCapabilityConfig::new("test_math")],
+            initial_files: vec![],
+            network_access: None,
+            mcp_servers: Default::default(),
+            is_built_in: false,
+            status: HarnessStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+        }
+    }
+
+    fn test_agent(agent_id: AgentId) -> Agent {
+        Agent {
+            public_id: agent_id,
+            internal_id: uuid::Uuid::nil(),
+            name: "a".into(),
+            display_name: None,
+            description: None,
+            system_prompt: "Use tools.".into(),
+            default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: Some(8),
+            tools: vec![],
+            mcp_servers: Default::default(),
+            status: AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        }
+    }
+
+    fn test_session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> Session {
+        Session {
+            id: session_id,
+            organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            harness_id,
+            agent_id: Some(agent_id),
+            agent_version_id: None,
+            agent_identity_id: None,
+            owner_principal_id: crate::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            title: None,
+            locale: None,
+            preview: None,
+            output_preview: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            status: SessionStatus::Started,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: None,
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        }
+    }
+
+    /// Build a `StoreCommandHost` over in-memory stores with an llm-sim
+    /// driver returning `response`.
+    async fn llmsim_host(response: &str) -> StoreCommandHost {
+        let harness_id: HarnessId = "harness_000000000000000000000000000000a1".parse().unwrap();
+        let agent_id: AgentId = "agent_000000000000000000000000000000a1".parse().unwrap();
+        let session_id: SessionId = "session_000000000000000000000000000000a1".parse().unwrap();
+
+        let harness_store = InMemoryHarnessStore::new();
+        harness_store.add_harness(test_harness(harness_id)).await;
+        let agent_store = InMemoryAgentStore::new();
+        agent_store.add_agent(test_agent(agent_id)).await;
+        let session_store = InMemorySessionStore::new();
+        session_store
+            .add_session(test_session(session_id, harness_id, agent_id))
+            .await;
+        let message_store = InMemoryMessageRetriever::new();
+        message_store
+            .add(session_id, InputMessage::user("earlier message"))
+            .await
+            .unwrap();
+
+        let provider_store = InMemoryLlmProviderStore::new();
+        provider_store
+            .set_default_model(ModelWithProvider {
+                model: "llmsim-model".into(),
+                provider_type: LlmProviderType::LlmSim,
+                api_key: Some("fake-key".into()),
+                base_url: None,
+            })
+            .await;
+
+        let mut capability_registry = CapabilityRegistry::new();
+        capability_registry.register(TestMathCapability);
+
+        let mut driver_registry = DriverRegistry::new();
+        let driver = LlmSimDriver::new(LlmSimConfig::fixed(response));
+        driver_registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+            Box::new(driver.clone())
+        });
+
+        StoreCommandHost::new(
+            session_id,
+            Arc::new(harness_store),
+            Arc::new(agent_store),
+            Arc::new(session_store),
+            Arc::new(message_store),
+            Arc::new(provider_store),
+            capability_registry,
+            driver_registry,
+        )
+    }
+
+    #[tokio::test]
+    async fn store_host_completion_runs_against_session_model() {
+        let host = llmsim_host("the side answer").await;
+
+        let turn = host.turn_context().await.unwrap();
+        assert_eq!(turn.model, "llmsim-model");
+        assert_eq!(turn.provider_type, "llmsim");
+        assert_eq!(turn.messages.len(), 1);
+        assert!(!turn.system_prompt.is_empty());
+
+        let completion = host
+            .completion(SessionCompletionRequest {
+                system_prompts: vec![turn.system_prompt, "Answer once.".into()],
+                messages: turn.messages,
+                controls: None,
+                metadata: HashMap::new(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(completion.text, "the side answer");
+    }
+
+    #[tokio::test]
+    async fn store_host_completion_stream_emits_progressive_deltas() {
+        let host = llmsim_host("streamed side answer with several tokens").await;
+
+        let turn = host.turn_context().await.unwrap();
+        let stream = host
+            .completion_stream(SessionCompletionRequest {
+                system_prompts: vec![turn.system_prompt],
+                messages: turn.messages,
+                controls: None,
+                metadata: HashMap::new(),
+            })
+            .await
+            .unwrap();
+
+        // Classification context mirrors the non-streaming error path.
+        assert_eq!(stream.context.provider.as_deref(), Some("llmsim"));
+        assert_eq!(stream.context.model_id.as_deref(), Some("llmsim-model"));
+
+        let mut deltas = Vec::new();
+        let mut done = false;
+        let mut events = stream.events;
+        while let Some(event) = events.next().await {
+            match event.unwrap() {
+                LlmStreamEvent::TextDelta(delta) => deltas.push(delta),
+                LlmStreamEvent::Done(_) => done = true,
+                _ => {}
+            }
+        }
+
+        assert!(done, "stream must terminate with Done");
+        assert!(
+            deltas.len() > 1,
+            "expected progressive deltas, got {deltas:?}"
+        );
+        assert_eq!(deltas.concat(), "streamed side answer with several tokens");
     }
 
     #[test]

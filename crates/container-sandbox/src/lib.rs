@@ -16,7 +16,9 @@ pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::tools::Tool;
 use std::sync::LazyLock;
 
@@ -79,6 +81,16 @@ impl Capability for ContainerSandboxCapability {
     fn description(&self) -> &str {
         "Run code in self-hosted Docker containers. Create isolated Linux environments \
          with configurable resource limits, execute commands, and manage files."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Контейнерна пісочниця",
+            "Запускайте код у самостійно розгорнутих контейнерах Docker. Створюйте ізольовані \
+             середовища Linux з налаштовуваними лімітами ресурсів, виконуйте команди та \
+             керуйте файлами.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -10,7 +10,7 @@
 // absent (e.g. embedders without a registry) — they return a tool error
 // instead of panicking, matching other registry-backed capabilities.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_task::{
     NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
     TaskMessage, find_task_executor,
@@ -47,6 +47,14 @@ impl Capability for SessionTasksCapability {
 
     fn description(&self) -> &str {
         "Track, message, cancel, and wait on the session's background tasks (subagents, external agents, background tools)."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Завдання сесії",
+            "Відстежуйте фонові завдання сесії (субагенти, зовнішні агенти, фонові інструменти), надсилайте їм повідомлення, скасовуйте їх та очікуйте на їхнє завершення.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -646,7 +654,6 @@ pub(crate) mod tests {
     use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::Mutex;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// In-memory `SessionTaskRegistry` test double. Updates route through
     /// `apply_task_update` so lifecycle invariants match real backends.
@@ -790,10 +797,21 @@ pub(crate) mod tests {
         }
     }
 
-    /// Test executor kind. `deliver`/`cancel` succeed and count invocations.
+    /// Test executor kind. `deliver`/`cancel` succeed and log invocations.
+    /// The executor is process-global (inventory), so invocations are logged
+    /// per task id; task ids are unique per test, which keeps assertions
+    /// race-free under parallel test execution.
     const TEST_EXECUTOR_KIND: &str = "session_tasks_test";
-    static TEST_DELIVERED: AtomicUsize = AtomicUsize::new(0);
-    static TEST_CANCELED: AtomicUsize = AtomicUsize::new(0);
+    static TEST_DELIVERED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+    static TEST_CANCELED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn executor_invocations(log: &Mutex<Vec<String>>, task_id: &str) -> usize {
+        log.lock()
+            .unwrap()
+            .iter()
+            .filter(|id| *id == task_id)
+            .count()
+    }
 
     struct TestTaskExecutor;
 
@@ -805,20 +823,20 @@ pub(crate) mod tests {
 
         async fn deliver(
             &self,
-            _task: &SessionTask,
+            task: &SessionTask,
             _message: &TaskMessage,
             _context: &ToolContext,
         ) -> crate::error::Result<()> {
-            TEST_DELIVERED.fetch_add(1, Ordering::SeqCst);
+            TEST_DELIVERED.lock().unwrap().push(task.id.clone());
             Ok(())
         }
 
         async fn cancel(
             &self,
-            _task: &SessionTask,
+            task: &SessionTask,
             _context: &ToolContext,
         ) -> crate::error::Result<()> {
-            TEST_CANCELED.fetch_add(1, Ordering::SeqCst);
+            TEST_CANCELED.lock().unwrap().push(task.id.clone());
             Ok(())
         }
     }
@@ -984,7 +1002,6 @@ pub(crate) mod tests {
         )
         .await;
 
-        let before = TEST_DELIVERED.load(Ordering::SeqCst);
         let result = MessageTaskTool
             .execute_with_context(
                 json!({"task_id": task.id, "message": "keep going"}),
@@ -995,7 +1012,7 @@ pub(crate) mod tests {
             panic!("expected success: {result:?}");
         };
         assert_eq!(value["delivery"], "delivered");
-        assert_eq!(TEST_DELIVERED.load(Ordering::SeqCst), before + 1);
+        assert_eq!(executor_invocations(&TEST_DELIVERED, &task.id), 1);
 
         let messages = registry
             .list_messages(context.session_id, &task.id, None)
@@ -1093,7 +1110,6 @@ pub(crate) mod tests {
         )
         .await;
 
-        let before = TEST_CANCELED.load(Ordering::SeqCst);
         let result = CancelTaskTool
             .execute_with_context(json!({"task_id": task.id}), &context)
             .await;
@@ -1102,7 +1118,7 @@ pub(crate) mod tests {
         };
         assert_eq!(value["cancel_requested"], true);
         assert_eq!(value["executor"], "cancellation requested");
-        assert_eq!(TEST_CANCELED.load(Ordering::SeqCst), before + 1);
+        assert_eq!(executor_invocations(&TEST_CANCELED, &task.id), 1);
 
         let current = registry
             .get(context.session_id, &task.id)
@@ -1130,9 +1146,8 @@ pub(crate) mod tests {
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success: {result:?}");
         };
-        // The executor reply proves the skip; the shared TEST_CANCELED counter
-        // is not asserted here because parallel cancel tests also bump it.
         assert_eq!(value["executor"], "task already terminal");
+        assert_eq!(executor_invocations(&TEST_CANCELED, &task.id), 0);
     }
 
     #[tokio::test]

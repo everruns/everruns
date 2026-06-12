@@ -863,7 +863,7 @@ pub fn guarded_bash_demo_script() -> LlmSimConfig {
 /// via `spawn_background` (which creates a `background_tool` session task),
 /// then inspects the registry with `list_tasks`.
 ///
-/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `virtual_bash`
+/// Used by `LLMSIM_DEMO=tasks`. Requires an agent with the `bashkit_shell`
 /// and `session_tasks` capabilities.
 pub fn session_tasks_demo_script() -> LlmSimConfig {
     let turns = vec![
@@ -892,6 +892,34 @@ pub fn session_tasks_demo_script() -> LlmSimConfig {
             "Session tasks demo complete: a background run was started and \
              tracked as a session task. Inspect it via \
              GET /v1/sessions/{session_id}/tasks."
+                .to_string(),
+        ),
+    ];
+    LlmSimConfig::scripted(turns)
+}
+
+/// Scripted scenario for the monitor task kind: spawns a recurring scheduled
+/// monitor (cron fires at second 0 every minute) so the session scheduler
+/// creates the schedule and a linked `monitor` task. Used by
+/// `LLMSIM_DEMO=monitor` for end-to-end verification without an LLM API key.
+pub fn monitor_demo_script() -> LlmSimConfig {
+    let turns = vec![
+        SimTurn::Mixed {
+            text: "Setting up a recurring monitor.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "spawn_background".to_string(),
+                arguments: serde_json::json!({
+                    "tool": "bash",
+                    "args": { "commands": "echo monitor check" },
+                    "title": "Demo monitor",
+                    "signal_on_completion": false,
+                    "schedule": { "cron_expression": "0 * * * * * *", "timezone": "UTC" },
+                }),
+                id: Some("call_demo_monitor".to_string()),
+            }],
+        },
+        SimTurn::Assistant(
+            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
                 .to_string(),
         ),
     ];
@@ -951,6 +979,7 @@ mod tests {
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
         }
     }
 

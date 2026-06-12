@@ -258,7 +258,8 @@ export function buildSessionNavigation({
       ? [
           {
             key: "resources" as const,
-            label: "Resources",
+            // Route stays /resources — renaming it would break existing links.
+            label: "Tasks",
             href: `${basePath}/resources`,
             icon: Wrench,
           },

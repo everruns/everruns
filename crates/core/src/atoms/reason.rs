@@ -1712,6 +1712,7 @@ impl ReasonAtom {
                                 previous_response_id: None,
                                 tool_search: None,
                                 prompt_cache: None,
+                                openrouter_routing: None,
                             };
 
                             match llm_driver
@@ -3123,6 +3124,7 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
 
         let request_options = build_request_options(&config, "openai").unwrap();
@@ -3154,6 +3156,7 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
+            openrouter_routing: None,
         };
 
         let request_options = build_request_options(&config, "gemini").unwrap();
@@ -3185,6 +3188,7 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
+            openrouter_routing: None,
         };
 
         assert!(build_request_options(&config, "gemini").is_none());

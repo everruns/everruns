@@ -9,7 +9,9 @@
 
 use async_trait::async_trait;
 use everruns_core::ToolHints;
-use everruns_core::capabilities::{Capability, CapabilityStatus, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
 use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -67,6 +69,15 @@ impl Capability for ParallelPaymentsCapability {
 
     fn features(&self) -> Vec<&'static str> {
         vec!["machine_payments"]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Parallel (машинні платежі)",
+            "Платні інструменти Parallel для пошуку, вилучення даних та асинхронних завдань \
+             на основі машинних платежів Everruns.",
+        )]
     }
 }
 

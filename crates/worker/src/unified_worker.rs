@@ -67,6 +67,7 @@ impl Default for TaskWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
+                "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
             ],
             max_concurrent_tasks: 1000,
@@ -493,6 +494,14 @@ where
             let res =
                 crate::leased_resource_cleanup::execute_cleanup_activity(adapters, &cleanup_input)
                     .await;
+            (res, None)
+        }
+        "session_task_reaper" => {
+            let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
+                serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
+            let res =
+                crate::session_task_reaper::execute_reaper_activity(adapters, &reaper_input).await;
             (res, None)
         }
         activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {

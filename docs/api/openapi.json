@@ -13380,6 +13380,22 @@
             "description": "Whether this is an Agent Skill capability (for UI badge)",
             "example": false
           },
+          "localizations": {
+            "type": "object",
+            "description": "Localized display strings keyed by lowercase language tag (e.g. \"uk\").\nThe \"en\" entry carries only `config_description`, since the base\nname/description/config_schema strings are already English.",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CapabilityLocalizationInfo"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "example": {
+              "uk": {
+                "description": "Монтує спільні файли пам'яті в сесії.",
+                "name": "Пам'ять"
+              }
+            }
+          },
           "name": {
             "type": "string",
             "description": "Display name",
@@ -13418,6 +13434,37 @@
                 "name": "write_file"
               }
             ]
+          }
+        }
+      },
+      "CapabilityLocalizationInfo": {
+        "type": "object",
+        "description": "Localized display strings for one locale of a capability.",
+        "properties": {
+          "config_description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One-line summary of what this capability's config controls."
+          },
+          "config_overlay": {
+            "type": "object",
+            "description": "Overlay merged into `config_schema` before rendering: mirrors the\nschema property tree with `title`/`description`/`enum_labels` leaves."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized description; absent means fall back to `description`."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Localized display name; absent means fall back to `name`."
           }
         }
       },
@@ -18609,6 +18656,22 @@
                   "description": "Whether this is an Agent Skill capability (for UI badge)",
                   "example": false
                 },
+                "localizations": {
+                  "type": "object",
+                  "description": "Localized display strings keyed by lowercase language tag (e.g. \"uk\").\nThe \"en\" entry carries only `config_description`, since the base\nname/description/config_schema strings are already English.",
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/CapabilityLocalizationInfo"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "uk": {
+                      "description": "Монтує спільні файли пам'яті в сесії.",
+                      "name": "Пам'ять"
+                    }
+                  }
+                },
                 "name": {
                   "type": "string",
                   "description": "Display name",
@@ -23706,6 +23769,22 @@
                       "type": "boolean",
                       "description": "Whether this is an Agent Skill capability (for UI badge)",
                       "example": false
+                    },
+                    "localizations": {
+                      "type": "object",
+                      "description": "Localized display strings keyed by lowercase language tag (e.g. \"uk\").\nThe \"en\" entry carries only `config_description`, since the base\nname/description/config_schema strings are already English.",
+                      "additionalProperties": {
+                        "$ref": "#/components/schemas/CapabilityLocalizationInfo"
+                      },
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "example": {
+                        "uk": {
+                          "description": "Монтує спільні файли пам'яті в сесії.",
+                          "name": "Пам'ять"
+                        }
+                      }
                     },
                     "name": {
                       "type": "string",
@@ -31165,6 +31244,22 @@
                 "type": "boolean",
                 "description": "Whether this is an Agent Skill capability (for UI badge)",
                 "example": false
+              },
+              "localizations": {
+                "type": "object",
+                "description": "Localized display strings keyed by lowercase language tag (e.g. \"uk\").\nThe \"en\" entry carries only `config_description`, since the base\nname/description/config_schema strings are already English.",
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CapabilityLocalizationInfo"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "example": {
+                  "uk": {
+                    "description": "Монтує спільні файли пам'яті в сесії.",
+                    "name": "Пам'ять"
+                  }
+                }
               },
               "name": {
                 "type": "string",

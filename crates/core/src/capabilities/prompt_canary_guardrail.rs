@@ -15,7 +15,7 @@
 
 use std::sync::Arc;
 
-use crate::capabilities::Capability;
+use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
 };
@@ -55,6 +55,14 @@ impl Capability for PromptCanaryGuardrailCapability {
         "Detects when the model leaks its own system prompt during streaming and \
          replaces the assistant response with a refusal. Uses the first sentence \
          of the system prompt as a canary phrase."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Канарковий захист промпту",
+            "Виявляє, коли модель розкриває власний системний промпт під час стрімінгу, і замінює відповідь асистента відмовою. Використовує перше речення системного промпту як канаркову фразу.",
+        )]
     }
 
     fn category(&self) -> Option<&str> {

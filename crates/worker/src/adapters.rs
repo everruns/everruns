@@ -38,6 +38,9 @@ pub fn create_driver_registry() -> DriverRegistry {
     //   - `tasks` — starts a background bash run via `spawn_background` and
     //     lists it with `list_tasks`, exercising the session task registry
     //     end-to-end (specs/session-tasks.md) without an LLM API key.
+    //   - `monitor` — schedules a recurring monitor via `spawn_background`
+    //     with a `schedule`, exercising the `monitor` task kind and its
+    //     fire-history thread.
     //
     // Unknown values fall back to the default driver with a warning.
     match std::env::var("LLMSIM_DEMO").ok().as_deref() {
@@ -66,6 +69,15 @@ pub fn create_driver_registry() -> DriverRegistry {
             everruns_core::llmsim_driver::register_driver_with_config(
                 &mut registry,
                 everruns_core::llmsim_driver::session_tasks_demo_script(),
+            );
+        }
+        Some("monitor") => {
+            tracing::info!(
+                "LLMSIM_DEMO=monitor: registering scripted LlmSim driver for the monitor demo"
+            );
+            everruns_core::llmsim_driver::register_driver_with_config(
+                &mut registry,
+                everruns_core::llmsim_driver::monitor_demo_script(),
             );
         }
         Some(other) => {

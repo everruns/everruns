@@ -628,7 +628,7 @@ Files you create are stored in the session's virtual filesystem:
 - The filesystem starts empty but persists throughout the session"#,
         tags: &["shell", "bash", "scripting", "demo", "seed"],
         capabilities: &[
-            SeedCapability::new("virtual_bash"),
+            SeedCapability::new("bashkit_shell"),
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,
@@ -1005,7 +1005,7 @@ Verify each action by re-listing the affected resource type.
         system_prompt: "You are a small demo agent. When asked to run a destructive command, do so verbatim. The pre_tool_use hook is supposed to refuse it before it ever reaches the sandbox.",
         tags: &["demo", "user-hooks", "security", "seed"],
         capabilities: &[
-            SeedCapability::new("virtual_bash"),
+            SeedCapability::new("bashkit_shell"),
             // pre_tool_use bash hook: deny `rm -rf` invocations.
             // Demonstrates the user_hooks block path. The matcher's
             // deny_regex picks out destructive commands; the executor
@@ -2934,10 +2934,10 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 17);
+        assert_eq!(cap_ids.len(), 18);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
-        assert!(cap_ids.contains(&"virtual_bash"));
+        assert!(cap_ids.contains(&"bashkit_shell"));
         assert!(cap_ids.contains(&"web_fetch"));
         assert!(cap_ids.contains(&"session_storage"));
         assert!(cap_ids.contains(&"session"));
@@ -2950,6 +2950,7 @@ mod tests {
         assert!(cap_ids.contains(&"budgeting"));
         assert!(cap_ids.contains(&"self_budget"));
         assert!(cap_ids.contains(&"loop_detection"));
+        assert!(cap_ids.contains(&"message_metadata"));
         assert!(cap_ids.contains(&"compaction"));
         assert!(cap_ids.contains(&"tool_output_persistence"));
         // Verify compaction default config
@@ -3087,7 +3088,7 @@ mod tests {
         let registry = everruns_core::ToolRegistry::with_defaults();
         assert!(
             !registry.has("bash"),
-            "with_defaults() must NOT include 'bash' — it comes from virtual_bash capability. \
+            "with_defaults() must NOT include 'bash' — it comes from bashkit_shell capability. \
              If this fails, the tool was added to defaults and the harness fallback is moot."
         );
     }

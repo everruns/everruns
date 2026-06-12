@@ -1,16 +1,35 @@
-//! Parallel MCP Integration.
+//! Parallel web search and fetch for Everruns agents.
 //!
-//! Decision: Use Parallel's hosted MCP server directly so Everruns gets the
-//! provider-owned `web_search` and `web_fetch` behavior without proxying or
-//! reimplementing it.
-//! Decision: Default to the free unauthenticated endpoint. Per-capability config
-//! can require a user-scoped Parallel API-key connection and can switch to the
-//! OAuth-compatible MCP endpoint.
+//! `everruns-integrations-parallel` is part of the
+//! [Everruns](https://everruns.com) ecosystem. It contributes
+//! [Parallel](https://parallel.ai)'s hosted MCP server so agents get
+//! provider-owned `web_search` and `web_fetch` tools — free by default, with an
+//! optional Parallel API-key connection for authenticated usage.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_parallel::ParallelCapability;
+//!
+//! let capability = ParallelCapability;
+//! assert_eq!(capability.id(), "parallel_search");
+//! ```
+//!
+//! # Design notes
+//!
+//! - Uses Parallel's hosted MCP server directly, so Everruns gets the
+//!   provider-owned behavior without proxying or reimplementing it.
+//! - Defaults to the free unauthenticated endpoint. Per-capability config can
+//!   require a user-scoped Parallel API-key connection and switch to the
+//!   OAuth-compatible MCP endpoint.
 
 pub mod connection;
 pub mod payments;
 
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::{McpServerAuthMode, ScopedMcpServer, ScopedMcpServers};
 use serde_json::{Value, json};
@@ -228,6 +247,54 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
         Ok(())
     }
 
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose whether Parallel uses the free endpoint or a Parallel API-key \
+                     connection, and which MCP endpoint it talks to.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("[Експериментально] Parallel"),
+                description: Some(
+                    "Шукайте та отримуйте вебвміст через Parallel MCP. Безкоштовно за \
+                     замовчуванням, з опціональним підключенням за API-ключем Parallel для \
+                     автентифікованого використання.",
+                ),
+                config_description: Some(
+                    "Визначає, чи використовує Parallel безкоштовний доступ або підключення з \
+                     API-ключем Parallel, і який ендпоінт MCP застосовується.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "auth": {
+                            "title": "Автентифікація",
+                            "description": "Безкоштовний режим працює без налаштувань. API-ключ використовує Налаштування > Підключення > Parallel.",
+                            "enum_labels": {
+                                "free": "Безкоштовно",
+                                "connection": "API-ключ Parallel"
+                            }
+                        },
+                        "endpoint": {
+                            "title": "Ендпоінт MCP",
+                            "description": "OAuth MCP використовує https://search.parallel.ai/mcp-oauth і потребує API-ключа Parallel.",
+                            "enum_labels": {
+                                "free": "Безкоштовний MCP",
+                                "oauth": "OAuth MCP"
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
+    }
+
     fn mcp_servers_with_config(&self, config: &serde_json::Value) -> ScopedMcpServers {
         let mut servers = ScopedMcpServers::default();
         servers.insert(
@@ -320,6 +387,13 @@ mod tests {
         );
         assert!(cap.validate_config(&json!({ "auth": "invalid" })).is_err());
         assert!(cap.validate_config(&json!({ "extra": true })).is_err());
+    }
+
+    #[test]
+    fn localizations_cover_schema_summary_and_uk_name() {
+        let cap = ParallelCapability;
+        assert!(cap.describe_schema(None).is_some());
+        assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
     }
 
     #[test]

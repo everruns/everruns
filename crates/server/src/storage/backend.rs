@@ -2723,6 +2723,16 @@ impl StorageBackend {
         dispatch!(self, list_session_task_messages, session_id, task_id, limit)
     }
 
+    /// Return (session_id, task_id) pairs for tasks with a stale heartbeat.
+    /// See individual backend impls for locking semantics.
+    pub async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String)>> {
+        dispatch!(self, list_orphaned_session_task_ids, stale_after, limit)
+    }
+
     // ============================================
     // Audit Logs (TM-OBS-007, EVE-226)
     // ============================================

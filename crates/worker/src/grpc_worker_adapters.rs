@@ -532,4 +532,93 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             )
             .await
     }
+
+    // Session task reaper — not yet wired over gRPC (reaper runs from the
+    // in-process direct worker; gRPC support can be added once a proto RPC
+    // is defined).
+    async fn list_orphaned_session_task_ids(
+        &self,
+        _stale_after: chrono::Duration,
+        _limit: i64,
+    ) -> Result<Vec<(everruns_core::SessionId, String)>> {
+        // Fail fast instead of silently masking orphans: remote workers have
+        // no orphan-listing RPC yet, and session_task_reaper is excluded from
+        // their default activity types. A misconfigured opt-in surfaces here.
+        Err(everruns_core::AgentLoopError::store(
+            "session_task_reaper is not supported on gRPC workers (no orphan-listing RPC);              run it on the in-process worker",
+        ))
+    }
+
+    fn reaper_session_task_registry(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+        // gRPC path: no direct storage access; return a no-op registry.
+        // The reaper activity is registered only on the in-process worker.
+        Arc::new(NoopSessionTaskRegistry)
+    }
+}
+
+// Minimal no-op registry for the gRPC stub path.
+#[derive(Default)]
+struct NoopSessionTaskRegistry;
+
+#[async_trait::async_trait]
+impl everruns_core::session_task::SessionTaskRegistry for NoopSessionTaskRegistry {
+    async fn create(
+        &self,
+        _input: everruns_core::session_task::CreateSessionTask,
+    ) -> everruns_core::error::Result<everruns_core::session_task::SessionTask> {
+        Err(everruns_core::AgentLoopError::store("noop registry"))
+    }
+
+    async fn update(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _task_id: &str,
+        _update: everruns_core::session_task::SessionTaskUpdate,
+    ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>> {
+        Ok(None)
+    }
+
+    async fn get(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _task_id: &str,
+    ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>> {
+        Ok(None)
+    }
+
+    async fn list(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _filter: Option<&everruns_core::session_task::SessionTaskFilter>,
+    ) -> everruns_core::error::Result<Vec<everruns_core::session_task::SessionTask>> {
+        Ok(vec![])
+    }
+
+    async fn request_cancel(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _task_id: &str,
+    ) -> everruns_core::error::Result<Option<everruns_core::session_task::SessionTask>> {
+        Ok(None)
+    }
+
+    async fn record_message(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _task_id: &str,
+        _message: everruns_core::session_task::NewTaskMessage,
+    ) -> everruns_core::error::Result<everruns_core::session_task::TaskMessage> {
+        Err(everruns_core::AgentLoopError::store("noop registry"))
+    }
+
+    async fn list_messages(
+        &self,
+        _session_id: everruns_core::SessionId,
+        _task_id: &str,
+        _limit: Option<u32>,
+    ) -> everruns_core::error::Result<Vec<everruns_core::session_task::TaskMessage>> {
+        Ok(vec![])
+    }
 }
