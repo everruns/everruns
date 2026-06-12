@@ -21,6 +21,12 @@ beforeEach(() => {
   mockMutate.mockClear();
 });
 
+// Restore spies (e.g. window.open) even if a test throws before its own
+// mockRestore, so a leaked spy can't affect later tests.
+afterEach(() => {
+  jest.restoreAllMocks();
+});
+
 describe("A2UIBlock structured rendering", () => {
   it("renders a Heading's text", () => {
     renderA2UI({ type: "Heading", props: { text: "Hello world" } });
