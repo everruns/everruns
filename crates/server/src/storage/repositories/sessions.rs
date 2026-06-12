@@ -34,7 +34,9 @@ impl Database {
             VALUES (
                 $1, $2,
                 'wsp_' || replace($1::text, '-', ''),
-                'session-' || substring($1::text from 1 for 8),
+                -- Use the full 32-hex so per-org name uniqueness holds under
+                -- bursty creation (UUIDv7 prefixes repeat in short windows).
+                'session-' || replace($1::text, '-', ''),
                 'Default workspace for session ' || $1::text,
                 'active',
                 NOW(),

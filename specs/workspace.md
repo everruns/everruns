@@ -66,7 +66,7 @@ model to API clients that opt into it.
 |---------------------------|-------------|--------------------------------------------------------|
 | `id`                      | UUID PK     | Internal primary key.                                  |
 | `org_id`                  | BIGINT FK   | Organization scope.                                    |
-| `public_id`               | TEXT        | `wsp_<32-hex>`. Unique per `org_id`.                   |
+| `public_id`               | TEXT        | `wsp_<32-hex>`. Globally unique.                       |
 | `name`                    | VARCHAR     | Unique within `org_id` while not deleted.              |
 | `description`             | TEXT?       |                                                        |
 | `owner_principal_id`      | TEXT?       | Principal that created the workspace.                  |
@@ -75,7 +75,11 @@ model to API clients that opt into it.
 | `created_at` / `updated_at` | TIMESTAMPTZ |                                                       |
 | `archived_at` / `deleted_at` | TIMESTAMPTZ? |                                                     |
 
-`UNIQUE(org_id, public_id)` and `UNIQUE(org_id, name) WHERE status != 'deleted'`.
+`UNIQUE(public_id)` (globally), `UNIQUE(org_id, public_id)`, and
+`UNIQUE(org_id, name) WHERE status != 'deleted'`. The global `public_id`
+uniqueness backs `get_workspace_organization_id`, which resolves the owning
+org from the opaque `wsp_<32-hex>` alone (used by routes that take a
+workspace_id without an org context).
 
 ### `sessions`
 
@@ -83,7 +87,9 @@ Adds `workspace_id UUID NOT NULL REFERENCES workspaces(id)`.
 
 Sessions cannot exist without a Workspace. Existing rows are backfilled by
 the migration: one Workspace is created per pre-existing session, named
-`session-<id-prefix>`, and the session's `workspace_id` is set.
+`session-<full-32-hex>` (the full UUID-without-dashes — UUIDv7 prefixes are
+time-derived and collide under bursty creation, which would violate the
+per-org name uniqueness constraint), and the session's `workspace_id` is set.
 
 ### `workspace_files`
 
@@ -105,8 +111,10 @@ REST endpoints:
 * `POST   /v1/workspaces/{workspace_id}/fs/...`
 * `PUT    /v1/workspaces/{workspace_id}/fs/...`
 * `DELETE /v1/workspaces/{workspace_id}/fs/...`
-* `POST   /v1/workspaces/{workspace_id}/fs/_/{stat,move,copy,grep}`
-* `GET    /v1/workspaces/{workspace_id}/fs/_/download/{path}`
+* `POST   /v1/workspaces/{workspace_id}/fs/_/{stat,grep}`
+
+`move`, `copy`, and raw `download` are deferred — for now they live only on
+the legacy `/v1/sessions/{session_id}/fs/_/*` aliases.
 
 ### Session-scoped aliases
 
@@ -196,7 +204,7 @@ internally.
 ### Behavior
 
 1. **Auto-create parents:** Creating `/a/b/c.txt` automatically creates `/a` and `/a/b` directories.
-2. **Delete cascade:** Deleting a workspace deletes all its files (via FK cascade).
+2. **Delete cascade vs archive:** `DELETE /v1/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only — the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded.
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files.
 5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash and rejects stale edits.
@@ -205,7 +213,7 @@ internally.
 
 ### Database Schema
 
-See `crates/server/migrations/054_workspaces.sql` for the schema.
+See `crates/server/migrations/056_workspaces.sql` for the schema.
 
 ### UI Integration
 

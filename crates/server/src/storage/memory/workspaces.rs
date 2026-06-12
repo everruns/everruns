@@ -133,13 +133,14 @@ impl InMemoryDatabase {
             ws.description = description;
         }
         if let Some(status) = input.status {
-            ws.status = status.clone();
             match status.as_str() {
                 "active" => ws.archived_at = None,
                 "archived" => ws.archived_at = Some(Self::now()),
                 "deleted" => ws.deleted_at = Some(Self::now()),
-                _ => {}
+                // Match the Postgres CHECK constraint so backends agree.
+                other => bail!("invalid workspace status: {other}"),
             }
+            ws.status = status;
         }
         ws.updated_at = Self::now();
         Ok(Some(ws.clone()))

@@ -18,7 +18,9 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_files::{
     CreateDirectoryInput, CreateFileInput, GrepInput, SessionFileService, UpdateFileInput,
 };
+use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::storage::StorageBackend;
+use crate::storage::models::WorkspaceRow;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
@@ -26,11 +28,11 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::typed_id::WorkspaceId;
-use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
+use everruns_core::{Caller, FileInfo, FileStat, GrepResult, Policy, SessionFile};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use super::common::{ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ListResponse, impl_auth_state};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -105,11 +107,22 @@ fn is_reserved_path(path: &str) -> bool {
     path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
 }
 
-async fn resolve_workspace_uuid(
+async fn resolve_workspace(
     state: &AppState,
     org: &ResolvedOrg,
     workspace_id: &str,
-) -> Result<Uuid, (StatusCode, String)> {
+    policy: &Policy,
+    operation: &str,
+) -> Result<WorkspaceRow, (StatusCode, String)> {
+    let caller = Caller::from(org);
+    policy
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal(operation)
+        .map_err(|(status, body)| {
+            let err = body.0;
+            (status, err.detail.unwrap_or(err.title))
+        })?;
     let id: WorkspaceId = workspace_id
         .parse()
         .map_err(|_| (StatusCode::NOT_FOUND, "Workspace not found".to_string()))?;
@@ -119,6 +132,32 @@ async fn resolve_workspace_uuid(
         .await
         .map_err(internal_error)?
         .ok_or((StatusCode::NOT_FOUND, "Workspace not found".to_string()))?;
+    Ok(row)
+}
+
+async fn resolve_for_read(
+    state: &AppState,
+    org: &ResolvedOrg,
+    workspace_id: &str,
+    operation: &str,
+) -> Result<Uuid, (StatusCode, String)> {
+    let row = resolve_workspace(state, org, workspace_id, &WORKSPACE_VIEW, operation).await?;
+    Ok(row.id)
+}
+
+async fn resolve_for_write(
+    state: &AppState,
+    org: &ResolvedOrg,
+    workspace_id: &str,
+    operation: &str,
+) -> Result<Uuid, (StatusCode, String)> {
+    let row = resolve_workspace(state, org, workspace_id, &WORKSPACE_MANAGE, operation).await?;
+    if row.status != "active" {
+        return Err((
+            StatusCode::FORBIDDEN,
+            format!("Workspace is {} and cannot be modified", row.status),
+        ));
+    }
     Ok(row.id)
 }
 
@@ -171,7 +210,13 @@ pub async fn get_root(
     Path(workspace_id): Path<String>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<ListResponse<FileInfo>>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid = resolve_for_read(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize list workspace files",
+    )
+    .await?;
     let files = if query.recursive {
         state.file_service.list_all(uuid).await
     } else {
@@ -191,7 +236,7 @@ pub async fn get_root(
         ("recursive" = Option<bool>, Query, description = "List recursively"),
     ),
     responses(
-        (status = 200, description = "File content or directory listing"),
+        (status = 200, description = "File content or directory listing", body = GetResponse),
         (status = 404, description = "Not found"),
         (status = 500, description = "Internal server error"),
     ),
@@ -203,7 +248,8 @@ pub async fn get_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid =
+        resolve_for_read(&state, &org, &workspace_id, "authorize read workspace file").await?;
     let path = normalize_path(&path);
     let stat = state
         .file_service
@@ -260,7 +306,13 @@ pub async fn create_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid = resolve_for_write(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize create workspace file",
+    )
+    .await?;
     let path = normalize_path(&path);
     if is_reserved_path(&path) {
         return Err((
@@ -329,7 +381,13 @@ pub async fn update_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid = resolve_for_write(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize update workspace file",
+    )
+    .await?;
     let path = normalize_path(&path);
     if is_reserved_path(&path) {
         return Err((
@@ -384,7 +442,13 @@ pub async fn delete_path(
     Path((workspace_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid = resolve_for_write(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize delete workspace file",
+    )
+    .await?;
     let path = normalize_path(&path);
     let deleted = state
         .file_service
@@ -415,7 +479,8 @@ pub async fn stat_file(
     Path(workspace_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid =
+        resolve_for_read(&state, &org, &workspace_id, "authorize stat workspace file").await?;
     let path = normalize_path(&req.path);
     let stat = state
         .file_service
@@ -447,7 +512,13 @@ pub async fn grep_files(
     Path(workspace_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
-    let uuid = resolve_workspace_uuid(&state, &org, &workspace_id).await?;
+    let uuid = resolve_for_read(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize grep workspace files",
+    )
+    .await?;
     let results = state
         .file_service
         .grep(

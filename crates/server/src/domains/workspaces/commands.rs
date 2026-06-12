@@ -36,6 +36,15 @@ fn parse_workspace_id(workspace_id: &str) -> Result<WorkspaceId, CommandError> {
         .map_err(|_| CommandError::not_found("Workspace"))
 }
 
+fn validate_status(status: &str) -> Result<(), CommandError> {
+    match status {
+        "active" | "archived" | "deleted" => Ok(()),
+        other => Err(CommandError::bad_request(format!(
+            "Invalid workspace status: {other} (expected one of: active, archived, deleted)"
+        ))),
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListWorkspaces {
     #[serde(default)]
@@ -243,6 +252,9 @@ impl Command for UpdateWorkspaceCmd {
             .ok_or_else(|| CommandError::not_found("Workspace"))?;
 
         let name = self.request.name.map(|n| validate_name(&n)).transpose()?;
+        if let Some(status) = self.request.status.as_deref() {
+            validate_status(status)?;
+        }
 
         let row = ctx
             .db

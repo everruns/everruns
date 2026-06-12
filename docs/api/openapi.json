@@ -11797,7 +11797,14 @@
         ],
         "responses": {
           "200": {
-            "description": "File content or directory listing"
+            "description": "File content or directory listing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetResponse"
+                }
+              }
+            }
           },
           "404": {
             "description": "Not found"

@@ -11,6 +11,7 @@ use crate::domains::workspaces::types::workspace_response;
 pub use crate::domains::workspaces::types::{
     CreateWorkspaceRequest, ListWorkspacesQuery, UpdateWorkspaceRequest, WorkspaceResponse,
 };
+use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CreateWorkspaceRow, UpdateWorkspace};
 use axum::{
@@ -19,11 +20,24 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use everruns_core::Caller;
 use everruns_core::typed_id::WorkspaceId;
+use everruns_core::{Caller, Policy};
 use std::sync::Arc;
 
-use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+use super::common::{ApiPolicyResultExt, ApiResult, ErrorResponse, ListResponse, impl_auth_state};
+
+fn enforce(
+    state: &AppState,
+    org: &ResolvedOrg,
+    policy: &Policy,
+    operation: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(org);
+    policy
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal(operation)
+}
 
 #[derive(Clone)]
 pub struct AppState {
@@ -69,7 +83,7 @@ pub async fn list_workspaces(
     State(state): State<AppState>,
     Query(query): Query<ListWorkspacesQuery>,
 ) -> ApiResult<ListResponse<WorkspaceResponse>> {
-    let _ = Caller::from(&org);
+    enforce(&state, &org, &WORKSPACE_VIEW, "authorize list workspaces")?;
     let rows = state
         .db
         .list_workspaces(org.org_id, query.search.as_deref(), query.include_archived)
@@ -97,6 +111,12 @@ pub async fn create_workspace(
     State(state): State<AppState>,
     Json(req): Json<CreateWorkspaceRequest>,
 ) -> Result<(StatusCode, Json<WorkspaceResponse>), (StatusCode, Json<ErrorResponse>)> {
+    enforce(
+        &state,
+        &org,
+        &WORKSPACE_MANAGE,
+        "authorize create workspace",
+    )?;
     let name = req.name.trim();
     if name.is_empty() {
         return Err((
@@ -154,6 +174,7 @@ pub async fn get_workspace(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> ApiResult<WorkspaceResponse> {
+    enforce(&state, &org, &WORKSPACE_VIEW, "authorize get workspace")?;
     let id: WorkspaceId = workspace_id.parse().map_err(|_| not_found())?;
     let row = state
         .db
@@ -184,6 +205,22 @@ pub async fn update_workspace(
     Path(workspace_id): Path<String>,
     Json(req): Json<UpdateWorkspaceRequest>,
 ) -> ApiResult<WorkspaceResponse> {
+    enforce(
+        &state,
+        &org,
+        &WORKSPACE_MANAGE,
+        "authorize update workspace",
+    )?;
+    if let Some(status) = req.status.as_deref()
+        && !matches!(status, "active" | "archived" | "deleted")
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse::new(
+                "Invalid workspace status (expected one of: active, archived, deleted)",
+            )),
+        ));
+    }
     let id: WorkspaceId = workspace_id.parse().map_err(|_| not_found())?;
     let existing = state
         .db
@@ -241,6 +278,12 @@ pub async fn delete_workspace(
     State(state): State<AppState>,
     Path(workspace_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    enforce(
+        &state,
+        &org,
+        &WORKSPACE_MANAGE,
+        "authorize delete workspace",
+    )?;
     let id: WorkspaceId = workspace_id.parse().map_err(|_| not_found())?;
     let existing = state
         .db

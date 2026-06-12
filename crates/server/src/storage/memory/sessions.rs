@@ -22,7 +22,7 @@ impl InMemoryDatabase {
         // (see specs/workspace.md, Decision 3).
         let session_uuid = id.uuid();
         let ws_id_hex = session_uuid.simple().to_string();
-        let ws_name = format!("session-{}", &ws_id_hex[..8]);
+        let ws_name = format!("session-{ws_id_hex}");
         let public_id = format!("wsp_{ws_id_hex}");
         self.workspaces.write().insert(
             session_uuid,

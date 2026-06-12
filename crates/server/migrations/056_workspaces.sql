@@ -80,7 +80,10 @@ SELECT
     s.id,
     s.org_id,
     'wsp_' || replace(s.id::text, '-', ''),
-    'session-' || substring(s.id::text from 1 for 8),
+    -- Use the full 32-hex of the session's UUID so per-org name uniqueness
+    -- holds regardless of how close in time the sessions were created
+    -- (UUIDv7 prefixes are time-derived and repeat in short windows).
+    'session-' || replace(s.id::text, '-', ''),
     'Default workspace for session ' || s.id::text,
     'active',
     s.created_at,
