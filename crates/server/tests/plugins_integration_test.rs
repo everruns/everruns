@@ -569,3 +569,114 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
         resp.text()
     );
 }
+
+// ============================================================
+// Default marketplace seeding (specs/plugins.md)
+// ============================================================
+
+/// The default "everruns" marketplace is seeded at org creation (here: the
+/// in-memory dev server's default org seed path). It must appear in the list
+/// immediately after the server starts — no manual registration required.
+#[tokio::test]
+async fn test_default_marketplace_seeded_at_org_creation() {
+    let server = dev_server().await;
+
+    let resp = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let data = resp.json_value();
+    let marketplaces = data["data"].as_array().unwrap();
+
+    let everruns_mkt = marketplaces
+        .iter()
+        .find(|m| m["name"].as_str() == Some("everruns"));
+
+    assert!(
+        everruns_mkt.is_some(),
+        "default 'everruns' marketplace must be seeded at org creation; got: {:?}",
+        marketplaces
+            .iter()
+            .map(|m| m["name"].as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let mkt = everruns_mkt.unwrap();
+    assert_eq!(
+        mkt["source_type"].as_str(),
+        Some("github"),
+        "default marketplace must use source_type 'github'"
+    );
+    assert_eq!(
+        mkt["source"]["repo"].as_str(),
+        Some("everruns/everruns"),
+        "default marketplace must point at everruns/everruns"
+    );
+    assert_eq!(
+        mkt["status"].as_str(),
+        Some("active"),
+        "default marketplace must start active"
+    );
+    assert!(
+        mkt["id"].as_str().unwrap().starts_with("plgmkt_"),
+        "marketplace id must have plgmkt_ prefix"
+    );
+    // catalog is NULL until synced — last_synced_at must be absent
+    assert!(
+        mkt["last_synced_at"].is_null() || !mkt["last_synced_at"].is_string(),
+        "default marketplace must be unsynced on creation"
+    );
+}
+
+/// Deleting the default "everruns" marketplace is permanent — it must not
+/// reappear on subsequent list calls (no lazy re-seeding on read).
+#[tokio::test]
+async fn test_default_marketplace_deletion_is_permanent() {
+    let server = dev_server().await;
+
+    // Locate the seeded default marketplace.
+    let list_resp = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let data = list_resp.json_value();
+    let marketplaces = data["data"].as_array().unwrap();
+
+    let everruns_mkt = marketplaces
+        .iter()
+        .find(|m| m["name"].as_str() == Some("everruns"))
+        .expect("default 'everruns' marketplace must be seeded");
+
+    let mkt_id = everruns_mkt["id"].as_str().unwrap().to_string();
+
+    // Delete it.
+    let del = server
+        .delete(&format!("/v1/plugin_marketplaces/{mkt_id}"))
+        .await;
+    assert_eq!(
+        del.status(),
+        StatusCode::NO_CONTENT,
+        "delete must succeed: {}",
+        del.text()
+    );
+
+    // List again — the marketplace must be gone and not have been re-seeded.
+    let list2 = server.get("/v1/plugin_marketplaces").await.assert_success();
+    let data2 = list2.json_value();
+    let marketplaces2 = data2["data"].as_array().unwrap();
+
+    assert!(
+        !marketplaces2
+            .iter()
+            .any(|m| m["name"].as_str() == Some("everruns")),
+        "deleted default marketplace must not reappear (no lazy re-seeding); got: {:?}",
+        marketplaces2
+            .iter()
+            .map(|m| m["name"].as_str())
+            .collect::<Vec<_>>()
+    );
+
+    // Direct GET must 404.
+    let get = server
+        .get(&format!("/v1/plugin_marketplaces/{mkt_id}"))
+        .await;
+    assert_eq!(
+        get.status(),
+        StatusCode::NOT_FOUND,
+        "deleted marketplace must return 404"
+    );
+}

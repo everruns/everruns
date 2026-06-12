@@ -98,11 +98,14 @@ plugin entries with `name`, `source` (relative path, `github`, `url`,
 `git-subdir`; `npm` deferred), and optional metadata/component overrides.
 Unknown fields are preserved and ignored.
 
-The **default marketplace** is seeded for every organization and points at
-the first-party curated catalog (initially the `everruns/everruns` repo's own
-`.claude-plugin/marketplace.json`, later a dedicated curated repo). It is
-deletable/disableable like any other marketplace; "default" means seeded, not
-privileged.
+The **default marketplace** is seeded for every organization. It is named
+`everruns`, uses `source_type: github`, and points at `everruns/everruns`
+(the repo's own `.claude-plugin/marketplace.json`). Seeding happens at org
+creation via `org_init::seed_default_plugin_marketplace`; existing orgs
+received it via the one-time backfill in `056_backfill_default_marketplace.sql`.
+The marketplace is deletable/disableable like any other marketplace; "default"
+means seeded, not privileged. Deletion is permanent — the marketplace is
+never re-seeded lazily on read.
 
 ## Lifecycle
 
@@ -212,6 +215,11 @@ capability threat model:
 - MCP servers declared by a plugin use existing scoped-MCP auth (OAuth /
   API key) with per-org consent, analogous to Claude Code's connector
   enablement step.
+- Install/update/uninstall and marketplace registration stay admin-gated;
+  the member-level escape hatch is deliberate — a member can manually copy
+  plugin content into a declarative capability or an agent prompt, which is
+  self-limiting because there is no automated remote fetch and no upstream
+  update channel.
 - Threat model entries: see `TM-PLUGIN-*` in
   [threat-model.md](threat-model.md) § 26.
 

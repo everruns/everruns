@@ -1,4 +1,4 @@
-// Organization initialization: built-in harnesses
+// Organization initialization: built-in harnesses and default plugin marketplace
 //
 // Decision: Built-in harnesses are readonly, system-managed, provisioned per-org
 // Decision: Seed agents are NOT auto-seeded; they live as examples (GET /v1/agent-examples)
@@ -7,17 +7,73 @@
 // Decision: Built-in harness identity is the `name` string; UUIDs are assigned by the DB at
 //   provisioning time. No UUIDs are hardcoded anywhere (no per-org split-brain).
 // Decision: Org settings keep separate default and base harness pointers
+//
+// Default marketplace seeding (see specs/plugins.md):
+// Decision: The default marketplace ("everruns", github source everruns/everruns) is seeded
+//   once at org creation and in the 056_backfill_default_marketplace.sql backfill migration.
+//   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
+//   This ensures "default" means seeded, not privileged.
 
 use crate::storage::{
     StorageBackend,
-    models::{CreateHarnessRow, UpdateOrganizationSettings},
+    models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
 use everruns_core::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, HarnessId,
+    PluginMarketplaceId,
 };
 use everruns_durable::UpdateField;
 use uuid::Uuid;
+
+// ============================================================================
+// Default plugin marketplace seeding
+// ============================================================================
+
+/// Name of the default marketplace seeded for every org.
+pub const DEFAULT_MARKETPLACE_NAME: &str = "everruns";
+
+/// Seed the default plugin marketplace for a newly created organization.
+///
+/// Inserts a `plugin_marketplaces` row: name `everruns`, source_type `github`,
+/// source `{"repo": "everruns/everruns"}`, status `active`, catalog NULL (unsynced
+/// until first sync).
+///
+/// This is **best-effort-durable but non-fatal**: if the insert fails (e.g. name
+/// conflict because the user already created a marketplace named "everruns"), org
+/// creation still succeeds — a warning is logged.
+///
+/// Seeding happens only at org creation (and in the one-time backfill migration);
+/// it is never re-seeded lazily on read. A user who deletes the default marketplace
+/// does not get it back — deletion is permanent.
+pub async fn seed_default_plugin_marketplace(db: &StorageBackend, org_id: i64) {
+    let source = serde_json::json!({"repo": "everruns/everruns"});
+    let input = CreatePluginMarketplaceRow {
+        public_id: PluginMarketplaceId::new().to_string(),
+        name: DEFAULT_MARKETPLACE_NAME.to_string(),
+        source_type: "github".to_string(),
+        source,
+    };
+    match db.create_plugin_marketplace(org_id, input).await {
+        Ok(_) => {
+            tracing::info!(
+                org_id,
+                name = DEFAULT_MARKETPLACE_NAME,
+                "Seeded default plugin marketplace"
+            );
+        }
+        Err(e) => {
+            // Non-fatal: a name conflict means the org already has a marketplace
+            // named "everruns" (manual creation or race); log and continue.
+            tracing::warn!(
+                org_id,
+                name = DEFAULT_MARKETPLACE_NAME,
+                error = %e,
+                "Failed to seed default plugin marketplace (non-fatal; marketplace may already exist)"
+            );
+        }
+    }
+}
 
 pub(crate) fn default_harness_definitions() -> Vec<BuiltInHarnessDefinition> {
     crate::platform::oss_built_in_harnesses()
