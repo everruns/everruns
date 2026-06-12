@@ -105,7 +105,7 @@ Creates an external A2A run.
 
 Parameters:
 
-- `task` required
+- `instructions` required
 - `target.type = external_a2a`
 - `target.external_agent_id`
 - `mode = wait | background`
@@ -137,7 +137,7 @@ Calls A2A task cancellation and updates the local run state from the returned ta
 | `agent_run_id` | local handle |
 | `remote_task_id` | A2A `Task.id` |
 | `remote_context_id` | A2A `Task.contextId` |
-| `task` / follow-up message | A2A `Message` with `ROLE_USER` |
+| `instructions` / follow-up message | A2A `Message` with `ROLE_USER` |
 | result summary | first text artifact, else status message text |
 | `input_required` | non-terminal interrupted run |
 | `auth_required` | non-terminal interrupted run |

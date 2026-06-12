@@ -712,7 +712,7 @@ mod tests {
                     vec![crate::ToolCall {
                         id: "call_subagent".into(),
                         name: "spawn_subagent".into(),
-                        arguments: json!({"name": "Scout", "task": "look around"}),
+                        arguments: json!({"name": "Scout", "instructions": "look around"}),
                     }],
                 ),
                 crate::Message::tool_result(

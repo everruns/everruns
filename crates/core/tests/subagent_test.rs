@@ -69,7 +69,7 @@ async fn test_spawn_subagent_missing_name() {
     let tool = find_tool("spawn_subagent");
 
     // Call execute (no context) — should return ToolError about requiring context
-    let result = tool.execute(json!({"task": "do something"})).await;
+    let result = tool.execute(json!({"instructions": "do something"})).await;
     assert!(
         matches!(result, ToolExecutionResult::ToolError(_)),
         "Expected ToolError when calling execute without context, got: {result:?}"
@@ -78,7 +78,7 @@ async fn test_spawn_subagent_missing_name() {
     // Call execute_with_context with missing name — should return ToolError about missing param
     let ctx = empty_context();
     let result = tool
-        .execute_with_context(json!({"task": "do something"}), &ctx)
+        .execute_with_context(json!({"instructions": "do something"}), &ctx)
         .await;
     match &result {
         ToolExecutionResult::ToolError(msg) => {
@@ -92,11 +92,11 @@ async fn test_spawn_subagent_missing_name() {
 }
 
 // =============================================================================
-// 3. spawn_subagent — missing task
+// 3. spawn_subagent — missing instructions
 // =============================================================================
 
 #[tokio::test]
-async fn test_spawn_subagent_missing_task() {
+async fn test_spawn_subagent_missing_instructions() {
     let tool = find_tool("spawn_subagent");
     let ctx = empty_context();
 
@@ -106,11 +106,13 @@ async fn test_spawn_subagent_missing_task() {
     match &result {
         ToolExecutionResult::ToolError(msg) => {
             assert!(
-                msg.contains("task") || msg.contains("parameter") || msg.contains("platform_store"),
-                "Error should mention 'task' or 'parameter', got: {msg}"
+                msg.contains("instructions")
+                    || msg.contains("parameter")
+                    || msg.contains("platform_store"),
+                "Error should mention 'instructions' or 'parameter', got: {msg}"
             );
         }
-        _ => panic!("Expected ToolError for missing task, got: {result:?}"),
+        _ => panic!("Expected ToolError for missing instructions, got: {result:?}"),
     }
 }
 
@@ -193,13 +195,13 @@ fn test_spawn_subagent_schema_validation() {
         .as_array()
         .expect("required should be array");
     assert!(required.contains(&json!("name")));
-    assert!(required.contains(&json!("task")));
+    assert!(required.contains(&json!("instructions")));
     assert_eq!(required.len(), 2);
 
     // Check property types
     let props = &schema["properties"];
     assert_eq!(props["name"]["type"], "string");
-    assert_eq!(props["task"]["type"], "string");
+    assert_eq!(props["instructions"]["type"], "string");
 
     // Check additionalProperties
     assert_eq!(schema["additionalProperties"], json!(false));
@@ -323,7 +325,7 @@ async fn test_spawn_subagent_no_platform_store() {
     let ctx = empty_context();
 
     let result = tool
-        .execute_with_context(json!({"name": "Runner", "task": "run tests"}), &ctx)
+        .execute_with_context(json!({"name": "Runner", "instructions": "run tests"}), &ctx)
         .await;
 
     match &result {

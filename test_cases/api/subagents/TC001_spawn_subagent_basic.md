@@ -71,7 +71,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 |-------|----------|
 | spawn_subagent called | `tool.called` event with `tool_name: "spawn_subagent"` |
 | Tool args contain name | `arguments.name` is `"Greeter"` |
-| Tool args contain task | `arguments.task` is non-empty |
+| Tool args contain instructions | `arguments.instructions` is non-empty |
 
 ### Tool Result Assertions
 

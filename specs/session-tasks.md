@@ -227,9 +227,11 @@ creates a task and returns its `task_id`. Blocking (foreground) spawns also
 create task records: same object, and the UI shows it live while the parent
 turn waits; background is a mode, not a different entity.
 
-Naming cleanup: today `task` parameters carry instruction text
-(`subagent_task`, `spawn_subagent(task:)`). These rename to `instructions` so
-"task" unambiguously means the lifecycle object.
+Naming cleanup: `task` parameters that carry instruction text
+(`subagent_task`, `spawn_subagent(task:)`) have been renamed to `instructions` so
+"task" unambiguously means the lifecycle object. This rename is done for the
+model-facing tool parameters (`spawn_subagent`, `spawn_agent`, `handoff`);
+the `sessions.subagent_task` DB column retirement remains follow-up work.
 
 ## Wake-ups
 
@@ -308,8 +310,9 @@ No backward compatibility is required; data migrates forward once:
   and agent_handoff no longer register in `session_resources`. A2A agent runs
   (`external_agent` tasks) now store their run records in session storage KV
   (`agent_run:{run_id}` keys). Legacy `subagent.*` events are retained for CLI
-  compatibility. The `sessions.subagent_*` column retirement and the
-  `task` → `instructions` parameter rename remain follow-up work.
+  compatibility. The `task` → `instructions` parameter rename is done (model-facing
+  tool parameters `spawn_subagent`, `spawn_agent`, `handoff`). The
+  `sessions.subagent_*` column retirement remains follow-up work.
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
   reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
   with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -

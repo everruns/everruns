@@ -254,9 +254,9 @@ impl Tool for SpawnSubagentTool {
                     "type": "string",
                     "description": "Human-readable name for the subagent (e.g. 'Test Runner', 'Auth Explorer'). Must be unique within this session."
                 },
-                "task": {
+                "instructions": {
                     "type": "string",
-                    "description": "Task description — what the subagent should do."
+                    "description": "Instructions for the subagent — what it should do."
                 },
                 "blueprint": {
                     "type": "string",
@@ -267,7 +267,7 @@ impl Tool for SpawnSubagentTool {
                     "description": "Blueprint-specific configuration. Only valid when `blueprint` is set. Validated against the blueprint's config schema."
                 }
             },
-            "required": ["name", "task"],
+            "required": ["name", "instructions"],
             "additionalProperties": false
         })
     }
@@ -300,7 +300,7 @@ impl Tool for SpawnSubagentTool {
             Ok(s) => s.trim().to_string(),
             Err(e) => return e,
         };
-        let task = match require_str(&arguments, "task") {
+        let instructions = match require_str(&arguments, "instructions") {
             Ok(s) => s.to_string(),
             Err(e) => return e,
         };
@@ -404,7 +404,13 @@ impl Tool for SpawnSubagentTool {
             let claim_token = uuid::Uuid::new_v4();
 
             let claim = match spawn_store
-                .try_claim_spawn(context.session_id, tool_call_id, &name, &task, claim_token)
+                .try_claim_spawn(
+                    context.session_id,
+                    tool_call_id,
+                    &name,
+                    &instructions,
+                    claim_token,
+                )
                 .await
             {
                 Ok(c) => c,
@@ -444,7 +450,7 @@ impl Tool for SpawnSubagentTool {
                         context,
                         child_session_id,
                         &name,
-                        &task,
+                        &instructions,
                         &blueprint_param,
                         task_id,
                         Some((
@@ -470,7 +476,7 @@ impl Tool for SpawnSubagentTool {
                         context,
                         &parent_session,
                         &name,
-                        &task,
+                        &instructions,
                         &blueprint_param,
                         &config_param,
                         Some((
@@ -491,7 +497,7 @@ impl Tool for SpawnSubagentTool {
             context,
             &parent_session,
             &name,
-            &task,
+            &instructions,
             &blueprint_param,
             &config_param,
             None,
@@ -508,8 +514,8 @@ impl Tool for SpawnSubagentTool {
 // Helpers for SpawnSubagentTool
 // =============================================================================
 
-/// Create a new child session, send the task, wait for completion, and settle
-/// the spawn handle (if a settle context is supplied).
+/// Create a new child session, send the instructions, wait for completion, and
+/// settle the spawn handle (if a settle context is supplied).
 ///
 /// `settle_ctx` = (spawn_store, tool_call_id, spawn_handle_id, claim_token).
 /// `spawn_handle_id` is used to call `register_child_session` after child creation.
@@ -519,7 +525,7 @@ async fn spawn_create_and_wait(
     context: &ToolContext,
     parent_session: &crate::session::Session,
     name: &str,
-    task: &str,
+    instructions: &str,
     blueprint_param: &Option<String>,
     config_param: &Option<Value>,
     settle_ctx: Option<(
@@ -553,7 +559,7 @@ async fn spawn_create_and_wait(
             child_session.id,
             context.session_id,
             name,
-            task,
+            instructions,
             crate::session::SubagentStatus::Running,
         )
         .await
@@ -572,7 +578,7 @@ async fn spawn_create_and_wait(
                 kind: TASK_KIND_SUBAGENT.to_string(),
                 display_name: name.to_string(),
                 spec: json!({
-                    "instructions": task,
+                    "instructions": instructions,
                     "blueprint_id": blueprint_param,
                 }),
                 state: SessionTaskState::Running,
@@ -608,8 +614,8 @@ async fn spawn_create_and_wait(
         None
     };
 
-    // Send the task as the first message
-    if let Err(e) = store.send_message(child_session.id, task).await {
+    // Send the instructions as the first message
+    if let Err(e) = store.send_message(child_session.id, instructions).await {
         finish_subagent_task(
             context,
             task_id.as_deref(),
@@ -629,7 +635,7 @@ async fn spawn_create_and_wait(
         context,
         child_session.id,
         name,
-        task,
+        instructions,
         blueprint_param,
         task_id,
         wait_settle_ctx,
@@ -645,7 +651,7 @@ async fn run_subagent_wait_and_settle(
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
     name: &str,
-    task: &str,
+    instructions: &str,
     blueprint_param: &Option<String>,
     task_id: Option<String>,
     settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
@@ -715,7 +721,13 @@ async fn run_subagent_wait_and_settle(
     if let Some(subagent_status) = terminal_status {
         let task_state = terminal_subagent_task_state(&subagent_status);
         if let Err(e) = store
-            .set_subagent_metadata(child_id, context.session_id, name, task, subagent_status)
+            .set_subagent_metadata(
+                child_id,
+                context.session_id,
+                name,
+                instructions,
+                subagent_status,
+            )
             .await
         {
             tracing::warn!(
@@ -836,7 +848,7 @@ impl Tool for GetSubagentsTool {
                     ToolExecutionResult::success(json!({
                         "subagent_id": child.id.to_string(),
                         "name": child.subagent_name,
-                        "task": child.subagent_task,
+                        "instructions": child.subagent_task,
                         "status": child.subagent_status.as_ref().map(|s| s.to_string())
                             .unwrap_or_else(|| child.status.to_string()),
                         "session_status": child.status.to_string(),
@@ -872,7 +884,7 @@ impl Tool for GetSubagentsTool {
                     json!({
                         "subagent_id": s.id.to_string(),
                         "name": s.subagent_name,
-                        "task": s.subagent_task,
+                        "instructions": s.subagent_task,
                         "status": s.subagent_status.as_ref().map(|st| st.to_string())
                             .unwrap_or_else(|| s.status.to_string()),
                         "created_at": s.created_at.to_rfc3339(),
@@ -1173,7 +1185,7 @@ mod tests {
         let schema = tool.parameters_schema();
         let required = schema["required"].as_array().unwrap();
         assert!(required.contains(&json!("name")));
-        assert!(required.contains(&json!("task")));
+        assert!(required.contains(&json!("instructions")));
     }
 
     #[test]
@@ -1192,7 +1204,9 @@ mod tests {
     #[tokio::test]
     async fn spawn_subagent_without_context_returns_error() {
         let tool = SpawnSubagentTool;
-        let result = tool.execute(json!({"name": "Test", "task": "test"})).await;
+        let result = tool
+            .execute(json!({"name": "Test", "instructions": "test"}))
+            .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
     }
 

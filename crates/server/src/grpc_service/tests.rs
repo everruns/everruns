@@ -536,7 +536,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .execute_with_context(
             serde_json::json!({
                 "name": "gRPC Subagent",
-                "task": "Exercise spawn_subagent through the gRPC platform adapter"
+                "instructions": "Exercise spawn_subagent through the gRPC platform adapter"
             }),
             &context,
         )
@@ -594,7 +594,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .execute_with_context(
             serde_json::json!({
                 "target": "target",
-                "task": "Exercise start_agent_handoff through the gRPC platform adapter",
+                "instructions": "Exercise start_agent_handoff through the gRPC platform adapter",
                 "public_context": { "ticket": "EVE-538" }
             }),
             &context,

@@ -21,7 +21,7 @@ Create and start a new subagent. The subagent begins executing immediately in th
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Human-readable name for the subagent. Must be unique within the session. |
-| `task` | string | yes | Description of what the subagent should do. This becomes the subagent's initial prompt. |
+| `instructions` | string | yes | Instructions for what the subagent should do. This becomes the subagent's initial prompt. |
 | `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
 | `config` | object | no | Blueprint-specific configuration. Only valid when `blueprint` is set. |
 

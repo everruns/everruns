@@ -76,20 +76,20 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ### spawn_subagent
 
-Creates a child session and sends the task as the first user message. In foreground mode, blocks until the child idles.
+Creates a child session and sends the instructions as the first user message. In foreground mode, blocks until the child idles.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name for the subagent |
-| `task` | string | Yes | Task description sent as first user message |
+| `instructions` | string | Yes | Instructions sent as first user message |
 
-**Returns:** Last assistant message from the child session (the subagent's response to the task).
+**Returns:** Last assistant message from the child session (the subagent's response to the instructions).
 
 **Behavior:**
 1. Creates child session with `parent_session_id` set to current session
 2. Inherits the parent session locale when present
 3. Sets `subagent_name`, `subagent_task`, `subagent_status = Spawning`
-4. Sends `task` as first user message → status transitions to `Running`
+4. Sends `instructions` as first user message → status transitions to `Running`
 5. Blocks on `wait_for_idle` (foreground mode)
 6. On child idle: returns last assistant message, status → `Completed`
 7. On child failure: returns error, status → `Failed`
@@ -103,7 +103,7 @@ Lists or retrieves detail for subagents spawned by the current session.
 | `name_or_id` | string | No | Filter by name (case-insensitive) or session ID |
 | `status_filter` | string | No | Filter by SubagentStatus value |
 
-**Returns:** Array of subagent summaries (name, status, task, created_at), or single subagent detail when `name_or_id` matches exactly one.
+**Returns:** Array of subagent summaries (name, status, instructions, created_at), or single subagent detail when `name_or_id` matches exactly one.
 
 ### message_subagent
 
@@ -137,11 +137,11 @@ All subagent events are emitted on the **parent** session's event stream. Event 
 ```
 Parent Agent                          System                           Child Session
      │                                  │                                  │
-     │  spawn_subagent("Runner", task)  │                                  │
+     │  spawn_subagent("Runner", instructions)  │                          │
      │─────────────────────────────────>│                                  │
      │                                  │  create session(parent_id=...)   │
      │                                  │─────────────────────────────────>│
-     │                                  │  send task as user message       │
+     │                                  │  send instructions as message    │
      │                                  │─────────────────────────────────>│
      │                                  │  emit subagent.spawned           │
      │                                  │                                  │

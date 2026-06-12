@@ -445,16 +445,16 @@ impl Tool for StartAgentHandoffTool {
                     "type": "string",
                     "description": "Configured handoff target id."
                 },
-                "task": {
+                "instructions": {
                     "type": "string",
-                    "description": "Work request for the target agent. Do not include credentials or bearer tokens."
+                    "description": "Instructions for the target agent. Do not include credentials or bearer tokens."
                 },
                 "public_context": {
                     "type": "object",
-                    "description": "Non-secret structured context to include with the task."
+                    "description": "Non-secret structured context to include with the instructions."
                 }
             },
-            "required": ["target", "task"],
+            "required": ["target", "instructions"],
             "additionalProperties": false
         })
     }
@@ -483,7 +483,7 @@ impl Tool for StartAgentHandoffTool {
             Ok(value) => value,
             Err(error) => return error,
         };
-        let task = match require_str(&arguments, "task") {
+        let instructions = match require_str(&arguments, "instructions") {
             Ok(value) => value,
             Err(error) => return error,
         };
@@ -529,7 +529,7 @@ impl Tool for StartAgentHandoffTool {
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
 
-        let handoff_task = child_task(task, arguments.get("public_context"));
+        let handoff_task = child_task(instructions, arguments.get("public_context"));
         let child_session = match store
             .set_subagent_metadata(
                 child_session.id,
@@ -1055,7 +1055,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "target": "aws_operator",
-                    "task": "Create an RDS database named app-db"
+                    "instructions": "Create an RDS database named app-db"
                 }),
                 &context,
             )
@@ -1082,7 +1082,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "target": "aws_operator",
-                    "task": "Create an RDS database named app-db"
+                    "instructions": "Create an RDS database named app-db"
                 }),
                 &context,
             )
@@ -1109,7 +1109,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "target": "aws_operator",
-                    "task": "Create an RDS database named app-db",
+                    "instructions": "Create an RDS database named app-db",
                     "public_context": { "region": "us-east-1" }
                 }),
                 &context,
@@ -1148,7 +1148,7 @@ mod tests {
             .execute_with_context(
                 json!({
                     "target": "aws_operator",
-                    "task": "Create an RDS database named app-db"
+                    "instructions": "Create an RDS database named app-db"
                 }),
                 &context,
             )
