@@ -8,6 +8,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::memory::files::{
     GrepMatchInfo, MemoryFileRead, MemoryFileService, MemoryFsError, NewFileInput,
 };
+use crate::domains::memory::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -16,6 +17,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use everruns_core::{Caller, Policy};
 use mime_guess::from_path;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -200,6 +202,17 @@ fn decode_request_content(
     }
 }
 
+fn authorize_memory_file_access(
+    state: &AppState,
+    org: &ResolvedOrg,
+    policy: &Policy,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    let caller = Caller::from(org);
+    policy
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(|e| (StatusCode::FORBIDDEN, Json(ErrorResponse::new(e.message))))
+}
+
 fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
     let (code, msg) = match &e {
         MemoryFsError::MemoryNotFound | MemoryFsError::NotFound => {
@@ -247,6 +260,7 @@ pub async fn list_root(
     State(state): State<AppState>,
     Path(memory_id): Path<String>,
 ) -> Result<Json<ListResponse<MemoryFileInfo>>, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -280,6 +294,7 @@ pub async fn get_file(
     State(state): State<AppState>,
     Path((memory_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -358,6 +373,7 @@ pub async fn create_file(
     Path((memory_id, path)): Path<(String, String)>,
     Json(req): Json<CreateMemoryFileRequest>,
 ) -> Result<(StatusCode, Json<MemoryFileInfo>), (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -416,6 +432,7 @@ pub async fn update_file(
     Path((memory_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateMemoryFileRequest>,
 ) -> Result<Json<MemoryFile>, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -459,6 +476,7 @@ pub async fn delete_file(
     Path((memory_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_MANAGE)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -488,6 +506,7 @@ pub async fn stat_action(
     Path(memory_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<MemoryFileInfo>, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -516,6 +535,7 @@ pub async fn grep_action(
     Path(memory_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResultEntry>>, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -555,6 +575,7 @@ pub async fn download_action(
     State(state): State<AppState>,
     Path((memory_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
+    authorize_memory_file_access(&state, &org, &MEMORY_VIEW)?;
     let svc = state.service();
     let mem = svc
         .resolve_memory(org.org_id, &memory_id)
@@ -595,4 +616,88 @@ fn internal<E: std::fmt::Display>(e: E) -> (StatusCode, Json<ErrorResponse>) {
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ErrorResponse::new("internal server error")),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::auth::AuthConfig;
+    use everruns_core::{
+        DefaultPermissionResolver, FeatureFlags, OrgRole, Permission, PermissionResolver,
+    };
+
+    fn org_with_role(role: OrgRole) -> ResolvedOrg {
+        ResolvedOrg {
+            org_id: 1,
+            public_id: "org_test".to_string(),
+            name: "Test".to_string(),
+            user_id: None,
+            role,
+            is_platform_user: false,
+            feature_flags: FeatureFlags::default(),
+        }
+    }
+
+    fn app_state() -> AppState {
+        let db = Arc::new(StorageBackend::in_memory());
+        let auth = AuthState::builtin(AuthConfig::default(), db.clone());
+        AppState::new(db, auth)
+    }
+
+    struct DenyAllResolver;
+
+    impl PermissionResolver for DenyAllResolver {
+        fn has_permission(&self, _caller: &Caller, _permission: &Permission) -> bool {
+            false
+        }
+
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+            Vec::new()
+        }
+    }
+
+    #[tokio::test]
+    async fn create_file_requires_memory_manage_policy() {
+        let result = create_file(
+            org_with_role(OrgRole::Member),
+            State(app_state()),
+            Path(("mem_missing".to_string(), "notes.txt".to_string())),
+            Json(CreateMemoryFileRequest {
+                content: Some("notes".to_string()),
+                encoding: None,
+                is_directory: None,
+            }),
+        )
+        .await;
+
+        let Err((status, _)) = result else {
+            panic!("member should be denied before memory file creation");
+        };
+        assert_eq!(status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn get_file_uses_configured_permission_resolver() {
+        let mut state = app_state();
+        state.auth.permission_resolver = Arc::new(DenyAllResolver);
+
+        let result = get_file(
+            org_with_role(OrgRole::Owner),
+            State(state),
+            Path(("mem_missing".to_string(), "notes.txt".to_string())),
+        )
+        .await;
+
+        let Err((status, _)) = result else {
+            panic!("custom-denied caller should be denied before memory file read");
+        };
+        assert_eq!(status, StatusCode::FORBIDDEN);
+
+        let default = DefaultPermissionResolver;
+        assert!(
+            MEMORY_VIEW
+                .evaluate_with(&default, &Caller::from(&org_with_role(OrgRole::Owner)))
+                .is_ok()
+        );
+    }
 }
