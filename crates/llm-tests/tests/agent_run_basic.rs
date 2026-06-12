@@ -167,6 +167,7 @@ async fn test_model_not_available_returns_user_friendly_error(
         provider_type,
         api_key: Some(api_key),
         base_url: None,
+        provider_metadata: None,
     };
 
     let runner = InMemoryAgenticLoop::builder()

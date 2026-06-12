@@ -28,6 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(Harness {
             id: harness_id,

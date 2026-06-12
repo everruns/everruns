@@ -77,6 +77,7 @@ async fn hides_math_tools_but_runs_them_via_lua() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".to_string()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness)
         .agent(agent)

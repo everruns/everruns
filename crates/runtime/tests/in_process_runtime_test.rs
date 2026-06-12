@@ -127,6 +127,7 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness(harness_id))
         .agent(agent(agent_id))
@@ -306,6 +307,7 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(math_harness)
         .agent(agent(agent_id))
@@ -337,6 +339,7 @@ async fn runtime_runs_session_without_agent_entity() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness(harness_id))
         .session(session(session_id, harness_id, None))
@@ -373,6 +376,7 @@ async fn runtime_accepts_explicit_backend_bundle() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness(harness_id))
         .agent(agent(agent_id))
@@ -447,6 +451,7 @@ async fn runtime_exposes_assembled_context() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(harness(harness_id))
         .agent(agent(agent_id))
@@ -899,6 +904,7 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(
             HarnessBuilder::new("conn", "You resolve connection tokens.")

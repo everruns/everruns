@@ -53,6 +53,7 @@ impl ProviderModelConfig {
             provider_type: self.provider_type.clone(),
             api_key: Some(api_key),
             base_url: None,
+            provider_metadata: None,
         })
     }
 

@@ -130,6 +130,7 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
             provider_type: LlmProviderType::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
+            provider_metadata: None,
         })
         .harness(
             HarnessBuilder::new("mcp", "You are an MCP test assistant.")
