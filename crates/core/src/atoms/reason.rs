@@ -1980,8 +1980,11 @@ impl ReasonAtom {
                 }
                 match event {
                     LlmStreamEvent::TextDelta(delta) => {
+                        if delta.is_empty() {
+                            continue;
+                        }
                         // Track time-to-first-token on first non-empty delta
-                        if time_to_first_token_ms.is_none() && !delta.is_empty() {
+                        if time_to_first_token_ms.is_none() {
                             let ttft = llm_start.elapsed().as_millis() as u64;
                             time_to_first_token_ms = Some(ttft);
                             tracing::info!(
@@ -2044,6 +2047,9 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingDelta(delta) => {
+                        if delta.is_empty() {
+                            continue;
+                        }
                         if let Some(t) = append_guarded_thinking_delta(
                             &mut armed_guardrails,
                             &mut thinking,
