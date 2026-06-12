@@ -115,6 +115,7 @@ describe("formatSessionExpiration", () => {
         endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
+        sessionExpirationSeconds={6 * 60 * 60}
         toolVisibility="generic"
         genericToolText="Working on it"
       />,

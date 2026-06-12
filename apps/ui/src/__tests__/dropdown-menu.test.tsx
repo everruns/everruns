@@ -73,6 +73,6 @@ describe("DropdownMenuSubContent", () => {
     expect(positioner).not.toBeNull();
     expect(positioner).toHaveClass("z-50");
     expect(portal).not.toBeNull();
-    expect(portal).toContainElement(positioner);
+    expect(portal).toContainElement(positioner as HTMLElement | null);
   });
 });

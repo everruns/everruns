@@ -99,7 +99,7 @@ describe("mergeUiRouteManifests", () => {
     const base = {
       version: 1 as const,
       sourcePackage: "everruns-ui",
-      appDir: "src/app",
+      appDir: "src/app" as const,
       artifacts: [
         {
           artifactId: "/(main)/dashboard:page.tsx",
@@ -116,7 +116,7 @@ describe("mergeUiRouteManifests", () => {
     const wrapper = {
       version: 1 as const,
       sourcePackage: "wrapper-ui",
-      appDir: "src/app",
+      appDir: "src/app" as const,
       artifacts: [
         {
           artifactId: "/(main)/dashboard:page.tsx",

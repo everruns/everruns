@@ -9,6 +9,7 @@ function createSession(overrides?: Partial<Session>): Session {
     organization_id: "default",
     harness_id: "harness-1",
     agent_id: "agent-1",
+    owner_principal_id: "principal_1",
     title: "Test Session",
     tags: [],
     model_id: null,
@@ -26,13 +27,17 @@ function createAgent(overrides?: Partial<Agent>): Agent {
   return {
     id: "agent-1",
     name: "Test Agent",
+    display_name: null,
     description: null,
     system_prompt: "You are helpful",
     default_model_id: null,
     tags: [],
+    capabilities: [],
     status: "active",
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
+    archived_at: null,
+    deleted_at: null,
     ...overrides,
   };
 }
@@ -51,6 +56,7 @@ function createLlmModel(overrides?: Partial<LlmModelWithProvider>): LlmModelWith
     updated_at: "2025-01-01T00:00:00Z",
     provider_name: "OpenAI",
     provider_type: "openai",
+    is_favorite: false,
     ...overrides,
   };
 }

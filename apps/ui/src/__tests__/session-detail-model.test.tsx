@@ -41,6 +41,7 @@ const mockLlmModel: LlmModelWithProvider = {
   updated_at: "2025-01-01T00:00:00Z",
   provider_name: "OpenAI",
   provider_type: "openai",
+  is_favorite: false,
 };
 
 describe("SessionCard - LLM Model Display", () => {

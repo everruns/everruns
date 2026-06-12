@@ -1,16 +1,22 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { ApiError } from "@/lib/api/client";
 import MainLayout from "@/app/(main)/layout";
+import type { AuthConfigResponse, UserInfoResponse } from "@/lib/api/types";
 
 const mockReplace = jest.fn();
 const mockPathname = jest.fn();
 const mockSearchParams = jest.fn();
 
 const authState = {
-  config: { mode: "password", oauth_providers: [] },
+  config: { mode: "password", oauth_providers: [] } as unknown as AuthConfigResponse | undefined,
   configLoading: false,
   configError: null as Error | null,
-  user: { id: "user-1", email: "test@example.com", name: "Test User", roles: ["user"] },
+  user: {
+    id: "user-1",
+    email: "test@example.com",
+    name: "Test User",
+    roles: ["user"],
+  } as UserInfoResponse | null | undefined,
   userLoading: false,
   userError: null as Error | null,
   isAuthenticated: true,
@@ -67,7 +73,10 @@ describe("MainLayout auth availability", () => {
     mockPathname.mockReturnValue("/settings/providers");
     mockSearchParams.mockReturnValue(new URLSearchParams("tab=models"));
 
-    authState.config = { mode: "password", oauth_providers: [] };
+    authState.config = {
+      mode: "password",
+      oauth_providers: [],
+    } as unknown as AuthConfigResponse;
     authState.configLoading = false;
     authState.configError = null;
     authState.user = {

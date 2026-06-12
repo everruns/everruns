@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
+import type { Event, LlmModelWithProvider } from "@/lib/api/types";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
-const mockUseFeatureFlag = jest.fn(() => false);
+const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
 const mockSelectTrigger = jest.fn(
@@ -24,8 +25,8 @@ const mockSessionContext = {
   agentId: "agent-1",
   events: [],
   sessionId: "session-1",
-  llmModel: null,
-  chatEvents: [],
+  llmModel: null as LlmModelWithProvider | null,
+  chatEvents: [] as Event[],
   toolResultsMap: new Map(),
   toolProgressMap: new Map(),
   toolOutputMap: new Map(),
@@ -249,7 +250,7 @@ describe("ChatPanel compaction divider", () => {
         ],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent];
+    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
 
     render(<ChatPanel />);
 
@@ -273,7 +274,7 @@ describe("ChatPanel compaction divider", () => {
         steps: [],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent];
+    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
 
     render(<ChatPanel />);
 
@@ -301,7 +302,7 @@ describe("ChatPanel compaction divider", () => {
         ],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent];
+    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
 
     render(<ChatPanel />);
 
@@ -376,7 +377,7 @@ describe("ChatPanel placeholder", () => {
           values: [{ value: "medium", name: "Medium" }],
         },
       },
-    };
+    } as unknown as LlmModelWithProvider;
 
     render(<ChatPanel />);
 
@@ -385,7 +386,7 @@ describe("ChatPanel placeholder", () => {
     for (const [triggerProps] of mockSelectTrigger.mock.calls) {
       expect(triggerProps?.nativeButton).toBe(false);
       expect(React.isValidElement(triggerProps?.render)).toBe(true);
-      expect(triggerProps?.render.type).toBe("div");
+      expect(triggerProps?.render?.type).toBe("div");
     }
   });
 
@@ -441,7 +442,7 @@ describe("ChatPanel placeholder", () => {
           error: "backend temporarily unavailable",
           error_code: "dependency_unavailable",
         },
-      },
+      } as unknown as Event,
     ];
 
     render(<ChatPanel />);
@@ -465,7 +466,7 @@ describe("ChatPanel placeholder", () => {
           turn_id: "turn-1",
           error: "provider token leaked in diagnostic payload",
         },
-      },
+      } as unknown as Event,
     ];
 
     render(<ChatPanel />);

@@ -76,8 +76,8 @@ describe("translateValidationErrors", () => {
   it("maps known AJV keywords to localized catalog messages", () => {
     const errors = translateValidationErrors("uk", [
       { name: "required", message: "is a required property", stack: ".x is required" },
-      { name: "pattern", params: { pattern: "^mem_" }, message: "must match pattern" },
-      { name: "minimum", params: { limit: 1 }, message: "must be >= 1" },
+      { name: "pattern", params: { pattern: "^mem_" }, message: "must match pattern", stack: "" },
+      { name: "minimum", params: { limit: 1 }, message: "must be >= 1", stack: "" },
     ]);
 
     expect(errors[0].message).toBe(formatMessage("uk", "validation_required"));

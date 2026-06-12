@@ -345,7 +345,7 @@ describe("Sidebar", () => {
   it("hides Durable Execution when durable policy is denied", () => {
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": false } },
-      can: () => false,
+      can: (_policyId: string): _policyId is "durable.view" => false,
     });
 
     render(<Sidebar />);

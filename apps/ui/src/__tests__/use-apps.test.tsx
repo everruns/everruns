@@ -46,6 +46,9 @@ function makeApp(overrides: Partial<App> = {}): App {
     description: "Slack bot",
     harness_id: "hrs-123",
     agent_id: "agt-123",
+    agent_version_policy: "default",
+    agent_version_id: null,
+    owner_principal_id: "principal_1",
     channels: [
       {
         id: "appchan-123",
