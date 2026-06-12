@@ -7,7 +7,7 @@
 // matching the same gate used for the Tasks (resources route) nav tab.
 
 import Link from "next/link";
-import { Bot, Cpu, ListTodo, Loader2 } from "lucide-react";
+import { Bot, Cpu, ListTodo, Loader2, Radar } from "lucide-react";
 import { useSessionTasks } from "@/hooks/use-session-tasks";
 import { cn } from "@/lib/utils";
 import type { SessionTask, SessionTaskState } from "@/lib/api/types";
@@ -25,6 +25,9 @@ function taskKindIcon(kind: string) {
   }
   if (kind === "background_tool") {
     return <Cpu className="h-3 w-3 shrink-0" />;
+  }
+  if (kind === "monitor") {
+    return <Radar className="h-3 w-3 shrink-0" />;
   }
   return <ListTodo className="h-3 w-3 shrink-0" />;
 }

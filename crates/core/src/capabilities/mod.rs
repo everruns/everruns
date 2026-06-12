@@ -109,6 +109,7 @@ mod lua_code_mode;
 pub mod mcp;
 mod memory;
 mod message_metadata;
+mod monitors;
 mod noop;
 mod openai_tool_search;
 #[cfg(feature = "ui-capabilities")]
