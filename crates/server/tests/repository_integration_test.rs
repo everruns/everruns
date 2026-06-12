@@ -24,9 +24,10 @@ use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateDeclarativeCapabilityRow,
     CreateEventRow, CreateHarnessRow, CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow,
     CreateMcpServerRow, CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow,
-    CreateSessionRow, CreateUserConnectionRow, CreateUserRow, Database, StorageBackend,
-    UpdateAgent, UpdateDeclarativeCapability, UpdateLlmModel, UpdateLlmProvider,
+    CreateSessionRow, CreateSessionScheduleRow, CreateUserConnectionRow, CreateUserRow, Database,
+    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateLlmModel, UpdateLlmProvider,
     UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
+    UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
 
@@ -2527,4 +2528,205 @@ async fn test_image_org_isolation_postgres() {
         .delete_image(TEST_ORG_ID, image.id.uuid())
         .await
         .unwrap();
+}
+
+// ============================================
+// Session Task / Schedule Integration Tests
+// ============================================
+
+/// PG integration test for `list_monitor_tasks_with_inactive_schedules`.
+///
+/// Verifies the SQL join/filter logic against real PostgreSQL:
+/// - Active schedule  → task is NOT returned.
+/// - Disabled schedule → task IS returned with the correct (session_id, task_id, schedule_id) triple.
+/// - Malformed `spec.schedule_id` (not matching `^sched_[0-9a-f]{32}$`) → task is NEVER returned.
+///
+/// Assertions are scoped to IDs created in this test so other pre-existing
+/// rows (from parallel test runs or seeded data) do not cause false failures.
+#[tokio::test]
+async fn list_monitor_tasks_with_inactive_schedules_pg() {
+    use everruns_core::ScheduleId;
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, TASK_KIND_MONITOR, TaskLinks, TaskWakePolicy,
+        new_session_task,
+    };
+
+    let backend = create_test_backend().await;
+
+    // ------------------------------------------------------------------
+    // Fixtures: principal + session (minimal, no agent required)
+    // ------------------------------------------------------------------
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: Some(format!("monitor-inactive-sched-test-{}", Uuid::now_v7())),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .expect("Failed to create test session");
+
+    let session_id = session.id;
+
+    // ------------------------------------------------------------------
+    // Fixture: a session schedule (enabled = true by default)
+    // ------------------------------------------------------------------
+    let schedule = backend
+        .create_session_schedule(CreateSessionScheduleRow {
+            org_id: TEST_ORG_ID,
+            session_id,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            description: "monitor-inactive-sched-test".to_string(),
+            cron_expression: Some("0 * * * *".to_string()),
+            scheduled_at: None,
+            timezone: "UTC".to_string(),
+            next_trigger_at: None,
+        })
+        .await
+        .expect("Failed to create test schedule");
+
+    let schedule_id: ScheduleId = schedule.id;
+
+    // ------------------------------------------------------------------
+    // Fixture: running monitor task with a valid prefixed schedule_id
+    // ------------------------------------------------------------------
+    let monitor_task = new_session_task(
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: TASK_KIND_MONITOR.to_string(),
+            display_name: "Test monitor (inactive-sched pg)".to_string(),
+            spec: json!({ "schedule_id": schedule_id.to_string() }),
+            state: SessionTaskState::Running,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+        },
+        Utc::now(),
+    );
+    backend
+        .create_session_task(&monitor_task)
+        .await
+        .expect("Failed to create monitor task");
+
+    let task_id = monitor_task.id.clone();
+
+    // ------------------------------------------------------------------
+    // Fixture: a second monitor task with a *malformed* schedule_id.
+    // The regex '^sched_[0-9a-f]{32}$' must reject this, so it should
+    // never appear in results.
+    // ------------------------------------------------------------------
+    let malformed_task = new_session_task(
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: TASK_KIND_MONITOR.to_string(),
+            display_name: "Test monitor (malformed spec)".to_string(),
+            spec: json!({ "schedule_id": "not-a-schedule-id" }),
+            state: SessionTaskState::Running,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+        },
+        Utc::now(),
+    );
+    backend
+        .create_session_task(&malformed_task)
+        .await
+        .expect("Failed to create malformed-spec monitor task");
+
+    let malformed_task_id = malformed_task.id.clone();
+
+    // Helper: filter the global result list to rows belonging to this test.
+    let our_ids: std::collections::HashSet<String> =
+        [task_id.clone(), malformed_task_id.clone()].into();
+
+    // ------------------------------------------------------------------
+    // Step 4: schedule is still enabled → our task must NOT appear.
+    // ------------------------------------------------------------------
+    let results_before = backend
+        .list_monitor_tasks_with_inactive_schedules(500)
+        .await
+        .expect("list_monitor_tasks_with_inactive_schedules failed");
+
+    let our_results_before: Vec<_> = results_before
+        .iter()
+        .filter(|(_, tid, _)| our_ids.contains(tid))
+        .collect();
+
+    assert!(
+        our_results_before.is_empty(),
+        "expected no results while schedule is enabled, got: {:?}",
+        our_results_before
+    );
+
+    // ------------------------------------------------------------------
+    // Step 5: disable the schedule (enabled = false).
+    // Our valid-spec task must now appear exactly once.
+    // ------------------------------------------------------------------
+    backend
+        .update_session_schedule(
+            TEST_ORG_ID,
+            schedule_id,
+            UpdateSessionScheduleRow {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to disable schedule");
+
+    let results_after = backend
+        .list_monitor_tasks_with_inactive_schedules(500)
+        .await
+        .expect("list_monitor_tasks_with_inactive_schedules failed after disable");
+
+    let our_results_after: Vec<_> = results_after
+        .iter()
+        .filter(|(_, tid, _)| our_ids.contains(tid))
+        .collect();
+
+    // Exactly one row for the valid-spec task.
+    assert_eq!(
+        our_results_after.len(),
+        1,
+        "expected exactly 1 result after disabling schedule, got: {:?}",
+        our_results_after
+    );
+
+    let (ret_session_id, ret_task_id, ret_schedule_id) = our_results_after[0];
+    assert_eq!(*ret_session_id, session_id, "session_id mismatch");
+    assert_eq!(ret_task_id, &task_id, "task_id mismatch");
+    assert_eq!(
+        ret_schedule_id,
+        &schedule_id.to_string(),
+        "schedule_id string mismatch (expected prefixed form)"
+    );
+
+    // ------------------------------------------------------------------
+    // Step 6: malformed-spec task must NEVER appear (regex filter).
+    // ------------------------------------------------------------------
+    assert!(
+        results_after
+            .iter()
+            .all(|(_, tid, _)| tid != &malformed_task_id),
+        "malformed-spec task must never appear in results"
+    );
 }
