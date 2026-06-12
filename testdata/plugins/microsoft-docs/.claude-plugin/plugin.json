@@ -1,0 +1,23 @@
+{
+  "name": "microsoft-docs",
+  "displayName": "Microsoft Docs",
+  "version": "0.1.0",
+  "description": "Search official Microsoft documentation, API references, and code samples for Azure, .NET, Windows, and more through the Microsoft Learn MCP server.",
+  "author": {
+    "name": "Everruns",
+    "url": "https://everruns.com"
+  },
+  "homepage": "https://learn.microsoft.com",
+  "repository": "https://github.com/everruns/everruns",
+  "license": "MIT",
+  "keywords": ["microsoft", "docs", "azure", "dotnet", "documentation"],
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "agents": "./agents/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Microsoft Docs",
+    "shortDescription": "Search official Microsoft docs and code samples.",
+    "category": "Productivity"
+  }
+}

@@ -137,6 +137,64 @@ Resources follow the dual-ID pattern ([id-schema.md](id-schema.md)).
 Installed plugins appear in `GET /v1/capabilities` as a distinct kind next to
 built-in, MCP, skill, and declarative refs.
 
+## UI
+
+Marketplaces and plugins are managed through the UI on top of the same CRUD
+API — full management parity with the API, not a read-only view:
+
+- **Marketplaces**: list registered marketplaces with sync status; add by
+  GitHub repo or URL (admin-gated); manual re-sync; remove/disable.
+- **Catalog**: browse a synced marketplace's plugin entries (name, display
+  name, description, version, author) and install from there.
+- **Installed plugins**: list with provenance (marketplace, version, pinned
+  SHA) and install warnings; enable/disable; uninstall; **Update** action
+  shown when the synced catalog resolves to a newer version or SHA than the
+  installed pin. Update is always explicit user action in v1.
+- Installed plugins also surface in the existing capability picker as
+  `plugin:{name}` entries, so assignment to agents/harnesses reuses the
+  capability UI unchanged.
+
+## Runtime mode
+
+The plugins subsystem must work in the in-process runtime
+([runtime.md](runtime.md)) — not only in the server/control-plane deployment:
+
+- The **plugin compiler** (directory → manifest validation → declarative
+  definition shape) lives in `everruns-core`, not in the server crate, so
+  server, worker, and embedded runtime share one implementation.
+- `InProcessRuntimeBuilder` accepts local plugins: load a plugin directory
+  from disk (the equivalent of a local marketplace path source) or a
+  pre-compiled definition. No PostgreSQL and no marketplace sync are
+  involved; marketplace registration, catalog cache, and remote fetch are
+  control-plane concerns only.
+- Because workers and the runtime receive fully hydrated capability config
+  (same property declarative capabilities rely on), a plugin compiled by the
+  control plane executes identically in dev mode, durable worker mode, and
+  embedded runtime.
+- Plugin-declared MCP servers execute through the runtime MCP client
+  ([runtime-mcp.md](runtime-mcp.md)). HTTP transport everywhere in v1;
+  stdio-transport plugin servers are a possible embedded-runtime-only
+  extension, rejected elsewhere.
+
+## Test fixture
+
+`testdata/plugins/` is a local marketplace fixture used by server and runtime
+tests:
+
+- `testdata/plugins/.claude-plugin/marketplace.json` — valid marketplace
+  manifest with relative-path plugin sources.
+- `testdata/plugins/microsoft-docs/` — an Everruns-authored variant of the
+  public Microsoft Docs plugin (`MicrosoftDocs/mcp`), pointing at the same
+  public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
+  every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
+  and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
+
+Tests cover: marketplace sync from a local path, install/compile of the
+fixture, the compiled capability's prompt/skill/MCP contributions, and
+loading the same plugin directory through `InProcessRuntimeBuilder`. The MCP
+server is public and unauthenticated, so manual smoke tests can call it live;
+automated tests must not depend on network.
+
 ## Security
 
 Plugins are third-party remote content compiled into agent context — a
@@ -162,7 +220,9 @@ capability threat model:
 1. **v1**: marketplaces CRUD + sync (GitHub + direct URL sources), install
    with relative-path and `github` plugin sources, compile
    skills/commands/agents/MCP, `plugin:{name}` refs, capability registry and
-   picker integration, dogfood by installing `everruns`/`everruns-dev`.
+   picker integration, marketplace/plugin management UI, core-owned compiler
+   with `InProcessRuntimeBuilder` local-directory loading, dogfood by
+   installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.
 2. **v2**: `userConfig` → capability `config_schema`, `git-subdir` and git
    URL sources, update UX with version diffing, install warnings surfaced in
    UI.
