@@ -1961,8 +1961,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        17,
-        "Generic harness should have 17 capabilities"
+        18,
+        "Generic harness should have 18 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -2012,6 +2012,10 @@ async fn test_get_generic_harness() {
     assert!(
         cap_ids.contains(&"loop_detection"),
         "Should have loop detection"
+    );
+    assert!(
+        cap_ids.contains(&"message_metadata"),
+        "Should have message metadata annotations"
     );
 }
 
@@ -2500,8 +2504,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        17,
-        "Copied harness should have same 17 capabilities"
+        18,
+        "Copied harness should have same 18 capabilities"
     );
     assert!(
         copied

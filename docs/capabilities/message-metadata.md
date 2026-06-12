@@ -20,6 +20,8 @@ For user messages the timestamp is when the message was received; for agent mess
 
 This lets agents reason about timing: how long ago something was said, gaps between messages, and whether earlier statements are stale.
 
+Enabled by default on the Generic (default) harness.
+
 Annotations are applied only to the prompt-facing view of the conversation. Stored messages are never modified, and timestamps are stable across turns so prompt caching is unaffected. A short system prompt addition explains the annotation format to the model and instructs it not to emit annotations in its replies.
 
 ## Tools
