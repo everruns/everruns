@@ -2745,14 +2745,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-macros"
-version = "0.10.0"
-dependencies = [
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
 name = "everruns-mcp"
 version = "0.10.0"
 dependencies = [

@@ -2,6 +2,10 @@
 
 > Persistent microVM sandboxes for Everruns agents.
 
+[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-sprites.svg)](https://crates.io/crates/everruns-integrations-sprites)
+[![Documentation](https://docs.rs/everruns-integrations-sprites/badge.svg)](https://docs.rs/everruns-integrations-sprites)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
 `everruns-integrations-sprites` gives agents persistent, hardware-isolated Linux
 microVMs through the [Sprites](https://sprites.dev) (Fly.io) REST API. Sprites are
 Firecracker VMs with full ext4 filesystems that persist across sessions, so an
@@ -32,6 +36,7 @@ assert_eq!(capability.id(), "sprites");
 
 ## Documentation
 
+- [API reference (docs.rs)](https://docs.rs/everruns-integrations-sprites)
 - [Sprites integration](https://docs.everruns.com/integrations/sprites/)
 - [Everruns documentation](https://docs.everruns.com)
 
