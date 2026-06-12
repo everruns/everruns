@@ -102,12 +102,22 @@ impl Finding {
 
 /// Authored prompt larger than this is flagged as recurring per-turn cost.
 const LONG_PROMPT_BYTES: usize = 32 * 1024;
+/// Resolved prompt (with harness/capability contributions) larger than this
+/// is flagged even when the authored share is small. Higher threshold:
+/// contributions are platform-curated, so only clearly oversized totals are
+/// worth a finding.
+const LONG_RESOLVED_PROMPT_BYTES: usize = 96 * 1024;
 /// Paragraphs shorter than this (normalized) are too generic to call
 /// duplicates ("Be helpful." legitimately repeats).
 const DUP_PARAGRAPH_MIN_CHARS: usize = 80;
 
 static TEMPLATE_VAR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{\{\s*[A-Za-z0-9_.-]+\s*\}\}").expect("valid regex"));
+// Requires at least one underscore on purpose: backticked single words are
+// overwhelmingly code literals or jargon (`json`, `bash`, `main`), so flagging
+// them as tool references would be mostly noise. Multi-word snake_case matches
+// the platform's tool naming convention. Single-word tool names are accepted
+// as a known miss for precision.
 static BACKTICKED_IDENT: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`").expect("valid regex"));
 
@@ -143,7 +153,7 @@ pub fn run_builtin_checks(
 ) -> Vec<Finding> {
     let mut findings = Vec::new();
     check_empty_prompt(authored_prompt, &mut findings);
-    check_long_prompt(authored_prompt, &mut findings);
+    check_long_prompt(authored_prompt, resolved_prompt, &mut findings);
     check_template_variables(authored_prompt, &mut findings);
     check_duplicate_paragraphs(authored_prompt, &mut findings);
     check_restates_contribution(authored_prompt, resolved_prompt, &mut findings);
@@ -169,7 +179,7 @@ fn check_empty_prompt(authored: &str, findings: &mut Vec<Finding>) {
     }
 }
 
-fn check_long_prompt(authored: &str, findings: &mut Vec<Finding>) {
+fn check_long_prompt(authored: &str, resolved: &str, findings: &mut Vec<Finding>) {
     if authored.len() > LONG_PROMPT_BYTES {
         findings.push(
             Finding::builtin(
@@ -183,6 +193,22 @@ fn check_long_prompt(authored: &str, findings: &mut Vec<Finding>) {
                 ),
             )
             .at("system_prompt", None),
+        );
+    } else if resolved.len() > LONG_RESOLVED_PROMPT_BYTES {
+        findings.push(
+            Finding::builtin(
+                "prompt.resolved_very_long",
+                FindingSeverity::Info,
+                FindingCategory::Cost,
+                format!(
+                    "The full system prompt is {} KiB after harness and capability \
+                     contributions ({} KiB authored here) and is sent on every model turn. \
+                     Consider disabling capabilities this agent does not need.",
+                    resolved.len() / 1024,
+                    authored.len() / 1024
+                ),
+            )
+            .at("capabilities", None),
         );
     }
 }
@@ -329,7 +355,10 @@ fn check_unknown_tool_reference(
     tools: &[ToolDefinition],
     findings: &mut Vec<Finding>,
 ) {
-    if tools.is_empty() {
+    // Tool-less, capability-less agents backtick code identifiers, not tool
+    // names; once anything is enabled the agent is in "tool world" and
+    // references are worth validating.
+    if tools.is_empty() && capabilities.is_empty() {
         return;
     }
     let known: HashSet<&str> = tools
@@ -505,8 +534,25 @@ mod tests {
     }
 
     #[test]
+    fn resolved_long_prompt_is_flagged_when_contributions_dominate() {
+        let authored = "Short prompt with `web_fetch` guidance.";
+        let resolved = format!("{}{}", "c".repeat(LONG_RESOLVED_PROMPT_BYTES + 1), authored);
+        let findings = run_builtin_checks(authored, &resolved, &[], &[client_tool("web_fetch")]);
+        assert_eq!(rule_ids(&findings), vec!["prompt.resolved_very_long"]);
+        assert_eq!(findings[0].severity, FindingSeverity::Info);
+    }
+
+    #[test]
+    fn unknown_reference_is_flagged_with_capabilities_but_no_tools() {
+        let prompt = "Use `search_web` to find current information.";
+        let findings = run_builtin_checks(prompt, prompt, &[capability("agent_instructions")], &[]);
+        assert_eq!(rule_ids(&findings), vec!["tools.unknown_reference"]);
+    }
+
+    #[test]
     fn no_tool_reference_check_without_tools() {
-        // Backticked identifiers in a tool-less agent are usually code, not tools.
+        // Backticked identifiers in a tool-less, capability-less agent are
+        // usually code, not tools.
         let prompt = "Wrap config keys like `max_retry_count` in backticks.";
         let findings = run_builtin_checks(prompt, prompt, &[], &[]);
         assert!(findings.is_empty(), "unexpected findings: {findings:?}");

@@ -34,7 +34,8 @@ Checks run against the *resolved* configuration — after harness and capability
 | Rule | Severity | What it catches |
 |------|----------|-----------------|
 | `prompt.empty` | info | Agent has no system prompt of its own |
-| `prompt.very_long` | warning | Prompt over 32 KiB, sent on every model turn |
+| `prompt.very_long` | warning | Authored prompt over 32 KiB, sent on every model turn |
+| `prompt.resolved_very_long` | info | Full prompt over 96 KiB after harness/capability contributions |
 | `prompt.template_variables` | warning | `{{placeholder}}` text that would reach the model literally |
 | `prompt.duplicate_paragraphs` | warning | The same paragraph appears more than once |
 | `prompt.restates_contribution` | info | Prompt duplicates text already contributed by the harness or a capability |
