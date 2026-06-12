@@ -23,8 +23,9 @@ use everruns_core::{
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
+use tokio::sync::Mutex as AsyncMutex;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
@@ -32,6 +33,43 @@ use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServer
 /// How long cached tools are considered fresh (1 hour)
 const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 
+/// Identifies a server's tool cache for single-flight coordination.
+type RefreshKey = (i64, Uuid);
+
+/// Process-wide single-flight coordinator for MCP tool refreshes.
+///
+/// Resolving an agent's MCP tools is on the hot path: many concurrent turns and
+/// sessions can ask for the same server's tools at once. Without coordination a
+/// cold cache or a stale-cache read would fan every concurrent caller out into
+/// its own upstream `tools/list` fetch (a thundering herd). This holds one async
+/// lock per `(org, server)` so:
+///   - blocking (cold-cache / forced) refreshes serialize and the late callers
+///     pick up the freshly written cache instead of re-fetching, and
+///   - background (stale-while-revalidate) refreshes use `try_lock`, so only one
+///     runs at a time and extra triggers are dropped.
+static REFRESH_LOCKS: LazyLock<KeyedLocks> = LazyLock::new(KeyedLocks::default);
+
+#[derive(Default)]
+struct KeyedLocks {
+    map: Mutex<HashMap<RefreshKey, Arc<AsyncMutex<()>>>>,
+}
+
+impl KeyedLocks {
+    /// Return the shared async lock for `key`, creating it on first use. Idle
+    /// locks (held only by this map) are pruned to keep the map bounded by the
+    /// number of servers currently refreshing rather than ever seen.
+    fn lock_for(&self, key: RefreshKey) -> Arc<AsyncMutex<()>> {
+        // Best-effort coordinator: recover from a poisoned mutex (a thread
+        // panicked while holding it) rather than propagating that panic into
+        // every subsequent tool resolution. The guarded map is plain data, so
+        // continuing with the recovered value is safe.
+        let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+        map.retain(|k, lock| *k == key || Arc::strong_count(lock) > 1);
+        map.entry(key).or_default().clone()
+    }
+}
+
+#[derive(Clone)]
 pub struct McpServerService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
@@ -210,31 +248,7 @@ impl McpServerService {
         for row in rows {
             let server = Self::row_to_mcp_server(&row);
             let server_id = row.id.uuid();
-
-            let cache_fresh = if let Some(cached_at) = row.tools_cached_at {
-                let age = Utc::now().signed_duration_since(cached_at);
-                age < chrono::Duration::from_std(TOOL_CACHE_TTL)
-                    .unwrap_or(chrono::Duration::hours(1))
-            } else {
-                false
-            };
-
-            let tools = if cache_fresh {
-                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default()
-            } else {
-                match self.refresh_tools(caller, server_id).await {
-                    Ok(tools) => tools,
-                    Err(err) => {
-                        tracing::warn!(
-                            server_id = %server_id,
-                            error = %err,
-                            "Failed to refresh stale MCP tool cache in batch load; returning empty tools"
-                        );
-                        Vec::new()
-                    }
-                }
-            };
-
+            let tools = self.tools_for_row(caller.org_id, &row).await;
             servers.insert(server_id, (server, tools));
         }
 
@@ -440,36 +454,148 @@ impl McpServerService {
         Ok(tools)
     }
 
-    /// Get cached tools for an MCP server, refreshing if stale
+    /// Whether a server row's cached tools are still within the freshness TTL.
+    fn cache_fresh(row: &McpServerRow) -> bool {
+        match row.tools_cached_at {
+            Some(cached_at) => {
+                let age = Utc::now().signed_duration_since(cached_at);
+                age < chrono::Duration::from_std(TOOL_CACHE_TTL)
+                    .unwrap_or_else(|_| chrono::Duration::hours(1))
+            }
+            None => false,
+        }
+    }
+
+    fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
+        serde_json::from_value(row.cached_tools.clone()).unwrap_or_default()
+    }
+
+    /// Get cached tools for an MCP server, refreshing if stale.
+    ///
+    /// When the cache is stale but a previous successful fetch exists, the
+    /// cached tools are returned immediately and a refresh is kicked off in the
+    /// background (stale-while-revalidate), so agent resolution never blocks on
+    /// an upstream `tools/list`. A cold cache (or `force_refresh`) blocks on a
+    /// single-flight refresh shared across concurrent callers. OAuth servers
+    /// cannot self-refresh (they need a user connection token), so they always
+    /// take the blocking path rather than spawning a no-op background refresh.
     pub async fn get_tools(
         &self,
         caller: &Caller,
         id: Uuid,
         force_refresh: bool,
     ) -> Result<Vec<McpToolDefinition>> {
+        if force_refresh {
+            return self.refresh_tools_coalesced(caller, id, false).await;
+        }
+
         let row = self
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
             .ok_or_else(|| anyhow!("MCP server not found"))?;
 
-        // Check if cache is fresh
-        let cache_fresh = if let Some(cached_at) = row.tools_cached_at {
-            let age = Utc::now().signed_duration_since(cached_at);
-            age < chrono::Duration::from_std(TOOL_CACHE_TTL).unwrap_or(chrono::Duration::hours(1))
-        } else {
-            false
-        };
-
-        if !force_refresh && cache_fresh {
-            // Return cached tools
-            let tools: Vec<McpToolDefinition> =
-                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
-            return Ok(tools);
+        if Self::cache_fresh(&row) {
+            return Ok(Self::cached_tools(&row));
         }
 
-        // Refresh tools
+        if self.can_revalidate_in_background(&row) {
+            self.spawn_background_refresh(caller.org_id, id);
+            return Ok(Self::cached_tools(&row));
+        }
+
+        // Cold cache (or OAuth): block on a single-flight refresh.
+        self.refresh_tools_coalesced(caller, id, true).await
+    }
+
+    /// Resolve tools for an already-loaded row, applying stale-while-revalidate
+    /// and single-flight refresh. Never errors: a hard refresh failure degrades
+    /// to whatever is cached (possibly empty), matching the batch-load contract
+    /// where one unreachable server must not fail tool resolution for the rest.
+    async fn tools_for_row(&self, org_id: i64, row: &McpServerRow) -> Vec<McpToolDefinition> {
+        if Self::cache_fresh(row) {
+            return Self::cached_tools(row);
+        }
+
+        if self.can_revalidate_in_background(row) {
+            self.spawn_background_refresh(org_id, row.id.uuid());
+            return Self::cached_tools(row);
+        }
+
+        match self
+            .refresh_tools_coalesced(&Caller::internal(org_id), row.id.uuid(), true)
+            .await
+        {
+            Ok(tools) => tools,
+            Err(err) => {
+                tracing::warn!(
+                    server_id = %row.id.uuid(),
+                    error = %err,
+                    "Failed to refresh MCP tool cache; serving cached tools"
+                );
+                Self::cached_tools(row)
+            }
+        }
+    }
+
+    /// Stale-while-revalidate is only safe when a real upstream refresh can
+    /// succeed: there must be a prior successful fetch to serve, and the server
+    /// must be self-refreshable (OAuth servers need a user connection token that
+    /// `refresh_tools` cannot mint, so revalidating them in the background would
+    /// just spawn no-op tasks on every call).
+    fn can_revalidate_in_background(&self, row: &McpServerRow) -> bool {
+        row.tools_cached_at.is_some()
+            && Self::settings_from_row(row).auth_mode != McpServerAuthMode::OAuth
+    }
+
+    /// Refresh tools under the per-server single-flight lock. Concurrent callers
+    /// serialize; when `allow_cached` is set, a caller that finds the cache made
+    /// fresh while it waited returns that result instead of re-fetching. Forced
+    /// refreshes pass `allow_cached = false` so they always delegate to
+    /// `refresh_tools` rather than returning a still-fresh cache hit. (Whether
+    /// that performs an upstream `tools/list` is up to `refresh_tools`: OAuth
+    /// servers serve cached tools without an upstream call, as they cannot mint
+    /// a connection token here.)
+    async fn refresh_tools_coalesced(
+        &self,
+        caller: &Caller,
+        id: Uuid,
+        allow_cached: bool,
+    ) -> Result<Vec<McpToolDefinition>> {
+        let lock = REFRESH_LOCKS.lock_for((caller.org_id, id));
+        let _guard = lock.lock_owned().await;
+
+        if allow_cached
+            && let Some(row) = self.db.get_mcp_server(caller.org_id, id).await?
+            && Self::cache_fresh(&row)
+        {
+            return Ok(Self::cached_tools(&row));
+        }
+
         self.refresh_tools(caller, id).await
+    }
+
+    /// Trigger a background refresh for a server, deduplicated so at most one
+    /// runs per server at a time. Failures are logged, not surfaced: the caller
+    /// has already been served the stale cache.
+    fn spawn_background_refresh(&self, org_id: i64, id: Uuid) {
+        let lock = REFRESH_LOCKS.lock_for((org_id, id));
+        let Ok(guard) = lock.try_lock_owned() else {
+            // A refresh is already in flight for this server; nothing to do.
+            return;
+        };
+
+        let service = self.clone();
+        tokio::spawn(async move {
+            let _guard = guard; // held for the refresh duration -> single-flight
+            if let Err(err) = service.refresh_tools(&Caller::internal(org_id), id).await {
+                tracing::warn!(
+                    server_id = %id,
+                    error = %err,
+                    "Background MCP tool refresh failed; cache left stale"
+                );
+            }
+        });
     }
 
     /// Get cached tools for an MCP server without refreshing (for preview)
@@ -981,6 +1107,143 @@ mod tests {
             )
             .await;
 
+        assert!(result.is_err());
+    }
+
+    // --- Tool-cache freshness + single-flight refresh ---
+
+    fn sample_row() -> McpServerRow {
+        McpServerRow {
+            id: everruns_core::typed_id::McpServerId::new(),
+            org_id: 1,
+            name: "srv".into(),
+            description: None,
+            url: "https://example.com/mcp".into(),
+            transport_type: "streamable_http".into(),
+            status: "active".into(),
+            api_key_encrypted: None,
+            api_key_set: false,
+            headers: serde_json::json!({}),
+            settings: serde_json::json!({}),
+            cached_tools: serde_json::json!([]),
+            tools_cached_at: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+        }
+    }
+
+    #[test]
+    fn cache_fresh_respects_ttl() {
+        let mut row = sample_row();
+
+        // Never fetched -> not fresh.
+        row.tools_cached_at = None;
+        assert!(!McpServerService::cache_fresh(&row));
+
+        // Just fetched -> fresh.
+        row.tools_cached_at = Some(Utc::now());
+        assert!(McpServerService::cache_fresh(&row));
+
+        // Older than the TTL -> stale.
+        row.tools_cached_at = Some(Utc::now() - chrono::Duration::hours(2));
+        assert!(!McpServerService::cache_fresh(&row));
+    }
+
+    #[tokio::test]
+    async fn keyed_locks_coalesce_and_prune() {
+        let locks = KeyedLocks::default();
+        let key = (1, Uuid::new_v4());
+
+        let lock = locks.lock_for(key);
+        let guard = lock.clone().try_lock_owned().expect("first acquire");
+
+        // A second request for the same key shares the lock and cannot acquire
+        // it while the first guard is held (single-flight).
+        assert!(locks.lock_for(key).try_lock_owned().is_err());
+
+        drop(guard);
+        // Once released the lock is acquirable again.
+        assert!(lock.clone().try_lock_owned().is_ok());
+
+        // Idle keys are pruned when a new key is requested.
+        drop(lock);
+        let _other = locks.lock_for((2, Uuid::new_v4()));
+        assert_eq!(locks.map.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn get_tools_serves_stale_cache_while_revalidating() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let caller = test_caller(1);
+
+        // Non-OAuth server with an SSRF-blocked URL: a live refresh would fail,
+        // so returning the cached tool proves we served the stale cache.
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "stale-server".into(),
+                    description: None,
+                    url: "http://10.0.0.1/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let id = row.id.uuid();
+
+        // Seed a successful fetch, then backdate it past the TTL.
+        db.update_mcp_server_tools(
+            1,
+            id,
+            UpdateMcpServerTools {
+                cached_tools: serde_json::json!([
+                    {"name": "alpha", "description": "A", "inputSchema": {"type": "object"}}
+                ]),
+            },
+        )
+        .await
+        .unwrap();
+        let StorageBackend::InMemory(mem) = db.as_ref() else {
+            panic!("expected in-memory backend");
+        };
+        mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(2));
+
+        let tools = svc.get_tools(&caller, id, false).await.unwrap();
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "alpha");
+    }
+
+    #[tokio::test]
+    async fn get_tools_cold_cache_surfaces_refresh_error() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+
+        // Never fetched and unreachable: with no stale cache to serve, the cold
+        // path must block on the refresh and surface its error.
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "cold-server".into(),
+                    description: None,
+                    url: "http://10.0.0.1/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let result = svc.get_tools(&test_caller(1), row.id.uuid(), false).await;
         assert!(result.is_err());
     }
 }
