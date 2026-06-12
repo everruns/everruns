@@ -951,6 +951,7 @@ mod tests {
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
         }
     }
 

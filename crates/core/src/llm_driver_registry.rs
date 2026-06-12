@@ -495,6 +495,187 @@ pub struct PromptCacheConfig {
     pub gemini_cached_content: Option<String>,
 }
 
+/// OpenRouter model fallback and provider routing controls.
+///
+/// These fields mirror OpenRouter's request-level routing extensions. Drivers
+/// must only forward this config to OpenRouter-compatible endpoints.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterRoutingConfig {
+    /// Candidate models to try in OpenRouter's fallback order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub models: Vec<String>,
+    /// OpenRouter route strategy. Currently `fallback` is the stable route
+    /// value used with `models`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<OpenRouterRoute>,
+    /// Provider ordering, policy, and sorting preferences.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<OpenRouterProviderRouting>,
+}
+
+impl OpenRouterRoutingConfig {
+    pub fn is_empty(&self) -> bool {
+        self.models.is_empty() && self.route.is_none() && self.provider.is_none()
+    }
+
+    /// Build an ordered model-fallback routing config.
+    pub fn fallback_models(models: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let models = models.into_iter().map(Into::into).collect::<Vec<_>>();
+        let route = (!models.is_empty()).then_some(OpenRouterRoute::Fallback);
+        Self {
+            models,
+            route,
+            provider: None,
+        }
+    }
+
+    pub fn validate_for_primary_model(
+        &self,
+        primary_model: &str,
+    ) -> std::result::Result<(), String> {
+        if self.route == Some(OpenRouterRoute::Fallback) && self.models.is_empty() {
+            return Err(
+                "OpenRouter fallback routing requires at least one model in `models`".to_string(),
+            );
+        }
+
+        if let Some(first_model) = self.models.first()
+            && first_model != primary_model
+        {
+            return Err(format!(
+                "OpenRouter routing models[0] ('{first_model}') must match primary model ('{primary_model}')"
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+/// OpenRouter route strategy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OpenRouterRoute {
+    Fallback,
+}
+
+/// OpenRouter provider routing preferences.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterProviderRouting {
+    /// Provider slugs to try first, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub order: Vec<String>,
+    /// Restrict routing to these provider slugs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub only: Vec<String>,
+    /// Provider slugs to skip.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ignore: Vec<String>,
+    /// Whether OpenRouter may fall back outside the ordered/allowed providers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub allow_fallbacks: Option<bool>,
+    /// Require routed providers to support all request parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub require_parameters: Option<bool>,
+    /// Restrict routing by provider data-retention policy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_collection: Option<OpenRouterDataCollection>,
+    /// Restrict routing to zero-data-retention endpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub zdr: Option<bool>,
+    /// Restrict routing to distillable-text endpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enforce_distillable_text: Option<bool>,
+    /// Restrict routing to provider quantization levels.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quantizations: Vec<String>,
+    /// Sort provider endpoints by price, throughput, or latency.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sort: Option<OpenRouterProviderSort>,
+    /// Maximum accepted per-unit provider price.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_price: Option<OpenRouterMaxPrice>,
+}
+
+impl OpenRouterProviderRouting {
+    pub fn is_empty(&self) -> bool {
+        self.order.is_empty()
+            && self.only.is_empty()
+            && self.ignore.is_empty()
+            && self.allow_fallbacks.is_none()
+            && self.require_parameters.is_none()
+            && self.data_collection.is_none()
+            && self.zdr.is_none()
+            && self.enforce_distillable_text.is_none()
+            && self.quantizations.is_empty()
+            && self.sort.is_none()
+            && self.max_price.is_none()
+    }
+}
+
+/// OpenRouter provider data-retention preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OpenRouterDataCollection {
+    Allow,
+    Deny,
+}
+
+/// OpenRouter provider sort preference.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(untagged)]
+pub enum OpenRouterProviderSort {
+    Simple(OpenRouterProviderSortBy),
+    Advanced(OpenRouterProviderSortOptions),
+}
+
+/// OpenRouter provider sorting dimension.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OpenRouterProviderSortBy {
+    Price,
+    Throughput,
+    Latency,
+}
+
+/// OpenRouter advanced provider sort options.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterProviderSortOptions {
+    pub by: OpenRouterProviderSortBy,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub partition: Option<OpenRouterSortPartition>,
+}
+
+/// How OpenRouter sorts endpoints when multiple fallback models are present.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OpenRouterSortPartition {
+    Model,
+    None,
+}
+
+/// Maximum accepted OpenRouter provider pricing, expressed in dollars per
+/// million prompt/completion tokens or per request/image where supported.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterMaxPrice {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<f64>,
+}
+
 /// Configuration for an LLM call
 #[derive(Debug, Clone)]
 pub struct LlmCallConfig {
@@ -515,6 +696,8 @@ pub struct LlmCallConfig {
     pub tool_search: Option<ToolSearchConfig>,
     /// Prompt caching configuration for provider-specific cache controls.
     pub prompt_cache: Option<PromptCacheConfig>,
+    /// OpenRouter-only model fallback and provider routing controls.
+    pub openrouter_routing: Option<OpenRouterRoutingConfig>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -529,6 +712,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             previous_response_id: None,
             tool_search: runtime_agent.tool_search.clone(),
             prompt_cache: runtime_agent.prompt_cache.clone(),
+            openrouter_routing: None,
         }
     }
 }
@@ -635,6 +819,12 @@ impl LlmCallConfigBuilder {
     /// Set prompt caching configuration
     pub fn prompt_cache(mut self, config: PromptCacheConfig) -> Self {
         self.config.prompt_cache = Some(config);
+        self
+    }
+
+    /// Set OpenRouter model fallback and provider routing controls.
+    pub fn openrouter_routing(mut self, config: OpenRouterRoutingConfig) -> Self {
+        self.config.openrouter_routing = (!config.is_empty()).then_some(config);
         self
     }
 
@@ -1149,6 +1339,118 @@ mod tests {
         assert_eq!(llm_config.reasoning_effort, Some("medium".to_string()));
         assert_eq!(llm_config.temperature, Some(0.7));
         assert_eq!(llm_config.max_tokens, Some(1000));
+    }
+
+    #[test]
+    fn test_llm_call_config_builder_with_openrouter_routing() {
+        let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
+        let routing = OpenRouterRoutingConfig::fallback_models([
+            "openai/gpt-5-mini",
+            "anthropic/claude-sonnet-4.5",
+        ]);
+
+        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
+            .openrouter_routing(routing.clone())
+            .build();
+
+        assert_eq!(llm_config.openrouter_routing, Some(routing));
+    }
+
+    #[test]
+    fn test_openrouter_fallback_models_empty_is_empty() {
+        let routing = OpenRouterRoutingConfig::fallback_models(std::iter::empty::<String>());
+
+        assert!(routing.is_empty());
+        assert_eq!(routing.route, None);
+    }
+
+    #[test]
+    fn test_openrouter_routing_validates_primary_model() {
+        let routing = OpenRouterRoutingConfig::fallback_models([
+            "openai/gpt-5-mini",
+            "anthropic/claude-sonnet-4.5",
+        ]);
+
+        assert!(
+            routing
+                .validate_for_primary_model("openai/gpt-5-mini")
+                .is_ok()
+        );
+        let err = routing
+            .validate_for_primary_model("anthropic/claude-sonnet-4.5")
+            .unwrap_err();
+        assert!(err.contains("models[0]"));
+    }
+
+    #[test]
+    fn test_openrouter_routing_rejects_fallback_without_models() {
+        let routing = OpenRouterRoutingConfig {
+            route: Some(OpenRouterRoute::Fallback),
+            ..Default::default()
+        };
+
+        let err = routing
+            .validate_for_primary_model("openai/gpt-5-mini")
+            .unwrap_err();
+        assert!(err.contains("requires at least one model"));
+    }
+
+    #[test]
+    fn test_openrouter_routing_serializes_request_fields() {
+        let routing = OpenRouterRoutingConfig {
+            models: vec![
+                "openai/gpt-5-mini".to_string(),
+                "anthropic/claude-sonnet-4.5".to_string(),
+            ],
+            route: Some(OpenRouterRoute::Fallback),
+            provider: Some(OpenRouterProviderRouting {
+                order: vec!["anthropic".to_string(), "openai".to_string()],
+                allow_fallbacks: Some(false),
+                require_parameters: Some(true),
+                data_collection: Some(OpenRouterDataCollection::Deny),
+                zdr: Some(true),
+                sort: Some(OpenRouterProviderSort::Advanced(
+                    OpenRouterProviderSortOptions {
+                        by: OpenRouterProviderSortBy::Throughput,
+                        partition: Some(OpenRouterSortPartition::None),
+                    },
+                )),
+                max_price: Some(OpenRouterMaxPrice {
+                    prompt: Some(1.0),
+                    completion: Some(2.0),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
+        };
+
+        let json = serde_json::to_value(routing).unwrap();
+
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "models": [
+                    "openai/gpt-5-mini",
+                    "anthropic/claude-sonnet-4.5"
+                ],
+                "route": "fallback",
+                "provider": {
+                    "order": ["anthropic", "openai"],
+                    "allow_fallbacks": false,
+                    "require_parameters": true,
+                    "data_collection": "deny",
+                    "zdr": true,
+                    "sort": {
+                        "by": "throughput",
+                        "partition": "none"
+                    },
+                    "max_price": {
+                        "prompt": 1.0,
+                        "completion": 2.0
+                    }
+                }
+            })
+        );
     }
 
     #[test]
