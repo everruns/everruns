@@ -70,7 +70,9 @@ impl HttpTransport for EgressHttpTransport {
             egress_request = egress_request.header(name, value);
         }
         if let Some(timeout) = req.timeout {
-            egress_request = egress_request.timeout_ms(timeout.as_millis() as u64);
+            // Saturate instead of wrapping on absurdly large durations.
+            let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
+            egress_request = egress_request.timeout_ms(timeout_ms);
         }
         // `respect_proxy_env` is intentionally not forwarded: outbound proxy
         // policy is host-owned at the egress boundary, not per-fetch config.
