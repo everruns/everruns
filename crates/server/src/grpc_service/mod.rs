@@ -124,6 +124,8 @@ use everruns_internal_protocol::proto::{
     InvokeScheduledAppChannelResponse,
     ListCommandsRequest,
     ListCommandsResponse,
+    ListOrphanedSessionTasksRequest,
+    ListOrphanedSessionTasksResponse,
     ListSessionLeasedResourcesRequest,
     ListSessionLeasedResourcesResponse,
     ListSessionResourcesRequest,
@@ -143,6 +145,7 @@ use everruns_internal_protocol::proto::{
     McpServerInfo,
     McpToolDef,
     OptionalSessionTaskResponse,
+    OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
     PlatformCapabilityInfo,
     // Platform management types
     PlatformCopyHarnessRequest,

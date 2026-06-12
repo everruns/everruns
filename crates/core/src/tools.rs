@@ -1198,7 +1198,7 @@ impl Tool for SpawnBackgroundTool {
 
         // Create the session task tracking this run (specs/session-tasks.md).
         // task_registry is guaranteed Some above.
-        let task_id: Option<String> = match task_registry
+        let (task_id, task_attempt): (Option<String>, i32) = match task_registry
             .create(crate::session_task::CreateSessionTask {
                 session_id: context.session_id,
                 id: None,
@@ -1214,7 +1214,7 @@ impl Tool for SpawnBackgroundTool {
             })
             .await
         {
-            Ok(task) => Some(task.id),
+            Ok(task) => (Some(task.id), task.attempt),
             Err(e) => {
                 return ToolExecutionResult::internal_error_msg(format!(
                     "Failed to create background run task: {e}"
@@ -1241,6 +1241,8 @@ impl Tool for SpawnBackgroundTool {
         let cancel_registry = context.session_task_registry.clone();
         let cancel_session_id = context.session_id;
         let cancel_task_id = task_id.clone();
+        // Attempt captured at task creation for stale-attempt fencing.
+        let cancel_task_attempt = task_attempt;
 
         tokio::spawn(async move {
             let _background_run_permit = background_run_permit;
@@ -1277,13 +1279,16 @@ impl Tool for SpawnBackgroundTool {
                     let watch_fut = async {
                         loop {
                             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-                            // Send heartbeat.
+                            // Send heartbeat with stale-attempt fencing so a
+                            // superseded executor's heartbeats are rejected once
+                            // the reaper increments the attempt counter.
                             let _ = registry
                                 .update(
                                     cancel_session_id,
                                     &task_id_str,
                                     crate::session_task::SessionTaskUpdate {
                                         heartbeat_at: Some(chrono::Utc::now()),
+                                        expected_attempt: Some(cancel_task_attempt),
                                         ..Default::default()
                                     },
                                 )

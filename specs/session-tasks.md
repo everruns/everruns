@@ -318,8 +318,16 @@ No backward compatibility is required; data migrates forward once:
   with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -
   5m`) and fails them via the registry using `FOR UPDATE SKIP LOCKED` on the
   PG backend. Tasks with `NULL heartbeat_at` (foreground subagent tasks) are
-  excluded (covered by EVE-535 spawn handles). Stale-attempt fencing is not
-  yet built.
+  excluded (covered by EVE-535 spawn handles). The reconciler now runs on gRPC
+  workers via the `ListOrphanedSessionTasks` RPC (added to the internal worker
+  protocol); `session_task_reaper` is included in the gRPC DurableWorker's
+  default activity types. Stale-attempt fencing is built: `SessionTaskUpdate`
+  carries an optional `expected_attempt` field; `apply_task_update` silently
+  drops any update where `expected_attempt` is set but does not match
+  `task.attempt`, so heartbeats and state writes from a superseded executor are
+  rejected once the reaper has marked the task. Writers that do not track
+  attempts (e.g. `cancel_task` from the API) leave `expected_attempt: None` and
+  are unaffected. Re-attach (attempt+1 restart) remains deferred.
 - Wake-ups: `wake_policy` is enforced at the registry level
   (`DbSessionTaskRegistry`). `OnTerminal` wakes on any transition into
   `succeeded`/`failed`/`canceled`. `OnActivity` additionally wakes on
