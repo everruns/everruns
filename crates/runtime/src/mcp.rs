@@ -15,6 +15,7 @@ use everruns_core::{
     Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
+use futures::future::join_all;
 use uuid::Uuid;
 
 /// Merge harness-chain → agent → session scoped MCP servers (last layer wins).
@@ -102,27 +103,32 @@ pub(crate) async fn discover_tool_definitions(
     session_uuid: Uuid,
     servers: &ScopedMcpServers,
 ) -> Vec<ToolDefinition> {
-    let mut definitions = Vec::new();
-    for resolved in resolve_servers(servers) {
-        if !resolved.tool_discovery {
-            continue;
-        }
-        match client.discover(&resolved.connection).await {
-            Ok(tools) => {
-                let id = Uuid::new_v5(&session_uuid, resolved.name.as_bytes());
-                let capability = McpCapability::new(id, resolved.name.clone(), None, tools);
-                definitions.extend(capability.tool_definitions());
+    // Discover all servers concurrently: a turn's discovery latency is then the
+    // slowest server, not the sum across every server. `join_all` preserves
+    // input order, so the resulting tool list stays deterministic. Per-server
+    // failures are still logged and skipped so one unreachable server doesn't
+    // fail the whole turn.
+    let discoveries = resolve_servers(servers)
+        .into_iter()
+        .filter(|resolved| resolved.tool_discovery)
+        .map(|resolved| async move {
+            match client.discover(&resolved.connection).await {
+                Ok(tools) => {
+                    let id = Uuid::new_v5(&session_uuid, resolved.name.as_bytes());
+                    let capability = McpCapability::new(id, resolved.name.clone(), None, tools);
+                    capability.tool_definitions()
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        server = %resolved.name,
+                        %error,
+                        "scoped MCP tool discovery failed; skipping server"
+                    );
+                    Vec::new()
+                }
             }
-            Err(error) => {
-                tracing::warn!(
-                    server = %resolved.name,
-                    %error,
-                    "scoped MCP tool discovery failed; skipping server"
-                );
-            }
-        }
-    }
-    definitions
+        });
+    join_all(discoveries).await.into_iter().flatten().collect()
 }
 
 /// Build an MCP executor for the session's scoped servers, or `None` when no
