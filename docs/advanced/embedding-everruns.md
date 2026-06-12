@@ -131,6 +131,78 @@ fn platform() -> PlatformDefinition {
 
 When you build from scratch, only the components you register exist. Seeded providers, models, harnesses, and agents are filtered against that definition.
 
+## Custom LLM Provider Drivers
+
+Built-in providers are registered with their crate's `register_driver`
+(`everruns_openai::register_driver`, `everruns_anthropic::register_driver`, and
+so on). To add a provider that is **not** compiled into `everruns-core` — for
+example an OAuth-based gateway such as ChatGPT/Codex — register it under a custom
+provider id with `register_external`. No core enum changes, and no hijacking a
+built-in provider slot:
+
+```rust
+use everruns_core::llm_driver_registry::{
+    BoxedLlmDriver, DriverConfig, DriverRegistry,
+};
+
+fn drivers() -> DriverRegistry {
+    let mut drivers = DriverRegistry::new();
+    everruns_openai::register_driver(&mut drivers); // built-ins
+
+    // Embedder-defined provider, keyed by a custom id. The factory receives a
+    // DriverConfig carrying everything it needs:
+    //   config.api_key   — Option<String>
+    //   config.base_url  — Option<String>
+    //   config.metadata  — ProviderMetadata { refresh_token, account_id, extra }
+    // External providers may authenticate via metadata instead of an api_key.
+    drivers.register_external("openai-codex", |config: &DriverConfig| {
+        Box::new(MyCodexDriver::new(config)) as BoxedLlmDriver
+    });
+
+    drivers
+}
+```
+
+Reference the provider from a model by its id, passing any non-API-key auth
+through `provider_metadata`:
+
+```rust
+use everruns_core::{LlmProviderType, ModelWithProvider};
+use everruns_core::llm_driver_registry::ProviderMetadata;
+
+let model = ModelWithProvider {
+    model: "gpt-5-codex".into(),
+    provider_type: LlmProviderType::External("openai-codex".into()),
+    api_key: None, // external providers may use metadata-based auth instead
+    base_url: None,
+    provider_metadata: Some(ProviderMetadata {
+        refresh_token: Some(oauth.refresh_token),
+        account_id: Some(oauth.account_id),
+        extra: None,
+    }),
+};
+```
+
+Notes:
+
+- **Built-in vs custom ids.** Use the built-in ids (`openai`, `openrouter`,
+  `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`, and
+  `llmsim` for the test simulator) for the providers everruns ships. Reach for a
+  custom `External` id only when adding a provider that is not in core — that
+  keeps your driver from colliding with a built-in slot, and non-empty unknown
+  ids round-trip cleanly through the database and the worker boundary instead of
+  erroring. (An empty or whitespace provider id is rejected as a configuration
+  error rather than becoming a nameless external provider.)
+- **Replacing a built-in driver.** `register` panics on a duplicate provider id
+  so double-registration surfaces loudly. To intentionally swap a built-in driver
+  — for tests or a specialized deployment — use `register_or_replace`.
+- **Case-insensitive ids.** External ids are normalized to lowercase, so
+  registration and lookup agree regardless of the casing stored in the database
+  or sent on the wire.
+- **Fail-closed.** Drivers never silently fall back to process-environment
+  credentials during a tenant turn; pass credentials explicitly via the model's
+  `api_key` / `provider_metadata`.
+
 ## Built-in Harness Roles
 
 Special harness behavior is driven by explicit roles, not fixed names:
@@ -169,6 +241,7 @@ let runtime = InProcessRuntimeBuilder::new()
         provider_type: LlmProviderType::LlmSim,
         api_key: Some("fake-key".into()),
         base_url: None,
+        provider_metadata: None,
     })
     // .capability(...)
     // .backends(...)
