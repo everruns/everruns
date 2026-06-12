@@ -451,7 +451,7 @@ impl Tool for StartAgentHandoffTool {
                 },
                 "public_context": {
                     "type": "object",
-                    "description": "Non-secret structured context to include with the task."
+                    "description": "Non-secret structured context to include with the instructions."
                 }
             },
             "required": ["target", "instructions"],

@@ -76,7 +76,7 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ### spawn_subagent
 
-Creates a child session and sends the task as the first user message. In foreground mode, blocks until the child idles.
+Creates a child session and sends the instructions as the first user message. In foreground mode, blocks until the child idles.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -141,7 +141,7 @@ Parent Agent                          System                           Child Ses
      │─────────────────────────────────>│                                  │
      │                                  │  create session(parent_id=...)   │
      │                                  │─────────────────────────────────>│
-     │                                  │  send task as user message       │
+     │                                  │  send instructions as message    │
      │                                  │─────────────────────────────────>│
      │                                  │  emit subagent.spawned           │
      │                                  │                                  │

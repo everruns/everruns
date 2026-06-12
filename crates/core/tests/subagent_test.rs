@@ -96,7 +96,7 @@ async fn test_spawn_subagent_missing_name() {
 // =============================================================================
 
 #[tokio::test]
-async fn test_spawn_subagent_missing_task() {
+async fn test_spawn_subagent_missing_instructions() {
     let tool = find_tool("spawn_subagent");
     let ctx = empty_context();
 
