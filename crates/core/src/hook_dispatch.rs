@@ -1,8 +1,8 @@
 // User-defined hooks: production bash dispatcher.
 //
-// `VirtualBashHookDispatcher` is the production `BashHookDispatcher` impl.
+// `BashkitShellHookDispatcher` is the production `BashHookDispatcher` impl.
 // It runs the user-authored hook command through the same bashkit
-// interpreter the `virtual_bash` capability uses, against a session VFS
+// interpreter the `bashkit_shell` capability uses, against a session VFS
 // adapter so the hook script sees the same `/workspace` the agent sees.
 //
 // The hook payload is delivered via:
@@ -34,7 +34,7 @@ use crate::traits::SessionFileSystem;
 /// Trimmed-down ExecutionLimits for hook commands. Hooks are short,
 /// side-effect-y scripts, not agent-authored programs: keep the
 /// max_input_bytes bound but cap commands/iterations/depth lower than
-/// `virtual_bash` does so a runaway hook can't hold up tool execution.
+/// `bashkit_shell` does so a runaway hook can't hold up tool execution.
 fn hook_execution_limits() -> ExecutionLimits {
     ExecutionLimits::new()
         .max_commands(200)
@@ -48,11 +48,11 @@ fn hook_execution_limits() -> ExecutionLimits {
 /// Bashkit-backed dispatcher. Constructed per session (or shared across
 /// sessions if `store` is shared) so that the produced
 /// `SessionFileSystemAdapter` operates on the right session VFS.
-pub struct VirtualBashHookDispatcher {
+pub struct BashkitShellHookDispatcher {
     store: Arc<dyn SessionFileSystem>,
 }
 
-impl VirtualBashHookDispatcher {
+impl BashkitShellHookDispatcher {
     pub fn new(store: Arc<dyn SessionFileSystem>) -> Self {
         Self { store }
     }
@@ -65,14 +65,14 @@ impl VirtualBashHookDispatcher {
             tracing::debug!(
                 error = %e,
                 path = %path,
-                "VirtualBashHookDispatcher: payload file cleanup failed (non-fatal)"
+                "BashkitShellHookDispatcher: payload file cleanup failed (non-fatal)"
             );
         }
     }
 }
 
 #[async_trait]
-impl BashHookDispatcher for VirtualBashHookDispatcher {
+impl BashHookDispatcher for BashkitShellHookDispatcher {
     async fn dispatch(
         &self,
         payload: &HookPayload,
@@ -110,7 +110,7 @@ impl BashHookDispatcher for VirtualBashHookDispatcher {
                 tracing::warn!(
                     error = %e,
                     path = %storage_path,
-                    "VirtualBashHookDispatcher: VFS payload write failed; env-var fallback still set"
+                    "BashkitShellHookDispatcher: VFS payload write failed; env-var fallback still set"
                 );
                 false
             }
@@ -343,7 +343,7 @@ mod tests {
         env: std::collections::BTreeMap<String, String>,
         payload: HookPayload,
     ) -> HookOutcome {
-        let dispatcher = Arc::new(VirtualBashHookDispatcher::new(store));
+        let dispatcher = Arc::new(BashkitShellHookDispatcher::new(store));
         let exec = BashHookExecutor::with_dispatcher(command.to_string(), env, dispatcher);
         exec.run(payload, &opts()).await
     }
@@ -550,7 +550,7 @@ mod tests {
     #[tokio::test]
     async fn timeout_returns_error_outcome() {
         let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
-        let dispatcher = Arc::new(VirtualBashHookDispatcher::new(store));
+        let dispatcher = Arc::new(BashkitShellHookDispatcher::new(store));
         let exec = BashHookExecutor::with_dispatcher(
             // Busy loop that bashkit's loop limit + our wall-clock timeout
             // should jointly bound. We deliberately set a very short
@@ -583,7 +583,7 @@ mod tests {
     // ------------------------------------------------------------------
     // End-to-end: a real post_tool_use hook spec runs through the whole
     // chain (UserHookSpec -> PostToolUseHookAdapter -> BashHookExecutor ->
-    // VirtualBashHookDispatcher -> bashkit -> session VFS) and writes an
+    // BashkitShellHookDispatcher -> bashkit -> session VFS) and writes an
     // audit log line for the tool call. Mirrors the
     // examples/hook-bundles/audit-every-tool.json bundle.
     // ------------------------------------------------------------------
@@ -614,7 +614,7 @@ mod tests {
         };
 
         let dispatcher: Arc<dyn BashHookDispatcher> =
-            Arc::new(VirtualBashHookDispatcher::new(store.clone()));
+            Arc::new(BashkitShellHookDispatcher::new(store.clone()));
         let executor: Arc<dyn HookExecutor> = Arc::new(BashHookExecutor::with_dispatcher(
             match &spec.executor {
                 ExecutorSpec::Bash { command, .. } => command.clone(),
@@ -712,7 +712,7 @@ mod tests {
     // ------------------------------------------------------------------
     // End-to-end: a real pre_tool_use hook spec runs through the whole
     // chain (UserHookSpec -> PreToolUseHookAdapter -> BashHookExecutor ->
-    // VirtualBashHookDispatcher -> bashkit) and blocks execution by
+    // BashkitShellHookDispatcher -> bashkit) and blocks execution by
     // emitting a JSON `{"decision":"block",...}` decision when the agent
     // tries to run `rm -rf /`. Mirrors examples/hook-bundles/block-rm-rf.json
     // (with a simplified deny check the bashkit interpreter can parse).
@@ -754,7 +754,7 @@ mod tests {
         };
 
         let dispatcher: Arc<dyn BashHookDispatcher> =
-            Arc::new(VirtualBashHookDispatcher::new(store.clone()));
+            Arc::new(BashkitShellHookDispatcher::new(store.clone()));
         let executor: Arc<dyn HookExecutor> = Arc::new(BashHookExecutor::with_dispatcher(
             match &spec.executor {
                 ExecutorSpec::Bash { command, .. } => command.clone(),

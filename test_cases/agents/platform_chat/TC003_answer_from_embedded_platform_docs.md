@@ -29,7 +29,7 @@ This test exercises the `platform_management` capability's embedded-docs mount t
 
 3. **Wait for Platform Chat to finish.**
 
-4. **Inspect the response and tool trace.** The run should show evidence that Platform Chat consulted the mounted docs via file tools or virtual bash (for example `read_file`, `list_directory`, `grep`, or a `bash` call like `grep -r` / `cat /workspace/docs/...`).
+4. **Inspect the response and tool trace.** The run should show evidence that Platform Chat consulted the mounted docs via file tools or the bashkit shell (for example `read_file`, `list_directory`, `grep`, or a `bash` call like `grep -r` / `cat /workspace/docs/...`).
 
 5. **Verify the answer includes all three facts:**
    - The docs are available at `/workspace/docs`

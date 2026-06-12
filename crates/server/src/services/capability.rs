@@ -159,6 +159,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                localizations: Default::default(),
             });
         }
 
@@ -188,6 +189,7 @@ impl CapabilityService {
                 agent_count: 0,
                 harness_count: 0,
                 docs_slug: None,
+                localizations: Default::default(),
             });
         }
 
@@ -289,6 +291,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    localizations: Default::default(),
                 }));
             }
             return Ok(None);
@@ -317,6 +320,7 @@ impl CapabilityService {
                     agent_count: 0,
                     harness_count: 0,
                     docs_slug: None,
+                    localizations: Default::default(),
                 }));
             }
             return Ok(None);
@@ -654,13 +658,22 @@ mod tests {
     // bash/fetch (#1500). `high_risk_ids` is the admin-gating primitive used
     // by `api::agents::require_admin_for_high_risk`, the agent domain command
     // `check_high_risk_caps`, and the session service's high-risk guard. If a
-    // refactor again downgrades `virtual_bash` or `web_fetch` the admin gate
+    // refactor again downgrades `bashkit_shell` or `web_fetch` the admin gate
     // would silently stop firing (TM-AGENT-005).
     mod high_risk_ids_tests {
         use super::*;
 
         #[test]
-        fn flags_virtual_bash_as_high_risk() {
+        fn flags_bashkit_shell_as_high_risk() {
+            let svc = make_service();
+            let high = svc.high_risk_ids(&["bashkit_shell"]);
+            assert_eq!(high, vec!["bashkit_shell".to_string()]);
+        }
+
+        #[test]
+        fn flags_legacy_virtual_bash_alias_as_high_risk() {
+            // Persisted agent configs may still carry the pre-rename
+            // `virtual_bash` ID; the alias must stay admin-gated.
             let svc = make_service();
             let high = svc.high_risk_ids(&["virtual_bash"]);
             assert_eq!(high, vec!["virtual_bash".to_string()]);
@@ -676,8 +689,8 @@ mod tests {
         #[test]
         fn flags_both_bash_and_fetch_in_mixed_input() {
             let svc = make_service();
-            let high = svc.high_risk_ids(&["noop", "virtual_bash", "web_fetch"]);
-            assert!(high.contains(&"virtual_bash".to_string()));
+            let high = svc.high_risk_ids(&["noop", "bashkit_shell", "web_fetch"]);
+            assert!(high.contains(&"bashkit_shell".to_string()));
             assert!(high.contains(&"web_fetch".to_string()));
             assert!(!high.contains(&"noop".to_string()));
             assert_eq!(high.len(), 2);

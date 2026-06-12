@@ -347,13 +347,13 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[cfg(test)]
-/// Workspace prefix used by capabilities (file_system, virtual_bash)
+/// Workspace prefix used by capabilities (file_system, bashkit_shell)
 const WORKSPACE_PREFIX: &str = "/workspace";
 
 #[cfg(test)]
 /// Normalize path from URL, stripping /workspace prefix if present.
 ///
-/// The file_system and virtual_bash capabilities present paths to users with
+/// The file_system and bashkit_shell capabilities present paths to users with
 /// a /workspace prefix (e.g., /workspace/demo/a.txt), but store them without
 /// the prefix (e.g., /demo/a.txt). This function handles that transformation
 /// so the API accepts both formats.

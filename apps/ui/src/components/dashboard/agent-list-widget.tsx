@@ -10,6 +10,8 @@ import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import { localizedCapabilityName } from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 
 interface AgentListWidgetProps {
   agents: Agent[];
@@ -19,6 +21,7 @@ interface AgentListWidgetProps {
 const MAX_DISPLAYED = 5;
 
 export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProps) {
+  const { locale } = useLocale();
   const activeAgents = agents.filter((a) => a.status === "active").slice(0, MAX_DISPLAYED);
 
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
@@ -79,7 +82,7 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                                       <IconComponent className="icon-sharp h-3 w-3 text-muted-foreground" />
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>{cap.name}</p>
+                                      <p>{localizedCapabilityName(cap, locale)}</p>
                                     </TooltipContent>
                                   </Tooltip>
                                 );

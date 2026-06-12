@@ -1,6 +1,6 @@
 //! TestMath Capability - calculator tools for testing tool calling
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
@@ -20,6 +20,14 @@ impl Capability for TestMathCapability {
 
     fn description(&self) -> &str {
         "Testing capability: adds calculator tools (add, subtract, multiply, divide) for tool calling tests."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Тестова математика",
+            "Тестова можливість: додає інструменти калькулятора (add, subtract, multiply, divide) для тестів виклику інструментів.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

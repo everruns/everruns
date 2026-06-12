@@ -7,6 +7,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { ChevronUp, ChevronDown, X, Plug, Lock, Settings } from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import { localizedCapabilityName } from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { capabilityConfigRecord } from "./capability-config";
 import { CapabilitySettingsEditor, hasCapabilitySettings } from "./capability-settings-editor";
@@ -32,8 +34,17 @@ export function SelectedCapabilityList({
   onMoveUp,
   onMoveDown,
 }: SelectedCapabilityListProps) {
+  const { locale } = useLocale();
   // Track which capability settings are expanded
   const [expandedSettings, setExpandedSettings] = useState<Set<CapabilityId>>(new Set());
+
+  const capabilityName = useCallback(
+    (id: CapabilityId) => {
+      const cap = getCapability(id);
+      return cap ? localizedCapabilityName(cap, locale) : id;
+    },
+    [getCapability, locale],
+  );
 
   const toggleSettings = useCallback((capabilityId: CapabilityId) => {
     setExpandedSettings((prev) => {
@@ -104,7 +115,7 @@ export function SelectedCapabilityList({
                 {/* Icon and name */}
                 <IconComponent className="w-4 h-4 shrink-0" />
                 <span className="flex-1 text-sm truncate flex items-center gap-2">
-                  {cap.name}
+                  {localizedCapabilityName(cap, locale)}
                   {cap.is_mcp && (
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
                       <Plug className="w-2.5 h-2.5" />
@@ -123,10 +134,7 @@ export function SelectedCapabilityList({
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>
-                          Required by:{" "}
-                          {dependents.map((d) => getCapability(d)?.name ?? d).join(", ")}
-                        </p>
+                        <p>Required by: {dependents.map((d) => capabilityName(d)).join(", ")}</p>
                       </TooltipContent>
                     </Tooltip>
                   )}
@@ -161,7 +169,7 @@ export function SelectedCapabilityList({
                     <TooltipContent>
                       <p>
                         Cannot remove: required by{" "}
-                        {dependents.map((d) => getCapability(d)?.name ?? d).join(", ")}
+                        {dependents.map((d) => capabilityName(d)).join(", ")}
                       </p>
                     </TooltipContent>
                   </Tooltip>

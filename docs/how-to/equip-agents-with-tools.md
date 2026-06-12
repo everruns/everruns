@@ -11,7 +11,7 @@ This guide assigns common capabilities to an agent so it can interact with files
 |---|---|---|
 | `web_fetch` | `web_fetch` | Fetch URLs, convert HTML to markdown |
 | `session_file_system` | `read_file`, `write_file`, `edit_file`, `list_directory`, `grep_files`, `delete_file`, `stat_file` | Per-session virtual filesystem |
-| `virtual_bash` | `bash` | Sandboxed bash shell |
+| `bashkit_shell` | `bash` | Sandboxed bash shell |
 | `stateless_todo_list` | `write_todos` | Structured task tracking |
 | `current_time` | `get_current_time` | Current date/time awareness |
 | `session_storage` | `kv_store`, `secret_store` | Key/value and encrypted secrets |
@@ -31,7 +31,7 @@ agent = await client.agents.create(
 ```python
 await client.agents.update(
     agent.id,
-    capabilities=["web_fetch", "session_file_system", "virtual_bash"],
+    capabilities=["web_fetch", "session_file_system", "bashkit_shell"],
 )
 ```
 

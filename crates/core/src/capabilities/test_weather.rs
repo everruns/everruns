@@ -1,6 +1,6 @@
 //! TestWeather Capability - mock weather tools for testing tool calling
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
@@ -20,6 +20,14 @@ impl Capability for TestWeatherCapability {
 
     fn description(&self) -> &str {
         "Testing capability: adds mock weather tools (get_weather, get_forecast) for tool calling tests."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Тестова погода",
+            "Тестова можливість: додає імітаційні інструменти погоди (get_weather, get_forecast) для тестів виклику інструментів.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

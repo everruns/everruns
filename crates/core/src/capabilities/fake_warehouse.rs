@@ -15,7 +15,7 @@
 //! - `warehouse_process_return`: Process a product return
 //! - `warehouse_inventory_report`: Generate inventory report
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -37,6 +37,14 @@ impl Capability for FakeWarehouseCapability {
 
     fn description(&self) -> &str {
         "Demo capability: warehouse management tools (inventory, shipments, orders, invoices, returns). State stored in session filesystem."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Демо-інструменти складу",
+            "Демонстраційна можливість: інструменти керування складом (запаси, відвантаження, замовлення, рахунки, повернення). Стан зберігається у файловій системі сесії.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -10,7 +10,7 @@
 //! Ref: specs/a2ui.md
 //! Ref: https://github.com/google/a2ui
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
 /// Capability ID constant for external reference.
 pub const A2UI_CAPABILITY_ID: &str = "a2ui";
@@ -29,6 +29,14 @@ impl Capability for A2UiCapability {
 
     fn description(&self) -> &str {
         "Enables the agent to emit generative UI as Google A2UI JSON component trees, rendered by the UI with native design-system components."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "A2UI",
+            "Дає агенту змогу видавати генеративний UI як дерева компонентів Google A2UI у форматі JSON, які інтерфейс рендерить нативними компонентами дизайн-системи.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

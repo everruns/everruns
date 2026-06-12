@@ -9,6 +9,11 @@ import { Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import {
   getDisplayName,
@@ -31,6 +36,7 @@ export function HarnessCard({
   showEditButton = false,
   compact = false,
 }: HarnessCardProps) {
+  const { locale } = useLocale();
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
 
@@ -81,11 +87,13 @@ export function HarnessCard({
                   <Tooltip key={capConfig.ref}>
                     <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
                       <IconComponent className="icon-sharp h-3 w-3" />
-                      {!compact && <span>{cap.name}</span>}
+                      {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="font-medium">{cap.name}</p>
-                      <p className="text-xs text-muted-foreground">{cap.description}</p>
+                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {localizedCapabilityDescription(cap, locale)}
+                      </p>
                     </TooltipContent>
                   </Tooltip>
                 );

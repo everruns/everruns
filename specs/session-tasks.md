@@ -157,11 +157,20 @@ update); `post` and `output` are content (thread and stream). This keeps
 | `subagent` | create child session, send instructions | `send_message(child)` | child question → `request_input`; final message → `post` + terminal state |
 | `external_agent` | A2A `message/send` | `message/send` with `remote_task_id` | `reconcile` polls `tasks/get`; remote artifacts → `artifact` |
 | `background_tool` | run `execute_background` with the sink | rarely used | direct sink calls (existing `BackgroundEventSink` is a strict subset) |
-| `monitor` (future) | start watch loop | adjust what's watched | observation → `post`/`artifact`; triggered condition → `request_input` |
+| `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → outbound message on thread; one-shot → `succeeded`; recurring stays `running` |
 
-A monitor is a long-lived task (`running` until canceled). If recurrence or
-schedules are needed later, add a separate definition entity that spawns tasks
-(Temporal's definition/execution split) without touching the task model.
+A monitor is a long-lived task (`running` until canceled or exhausted).
+`spawn_background` with a `schedule` argument creates a `monitor` task linked
+to the backing session schedule via `spec["schedule_id"]`. Each schedule fire
+appends an outbound message to the monitor's thread. One-shot monitors
+transition to `succeeded` after their single fire; recurring monitors stay
+`running` until `cancel_task` is called, which cancels the linked schedule and
+transitions the task to `canceled`.
+
+Known limitation: canceling the underlying session schedule directly (not via
+`cancel_task`) currently leaves the monitor task in `running` — prefer
+`cancel_task` to cancel both atomically; reconciling orphaned monitors is a
+follow-up (EVE-monitor-orphan).
 
 ## Results and artifacts
 
@@ -280,22 +289,43 @@ No backward compatibility is required; data migrates forward once:
 
 ## Implementation notes (v1)
 
+- `monitor` kind is first-class as of this implementation. `spawn_background`
+  with a `schedule` argument creates a `monitor` task (kind = "monitor") linked
+  to the session schedule via `spec["schedule_id"]`. The `session_scheduler`
+  server loop finds matching monitors on each schedule fire, records an outbound
+  message on their thread, and completes one-shot monitors (cron_expression
+  absent) to `succeeded`. Recurring monitors stay `running` until
+  `cancel_task`, which cancels the linked schedule via `MonitorTaskExecutor`.
+  `TASK_KIND_MONITOR` and the other `TASK_KIND_*` constants are now re-exported
+  from `everruns-core`.
+
 - Storage: `session_tasks` + `session_task_messages` (migration 053);
   PostgreSQL and in-memory backends both route updates through
   `apply_task_update` in `crates/core/src/session_task.rs`. gRPC workers get
   the registry via task RPCs in the internal worker protocol (payloads travel
   as canonical core JSON).
-- Spawning capabilities currently dual-write: tasks plus their legacy
-  session-resource registrations and `subagent.*` events. Retiring the
-  duplicates (and the `sessions.subagent_*` columns and the
-  `task` → `instructions` parameter rename) is follow-up work.
-- Durability is partial: `attempt`/`worker_id`/`heartbeat_at` exist on the
-  record, but the orphan reconciler and stale-attempt fencing are not built
-  yet.
-- Wake-ups: `wake_policy` is stored; registry-level wake delivery is not yet
-  enforced — A2A keeps its existing completion wake-up message.
-- Background tool cancel reports unsupported (no cancel token exists for
-  background runs yet).
+- Session-resource dual-write retired (migration 054): subagent, background_run,
+  and agent_handoff no longer register in `session_resources`. A2A agent runs
+  (`external_agent` tasks) now store their run records in session storage KV
+  (`agent_run:{run_id}` keys). Legacy `subagent.*` events are retained for CLI
+  compatibility. The `sessions.subagent_*` column retirement and the
+  `task` → `instructions` parameter rename remain follow-up work.
+- Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
+  reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
+  with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -
+  5m`) and fails them via the registry using `FOR UPDATE SKIP LOCKED` on the
+  PG backend. Tasks with `NULL heartbeat_at` (foreground subagent tasks) are
+  excluded (covered by EVE-535 spawn handles). Stale-attempt fencing is not
+  yet built.
+- Wake-ups: `wake_policy` is enforced at the registry level
+  (`DbSessionTaskRegistry`). `OnTerminal` wakes on any transition into
+  `succeeded`/`failed`/`canceled`. `OnActivity` additionally wakes on
+  `awaiting_input` entry and outbound messages. `Silent` never wakes.
+  A2A's legacy `wake_parent` call is gated on `session_task_registry.is_none()`
+  (backward compat for sessions without a registry).
+- Background tool cancellation is cooperative: runs with a task record
+  heartbeat every ~2s and poll `cancel_requested_at`, winding down to
+  `canceled` when set (works across worker processes).
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
   key (see `crates/core/src/llmsim_driver.rs`).
 

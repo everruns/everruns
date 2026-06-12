@@ -170,7 +170,7 @@ pub mod turn;
 // Re-exports for convenience
 pub use command_host::{
     CommandHost, CommandTurnContext, DisabledCommandHost, SessionCompletion,
-    SessionCompletionError, SessionCompletionRequest, StoreCommandHost,
+    SessionCompletionError, SessionCompletionRequest, SessionCompletionStream, StoreCommandHost,
 };
 pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
@@ -428,9 +428,10 @@ pub use session_sqldb::{
 };
 pub use session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskState, SessionTaskUpdate, TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin,
-    TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress,
-    TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
+    SessionTaskState, SessionTaskUpdate, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_EXTERNAL_AGENT,
+    TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskArtifact, TaskError, TaskExecutor,
+    TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage, TaskMessageDirection,
+    TaskMessagePart, TaskProgress, TaskSink, TaskWakePolicy, apply_task_update, find_task_executor,
 };
 pub use skill::{
     ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
