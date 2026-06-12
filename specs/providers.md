@@ -4,7 +4,7 @@
 
 Providers are org-scoped accounts on AI service vendors (OpenAI, Anthropic, AWS Bedrock, OpenRouter, Azure OpenAI). A provider is configured once with credentials and connection settings, then powers one or more **services**: chat completion today; embeddings, realtime voice, images, and reranking as they land.
 
-This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. This is the canonical domain model going forward. **There is no backward compatibility requirement**: old names (`llm_providers`, `llm_models`, `LlmProvider`, `provider_type`, `/v1/llm-providers`) are removed everywhere — schema, code, API, UI, docs, and tests — per the refactor inventory below.
+This spec replaces the "LLM providers" framing. The old name was wrong in a specific way: the database row was already a generic vendor account, but the code layer hard-wired it to exactly one service (chat completion), so every non-chat consumer grew a bypass. This is the canonical **target** domain model; implementation lands in the phases below. **There is no backward compatibility requirement**: old names (`llm_providers`, `llm_models`, `LlmProvider`, `provider_type`, `/v1/llm-providers`) will be removed everywhere — schema, code, API, UI, docs, and tests — as the refactor phases land, per the inventory below.
 
 ## Motivation
 
@@ -180,7 +180,7 @@ Renames, no compatibility aliases:
 | `GET /v1/llm-providers/config` | `GET /v1/providers/config` |
 | `GET/POST /v1/llm-providers/{id}/models` | `GET/POST /v1/providers/{id}/models` |
 | `GET /v1/llm-models`, `/v1/llm-models/{id}` | `GET /v1/models`, `/v1/models/{id}` |
-| — | `GET /v1/model-profiles`, `GET /v1/model-profiles/{key}` (read-only catalog) |
+| — | `GET /v1/model-profiles`, `GET /v1/model-profiles/{vendor}/{model}` (read-only catalog; the key's two segments map to two path segments, so the embedded `/` never needs URL-encoding) |
 | — | `GET /v1/models/{id}/siblings` (models sharing the profile — powers "rebind via another provider") |
 
 Request/response field renames follow: `provider_type` → `driver`, `api_key` → typed credential fields per schema, `api_key_set` → `credentials_set`. Model responses gain `profile_key` and embed the profile (as `LlmModelWithProvider.profile` does today).

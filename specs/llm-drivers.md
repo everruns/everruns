@@ -1,11 +1,12 @@
 # LLM Drivers Specification
 
 > **Domain model note:** the canonical provider domain model (drivers, services,
-> providers, models, model profiles) is [providers.md](providers.md). That spec
-> renames `LlmDriver` → `ChatDriver` and moves the entity/resolution content out
-> of this document; this spec remains the chat-service wire contract (streaming,
-> error types, retries, thinking, prompt cache, compaction) and is restructured
-> as the refactor slices land.
+> providers, models, model profiles) is [providers.md](providers.md). That
+> refactor is in progress: as its phases land, `LlmDriver` will be renamed
+> `ChatDriver` and the entity/resolution content will move out of this document,
+> leaving this spec as the chat-service wire contract (streaming, error types,
+> retries, thinking, prompt cache, compaction). Until then, this document still
+> describes the current names in code.
 
 ## Abstract
 
