@@ -154,9 +154,13 @@ impl PostToolExecHook for DistillOutputHook {
         let mut stats = DistillStats::default();
         distill_value(result_value, 0, &mut stats);
         if !stats.changed {
-            // Large but already compact (e.g. one opaque scalar). Leave verbatim
-            // rather than spend a VFS write on something we did not reduce.
-            return;
+            // The shape walker found nothing to clip — e.g. a large object or
+            // array made entirely of sub-threshold fields. Such a result is
+            // still large; if it later exceeds the 64 KiB OutputHardLimitHook it
+            // would be head-truncated with no recovery pointer, losing the tail.
+            // Fall back to a head+tail window over the serialized value so the
+            // result is always bounded, persisted, and recoverable.
+            *result_value = Value::String(head_tail(&serialized, MAX_FIELD_BYTES));
         }
 
         // Persist the full original (pretty-printed JSON) for lossless retrieval.
@@ -206,8 +210,12 @@ fn distill_value(value: &mut Value, depth: usize, stats: &mut DistillStats) {
             }
         }
         Value::Array(arr) => {
-            let serialized_len = serde_json::to_string(arr).map(|s| s.len()).unwrap_or(0);
-            if arr.len() > SAMPLE_ROWS && serialized_len > MAX_FIELD_BYTES {
+            // Only arrays longer than the sample size can ever be sampled, so
+            // check length first and let `&&` short-circuit the O(n)
+            // serialization for small arrays.
+            if arr.len() > SAMPLE_ROWS
+                && serde_json::to_string(arr).map(|s| s.len()).unwrap_or(0) > MAX_FIELD_BYTES
+            {
                 let omitted = arr.len() - SAMPLE_ROWS;
                 arr.truncate(SAMPLE_ROWS);
                 for el in arr.iter_mut() {
@@ -629,6 +637,46 @@ mod tests {
             .content("/outputs/call_123.stdout")
             .expect("original persisted");
         assert!(persisted.contains("row-number-1999"));
+    }
+
+    #[tokio::test]
+    async fn test_hook_fallback_persists_large_unsampleable_result() {
+        // A large object made entirely of sub-threshold fields: the shape walker
+        // changes nothing, but the result is still large. The fallback must
+        // bound it, persist the original, and inject a recovery pointer so it is
+        // never head-truncated irrecoverably by the hard-limit hook.
+        let store = Arc::new(MockFileStore::default());
+        let ctx = ctx_with_store(store.clone());
+        let mut map = serde_json::Map::new();
+        for i in 0..2000 {
+            map.insert(format!("field_{i}"), json!(format!("v{i}")));
+        }
+        let mut result = ToolResult {
+            tool_call_id: "call_123".to_string(),
+            result: Some(Value::Object(map)),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        DistillOutputHook
+            .after_exec(&tool_call(), &mcp_tool_def(false), &mut result, &ctx)
+            .await;
+
+        let value = result.result.as_ref().unwrap();
+        assert_eq!(value["distilled"], json!(true));
+        assert_eq!(
+            value["output_files"],
+            json!(["/workspace/outputs/call_123.stdout"])
+        );
+        // Inline view is bounded (the wrapped head+tail string is small).
+        assert!(value["distilled_output"].as_str().unwrap().len() < 8 * 1024);
+        // Full original recoverable.
+        let persisted = store
+            .content("/outputs/call_123.stdout")
+            .expect("original persisted");
+        assert!(persisted.contains("field_1999"));
     }
 
     #[tokio::test]

@@ -40,7 +40,7 @@ Both the in-process host and the durable worker assemble hooks through the same 
 3. **Skip** if the result already carries `output_files` (already recoverable / distilled).
 4. **Size gate:** skip if the serialized result is below `MIN_DISTILL_BYTES`.
 5. **Require a session file store** (reversibility); skip if absent.
-6. Clone the original, then **distill the value in place**. If nothing changed, leave verbatim (no VFS write).
+6. Clone the original, then **distill the value in place**. If the shape walker changes nothing (a large result made entirely of sub-threshold fields), **fall back** to a head+tail window over the serialized value — so a large result is always bounded, persisted, and recoverable rather than risking an irrecoverable head-truncation by the 64 KiB hard-limit hook.
 7. **Persist the full original** (pretty-printed JSON) via `persist_output`. On failure, restore the verbatim original and return.
 8. **Inject the recovery pointer** (`output_files`, `full_output`, `distilled`, `distill_note`).
 
