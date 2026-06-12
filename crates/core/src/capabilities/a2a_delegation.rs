@@ -3,8 +3,8 @@
 // Decision: V1 is outbound-only and stores configured external agents in the
 // capability config. Run state is persisted as session storage KV entries
 // (key = "agent_run:{run_id}") so agents and UI have a unified local/remote
-// delegation handle. An index key "agent_run:index" (JSON array of run_ids)
-// enables listing. The session resource registry is no longer used for A2A
+// delegation handle. Listing derives from `list_keys` by prefix — no index
+// key, so concurrent spawns cannot race. The resource registry is unused for
 // runs (retired as part of the session-tasks dual-write cleanup).
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
@@ -608,38 +608,27 @@ fn run_key(run_id: &str) -> String {
     format!("agent_run:{run_id}")
 }
 
-/// KV key for the agent run index (list of all run_ids for this session).
-const AGENT_RUN_INDEX_KEY: &str = "agent_run:index";
+/// Prefix shared by all agent run KV keys.
+const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 
-/// Load the current index (list of run_ids). Returns empty vec on missing/error.
-async fn load_run_index(
+/// List run_ids by prefix-filtering the session's KV keys. Derived from
+/// `list_keys` rather than a maintained index key, so concurrent spawns
+/// cannot race a read-modify-write and drop runs.
+async fn list_run_ids(
     storage: &dyn SessionStorageStore,
     session_id: crate::typed_id::SessionId,
 ) -> Vec<String> {
     storage
-        .get_value(session_id, AGENT_RUN_INDEX_KEY)
+        .list_keys(session_id)
         .await
-        .ok()
-        .flatten()
-        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
         .unwrap_or_default()
-}
-
-/// Append a run_id to the index (idempotent).
-async fn append_run_to_index(
-    storage: &dyn SessionStorageStore,
-    session_id: crate::typed_id::SessionId,
-    run_id: &str,
-) {
-    let mut index = load_run_index(storage, session_id).await;
-    if !index.contains(&run_id.to_string()) {
-        index.push(run_id.to_string());
-        if let Ok(serialized) = serde_json::to_string(&index) {
-            let _ = storage
-                .set_value(session_id, AGENT_RUN_INDEX_KEY, &serialized)
-                .await;
-        }
-    }
+        .into_iter()
+        .filter_map(|info| {
+            info.key
+                .strip_prefix(AGENT_RUN_KEY_PREFIX)
+                .map(ToString::to_string)
+        })
+        .collect()
 }
 
 fn require_str<'a>(
@@ -666,7 +655,6 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
     storage
         .set_value(context.session_id, &run_key(&record.run_id), &serialized)
         .await?;
-    append_run_to_index(storage.as_ref(), context.session_id, &record.run_id).await;
     Ok(())
 }
 
@@ -1366,7 +1354,7 @@ impl Tool for GetAgentRunsTool {
             Ok(s) => s,
             Err(e) => return e,
         };
-        let run_ids = load_run_index(storage.as_ref(), context.session_id).await;
+        let run_ids = list_run_ids(storage.as_ref(), context.session_id).await;
         let status_filter = arguments
             .get("status_filter")
             .and_then(Value::as_str)
@@ -1867,7 +1855,18 @@ mod tests {
         }
 
         async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<crate::KeyInfo>> {
-            Ok(Vec::new())
+            let now = chrono::Utc::now();
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .keys()
+                .map(|key| crate::KeyInfo {
+                    key: key.clone(),
+                    created_at: now,
+                    updated_at: now,
+                })
+                .collect())
         }
 
         async fn set_secret(
@@ -2476,9 +2475,9 @@ mod tests {
             .expect("load_run_for_task failed");
         assert_eq!(from_task.run_id, run_id);
 
-        // The index should list the run_id.
+        // The prefix-derived listing should include the run_id.
         let storage = ctx.storage_store.as_ref().unwrap();
-        let index = load_run_index(storage.as_ref(), ctx.session_id).await;
+        let index = list_run_ids(storage.as_ref(), ctx.session_id).await;
         assert!(
             index.contains(&run_id),
             "run_id not found in index: {index:?}"

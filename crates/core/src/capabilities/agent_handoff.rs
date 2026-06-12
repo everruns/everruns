@@ -583,6 +583,27 @@ impl Tool for StartAgentHandoffTool {
         {
             Ok(status) => status,
             Err(error) => {
+                // Mirror the failure into the session task (best-effort) so it
+                // is not left running indefinitely — handoff tasks do not
+                // heartbeat, so the orphan reaper would never reclaim them.
+                if let (Some(registry), Some(task_id)) =
+                    (&context.session_task_registry, &handoff_task_id)
+                {
+                    let _ = registry
+                        .update(
+                            context.session_id,
+                            task_id,
+                            SessionTaskUpdate {
+                                state: Some(SessionTaskState::Failed),
+                                error: Some(TaskError {
+                                    kind: "handoff_failed".to_string(),
+                                    message: error.to_string(),
+                                }),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                }
                 return ToolExecutionResult::success(json!({
                     "handoff_id": child_session.id.to_string(),
                     "target": target.id,
