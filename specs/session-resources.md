@@ -51,9 +51,9 @@ rather than duplicate.
 | *(future)*                   | Direct `registry.register()`          | *(any string)*    | Caller-defined             |
 
 Work-shaped kinds (`subagent`, `agent_run`, `background_run`, `agent_handoff`)
-were migrated to `session_tasks` (migration 053). Subagents, agent runs, and
-background runs still register here transitionally alongside their task
-records; retiring the duplicate registration is a session-tasks follow-up.
+were migrated to `session_tasks` (migration 053). The dual-write transitional
+registrations were retired in migration 054; these kinds are no longer written
+to `session_resources`.
 
 ### Storage
 

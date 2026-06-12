@@ -1,14 +1,13 @@
 // Outbound A2A agent delegation.
 //
 // Decision: V1 is outbound-only and stores configured external agents in the
-// capability config. Run state is persisted as session resources of kind
-// `agent_run`, which gives agents and UI a unified local/remote delegation
-// handle without introducing inbound A2A app-channel exposure.
+// capability config. Run state is persisted as session storage KV entries
+// (key = "agent_run:{run_id}") so agents and UI have a unified local/remote
+// delegation handle. An index key "agent_run:index" (JSON array of run_ids)
+// enables listing. The session resource registry is no longer used for A2A
+// runs (retired as part of the session-tasks dual-write cleanup).
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
-use crate::session_resource::{
-    RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
-};
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
@@ -16,7 +15,7 @@ use crate::session_task::{
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionResourceRegistry, ToolContext};
+use crate::traits::{SessionStorageStore, ToolContext};
 use crate::{Result, validate_safe_url};
 use a2a::{
     AgentCard, CancelTaskRequest, GetTaskRequest, Message, Part, Role, SendMessageConfiguration,
@@ -36,7 +35,6 @@ use tokio::time::{Instant, sleep};
 use url::Url;
 
 pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
-const AGENT_RUN_KIND: &str = "agent_run";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
 const MAX_RESULT_CHARS: usize = 8_192;
@@ -573,16 +571,6 @@ impl AgentRunRecord {
         }
     }
 
-    fn resource_status(&self) -> SessionResourceStatus {
-        match self.status {
-            AgentRunStatus::Completed => SessionResourceStatus::Completed,
-            AgentRunStatus::Failed | AgentRunStatus::Canceled | AgentRunStatus::Rejected => {
-                SessionResourceStatus::Failed
-            }
-            _ => SessionResourceStatus::Active,
-        }
-    }
-
     fn public_json(&self) -> Value {
         json!({
             "agent_run_id": self.run_id,
@@ -607,14 +595,51 @@ fn run_id() -> String {
     format!("agrun_{}", uuid::Uuid::now_v7().simple())
 }
 
-fn require_registry(
+fn require_storage(
     context: &ToolContext,
-) -> std::result::Result<&Arc<dyn SessionResourceRegistry>, ToolExecutionResult> {
-    context.session_resource_registry.as_ref().ok_or_else(|| {
-        ToolExecutionResult::tool_error(
-            "Agent delegation tools require session_resource_registry context",
-        )
+) -> std::result::Result<&Arc<dyn SessionStorageStore>, ToolExecutionResult> {
+    context.storage_store.as_ref().ok_or_else(|| {
+        ToolExecutionResult::tool_error("Agent delegation tools require storage_store context")
     })
+}
+
+/// KV key for a specific agent run record.
+fn run_key(run_id: &str) -> String {
+    format!("agent_run:{run_id}")
+}
+
+/// KV key for the agent run index (list of all run_ids for this session).
+const AGENT_RUN_INDEX_KEY: &str = "agent_run:index";
+
+/// Load the current index (list of run_ids). Returns empty vec on missing/error.
+async fn load_run_index(
+    storage: &dyn SessionStorageStore,
+    session_id: crate::typed_id::SessionId,
+) -> Vec<String> {
+    storage
+        .get_value(session_id, AGENT_RUN_INDEX_KEY)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|s| serde_json::from_str::<Vec<String>>(&s).ok())
+        .unwrap_or_default()
+}
+
+/// Append a run_id to the index (idempotent).
+async fn append_run_to_index(
+    storage: &dyn SessionStorageStore,
+    session_id: crate::typed_id::SessionId,
+    run_id: &str,
+) {
+    let mut index = load_run_index(storage, session_id).await;
+    if !index.contains(&run_id.to_string()) {
+        index.push(run_id.to_string());
+        if let Ok(serialized) = serde_json::to_string(&index) {
+            let _ = storage
+                .set_value(session_id, AGENT_RUN_INDEX_KEY, &serialized)
+                .await;
+        }
+    }
 }
 
 fn require_str<'a>(
@@ -632,19 +657,16 @@ fn require_str<'a>(
 
 async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
     mirror_run_to_task(context, record).await;
-    let Some(registry) = &context.session_resource_registry else {
+    let Some(storage) = &context.storage_store else {
         return Ok(());
     };
-    registry
-        .register(RegisterSessionResource {
-            session_id: context.session_id,
-            resource_id: record.run_id.clone(),
-            kind: AGENT_RUN_KIND.to_string(),
-            display_name: record.external_agent_name.clone(),
-            status: record.resource_status(),
-            metadata: serde_json::to_value(record).unwrap_or_else(|_| json!({})),
-        })
+    let serialized = serde_json::to_string(record).map_err(|e| {
+        crate::error::AgentLoopError::store(format!("failed to serialize agent run: {e}"))
+    })?;
+    storage
+        .set_value(context.session_id, &run_key(&record.run_id), &serialized)
         .await?;
+    append_run_to_index(storage.as_ref(), context.session_id, &record.run_id).await;
     Ok(())
 }
 
@@ -768,9 +790,9 @@ async fn load_run(
     context: &ToolContext,
     run_id: &str,
 ) -> std::result::Result<AgentRunRecord, ToolExecutionResult> {
-    let registry = require_registry(context)?;
-    let Some(entry) = registry
-        .get(context.session_id, run_id)
+    let storage = require_storage(context)?;
+    let Some(serialized) = storage
+        .get_value(context.session_id, &run_key(run_id))
         .await
         .map_err(ToolExecutionResult::internal_error)?
     else {
@@ -778,13 +800,8 @@ async fn load_run(
             "No agent run found with id: {run_id}"
         )));
     };
-    if entry.kind != AGENT_RUN_KIND {
-        return Err(ToolExecutionResult::tool_error(format!(
-            "Resource is not an agent run: {run_id}"
-        )));
-    }
-    serde_json::from_value(entry.metadata).map_err(|e| {
-        ToolExecutionResult::internal_error_msg(format!("Invalid agent run metadata: {e}"))
+    serde_json::from_str(&serialized).map_err(|e| {
+        ToolExecutionResult::internal_error_msg(format!("Invalid agent run record: {e}"))
     })
 }
 
@@ -1181,7 +1198,7 @@ impl Tool for SpawnAgentTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        if let Err(e) = require_registry(context) {
+        if let Err(e) = require_storage(context) {
             return e;
         }
         let task = match require_str(&arguments, "task") {
@@ -1233,6 +1250,7 @@ impl Tool for SpawnAgentTool {
             wake_on_completion,
         );
         // Create the session task tracking this run (specs/session-tasks.md).
+        // run_id is stored in spec so load_run_for_task can do a direct key lookup.
         if let Some(task_registry) = &context.session_task_registry
             && let Ok(created) = task_registry
                 .create(CreateSessionTask {
@@ -1241,6 +1259,7 @@ impl Tool for SpawnAgentTool {
                     kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
                     display_name: agent.name.clone(),
                     spec: json!({
+                        "run_id": &run_id,
                         "external_agent_id": agent.id,
                         "instructions": &task,
                         "mode": &mode,
@@ -1343,36 +1362,30 @@ impl Tool for GetAgentRunsTool {
                 Err(e) => e,
             };
         }
-        let registry = match require_registry(context) {
-            Ok(registry) => registry,
+        let storage = match require_storage(context) {
+            Ok(s) => s,
             Err(e) => return e,
         };
-        let entries = match registry
-            .list(
-                context.session_id,
-                Some(&SessionResourceFilter {
-                    kind: Some(AGENT_RUN_KIND.to_string()),
-                    status: None,
-                }),
-            )
-            .await
-        {
-            Ok(entries) => entries,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
+        let run_ids = load_run_index(storage.as_ref(), context.session_id).await;
         let status_filter = arguments
             .get("status_filter")
             .and_then(Value::as_str)
             .unwrap_or("all");
-        let runs = entries
-            .into_iter()
-            .filter_map(|entry| serde_json::from_value::<AgentRunRecord>(entry.metadata).ok())
-            .filter(|record| status_filter == "all" || record.status.to_string() == status_filter)
-            .map(|record| record.public_json())
-            .collect::<Vec<_>>();
+        let mut runs = Vec::new();
+        for run_id in run_ids {
+            if let Ok(Some(serialized)) = storage
+                .get_value(context.session_id, &run_key(&run_id))
+                .await
+                && let Ok(record) = serde_json::from_str::<AgentRunRecord>(&serialized)
+                && (status_filter == "all" || record.status.to_string() == status_filter)
+            {
+                runs.push(record.public_json());
+            }
+        }
+        let count = runs.len();
         ToolExecutionResult::success(json!({
             "agent_runs": runs,
-            "count": runs.len()
+            "count": count
         }))
     }
 
@@ -1669,30 +1682,25 @@ impl Tool for CancelAgentTool {
 // Task executor: external_agent
 // ============================================================================
 
-/// Locate the agent run mirrored by a session task. Runs land in the session
-/// resource registry as `agent_run` resources with the task id in metadata.
+/// Locate the agent run mirrored by a session task.
+/// The run_id is stored in the task's spec so we can do a direct KV lookup.
 async fn load_run_for_task(
     context: &ToolContext,
     task: &SessionTask,
 ) -> std::result::Result<AgentRunRecord, String> {
-    let Some(registry) = &context.session_resource_registry else {
-        return Err("external agent tasks require session_resource_registry context".to_string());
+    let Some(storage) = &context.storage_store else {
+        return Err("external agent tasks require storage_store context".to_string());
     };
-    let entries = registry
-        .list(
-            context.session_id,
-            Some(&SessionResourceFilter {
-                kind: Some(AGENT_RUN_KIND.to_string()),
-                status: None,
-            }),
-        )
-        .await
-        .map_err(|e| e.to_string())?;
-    entries
-        .into_iter()
-        .filter_map(|entry| serde_json::from_value::<AgentRunRecord>(entry.metadata).ok())
-        .find(|record| record.task_id.as_deref() == Some(task.id.as_str()))
-        .ok_or_else(|| format!("No agent run found for task {}", task.id))
+    // Direct lookup via run_id stored in task spec (set at spawn time).
+    if let Some(run_id) = task.spec.get("run_id").and_then(Value::as_str)
+        && let Ok(Some(serialized)) = storage
+            .get_value(context.session_id, &run_key(run_id))
+            .await
+    {
+        return serde_json::from_str::<AgentRunRecord>(&serialized)
+            .map_err(|e| format!("invalid agent run record for task {}: {e}", task.id));
+    }
+    Err(format!("No agent run found for task {}", task.id))
 }
 
 /// Agent config snapshot stored on the run, required to rebuild the A2A
@@ -1836,74 +1844,51 @@ mod tests {
     use tokio::time::timeout;
 
     #[derive(Default)]
-    struct TestSessionResourceRegistry {
-        entries: Mutex<HashMap<String, crate::session_resource::SessionResourceEntry>>,
+    struct TestStorageStore {
+        values: Mutex<HashMap<String, String>>,
     }
 
     #[async_trait]
-    impl SessionResourceRegistry for TestSessionResourceRegistry {
-        async fn register(
-            &self,
-            entry: RegisterSessionResource,
-        ) -> Result<crate::session_resource::SessionResourceEntry> {
-            let now = chrono::Utc::now();
-            let mut entries = self.entries.lock().unwrap();
-            let existing = entries.get(&entry.resource_id).cloned();
-            let out = crate::session_resource::SessionResourceEntry {
-                resource_id: entry.resource_id.clone(),
-                session_id: entry.session_id,
-                kind: entry.kind,
-                display_name: entry.display_name,
-                status: entry.status,
-                metadata: entry.metadata,
-                created_at: existing.as_ref().map(|e| e.created_at).unwrap_or(now),
-                updated_at: now,
-            };
-            entries.insert(entry.resource_id, out.clone());
-            Ok(out)
+    impl crate::traits::SessionStorageStore for TestStorageStore {
+        async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
         }
 
-        async fn update_status(
+        async fn get_value(&self, _session_id: SessionId, key: &str) -> Result<Option<String>> {
+            Ok(self.values.lock().unwrap().get(key).cloned())
+        }
+
+        async fn delete_value(&self, _session_id: SessionId, key: &str) -> Result<bool> {
+            Ok(self.values.lock().unwrap().remove(key).is_some())
+        }
+
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<crate::KeyInfo>> {
+            Ok(Vec::new())
+        }
+
+        async fn set_secret(
             &self,
             _session_id: SessionId,
-            resource_id: &str,
-            status: SessionResourceStatus,
-        ) -> Result<Option<crate::session_resource::SessionResourceEntry>> {
-            let mut entries = self.entries.lock().unwrap();
-            if let Some(entry) = entries.get_mut(resource_id) {
-                entry.status = status;
-                return Ok(Some(entry.clone()));
-            }
+            _name: &str,
+            _value: &str,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_secret(&self, _session_id: SessionId, _name: &str) -> Result<Option<String>> {
             Ok(None)
         }
 
-        async fn get(
-            &self,
-            _session_id: SessionId,
-            resource_id: &str,
-        ) -> Result<Option<crate::session_resource::SessionResourceEntry>> {
-            Ok(self.entries.lock().unwrap().get(resource_id).cloned())
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
+            Ok(false)
         }
 
-        async fn list(
-            &self,
-            _session_id: SessionId,
-            filter: Option<&SessionResourceFilter>,
-        ) -> Result<Vec<crate::session_resource::SessionResourceEntry>> {
-            let entries = self.entries.lock().unwrap();
-            Ok(entries
-                .values()
-                .filter(|entry| {
-                    filter
-                        .and_then(|f| f.kind.as_deref())
-                        .is_none_or(|kind| entry.kind == kind)
-                })
-                .cloned()
-                .collect())
-        }
-
-        async fn deregister(&self, _session_id: SessionId, resource_id: &str) -> Result<bool> {
-            Ok(self.entries.lock().unwrap().remove(resource_id).is_some())
+        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<crate::SecretInfo>> {
+            Ok(Vec::new())
         }
     }
 
@@ -2138,11 +2123,10 @@ mod tests {
     }
 
     fn context(
-        registry: Arc<TestSessionResourceRegistry>,
+        storage_store: Arc<TestStorageStore>,
         file_store: Arc<TestFileStore>,
     ) -> ToolContext {
-        ToolContext::with_file_store(SessionId::new(), file_store)
-            .with_session_resource_registry(registry)
+        ToolContext::with_stores(SessionId::new(), file_store, storage_store)
     }
 
     #[tokio::test]
@@ -2150,9 +2134,9 @@ mod tests {
         let base_url = spawn_real_a2a_agent().await;
         let config = configured_capability(base_url);
         let tool = SpawnAgentTool::new(config);
-        let registry = Arc::new(TestSessionResourceRegistry::default());
+        let storage_store = Arc::new(TestStorageStore::default());
         let file_store = Arc::new(TestFileStore::default());
-        let ctx = context(registry, file_store);
+        let ctx = context(storage_store, file_store);
 
         let result = tool
             .execute_with_context(
@@ -2180,9 +2164,9 @@ mod tests {
         let config = configured_capability(base_url);
         let spawn = SpawnAgentTool::new(config.clone());
         let wait = WaitAgentTool::new(config);
-        let registry = Arc::new(TestSessionResourceRegistry::default());
+        let storage_store = Arc::new(TestStorageStore::default());
         let file_store = Arc::new(TestFileStore::default());
-        let ctx = context(registry, file_store);
+        let ctx = context(storage_store, file_store);
 
         let result = spawn
             .execute_with_context(
@@ -2423,5 +2407,81 @@ mod tests {
         config.agents[0].preferred_binding = Some("JSONRPC".to_string());
         config.agents[0].poll_interval_ms = Some(99);
         assert!(config.agents[0].validate().is_err());
+    }
+
+    /// Roundtrip: save_run → load_run → load_run_for_task all resolve consistently.
+    #[tokio::test]
+    async fn agent_run_storage_roundtrip() {
+        let storage_store = Arc::new(TestStorageStore::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let ctx = context(storage_store, file_store);
+
+        let run_id = "test-run-roundtrip".to_string();
+        let task_id = "task-abc".to_string();
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: Some("http://localhost:1".to_string()),
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: true,
+        };
+        let mut record = AgentRunRecord::new(
+            run_id.clone(),
+            &config,
+            "do something".to_string(),
+            AgentRunMode::Wait,
+            false,
+        );
+        record.task_id = Some(task_id.clone());
+
+        // save_run then load_run should round-trip the record.
+        save_run(&ctx, &record).await.expect("save_run failed");
+        let loaded = load_run(&ctx, &run_id).await.expect("load_run failed");
+        assert_eq!(loaded.run_id, run_id);
+        assert_eq!(loaded.task_id.as_deref(), Some(task_id.as_str()));
+
+        // load_run_for_task with run_id in spec should resolve the same record.
+        let now = chrono::Utc::now();
+        let fake_task = SessionTask {
+            id: task_id.clone(),
+            session_id: ctx.session_id,
+            kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+            display_name: "Echo".to_string(),
+            spec: json!({ "run_id": &run_id }),
+            state: SessionTaskState::Running,
+            state_detail: None,
+            progress: None,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+            input_request: None,
+            cancel_requested_at: None,
+            summary: None,
+            result_path: None,
+            artifacts: vec![],
+            error: None,
+            attempt: 1,
+            worker_id: None,
+            heartbeat_at: None,
+            started_at: None,
+            finished_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        let from_task = load_run_for_task(&ctx, &fake_task)
+            .await
+            .expect("load_run_for_task failed");
+        assert_eq!(from_task.run_id, run_id);
+
+        // The index should list the run_id.
+        let storage = ctx.storage_store.as_ref().unwrap();
+        let index = load_run_index(storage.as_ref(), ctx.session_id).await;
+        assert!(
+            index.contains(&run_id),
+            "run_id not found in index: {index:?}"
+        );
     }
 }

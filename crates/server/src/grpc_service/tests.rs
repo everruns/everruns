@@ -467,7 +467,6 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     use everruns_core::capabilities::{AgentHandoffCapability, Capability, SubagentCapability};
     use everruns_core::platform_store::PlatformStore;
     use everruns_core::tools::ToolExecutionResult;
-    use everruns_core::traits::SessionResourceRegistry;
 
     let service = test_worker_service_with_completing_runner().await;
     let parent = create_grpc_test_session(&service).await;
@@ -524,12 +523,9 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             Some(parent_id),
         ),
     );
-    let session_adapter = Arc::new(everruns_worker::grpc_adapters::GrpcAdapter::new(client));
-
     let mut context = everruns_core::traits::ToolContext::new(parent_id);
     context.platform_store = Some(adapter.clone());
     context.session_store = Some(adapter.clone());
-    context.session_resource_registry = Some(session_adapter.clone());
 
     let spawn_tool = SubagentCapability
         .tools()
@@ -566,16 +562,6 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         subagent.subagent_status,
         Some(everruns_core::session::SubagentStatus::Completed)
     );
-
-    let resources = session_adapter
-        .list(parent_id, None)
-        .await
-        .expect("list session resources");
-    assert!(resources.iter().any(|entry| {
-        entry.kind == "subagent"
-            && entry.resource_id == subagent_id.to_string()
-            && entry.status == everruns_core::SessionResourceStatus::Completed
-    }));
 
     let target_agent = adapter
         .create_agent(
@@ -638,16 +624,6 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         handoff.subagent_status,
         Some(everruns_core::session::SubagentStatus::Completed)
     );
-
-    let resources = session_adapter
-        .list(parent_id, None)
-        .await
-        .expect("list session resources after handoff");
-    assert!(resources.iter().any(|entry| {
-        entry.kind == "agent_handoff"
-            && entry.resource_id == handoff_id.to_string()
-            && entry.status == everruns_core::SessionResourceStatus::Completed
-    }));
 
     let _ = shutdown_tx.send(());
     server.await.expect("grpc server task should join");
