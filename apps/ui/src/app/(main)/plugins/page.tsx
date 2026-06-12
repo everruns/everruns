@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { inferMarketplaceSourceType, marketplaceSourceLabel } from "@/lib/api/plugins";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -92,20 +93,17 @@ function MarketplaceCard({
               {marketplace.name}
             </CardTitle>
             <CardDescription className="text-sm truncate max-w-xs">
-              {marketplace.source}
+              {marketplaceSourceLabel(marketplace)}
             </CardDescription>
           </div>
         </div>
-        <Badge variant={isDisabled ? "outline" : "default"}>
-          {marketplace.status}
-        </Badge>
+        <Badge variant={isDisabled ? "outline" : "default"}>{marketplace.status}</Badge>
       </CardHeader>
       <CardContent>
         <div className="space-y-1 text-sm text-muted-foreground mb-4">
           {marketplace.last_synced_at ? (
             <p>
-              Last synced:{" "}
-              {new Date(marketplace.last_synced_at).toLocaleString()}
+              Last synced: {new Date(marketplace.last_synced_at).toLocaleString()}
               {marketplace.last_synced_sha && (
                 <span className="ml-1 font-mono text-xs">
                   ({truncateSha(marketplace.last_synced_sha)})
@@ -126,9 +124,7 @@ function MarketplaceCard({
             onClick={() => syncMutation.mutate(marketplace.id)}
             disabled={syncMutation.isPending}
           >
-            <RefreshCw
-              className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
             Sync now
           </Button>
           <Button
@@ -186,7 +182,11 @@ function AddMarketplaceDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const request: CreateMarketplaceRequest = { name: name.trim(), source: source.trim() };
+    const request: CreateMarketplaceRequest = {
+      name: name.trim(),
+      source_type: inferMarketplaceSourceType(source.trim()),
+      source: source.trim(),
+    };
     await createMarketplace.mutateAsync(request);
     onOpenChange(false);
     setName("");
@@ -279,9 +279,8 @@ function RemoveMarketplaceDialog({
         <DialogHeader>
           <DialogTitle>Remove Marketplace</DialogTitle>
           <DialogDescription>
-            Remove the marketplace{" "}
-            <span className="font-medium">{marketplace?.name}</span>? The catalog will no longer be
-            available, but already-installed plugins are not uninstalled.
+            Remove the marketplace <span className="font-medium">{marketplace?.name}</span>? The
+            catalog will no longer be available, but already-installed plugins are not uninstalled.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -344,9 +343,7 @@ function CatalogEntryRow({
         {entry.description && (
           <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
         )}
-        {entry.author && (
-          <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>
-        )}
+        {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
       </div>
       <Button
         size="sm"
@@ -490,8 +487,7 @@ function InstalledPluginCard({
             {plugin.marketplace && <span>Marketplace: {plugin.marketplace}</span>}
             {plugin.pinned_sha && (
               <span>
-                SHA:{" "}
-                <span className="font-mono">{truncateSha(plugin.pinned_sha)}</span>
+                SHA: <span className="font-mono">{truncateSha(plugin.pinned_sha)}</span>
               </span>
             )}
           </div>
@@ -619,11 +615,7 @@ function UninstallPluginDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleConfirm}
-            disabled={deleteMutation.isPending}
-          >
+          <Button variant="destructive" onClick={handleConfirm} disabled={deleteMutation.isPending}>
             {deleteMutation.isPending ? "Uninstalling..." : "Uninstall"}
           </Button>
         </DialogFooter>
@@ -641,15 +633,22 @@ export default function PluginsPage() {
   const [activeTab, setActiveTab] = useState<"installed" | "marketplaces">("installed");
 
   // Marketplace state
-  const { data: marketplaces, isLoading: marketplacesLoading, error: marketplacesError } =
-    useMarketplaces();
+  const {
+    data: marketplaces,
+    isLoading: marketplacesLoading,
+    error: marketplacesError,
+  } = useMarketplaces();
   const [addMarketplaceOpen, setAddMarketplaceOpen] = useState(false);
-  const [pendingRemoveMarketplace, setPendingRemoveMarketplace] = useState<Marketplace | null>(null);
+  const [pendingRemoveMarketplace, setPendingRemoveMarketplace] = useState<Marketplace | null>(
+    null,
+  );
   const [browseMarketplace, setBrowseMarketplace] = useState<Marketplace | null>(null);
 
   // Installed plugins state
   const { data: plugins, isLoading: pluginsLoading, error: pluginsError } = useInstalledPlugins();
-  const [pendingUninstallPlugin, setPendingUninstallPlugin] = useState<InstalledPlugin | null>(null);
+  const [pendingUninstallPlugin, setPendingUninstallPlugin] = useState<InstalledPlugin | null>(
+    null,
+  );
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -669,7 +668,10 @@ export default function PluginsPage() {
         )}
       </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "installed" | "marketplaces")}>
+      <Tabs
+        value={activeTab}
+        onValueChange={(v) => setActiveTab(v as "installed" | "marketplaces")}
+      >
         <TabsList>
           <TabsTrigger value="installed">Installed Plugins</TabsTrigger>
           <TabsTrigger value="marketplaces">Marketplaces</TabsTrigger>

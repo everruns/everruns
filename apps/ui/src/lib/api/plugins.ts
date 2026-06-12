@@ -9,6 +9,7 @@ import { api } from "./client";
 import { createCrudApi } from "./crud";
 import type {
   Marketplace,
+  MarketplaceSourceType,
   CreateMarketplaceRequest,
   UpdateMarketplaceRequest,
   MarketplaceCatalogEntry,
@@ -56,7 +57,9 @@ export async function syncMarketplace(id: string): Promise<Marketplace> {
 // ============================================
 
 /** GET /v1/plugin_marketplaces/{id}/plugins — list synced catalog entries */
-export async function getMarketplaceCatalog(marketplaceId: string): Promise<MarketplaceCatalogEntry[]> {
+export async function getMarketplaceCatalog(
+  marketplaceId: string,
+): Promise<MarketplaceCatalogEntry[]> {
   const response = await api.get<ListResponse<MarketplaceCatalogEntry>>(
     `${PLUGIN_MARKETPLACES_BASE}/${marketplaceId}/plugins`,
   );
@@ -96,4 +99,21 @@ export async function patchInstalledPlugin(
 export async function updateInstalledPlugin(id: string): Promise<InstalledPlugin> {
   const response = await api.post<InstalledPlugin>(`${PLUGINS_BASE}/${id}/update`);
   return response.data;
+}
+
+/** Human-readable label for a marketplace's source */
+export function marketplaceSourceLabel(marketplace: Marketplace): string {
+  const { repo, url, path } = marketplace.source;
+  return repo ?? url ?? path ?? "";
+}
+
+/** Infer the source type from free-text source input: `owner/repo` is GitHub, otherwise a URL */
+export function inferMarketplaceSourceType(source: string): MarketplaceSourceType {
+  if (/^[\w.-]+\/[\w.-]+$/.test(source)) {
+    return "github";
+  }
+  if (source.startsWith("/") || source.startsWith("./")) {
+    return "local_path";
+  }
+  return "url";
 }

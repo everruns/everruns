@@ -8,12 +8,25 @@
 /** Status of a registered marketplace */
 export type MarketplaceStatus = "active" | "disabled";
 
+/** Where a marketplace's catalog is fetched from. `local_path` is dev-only. */
+export type MarketplaceSourceType = "github" | "url" | "local_path";
+
+/** Source configuration; the populated field follows `source_type` */
+export interface MarketplaceSource {
+  /** GitHub repo `owner/repo` (source_type "github") */
+  repo?: string;
+  /** Direct HTTPS URL to a marketplace.json (source_type "url") */
+  url?: string;
+  /** Local filesystem path (source_type "local_path", dev-only) */
+  path?: string;
+}
+
 /** A registered plugin marketplace (org-scoped catalog) */
 export interface Marketplace {
   id: string;
   name: string;
-  /** GitHub repo `owner/repo`, git URL, or direct HTTPS URL */
-  source: string;
+  source_type: MarketplaceSourceType;
+  source: MarketplaceSource;
   status: MarketplaceStatus;
   /** ISO timestamp of the last successful sync */
   last_synced_at: string | null;
@@ -26,13 +39,14 @@ export interface Marketplace {
 /** Request to register a new marketplace */
 export interface CreateMarketplaceRequest {
   name: string;
+  source_type: MarketplaceSourceType;
+  /** `owner/repo` for github, HTTPS URL for url, filesystem path for local_path */
   source: string;
 }
 
 /** Request to update a marketplace */
 export interface UpdateMarketplaceRequest {
   name?: string;
-  source?: string;
   status?: MarketplaceStatus;
 }
 

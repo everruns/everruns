@@ -10,7 +10,12 @@ import {
   patchInstalledPlugin,
   updateInstalledPlugin,
 } from "@/lib/api/plugins";
-import type { CreateMarketplaceRequest, UpdateMarketplaceRequest, InstallPluginRequest, UpdateInstalledPluginRequest } from "@/lib/api/types";
+import type {
+  CreateMarketplaceRequest,
+  UpdateMarketplaceRequest,
+  InstallPluginRequest,
+  UpdateInstalledPluginRequest,
+} from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks, useOrgScopedQuery } from "./create-crud-hooks";
 
@@ -42,10 +47,8 @@ export function useUpdateMarketplace(marketplaceId: string) {
 
   return {
     ...mutation,
-    mutate: (
-      request: UpdateMarketplaceRequest,
-      options?: Parameters<typeof mutation.mutate>[1],
-    ) => mutation.mutate({ id: marketplaceId, request }, options),
+    mutate: (request: UpdateMarketplaceRequest, options?: Parameters<typeof mutation.mutate>[1]) =>
+      mutation.mutate({ id: marketplaceId, request }, options),
     mutateAsync: (
       request: UpdateMarketplaceRequest,
       options?: Parameters<typeof mutation.mutateAsync>[1],
