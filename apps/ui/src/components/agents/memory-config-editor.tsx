@@ -111,12 +111,20 @@ function validateMounts(mounts: MemoryMountEntry[]): MountValidation[] {
       const b = mounts[j];
       if (!b.path || validations[j].pathError) continue;
       if (pathsOverlap(a.path, b.path)) {
-        const message: LocalizedError =
+        // Each row leads with its own path so the error reads naturally
+        // under that row's input.
+        const [messageA, messageB]: [LocalizedError, LocalizedError] =
           a.path === b.path
-            ? { key: "mount_path_duplicate", values: { value: a.path } }
-            : { key: "mount_path_overlap", values: { value: a.path, other: b.path } };
-        if (!validations[i].overlapError) validations[i].overlapError = message;
-        if (!validations[j].overlapError) validations[j].overlapError = message;
+            ? [
+                { key: "mount_path_duplicate", values: { value: a.path } },
+                { key: "mount_path_duplicate", values: { value: b.path } },
+              ]
+            : [
+                { key: "mount_path_overlap", values: { value: a.path, other: b.path } },
+                { key: "mount_path_overlap", values: { value: b.path, other: a.path } },
+              ];
+        if (!validations[i].overlapError) validations[i].overlapError = messageA;
+        if (!validations[j].overlapError) validations[j].overlapError = messageB;
       }
     }
   }

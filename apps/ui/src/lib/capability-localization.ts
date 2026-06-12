@@ -99,7 +99,9 @@ function mergeNode(schema: Record<string, unknown>, overlay: OverlayNode): Recor
 /**
  * Returns config_schema with the locale's overlay merged in
  * (titles, descriptions, enum option labels). Unknown overlay paths are
- * ignored; the schema's validation keywords are never altered.
+ * ignored. Validation semantics are preserved: the only structural change
+ * is rewriting a plain `enum` into the equivalent labeled `oneOf`
+ * const/title list when the overlay provides `enum_labels`.
  */
 export function localizedConfigSchema(
   capability: Pick<Capability, "config_schema" | "localizations">,
