@@ -13,17 +13,45 @@
 //      The model still sees that the tool exists, but the stub points it back
 //      to `tool_search` for the full schema instead of exposing parameters
 //      upfront. Tools marked `DeferrablePolicy::Never` (e.g. high-frequency
-//      tools) keep full schemas.
+//      tools) and tools in the capability's `never_defer` allowlist keep full
+//      schemas.
 //   2. A real `tool_search` tool is added to the registry. When the model calls
 //      it, the tool inspects its sibling tools via `ToolContext::tool_registry`
 //      (the same mechanism `spawn_background` uses) and returns the full
-//      parameter schemas of the tools matching the query.
+//      parameter schemas of the tools matching the query. It also records those
+//      tools as *revealed* (see below).
 //   3. A short system-prompt note tells the model to call `tool_search` before
 //      using a tool whose parameters it has not loaded yet.
 //
 // Because the underlying tools stay registered and executable, tool calls and
 // results work exactly as before — the only difference is how schemas reach the
 // model. No driver or agent-loop changes are required.
+//
+// Progressive disclosure
+// ----------------------
+// Structured tool calling makes the model emit arguments against a tool's
+// *registered* schema. If a deferred tool's registered schema stayed the stub
+// forever, the model could read the real schema from a `tool_search` *result*
+// but still have no registered schema to emit arguments against. To close that
+// gap, a shared `RevealedTools` set is threaded through the capability, its
+// `DeferSchemaHook`, and the `tool_search` tool. When `tool_search` matches a
+// tool it records it as revealed; because `RuntimeAgentBuilder::build()` re-runs
+// the hook on every reason iteration, the next iteration advertises that tool
+// with its full, authoritative schema on the *registered* definition — so the
+// model can finally pass arguments. Tool execution always uses the real tool, so
+// only the advertised schema ever changes. The permissive stub
+// (`additionalProperties: true`) remains as a belt-and-suspenders for the first
+// call before a reveal lands.
+//
+// Never-defer allowlist
+// ---------------------
+// `DeferrablePolicy::Never` lets a tool *owner* opt a tool out of deferral. But
+// an embedder that composes tools it does not own (e.g. file/shell tools from
+// another crate) cannot change their policy. `ToolSearchCapability::with_never_defer`
+// (and a `never_defer` config array) lets such an embedder keep hot-path tools
+// fully loaded by name, so the agent is never forced through a `tool_search`
+// round-trip before its first read/edit/shell call. Equivalent in effect to
+// marking those tools `DeferrablePolicy::Never`, but settable from outside.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, ToolDefinitionHook};
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
@@ -31,7 +59,8 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;
 
@@ -41,35 +70,76 @@ pub const TOOL_SEARCH_CAPABILITY_ID: &str = "tool_search";
 /// Name of the tool the model calls to load deferred schemas.
 pub const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 
-/// Maximum number of tools returned by a single `tool_search` call.
+/// Maximum number of tools returned (and revealed) by a single `tool_search` call.
 const MAX_SEARCH_RESULTS: usize = 12;
+
+/// Names of tools the model has loaded via `tool_search` this session. Shared
+/// (by `Arc`) between the capability, its `DeferSchemaHook`, and its
+/// `tool_search` tool so a reveal during tool execution is visible to the next
+/// context assembly. See the "Progressive disclosure" note above.
+type RevealedTools = Arc<Mutex<HashSet<String>>>;
 
 const SYSTEM_PROMPT: &str = "Many of your tools are loaded lazily to save context: \
 you can see their names and descriptions, but their parameter schemas are hidden \
 until you ask for them. Before calling a tool whose parameters you have not yet \
 loaded, call `tool_search` with a short query describing what you need (for example \
 \"read file\" or \"send email\"). It returns the matching tools with their full JSON \
-parameter schemas. Then call the tool with correct arguments. Frequently used tools \
-keep their full schemas and do not need to be searched for.";
+parameter schemas, and on your next step those tools become callable with their full \
+parameters. Frequently used tools keep their full schemas and do not need to be \
+searched for.";
 
 /// Generic Tool Search capability.
 ///
 /// Adding this capability enables client-side deferred tool loading for any
 /// model. `threshold` controls the minimum number of tools before schemas are
-/// deferred (default: [`DEFAULT_TOOL_SEARCH_THRESHOLD`]).
+/// deferred (default: [`DEFAULT_TOOL_SEARCH_THRESHOLD`]). `never_defer` names
+/// tools that always keep their full schema (see [`Self::with_never_defer`]).
 pub struct ToolSearchCapability {
     threshold: usize,
+    never_defer: Arc<HashSet<String>>,
+    revealed: RevealedTools,
 }
 
 impl ToolSearchCapability {
     pub fn new() -> Self {
-        Self {
-            threshold: DEFAULT_TOOL_SEARCH_THRESHOLD,
-        }
+        Self::with_threshold(DEFAULT_TOOL_SEARCH_THRESHOLD)
     }
 
     pub fn with_threshold(threshold: usize) -> Self {
-        Self { threshold }
+        Self {
+            threshold,
+            never_defer: Arc::new(HashSet::new()),
+            revealed: RevealedTools::default(),
+        }
+    }
+
+    /// Keep the named tools' full parameter schemas even above the deferral
+    /// threshold. Use for hot-path tools (file/shell) so the agent is never
+    /// forced through a `tool_search` round-trip before its first call. This is
+    /// equivalent to marking each tool `DeferrablePolicy::Never`, but it can be
+    /// set by an embedder that does not own the tool definitions. Names from
+    /// config (`never_defer`) are merged with these at hook-build time.
+    pub fn with_never_defer<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.never_defer = Arc::new(names.into_iter().map(Into::into).collect());
+        self
+    }
+
+    /// Build a `DeferSchemaHook` sharing this capability's revealed set, with the
+    /// given threshold and never-defer allowlist.
+    fn hook(
+        &self,
+        threshold: usize,
+        never_defer: Arc<HashSet<String>>,
+    ) -> Arc<dyn ToolDefinitionHook> {
+        Arc::new(DeferSchemaHook {
+            threshold,
+            never_defer,
+            revealed: self.revealed.clone(),
+        })
     }
 }
 
@@ -115,13 +185,13 @@ impl Capability for ToolSearchCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(ToolSearchTool)]
+        vec![Box::new(ToolSearchTool {
+            revealed: self.revealed.clone(),
+        })]
     }
 
     fn tool_definition_hooks(&self) -> Vec<Arc<dyn ToolDefinitionHook>> {
-        vec![Arc::new(DeferSchemaHook {
-            threshold: self.threshold,
-        })]
+        vec![self.hook(self.threshold, self.never_defer.clone())]
     }
 
     fn tool_definition_hooks_with_config(
@@ -134,12 +204,19 @@ impl Capability for ToolSearchCapability {
             .map(|v| v as usize)
             .unwrap_or(self.threshold);
 
-        vec![Arc::new(DeferSchemaHook { threshold })]
+        // `never_defer` from config augments (does not replace) the constructor
+        // set, so an operator can extend the embedder's hot-path allowlist.
+        let mut never_defer: HashSet<String> = self.never_defer.as_ref().clone();
+        if let Some(arr) = config.get("never_defer").and_then(|v| v.as_array()) {
+            never_defer.extend(arr.iter().filter_map(|v| v.as_str().map(str::to_string)));
+        }
+
+        vec![self.hook(threshold, Arc::new(never_defer))]
     }
 }
 
 // ============================================================================
-// DeferSchemaHook — strips parameter schemas from deferrable tools
+// DeferSchemaHook — strips parameter schemas from deferrable, unrevealed tools
 // ============================================================================
 
 /// Stub schema sent in place of a deferred tool's real parameters.
@@ -159,6 +236,21 @@ fn deferred_stub_schema(tool_name: &str) -> Value {
 
 pub(crate) struct DeferSchemaHook {
     threshold: usize,
+    never_defer: Arc<HashSet<String>>,
+    revealed: RevealedTools,
+}
+
+impl DeferSchemaHook {
+    /// A tool keeps its full schema when it is the search tool itself, opts out
+    /// via `DeferrablePolicy::Never`, is in the embedder's `never_defer`
+    /// allowlist, or has already been revealed via `tool_search` this session.
+    fn keep_full(&self, tool: &ToolDefinition, revealed: &HashSet<String>) -> bool {
+        let name = tool.name();
+        name == TOOL_SEARCH_TOOL_NAME
+            || matches!(tool.deferrable(), DeferrablePolicy::Never)
+            || self.never_defer.contains(name)
+            || revealed.contains(name)
+    }
 }
 
 impl ToolDefinitionHook for DeferSchemaHook {
@@ -168,15 +260,19 @@ impl ToolDefinitionHook for DeferSchemaHook {
             return tools;
         }
 
+        let revealed = self
+            .revealed
+            .lock()
+            .expect("tool_search revealed set poisoned");
+
         tools
             .into_iter()
             .map(|tool| {
-                if tool.name() == TOOL_SEARCH_TOOL_NAME
-                    || matches!(tool.deferrable(), DeferrablePolicy::Never)
-                {
-                    return tool;
+                if self.keep_full(&tool, &revealed) {
+                    tool
+                } else {
+                    strip_parameters(tool)
                 }
-                strip_parameters(tool)
             })
             .collect()
     }
@@ -213,8 +309,12 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
 // Tool: tool_search
 // ============================================================================
 
-/// Tool that returns full parameter schemas for tools matching a query.
-pub struct ToolSearchTool;
+/// Tool that returns full parameter schemas for tools matching a query and
+/// records them as revealed so the schema hook restores them on the next pass.
+#[derive(Default)]
+pub struct ToolSearchTool {
+    revealed: RevealedTools,
+}
 
 impl ToolSearchTool {
     /// Rank `defs` against `query` and return the best matches (full schemas).
@@ -371,9 +471,26 @@ impl Tool for ToolSearchTool {
             }));
         }
 
+        // Record the matched tools as revealed so the schema hook advertises
+        // their full schema on the *registered* definition next iteration. This
+        // is what lets a structured caller actually pass arguments to them.
+        let loaded: Vec<String> = matches
+            .iter()
+            .filter_map(|t| t.get("name").and_then(Value::as_str).map(str::to_string))
+            .collect();
+        if !loaded.is_empty() {
+            let mut revealed = self
+                .revealed
+                .lock()
+                .expect("tool_search revealed set poisoned");
+            revealed.extend(loaded.iter().cloned());
+        }
+
         ToolExecutionResult::success(json!({
             "query": query,
             "tools": matches,
+            "loaded": loaded,
+            "message": "Full schemas loaded; these tools are callable with their full parameters on your next step.",
         }))
     }
 }
@@ -414,6 +531,19 @@ mod tests {
             .collect()
     }
 
+    /// A bare hook with an empty allowlist and a fresh revealed set.
+    fn hook(threshold: usize) -> DeferSchemaHook {
+        DeferSchemaHook {
+            threshold,
+            never_defer: Arc::new(HashSet::new()),
+            revealed: RevealedTools::default(),
+        }
+    }
+
+    fn is_stubbed(tool: &ToolDefinition) -> bool {
+        tool.parameters().get("properties").is_none()
+    }
+
     #[test]
     fn test_capability_metadata() {
         let cap = ToolSearchCapability::new();
@@ -434,7 +564,7 @@ mod tests {
 
     #[test]
     fn test_hook_noop_below_threshold() {
-        let hook = DeferSchemaHook { threshold: 15 };
+        let hook = hook(15);
         let tools = many_tools(5);
         let out = hook.transform(tools);
         // Schemas untouched below threshold.
@@ -445,7 +575,7 @@ mod tests {
 
     #[test]
     fn test_hook_strips_above_threshold() {
-        let hook = DeferSchemaHook { threshold: 15 };
+        let hook = hook(15);
         let out = hook.transform(many_tools(20));
         for t in &out {
             // Stub schema: no real properties, carries a progressive-disclosure hint.
@@ -469,10 +599,10 @@ mod tests {
 
     #[test]
     fn test_hook_preserves_never_defer_and_search_tool() {
-        let hook = DeferSchemaHook { threshold: 3 };
+        let hook = hook(3);
         let mut tools = many_tools(3);
         tools.push(builtin("write_todos", "todos", DeferrablePolicy::Never));
-        tools.push(ToolSearchTool.to_definition());
+        tools.push(ToolSearchTool::default().to_definition());
 
         let out = hook.transform(tools);
 
@@ -495,10 +625,86 @@ mod tests {
     }
 
     #[test]
+    fn test_never_defer_allowlist_keeps_full_schema() {
+        // An embedder allowlist keeps a tool full even though its policy is
+        // Automatic (i.e. the embedder does not own its definition).
+        let cap = ToolSearchCapability::with_threshold(3).with_never_defer(["tool_1"]);
+        let hooks = cap.tool_definition_hooks();
+        let out = hooks[0].transform(many_tools(5));
+
+        let kept = out.iter().find(|t| t.name() == "tool_1").unwrap();
+        assert!(
+            !is_stubbed(kept),
+            "allowlisted tool must keep its full schema"
+        );
+        let deferred = out.iter().find(|t| t.name() == "tool_0").unwrap();
+        assert!(is_stubbed(deferred), "non-allowlisted tool must defer");
+    }
+
+    #[test]
+    fn test_config_never_defer_augments_constructor() {
+        // Constructor allowlist plus a config-provided one are both honored.
+        let cap = ToolSearchCapability::with_threshold(3).with_never_defer(["tool_0"]);
+        let config = json!({ "never_defer": ["tool_2"] });
+        let hooks = cap.tool_definition_hooks_with_config(&config);
+        let out = hooks[0].transform(many_tools(5));
+
+        assert!(!is_stubbed(
+            out.iter().find(|t| t.name() == "tool_0").unwrap()
+        ));
+        assert!(!is_stubbed(
+            out.iter().find(|t| t.name() == "tool_2").unwrap()
+        ));
+        assert!(is_stubbed(
+            out.iter().find(|t| t.name() == "tool_1").unwrap()
+        ));
+    }
+
+    #[test]
+    fn test_config_threshold_override() {
+        let cap = ToolSearchCapability::with_threshold(100);
+        // Config lowers the threshold so deferral activates.
+        let config = json!({ "threshold": 3 });
+        let hooks = cap.tool_definition_hooks_with_config(&config);
+        let out = hooks[0].transform(many_tools(5));
+        assert!(out.iter().any(is_stubbed));
+    }
+
+    #[test]
+    fn test_revealed_tool_regains_full_schema_next_pass() {
+        // The end-to-end progressive-disclosure invariant: once a tool is
+        // revealed, its *registered* schema (not just the tool_search result
+        // text) is restored on the next hook pass.
+        let cap = ToolSearchCapability::with_threshold(3);
+        let hooks = cap.tool_definition_hooks();
+
+        // First pass: tool_0 is deferred.
+        let before = hooks[0].transform(many_tools(5));
+        assert!(
+            is_stubbed(before.iter().find(|t| t.name() == "tool_0").unwrap()),
+            "precondition: tool_0 starts deferred"
+        );
+
+        // Simulate tool_search revealing it (what execute_with_context records).
+        cap.revealed.lock().unwrap().insert("tool_0".to_string());
+
+        // Next pass (same hook, re-run by the reason atom): full schema restored.
+        let after = hooks[0].transform(many_tools(5));
+        assert!(
+            !is_stubbed(after.iter().find(|t| t.name() == "tool_0").unwrap()),
+            "revealed tool must regain its full registered schema"
+        );
+        assert!(
+            is_stubbed(after.iter().find(|t| t.name() == "tool_1").unwrap()),
+            "unrevealed tools stay deferred"
+        );
+    }
+
+    #[test]
     fn test_hook_defers_mcp_tools_and_saves_full_schema() {
-        // MCP tools are now deferred like regular tools. The full schema is saved
+        // MCP tools are deferred like regular tools. The full schema is saved
         // in full_parameters so tool_search can return it on demand.
-        let hook = DeferSchemaHook { threshold: 3 };
+        let hook = hook(3);
         let mut tools = many_tools(3);
         tools.push(builtin(
             "mcp_docs__search",
@@ -525,7 +731,7 @@ mod tests {
     fn test_search_returns_full_schema_for_deferred_tools() {
         // After DeferSchemaHook strips parameters, tool_search must still return
         // the full schema (stored in full_parameters).
-        let hook = DeferSchemaHook { threshold: 1 };
+        let hook = hook(1);
         let tools = vec![builtin(
             "read_file",
             "Read a file",
@@ -547,7 +753,7 @@ mod tests {
     fn test_hook_opts_out_of_native_tool_search() {
         // Generic (client-side) deferral is mutually exclusive with hosted
         // tool_search; build() uses this to skip the hook when native is active.
-        let hook = DeferSchemaHook { threshold: 15 };
+        let hook = hook(15);
         assert!(!hook.applies_with_native_tool_search());
     }
 
@@ -584,7 +790,7 @@ mod tests {
     #[test]
     fn test_search_excludes_itself() {
         let defs = vec![
-            ToolSearchTool.to_definition(),
+            ToolSearchTool::default().to_definition(),
             builtin("read_file", "Read a file", DeferrablePolicy::Automatic),
         ];
         let results = ToolSearchTool::search(&defs, "tool_search read");
@@ -594,7 +800,7 @@ mod tests {
     #[tokio::test]
     async fn test_execute_without_registry_errors() {
         let ctx = ToolContext::new(uuid::Uuid::new_v4().into());
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
@@ -627,7 +833,7 @@ mod tests {
 
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
-        registry.register(ToolSearchTool);
+        registry.register(ToolSearchTool::default());
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
@@ -637,7 +843,7 @@ mod tests {
                 .collect(),
         ));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
 
@@ -648,6 +854,52 @@ mod tests {
         let read = tools.iter().find(|t| t["name"] == "read_file").unwrap();
         // Full schema is returned (not the deferred stub).
         assert!(read["parameters"]["properties"]["path"].is_object());
+    }
+
+    #[tokio::test]
+    async fn test_search_records_reveal_and_restores_registered_schema() {
+        // The cross-cutting invariant EVE-527 asked for: a tool_search call
+        // reveals the matched tool, and the *same* capability's hook then
+        // restores its registered schema on the next pass.
+        use crate::tools::ToolRegistry;
+
+        let cap = ToolSearchCapability::with_threshold(3);
+        let hooks = cap.tool_definition_hooks();
+
+        // Precondition: read_file is deferred among a surface above threshold.
+        let mut surface = many_tools(4);
+        surface.push(builtin(
+            "read_file",
+            "Read the contents of a file",
+            DeferrablePolicy::Automatic,
+        ));
+        let before = hooks[0].transform(surface.clone());
+        assert!(is_stubbed(
+            before.iter().find(|t| t.name() == "read_file").unwrap()
+        ));
+
+        // Run the capability's own tool_search tool.
+        let mut registry = ToolRegistry::new();
+        registry.register(MiniTool);
+        let tool = &cap.tools()[0];
+        let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
+        ctx.tool_registry = Some(Arc::new(registry));
+        ctx.visible_tool_names = Some(Arc::new(["read_file".to_string()].into_iter().collect()));
+
+        let result = tool
+            .execute_with_context(json!({ "query": "read file" }), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        assert_eq!(value["loaded"][0], "read_file");
+
+        // Next pass: the registered schema for read_file is restored.
+        let after = hooks[0].transform(surface);
+        assert!(
+            !is_stubbed(after.iter().find(|t| t.name() == "read_file").unwrap()),
+            "revealed tool's registered schema must be restored after tool_search"
+        );
     }
 
     struct HiddenTool;
@@ -678,7 +930,7 @@ mod tests {
         let mut registry = ToolRegistry::new();
         registry.register(MiniTool);
         registry.register(HiddenTool);
-        registry.register(ToolSearchTool);
+        registry.register(ToolSearchTool::default());
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_registry = Some(Arc::new(registry));
@@ -688,7 +940,7 @@ mod tests {
                 .collect(),
         ));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "file" }), &ctx)
             .await;
 
@@ -699,7 +951,7 @@ mod tests {
         assert!(tools.iter().any(|t| t["name"] == "read_file"));
         assert!(tools.iter().all(|t| t["name"] != "write_file"));
 
-        let result = ToolSearchTool
+        let result = ToolSearchTool::default()
             .execute_with_context(json!({ "query": "missing" }), &ctx)
             .await;
         let ToolExecutionResult::Success(value) = result else {
