@@ -141,3 +141,4 @@ wiremock = "0.6"
 insta = { version = "1.40", features = ["json", "redactions"] }
 a2a-server.workspace = true
 axum.workspace = true
+tempfile.workspace = true

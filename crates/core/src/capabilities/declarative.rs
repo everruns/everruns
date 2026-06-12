@@ -1,7 +1,7 @@
 use super::{
     CapabilityStatus, MountAccess, MountPoint, RiskLevel, SKILLS_DISCOVERY_PATH, SkillContribution,
 };
-use crate::capability_types::{CapabilityId, MountSource};
+use crate::capability_types::{CapabilityId, MountSource, plugin_capability_id};
 use crate::{CapabilityInfo, ScopedMcpServers, validate_skill_name};
 use serde::{Deserialize, Serialize};
 
@@ -190,6 +190,60 @@ pub fn declarative_capability_info(
         harness_count: 0,
         docs_slug: None,
         localizations: Default::default(),
+    }
+}
+
+/// Hydrate a `plugin:` capability config: same logic as the declarative counterpart.
+///
+/// The per-agent config for a `plugin:` capability ref is the serialized
+/// `DeclarativeCapabilityDefinition` produced by the compiler. Hydration simply
+/// re-serializes the definition so callers get a canonical JSON value.
+pub fn hydrate_plugin_capability_config(
+    config: serde_json::Value,
+    definition: &DeclarativeCapabilityDefinition,
+) -> serde_json::Value {
+    // Identical to the declarative path: discard the incoming config and
+    // return the canonical definition. The `plugin:` namespace keeps refs
+    // from colliding with `declarative:` refs.
+    hydrate_declarative_capability_config(config, definition)
+}
+
+/// Build a `CapabilityInfo` DTO for a `plugin:{name}` capability.
+///
+/// The id field uses `plugin:{name}` so the capability appears under its own
+/// namespace in the capability picker, distinct from `declarative:{name}`.
+pub fn plugin_capability_info(
+    name: &str,
+    definition: DeclarativeCapabilityDefinition,
+) -> CapabilityInfo {
+    CapabilityInfo {
+        id: CapabilityId::new(plugin_capability_id(name)),
+        name: definition
+            .display_name
+            .clone()
+            .unwrap_or_else(|| definition.name.clone()),
+        description: definition.description.clone(),
+        status: definition.status,
+        icon: definition
+            .icon
+            .clone()
+            .or_else(|| Some("puzzle".to_string())),
+        category: definition
+            .category
+            .clone()
+            .or_else(|| Some("Plugin".to_string())),
+        system_prompt: definition.system_prompt.clone(),
+        tool_definitions: Vec::new(),
+        is_mcp: false,
+        is_skill: false,
+        dependencies: definition.dependencies.clone(),
+        features: definition.features.clone(),
+        config_schema: None,
+        config_ui_schema: None,
+        risk_level: definition.risk_level,
+        agent_count: 0,
+        harness_count: 0,
+        docs_slug: None,
     }
 }
 
