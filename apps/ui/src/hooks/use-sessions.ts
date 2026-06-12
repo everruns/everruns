@@ -494,7 +494,7 @@ export function useEvents(sessionId: string | undefined, options?: { enabled?: b
             // Keep this updater pure: React may invoke a state updater more than
             // once for a single update (StrictMode, concurrent replays). The
             // dedup set is reconciled to the in-memory window by the effect
-            // below, not mutated here.
+            // declared earlier in this hook, not mutated here.
             setEvents((prev) => {
               const next = [...prev, event];
               return next.length > MAX_EVENTS_IN_MEMORY
