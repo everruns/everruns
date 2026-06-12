@@ -210,7 +210,7 @@ fn authorize_memory_file_access(
     let caller = Caller::from(org);
     policy
         .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
-        .map_err(|e| (StatusCode::FORBIDDEN, Json(ErrorResponse::new(e.message))))
+        .map_err(|e| ErrorResponse::new(e.message).into_response(StatusCode::FORBIDDEN))
 }
 
 fn err_to_response(e: MemoryFsError) -> (StatusCode, Json<ErrorResponse>) {
