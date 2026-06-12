@@ -430,12 +430,14 @@ fn apply_text_edits(
     Ok((edited, planned.len()))
 }
 
+pub const SESSION_FILE_SYSTEM_CAPABILITY_ID: &str = "session_file_system";
+
 /// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
 
 impl Capability for FileSystemCapability {
     fn id(&self) -> &str {
-        "session_file_system"
+        SESSION_FILE_SYSTEM_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

@@ -220,12 +220,14 @@ fn compact_with_annotation(text: &str, budget: usize, file_path: &str, full_size
     }
 }
 
+pub const TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID: &str = "tool_output_persistence";
+
 /// Capability that persists full tool output to session VFS.
 pub struct ToolOutputPersistenceCapability;
 
 impl Capability for ToolOutputPersistenceCapability {
     fn id(&self) -> &str {
-        "tool_output_persistence"
+        TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

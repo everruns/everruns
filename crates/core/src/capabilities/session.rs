@@ -12,12 +12,14 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+pub const SESSION_CAPABILITY_ID: &str = "session";
+
 /// Session capability - read/update session metadata.
 pub struct SessionCapability;
 
 impl Capability for SessionCapability {
     fn id(&self) -> &str {
-        "session"
+        SESSION_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

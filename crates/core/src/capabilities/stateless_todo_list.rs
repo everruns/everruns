@@ -44,13 +44,15 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
 
+pub const STATELESS_TODO_LIST_CAPABILITY_ID: &str = "stateless_todo_list";
+
 /// Stateless Todo List capability - enables agents to create and manage task lists
 /// for tracking work progress. State is maintained in conversation history.
 pub struct StatelessTodoListCapability;
 
 impl Capability for StatelessTodoListCapability {
     fn id(&self) -> &str {
-        "stateless_todo_list"
+        STATELESS_TODO_LIST_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

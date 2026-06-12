@@ -9,6 +9,8 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
 };
 
+pub const DATA_KNOWLEDGE_CAPABILITY_ID: &str = "data_knowledge";
+
 pub struct DataKnowledgeCapability;
 
 impl DataKnowledgeCapability {
@@ -51,7 +53,7 @@ The data analyst agent uses these as templates for similar questions.
 
 impl Capability for DataKnowledgeCapability {
     fn id(&self) -> &str {
-        "data_knowledge"
+        DATA_KNOWLEDGE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

@@ -60,13 +60,15 @@ const MAX_DEPTH: usize = 8;
 /// Maximum number of nodes visited while distilling (DoS bound).
 const MAX_NODES: usize = 100_000;
 
+pub const TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID: &str = "tool_output_distillation";
+
 /// Capability that distills large tool results into a compact inline view while
 /// persisting the full original for lossless retrieval.
 pub struct ToolOutputDistillationCapability;
 
 impl Capability for ToolOutputDistillationCapability {
     fn id(&self) -> &str {
-        "tool_output_distillation"
+        TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

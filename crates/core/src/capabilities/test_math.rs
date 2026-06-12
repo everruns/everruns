@@ -6,12 +6,14 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
 
+pub const TEST_MATH_CAPABILITY_ID: &str = "test_math";
+
 /// TestMath capability - calculator tools for testing tool calling
 pub struct TestMathCapability;
 
 impl Capability for TestMathCapability {
     fn id(&self) -> &str {
-        "test_math"
+        TEST_MATH_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

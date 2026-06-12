@@ -17,12 +17,14 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
 
+pub const BUDGETING_CAPABILITY_ID: &str = "budgeting";
+
 /// Budgeting capability — budget-aware agent behavior.
 pub struct BudgetingCapability;
 
 impl Capability for BudgetingCapability {
     fn id(&self) -> &str {
-        "budgeting"
+        BUDGETING_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

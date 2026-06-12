@@ -23,12 +23,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub const FAKE_WAREHOUSE_CAPABILITY_ID: &str = "fake_warehouse";
+
 /// Fake Warehouse Tools capability - mock warehouse management for demos
 pub struct FakeWarehouseCapability;
 
 impl Capability for FakeWarehouseCapability {
     fn id(&self) -> &str {
-        "fake_warehouse"
+        FAKE_WAREHOUSE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

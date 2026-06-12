@@ -40,6 +40,8 @@ use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
 use std::sync::Arc;
 
+pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
+
 /// Ed25519 public key JWK derived from a signing key seed.
 ///
 /// Used to register the public key in the HTTP message signatures directory
@@ -156,7 +158,7 @@ fn bot_auth_config_from_env() -> Option<BotAuthConfig> {
 #[async_trait]
 impl Capability for WebFetchCapability {
     fn id(&self) -> &str {
-        "web_fetch"
+        WEB_FETCH_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {
