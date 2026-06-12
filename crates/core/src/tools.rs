@@ -26,7 +26,7 @@ use crate::tool_types::{
 };
 use crate::traits::ToolContext;
 use crate::typed_id::SessionId;
-use tokio::sync::Semaphore;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use crate::error::Result;
 use crate::traits::ToolExecutor;
@@ -53,14 +53,55 @@ static ACTIVE_BACKGROUND_RUNS_PER_WORKER: Semaphore =
 static SESSION_BACKGROUND_PERMITS: OnceLock<std::sync::Mutex<HashMap<SessionId, Arc<Semaphore>>>> =
     OnceLock::new();
 
-fn session_background_semaphore(session_id: SessionId) -> Arc<Semaphore> {
-    SESSION_BACKGROUND_PERMITS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap()
+struct SessionBackgroundPermit {
+    session_id: SessionId,
+    semaphore: Arc<Semaphore>,
+    permit: Option<OwnedSemaphorePermit>,
+}
+
+impl Drop for SessionBackgroundPermit {
+    fn drop(&mut self) {
+        drop(self.permit.take());
+
+        let Some(permits) = SESSION_BACKGROUND_PERMITS.get() else {
+            return;
+        };
+        let mut permits = permits.lock().unwrap();
+        let should_remove = permits.get(&self.session_id).is_some_and(|current| {
+            Arc::ptr_eq(current, &self.semaphore)
+                && self.semaphore.available_permits() == MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION
+                && Arc::strong_count(&self.semaphore) == 2
+        });
+        if should_remove {
+            permits.remove(&self.session_id);
+        }
+    }
+}
+
+fn try_acquire_session_background_permit(
+    session_id: SessionId,
+) -> std::result::Result<SessionBackgroundPermit, tokio::sync::TryAcquireError> {
+    let permits = SESSION_BACKGROUND_PERMITS.get_or_init(Default::default);
+    let mut permits = permits.lock().unwrap();
+    let semaphore = permits
         .entry(session_id)
         .or_insert_with(|| Arc::new(Semaphore::new(MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION)))
-        .clone()
+        .clone();
+    let permit = semaphore.clone().try_acquire_owned()?;
+
+    Ok(SessionBackgroundPermit {
+        session_id,
+        semaphore,
+        permit: Some(permit),
+    })
+}
+
+#[cfg(test)]
+fn has_session_background_permits(session_id: SessionId) -> bool {
+    SESSION_BACKGROUND_PERMITS
+        .get()
+        .and_then(|permits| permits.lock().unwrap().get(&session_id).cloned())
+        .is_some()
 }
 
 // ============================================================================
@@ -1180,9 +1221,7 @@ impl Tool for SpawnBackgroundTool {
             }
         };
 
-        let session_run_permit = match session_background_semaphore(context.session_id)
-            .try_acquire_owned()
-        {
+        let session_run_permit = match try_acquire_session_background_permit(context.session_id) {
             Ok(permit) => permit,
             Err(_) => {
                 return ToolExecutionResult::tool_error(format!(
@@ -3049,6 +3088,21 @@ mod tests {
         })
         .await
         .expect("blocking background runs should complete after release");
+
+        // The permit drop is enqueued in the spawned task after it marks the
+        // resource Completed, so the cache entry may still exist briefly once
+        // we observe Completed status.  Poll until pruned rather than asserting
+        // immediately to avoid a race.
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if !has_session_background_permits(session_id) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("completed background runs should prune their per-session permit cache entry");
     }
 
     #[tokio::test]
