@@ -83,6 +83,7 @@ Performance and cost optimization for LLM interactions.
 | [Infinity Context](/capabilities/infinity-context/) | `infinity_context` | 1 |
 | [Auto Tool Search](/capabilities/auto-tool-search/) | `auto_tool_search` | 1 |
 | [OpenAI Tool Search](/capabilities/openai-tool-search/) | `openai_tool_search` | 0 |
+| [Claude Tool Search](/capabilities/claude-tool-search/) | `claude_tool_search` | 0 |
 | [Tool Search](/capabilities/tool-search/) | `tool_search` | 1 |
 | [Budgeting](/capabilities/budgeting/) | `budgeting` | 1 |
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |

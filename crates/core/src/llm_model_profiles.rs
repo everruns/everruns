@@ -363,12 +363,25 @@ pub fn get_model_profile(
 ) -> Option<LlmModelProfile> {
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
-    // Native execution phases and tool_search are advertised only for the
-    // `openai` provider type. OpenRouter uses a compatible but stateless
-    // Responses endpoint, so it keeps the base model profile while masking
-    // native OpenAI-only request options.
+    // Native execution phases are an OpenAI Responses-only feature. OpenRouter
+    // uses a compatible but stateless Responses endpoint, so it keeps the base
+    // model profile while masking native OpenAI-only request options.
     if !matches!(provider_type, LlmProviderType::Openai) {
         profile.supports_phases = false;
+    }
+    // Hosted tool_search is rendered by the OpenAI Responses driver and the
+    // Anthropic Messages driver. Other provider types reach the same models
+    // through transports that don't implement the hosted format and must fall
+    // back to client-side `tool_search` (see `auto_tool_search`):
+    //   - OpenRouter: stateless `/responses` shim, no tool_search extension.
+    //   - Bedrock: ConverseStream; Anthropic's server-side tool search there is
+    //     only on the InvokeModel API, which this driver does not use.
+    //   - OpenAI Completions / Gemini: no hosted tool_search at all.
+    // So mask the flag for everything except the two first-party providers.
+    if !matches!(
+        provider_type,
+        LlmProviderType::Openai | LlmProviderType::Anthropic
+    ) {
         profile.tool_search = false;
     }
     Some(profile)
@@ -2023,7 +2036,44 @@ fn anthropic_1m_variant(mut profile: LlmModelProfile) -> LlmModelProfile {
     profile
 }
 
+/// Whether a Claude model `family` supports Anthropic's hosted tool_search
+/// (the `tool_search_tool_*_20251119` server tools). Per docs.claude.com, this
+/// is Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, and Fable 5 — the 3.x families do not
+/// support it. Centralized here (rather than per-literal) because the rule is a
+/// clean family cutoff; contrast the OpenAI profiles, which set `tool_search`
+/// per model literal.
+///
+/// Only families with a corresponding profile in `anthropic_profile_data_inner`
+/// belong here — Anthropic docs also list Mythos 5, but this registry has no
+/// `claude-mythos-5` descriptor, so including it would be a dead branch. Add the
+/// family here when (and if) its profile lands.
+fn anthropic_family_supports_tool_search(family: &str) -> bool {
+    matches!(
+        family,
+        "claude-fable-5"
+            | "claude-opus-4-8"
+            | "claude-opus-4-7"
+            | "claude-opus-4-6"
+            | "claude-opus-4-5"
+            | "claude-opus-4-1"
+            | "claude-opus-4"
+            | "claude-sonnet-4-6"
+            | "claude-sonnet-4-5"
+            | "claude-sonnet-4"
+            | "claude-haiku-4-5"
+    )
+}
+
 fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+    // `tool_search` is assigned centrally by family below, so the per-literal
+    // `tool_search` value in the match arms is a placeholder and is overwritten.
+    anthropic_profile_data_inner(model_id).map(|mut profile| {
+        profile.tool_search = anthropic_family_supports_tool_search(&profile.family);
+        profile
+    })
+}
+
+fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
     match model_id {
         // Claude Fable 5 (newest — top tier above Opus)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
@@ -4078,6 +4128,47 @@ mod tests {
             get_model_profile(&LlmProviderType::OpenaiCompletions, "gpt-5.4").unwrap();
         assert!(!completions.supports_phases);
         assert!(!completions.tool_search);
+    }
+
+    #[test]
+    fn test_anthropic_native_tool_search_by_family() {
+        // Claude 4-family + Fable advertise Anthropic's hosted tool_search.
+        for id in [
+            "claude-fable-5",
+            "claude-opus-4-8",
+            "claude-opus-4-7",
+            "claude-opus-4-6",
+            "claude-opus-4-5",
+            "claude-opus-4-1",
+            "claude-opus-4",
+            "claude-sonnet-4-6",
+            "claude-sonnet-4-5",
+            "claude-sonnet-4",
+            "claude-haiku-4-5",
+        ] {
+            let p = get_model_profile(&LlmProviderType::Anthropic, id)
+                .unwrap_or_else(|| panic!("{id} should resolve under anthropic"));
+            assert!(p.tool_search, "{id} should advertise native tool_search");
+        }
+        // The 1M twin inherits the flag.
+        assert!(
+            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8[1m]")
+                .unwrap()
+                .tool_search
+        );
+        // Pre-4 Claude does not support it.
+        assert!(
+            !get_model_profile(&LlmProviderType::Anthropic, "claude-3-5-haiku")
+                .map(|p| p.tool_search)
+                .unwrap_or(false)
+        );
+        // Reached via a non-first-party transport (Bedrock ConverseStream lacks
+        // server-side tool search; OpenRouter's stateless shim doesn't implement
+        // it), the same model must not advertise hosted tool_search — it falls
+        // back to client-side search via auto_tool_search.
+        if let Some(bedrock) = get_model_profile(&LlmProviderType::Bedrock, "claude-opus-4-8") {
+            assert!(!bedrock.tool_search);
+        }
     }
 
     #[test]

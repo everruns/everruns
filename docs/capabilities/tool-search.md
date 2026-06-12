@@ -2,7 +2,7 @@
 title: Tool Search
 description: Provider-agnostic deferred tool loading for agents with many tools. Hides tool parameter schemas until the model loads them on demand, reducing prompt token usage on any model.
 sidebar:
-  order: 91
+  order: 92
 ---
 
 | | |
@@ -14,7 +14,7 @@ sidebar:
 
 Enables deferred tool loading for agents with many tools, on **any** model. Instead of sending full parameter schemas for every tool upfront, only tool names and descriptions are sent initially. The model loads full schemas on demand by calling the `tool_search` tool.
 
-Unlike [OpenAI Tool Search](/capabilities/openai-tool-search/), which relies on OpenAI's hosted `tool_search` feature, this capability implements tool search entirely client-side. It therefore works with Anthropic, Gemini, OpenAI Completions, and any other provider — not just GPT-5.4+.
+Unlike the hosted [OpenAI Tool Search](/capabilities/openai-tool-search/) and [Claude Tool Search](/capabilities/claude-tool-search/), which rely on the provider's server-side `tool_search` feature, this capability implements tool search entirely client-side. It therefore works with Gemini, OpenAI Completions, models reached through gateways that don't implement hosted search, and any other provider — not just GPT-5.4+ or Claude 4. For a default that automatically picks hosted search where available and this client-side path everywhere else, use [Auto Tool Search](/capabilities/auto-tool-search/).
 
 ## Tools
 
@@ -120,5 +120,7 @@ The trade-off is one extra `tool_search` round-trip per deferred tool before its
 
 ## See Also
 
+- [Auto Tool Search](/capabilities/auto-tool-search/) — model-adaptive default (hosted where available, this client-side path elsewhere)
 - [OpenAI Tool Search](/capabilities/openai-tool-search/) — hosted deferred loading for GPT-5.4+
+- [Claude Tool Search](/capabilities/claude-tool-search/) — hosted deferred loading for Claude 4+
 - [Capabilities Overview](/capabilities/)

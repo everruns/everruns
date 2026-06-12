@@ -18,9 +18,10 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
-    AutoToolSearchCapability, CurrentTimeCapability, FileSystemCapability,
-    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability,
-    TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability, ToolSearchCapability,
+    AutoToolSearchCapability, ClaudeToolSearchCapability, CurrentTimeCapability,
+    FileSystemCapability, OpenAiToolSearchCapability, SessionCapability,
+    StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability,
+    ToolSearchCapability,
 };
 use everruns_core::events::{EventData, LLM_GENERATION};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
@@ -369,6 +370,110 @@ async fn test_anthropic_generic_tool_search_low_threshold() {
         result.tool_calls_count > 0,
         "Model should call add tool even with deferred schemas"
     );
+}
+
+// ============================================================================
+// Scenario: hosted Anthropic (Claude) tool_search (deferred loading)
+// ============================================================================
+
+/// Tests Anthropic's hosted tool_search end-to-end with Claude Haiku 4.5.
+///
+/// Verifies both halves of the contract against the live API: the hosted
+/// `ToolSearchConfig` is present on the request (deferred-load wire format), and
+/// the deferred tool can still be discovered, loaded, and called by the loop.
+#[tokio::test]
+async fn test_anthropic_claude_tool_search_low_threshold() {
+    let Some(model) = ANTHROPIC_HAIKU.model() else {
+        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Claude Tool Search Agent")
+        .system_prompt("When asked to add numbers, use the add tool.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(TestMathCapability)
+        .capability(CurrentTimeCapability)
+        // Low threshold: hosted tool_search activates even with few tools (5 > 3).
+        .capability(ClaudeToolSearchCapability::with_threshold(3))
+        .max_iterations(6)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "Claude should call the add tool even with deferred schemas"
+    );
+    assert_hosted_tool_search_was_enabled(&runner).await;
+
+    // The hosted path must not also offer the client-side `tool_search` tool —
+    // its presence would mean the generic fallback was selected instead.
+    let generations = runner.events_by_type(LLM_GENERATION).await;
+    for event in &generations {
+        let EventData::LlmGeneration(data) = &event.data else {
+            continue;
+        };
+        assert!(
+            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+            "hosted claude_tool_search must not offer the client-side \
+             `{TOOL_SEARCH_TOOL_NAME}` tool"
+        );
+    }
+}
+
+/// Tests model-adaptive hosted resolution on Claude Haiku 4.5.
+///
+/// On a native Claude model, `auto_tool_search` must resolve (at
+/// capability-collection time, via `Capability::resolve_for_model`) to the hosted
+/// Anthropic mechanism — not the client-side fallback. The hosted mechanism adds
+/// *no* client-side `tool_search` tool, so its absence from the model's tool list
+/// proves hosted resolution, independent of whether a tool was called on a turn.
+#[tokio::test]
+async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
+    let Some(model) = ANTHROPIC_HAIKU.model() else {
+        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Claude Auto Tool Search Agent")
+        .system_prompt("When asked to add numbers, use the add tool.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(TestMathCapability)
+        .capability(CurrentTimeCapability)
+        // Model-adaptive: on Claude 4.5 this must resolve to the hosted mechanism.
+        .capability(AutoToolSearchCapability::with_threshold(3))
+        .max_iterations(6)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "Claude auto_tool_search should call add through hosted deferred loading"
+    );
+    assert_hosted_tool_search_was_enabled(&runner).await;
+
+    let generations = runner.events_by_type(LLM_GENERATION).await;
+    for event in &generations {
+        let EventData::LlmGeneration(data) = &event.data else {
+            continue;
+        };
+        assert!(
+            !data.tools.iter().any(|t| t.name == TOOL_SEARCH_TOOL_NAME),
+            "auto_tool_search on Claude 4.5 must resolve to hosted: the client-side \
+             `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
+        );
+    }
 }
 
 /// Tests that tool_search gracefully works when below threshold

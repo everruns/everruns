@@ -391,13 +391,15 @@ impl RuntimeAgentBuilder {
 
     /// Build the runtime agent.
     ///
-    /// Validates that tool_search is only enabled for models that support it
-    /// (currently GPT-5.4 and newer). Clears tool_search for unsupported models to
-    /// prevent 400 errors from the OpenAI API.
+    /// Validates that a hosted tool_search config is only kept for models that
+    /// support it (OpenAI GPT-5.4+ and Claude Sonnet 4 / Opus 4 / Haiku 4.5 /
+    /// Fable 5 and newer). Clears it for unsupported models to prevent 400 errors
+    /// from the provider API.
     ///
-    /// tool_search is capability-driven: it is only set when the
-    /// `openai_tool_search` capability is explicitly added to the agent
-    /// or harness. This method does NOT auto-enable it.
+    /// tool_search is capability-driven: a hosted config is only set when the
+    /// `openai_tool_search` / `claude_tool_search` capability (directly or via
+    /// `auto_tool_search`) is added to the agent or harness. This method does NOT
+    /// auto-enable it.
     pub fn build(mut self) -> RuntimeAgent {
         // Deduplicate tools by name (last wins). Tools are collected additively
         // from harness, agent, MCP servers, session capabilities, and client-side
@@ -423,9 +425,16 @@ impl RuntimeAgentBuilder {
         // plus a `tool_search` tool. This step only reconciles a hosted config
         // with the model — collection may have set one (via a direct
         // `openai_tool_search` capability) that the model can't honor.
-        let model_supports_native =
-            get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
-                .is_some_and(|p| p.tool_search);
+        // A hosted config is honorable when any provider with a driver that
+        // renders the hosted format advertises tool_search for this model:
+        // OpenAI (Responses) and Anthropic (Messages). A model id resolves under
+        // at most one of these provider profiles, so the other lookup is None.
+        let model_supports_native = [LlmProviderType::Openai, LlmProviderType::Anthropic]
+            .iter()
+            .any(|provider| {
+                get_model_profile(provider, &self.runtime_agent.model)
+                    .is_some_and(|p| p.tool_search)
+            });
 
         // Hosted (native) deferral hides schemas server-side, so client-side
         // opt-out hooks (DeferSchemaHook) must be skipped while a hosted config
@@ -1030,9 +1039,11 @@ mod tests {
     }
 
     #[test]
-    fn test_build_clears_tool_search_for_non_openai_model() {
+    fn test_build_clears_tool_search_for_non_native_model() {
+        // A pre-4 Claude model has no hosted tool_search support on either
+        // provider, so a hosted config is cleared (full schemas sent).
         let agent = RuntimeAgentBuilder::new()
-            .model("claude-sonnet-4-5-20250514")
+            .model("claude-3-5-haiku")
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
@@ -1041,7 +1052,25 @@ mod tests {
 
         assert!(
             agent.tool_search.is_none(),
-            "tool_search should be cleared for non-OpenAI models"
+            "tool_search should be cleared for models with no hosted support"
+        );
+    }
+
+    #[test]
+    fn test_build_keeps_tool_search_for_native_anthropic_model() {
+        // Claude 4-family models support Anthropic's hosted tool_search, so the
+        // hosted config survives build() (the Anthropic driver renders it).
+        let agent = RuntimeAgentBuilder::new()
+            .model("claude-opus-4-8")
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            })
+            .build();
+
+        assert!(
+            agent.tool_search.is_some(),
+            "tool_search should be kept for native Anthropic models"
         );
     }
 

@@ -77,7 +77,7 @@ Lower thresholds activate tool_search with fewer tools. Set to `1` to always act
 
 ## Limitations
 
-- **OpenAI-only** — tool_search is an OpenAI Responses API feature; other providers (Anthropic, Gemini) ignore this capability
+- **OpenAI-only** — tool_search here is an OpenAI Responses API feature; other providers ignore this capability. For Claude, use [Claude Tool Search](/capabilities/claude-tool-search/); for a provider-adaptive default, use [Auto Tool Search](/capabilities/auto-tool-search/).
 - **Supported OpenAI reasoning models only** — earlier OpenAI models don't support tool_search
 - **No client-side tools** — currently only applies to built-in (server-executed) tools
 
@@ -85,4 +85,6 @@ Lower thresholds activate tool_search with fewer tools. Set to `1` to always act
 
 - [OpenAI Tool Search documentation](https://platform.openai.com/docs/guides/tool-search) — official OpenAI guide
 - [OpenAI Responses API: tools parameter](https://platform.openai.com/docs/api-reference/responses/create#responses-create-tools) — API reference for namespace and tool_search types
+- [Claude Tool Search](/capabilities/claude-tool-search/) — the equivalent for Claude models
+- [Auto Tool Search](/capabilities/auto-tool-search/) — model-adaptive default
 - [Capabilities Overview](/capabilities/)
