@@ -10,6 +10,7 @@ use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
+    WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -783,7 +784,62 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Workspace Volumes
+    // Workspaces (see specs/workspace.md)
+    // ============================================
+
+    pub async fn create_workspace(
+        &self,
+        org_id: i64,
+        input: CreateWorkspaceRow,
+    ) -> Result<WorkspaceRow> {
+        dispatch!(self, create_workspace, org_id, input)
+    }
+
+    pub async fn get_workspace(
+        &self,
+        org_id: i64,
+        workspace_id: WorkspaceId,
+    ) -> Result<Option<WorkspaceRow>> {
+        dispatch!(
+            self,
+            get_workspace_by_public_id,
+            org_id,
+            &workspace_id.to_string()
+        )
+    }
+
+    pub async fn get_workspace_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<WorkspaceRow>> {
+        dispatch!(self, get_workspace_by_id, org_id, id)
+    }
+
+    pub async fn get_workspace_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_workspace_organization_id, public_id)
+    }
+
+    pub async fn list_workspaces(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<WorkspaceRow>> {
+        dispatch!(self, list_workspaces, org_id, search, include_archived)
+    }
+
+    pub async fn update_workspace(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateWorkspace,
+    ) -> Result<Option<WorkspaceRow>> {
+        dispatch!(self, update_workspace, org_id, id, input)
+    }
+
+    pub async fn archive_workspace(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_workspace, org_id, id)
+    }
+
+    // ============================================
+    // Memories
     // ============================================
 
     pub async fn create_memory(&self, org_id: i64, input: CreateMemoryRow) -> Result<MemoryRow> {

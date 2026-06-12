@@ -35,6 +35,7 @@ mod sessions;
 mod skills;
 mod user_connections;
 mod users;
+mod workspaces;
 
 #[cfg(test)]
 mod tests;

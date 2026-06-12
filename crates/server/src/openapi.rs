@@ -101,16 +101,10 @@ use utoipa::OpenApi;
         api::capabilities::delete_declarative_capability,
         api::capabilities::destroy_declarative_capability,
         api::users::list_users,
-        api::session_files::get_root,
-        api::session_files::get_path,
-        api::session_files::download_path,
-        api::session_files::create_path,
-        api::session_files::update_path,
-        api::session_files::delete_path,
-        api::session_files::move_file,
-        api::session_files::copy_file,
-        api::session_files::grep_files,
-        api::session_files::stat_file,
+        // Session filesystem routes (under /v1/sessions/{session_id}/fs)
+        // are intentionally omitted from the OpenAPI doc. They remain wired
+        // for backward compatibility but are deprecated; the documented
+        // surface is /v1/workspaces/{workspace_id}/fs. See specs/workspace.md.
         // Session Git
         api::session_git::commit,
         api::session_git::log,
@@ -209,6 +203,27 @@ use utoipa::OpenApi;
         api::org_feature_flags::get_org_feature_flags,
         api::org_feature_flags::get_org_feature_flag_settings,
         api::org_feature_flags::update_org_feature_flags,
+        // Workspace (durable, named working area).
+        //
+        // NOTE: The legacy `/v1/sessions/{session_id}/fs/*` routes
+        // (api::session_files::*) are intentionally NOT listed here. They
+        // remain mounted for backwards compatibility but are delisted from
+        // the published OpenAPI surface — clients should use
+        // `/v1/workspaces/{workspace_id}/fs/*` (or the per-session alias
+        // when one is needed for ergonomics).
+        api::workspaces::list_workspaces,
+        api::workspaces::create_workspace,
+        api::workspaces::get_workspace,
+        api::workspaces::update_workspace,
+        api::workspaces::delete_workspace,
+        // Workspace virtual filesystem
+        api::workspace_files::get_root,
+        api::workspace_files::get_path,
+        api::workspace_files::create_path,
+        api::workspace_files::update_path,
+        api::workspace_files::delete_path,
+        api::workspace_files::stat_file,
+        api::workspace_files::grep_files,
         // Memory
         api::memory::create_memory,
         api::memory::list_memories,
@@ -360,10 +375,7 @@ use utoipa::OpenApi;
             ListResponse<api::users::User>,
             SessionFile, FileInfo, FileStat, GrepMatch, GrepResult,
             LeasedResource,
-            api::session_files::CreateFileRequest, api::session_files::UpdateFileRequest,
-            api::session_files::MoveFileRequest, api::session_files::CopyFileRequest,
-            api::session_files::GrepRequest, api::session_files::DeleteResponse,
-            api::session_files::GetQuery, api::session_files::DeleteQuery, api::session_files::GetResponse,
+            // Session filesystem DTOs intentionally omitted — see paths(...) above.
             ListResponse<FileInfo>,
             ListResponse<GrepResult>,
             api::session_sandbox::SessionSandboxAction,
@@ -419,6 +431,19 @@ use utoipa::OpenApi;
             api::memory::UpdateMemoryRequest,
             api::memory::ListMemoriesQuery,
             api::memory::MemoryResponse,
+            api::workspaces::WorkspaceResponse,
+            api::workspaces::CreateWorkspaceRequest,
+            api::workspaces::UpdateWorkspaceRequest,
+            api::workspaces::ListWorkspacesQuery,
+            // Workspace virtual filesystem (reuses session_files request/response types).
+            api::session_files::CreateFileRequest,
+            api::session_files::UpdateFileRequest,
+            api::session_files::GrepRequest,
+            api::session_files::StatRequest,
+            api::session_files::GetQuery,
+            api::session_files::DeleteQuery,
+            api::session_files::DeleteResponse,
+            api::session_files::GetResponse,
             api::memory_files::CreateMemoryFileRequest,
             api::memory_files::UpdateMemoryFileRequest,
             api::memory_files::GrepRequest,

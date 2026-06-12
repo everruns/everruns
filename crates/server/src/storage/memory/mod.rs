@@ -40,6 +40,7 @@ mod skills;
 pub mod subagent_spawn_handles;
 mod user_connections;
 mod users;
+mod workspaces;
 
 #[cfg(test)]
 mod tests;
@@ -161,6 +162,8 @@ pub struct InMemoryDatabase {
     // Memories (org-scoped named Memories — see specs/memory.md)
     memories: RwLock<HashMap<Uuid, MemoryRow>>,
     memory_files: RwLock<HashMap<Uuid, MemoryFileRow>>,
+    // Workspaces (org-scoped named working areas — see specs/workspace.md)
+    workspaces: RwLock<HashMap<Uuid, WorkspaceRow>>,
     // Knowledge bases (curated org knowledge)
     knowledge_bases: RwLock<HashMap<Uuid, KnowledgeBaseRow>>,
     knowledge_entries: RwLock<HashMap<Uuid, KnowledgeEntryRow>>,
@@ -248,6 +251,7 @@ impl Default for InMemoryDatabase {
             payment_attempts: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),
             memory_files: RwLock::new(HashMap::new()),
+            workspaces: RwLock::new(HashMap::new()),
             knowledge_bases: RwLock::new(HashMap::new()),
             knowledge_entries: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
