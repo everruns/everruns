@@ -154,7 +154,7 @@ impl Capability for BashkitShellCapability {
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
-            "Віртуальний Bash",
+            "Оболонка Bashkit",
             r#"Виконуйте bash-команди в ізольованому середовищі-пісочниці.
 
 > [!NOTE]
