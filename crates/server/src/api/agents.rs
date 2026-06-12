@@ -28,10 +28,10 @@ use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
 };
 use crate::domains::agents::types::{
-    AgentPreviewResponse, CheckAgentNameQuery, CheckAgentNameResponse, CreateAgentRequest,
-    CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery, ListAgentsQuery,
-    PreviewAgentRequest, RollbackAgentVersionRequest, SetDefaultAgentVersionRequest,
-    UpdateAgentRequest,
+    AgentAnalysisResponse, AgentPreviewResponse, CheckAgentNameQuery, CheckAgentNameResponse,
+    CreateAgentRequest, CreateAgentVersionRequest, ForkAgentVersionRequest, ImportAgentQuery,
+    ListAgentsQuery, PreviewAgentRequest, RollbackAgentVersionRequest,
+    SetDefaultAgentVersionRequest, UpdateAgentRequest,
 };
 use crate::domains::common::Command;
 use serde::{Deserialize, Serialize};
@@ -156,6 +156,7 @@ impl AppState {
             self.auth.permission_resolver.clone(),
         )
         .with_feature_flags(org.feature_flags.clone())
+        .with_utility_llm_service(self.platform_definition.utility_llm_service())
     }
 }
 
@@ -271,6 +272,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/config", get(agent_config))
         .route("/v1/agents/import", post(import_agent))
         .route("/v1/agents/preview", post(preview_agent))
+        .route("/v1/agents/analyze", post(analyze_agent))
         .route(
             "/v1/agents/{agent_id}",
             get(get_agent)
@@ -1306,6 +1308,41 @@ pub async fn preview_agent(
     Ok(Json(AgentPreviewResponse {
         system_prompt: result.system_prompt,
         tools: result.tools,
+        findings: result.findings,
+    }))
+}
+
+/// POST /v1/agents/analyze - Run advisory checks against an agent shape
+///
+/// Runs built-in rules plus on-demand LLM analysis (specs/agent-checks.md)
+/// and returns merged advisory findings. Requires the system utility LLM
+/// service to be configured.
+#[utoipa::path(
+    post,
+    path = "/v1/agents/analyze",
+    request_body = PreviewAgentRequest,
+    responses(
+        (status = 200, description = "Agent analysis completed", body = AgentAnalysisResponse),
+        (status = 400, description = "Utility LLM service not configured", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn analyze_agent(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<PreviewAgentRequest>,
+) -> ApiResult<AgentAnalysisResponse> {
+    let result = crate::domains::agents::AnalyzeAgent {
+        system_prompt: Some(req.system_prompt),
+        capabilities: req.capabilities,
+        tools: req.tools,
+        mcp_servers: req.mcp_servers,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+
+    Ok(Json(AgentAnalysisResponse {
         findings: result.findings,
     }))
 }

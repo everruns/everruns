@@ -1568,6 +1568,86 @@ impl Command for PreviewAgent {
 inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
 
 // ============================================================================
+// AnalyzeAgent
+// ============================================================================
+
+/// Run advisory checks (built-in rules + LLM analysis) against an agent shape.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AnalyzeAgent {
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<AgentCapabilityConfig>,
+    #[serde(default)]
+    pub tools: Vec<ToolDefinition>,
+    #[serde(default)]
+    pub mcp_servers: ScopedMcpServers,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AgentAnalysis {
+    pub findings: Vec<super::checks::Finding>,
+}
+
+impl Command for AnalyzeAgent {
+    type Output = AgentAnalysis;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "analyze_agent",
+            category: "agents",
+            description: "Run advisory checks (built-in rules plus LLM analysis) against an \
+                          agent configuration.",
+            method: "POST",
+            path: "/v1/agents/analyze",
+        }
+    }
+
+    // Makes paid utility-LLM calls; not a free read.
+    fn read_only() -> bool {
+        false
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::agents::AGENT_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AgentAnalysis, CommandError> {
+        let service = ctx
+            .utility_llm_service
+            .clone()
+            .filter(|s| s.is_configured())
+            .ok_or_else(|| {
+                CommandError::bad_request(
+                    "Agent analysis requires the system utility LLM service, which is not \
+                     configured on this deployment",
+                )
+            })?;
+        let authored_prompt = self.system_prompt.clone().unwrap_or_default();
+        let preview = PreviewAgent {
+            system_prompt: self.system_prompt,
+            capabilities: self.capabilities,
+            tools: self.tools,
+            mcp_servers: self.mcp_servers,
+        }
+        .execute(ctx)
+        .await?;
+        let llm_findings = super::analysis::run_llm_checks(
+            service,
+            &authored_prompt,
+            &preview.system_prompt,
+            &preview.tools,
+        )
+        .await
+        .map_err(|e| CommandError::internal(anyhow::anyhow!(e)))?;
+        let mut findings = preview.findings;
+        findings.extend(llm_findings);
+        Ok(AgentAnalysis { findings })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<AnalyzeAgent>() }
+
+// ============================================================================
 // CheckAgentName
 // ============================================================================
 

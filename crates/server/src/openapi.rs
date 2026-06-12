@@ -174,6 +174,7 @@ use utoipa::OpenApi;
         api::harness_examples::list_examples,
         // Agents - additional
         api::agents::preview_agent,
+        api::agents::analyze_agent,
         api::agents::upsert_agent,
         api::agents::copy_agent,
         api::agents::list_agent_versions,

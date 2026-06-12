@@ -82,9 +82,10 @@ The atomic unit of feedback, analogous to an eval `Score`.
 ### Check run
 
 An on-demand execution of tier 2 and/or tier 3 against a specific agent
-config. Findings from tier 1 are not persisted (recomputed with every
-preview); tier 2/3 results are persisted keyed by the config hash so repeat
-views are free and version badges are possible.
+config. Findings from tiers 1 and 2 are not persisted: tier 1 is recomputed
+with every preview, and tier 2 is cheap enough (a few bounded utility-LLM
+calls) to recompute per Analyze action. Tier-3 results are persisted keyed by
+the config hash so repeat views are free and version badges are possible.
 
 Health check runs reuse the durable execution and bounded-concurrency
 machinery of eval runs but are not `Eval` entities: they do not appear in
@@ -101,9 +102,10 @@ Decided ordering (Option A → C → B from the design review):
    `POST /v1/agents/preview`; response gains a `findings` array. Editor shows
    a collapsible Checks panel with severity badges and deep links to the
    offending field/span.
-2. **LLM analysis + fixes.** `Analyze` action runs tier-2 checkers on the
-   utility LLM. Findings gain span locations and proposed `fix` payloads
-   rendered as diffs with one-click apply. This phase delivers the
+2. **LLM analysis + fixes.** `Analyze` action (`POST /v1/agents/analyze`,
+   `analyze_agent` command) runs tier-2 checkers on the utility LLM and
+   returns merged tier-1 + tier-2 findings. Findings gain span locations and
+   proposed `fix` payloads with one-click apply. This phase delivers the
    "too verbose / duplicated / contradictory / poor structure" feedback.
 3. **Health checks.** One-click behavioral smoke run: generated cases,
    score card (pass rate, turns, tokens), per-case drill-down into sessions.

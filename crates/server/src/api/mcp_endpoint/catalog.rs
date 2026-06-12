@@ -69,7 +69,8 @@ impl CatalogContext {
         .with_runner(self.state.runner.clone())
         .with_fallback_harness_name(self.state.fallback_default_harness_name.clone())
         .with_chat_harness_name(self.state.chat_harness_name.clone())
-        .with_chat_session_title(self.state.chat_session_title.clone());
+        .with_chat_session_title(self.state.chat_session_title.clone())
+        .with_utility_llm_service(self.state.utility_llm_service.clone());
         if let Some(service) = &self.state.session_sandbox_service {
             ctx = ctx.with_session_sandbox_service(service.clone());
         }

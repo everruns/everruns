@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { AgentPreview } from "@/components/agents/agent-preview";
+import { AgentPreview, applyByteSpanReplacement } from "@/components/agents/agent-preview";
 import type { AgentPreviewResponse } from "@/lib/api/types";
 
 jest.mock("streamdown", () => ({
@@ -13,9 +13,15 @@ jest.mock("@streamdown/code", () => ({
 }));
 
 const mockUsePreviewAgent = jest.fn();
+const mockUseAnalyzeAgent = jest.fn(() => ({
+  mutate: jest.fn(),
+  isPending: false,
+  error: null,
+}));
 
 jest.mock("@/hooks/use-agents", () => ({
   usePreviewAgent: () => mockUsePreviewAgent(),
+  useAnalyzeAgent: () => mockUseAnalyzeAgent(),
 }));
 
 function makeMutationStub(opts: {
@@ -106,5 +112,55 @@ describe("AgentPreview", () => {
 
     expect(screen.getByText("Initial Files")).toBeInTheDocument();
     expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+  });
+});
+
+describe("applyByteSpanReplacement", () => {
+  it("replaces an ascii byte span", () => {
+    expect(applyByteSpanReplacement("Use `search_web` now.", 4, 16, "`web_fetch`")).toBe(
+      "Use `web_fetch` now.",
+    );
+  });
+
+  it("handles multibyte text before the span", () => {
+    // "héllo " is 7 bytes (é = 2 bytes); span covers "bad".
+    expect(applyByteSpanReplacement("héllo bad end", 7, 10, "good")).toBe("héllo good end");
+  });
+});
+
+describe("AgentPreview findings", () => {
+  it("renders findings from the preview response", async () => {
+    mockUsePreviewAgent.mockReturnValue(
+      makeMutationStub({
+        data: {
+          ...sampleResponse,
+          findings: [
+            {
+              rule_id: "prompt.template_variables",
+              severity: "warning",
+              category: "structure",
+              message: "Template placeholder found.",
+              source: "builtin",
+            },
+          ],
+        },
+      }),
+    );
+    render(<AgentPreview systemPrompt="hi {{x}}" capabilities={[]} initialFiles={[]} />);
+    await waitFor(() => {
+      expect(screen.getByText("Template placeholder found.")).toBeInTheDocument();
+      expect(screen.getByText("prompt.template_variables")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /analyze/i })).toBeInTheDocument();
+    });
+  });
+
+  it("shows a clean state with the analyze button when no findings", async () => {
+    mockUsePreviewAgent.mockReturnValue(
+      makeMutationStub({ data: { ...sampleResponse, findings: [] } }),
+    );
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
+    await waitFor(() => {
+      expect(screen.getByText(/no issues found by built-in rules/i)).toBeInTheDocument();
+    });
   });
 });

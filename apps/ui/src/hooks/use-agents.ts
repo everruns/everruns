@@ -4,6 +4,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   agentsCrudApi,
+  analyzeAgent,
   copyAgent,
   createAgentVersion,
   diffAgentVersions,
@@ -123,6 +124,12 @@ export function useImportAgent() {
 export function usePreviewAgent() {
   return useMutation({
     mutationFn: (request: PreviewAgentRequest) => previewAgent(request),
+  });
+}
+
+export function useAnalyzeAgent() {
+  return useMutation({
+    mutationFn: (request: PreviewAgentRequest) => analyzeAgent(request),
   });
 }
 

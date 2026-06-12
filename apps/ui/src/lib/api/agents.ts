@@ -7,6 +7,7 @@ import type {
   Agent,
   AgentVersion,
   AgentVersionDiffResponse,
+  AgentAnalysisResponse,
   AgentPreviewResponse,
   CreateAgentVersionRequest,
   CreateAgentRequest,
@@ -80,6 +81,11 @@ export async function checkAgentName(
 
 export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
   const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
+  return response.data;
+}
+
+export async function analyzeAgent(request: PreviewAgentRequest): Promise<AgentAnalysisResponse> {
+  const response = await api.post<AgentAnalysisResponse>("/v1/agents/analyze", request);
   return response.data;
 }
 

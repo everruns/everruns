@@ -146,6 +146,58 @@
         }
       }
     },
+    "/v1/agents/analyze": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/analyze - Run advisory checks against an agent shape",
+        "description": "Runs built-in rules plus on-demand LLM analysis (specs/agent-checks.md)\nand returns merged advisory findings. Requires the system utility LLM\nservice to be configured.",
+        "operationId": "analyze_agent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewAgentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent analysis completed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAnalysisResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Utility LLM service not configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/check-name": {
       "get": {
         "tags": [
@@ -12465,6 +12517,22 @@
                 "description": "Cumulative token usage across all sessions for this agent."
               }
             ]
+          }
+        }
+      },
+      "AgentAnalysisResponse": {
+        "type": "object",
+        "description": "Response from on-demand agent analysis (built-in rules + LLM checkers)",
+        "required": [
+          "findings"
+        ],
+        "properties": {
+          "findings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Finding"
+            },
+            "description": "Advisory findings, built-in and LLM-sourced (specs/agent-checks.md)"
           }
         }
       },
