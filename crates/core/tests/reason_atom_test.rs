@@ -1679,9 +1679,7 @@ async fn test_reason_atom_still_fails_on_pure_stream_error() {
         .await;
 
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, |_config| {
-        Box::new(PureErrorDriver)
-    });
+    driver_registry.register(ProviderType::LlmSim, |_config| Box::new(PureErrorDriver));
 
     let event_emitter = InMemoryEventEmitter::new();
 

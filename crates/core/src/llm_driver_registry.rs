@@ -1306,7 +1306,8 @@ impl DriverRegistry {
     where
         F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
     {
-        self.factories.insert(provider_type.into(), Arc::new(factory));
+        self.factories
+            .insert(provider_type.into(), Arc::new(factory));
     }
 
     /// Register a driver factory for an embedder-defined external provider,
@@ -1737,11 +1738,12 @@ mod tests {
         assert!(registry.has_driver(&ProviderType::external("openai-codex")));
 
         // No api_key required for external providers.
-        let config = ProviderConfig::new(ProviderType::external("openai-codex"))
-            .with_metadata(ProviderMetadata {
+        let config = ProviderConfig::new(ProviderType::external("openai-codex")).with_metadata(
+            ProviderMetadata {
                 refresh_token: Some("rt".into()),
                 ..Default::default()
-            });
+            },
+        );
         assert!(registry.create_driver(&config).is_ok());
     }
 
