@@ -3,17 +3,17 @@
 #[cfg(test)]
 mod driver_tests {
     use crate::{
-        DriverRegistry, OpenAICompletionsLlmDriver, OpenAILlmDriver, OpenRouterLlmDriver,
+        DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver,
         register_driver,
     };
-    use everruns_core::llm_driver_registry::{LlmDriver, ProviderConfig, ProviderType};
+    use everruns_core::llm_driver_registry::{ChatDriver, ProviderConfig, ProviderType};
     use everruns_core::llm_models::LlmProviderType;
 
     #[test]
     fn test_driver_with_api_key() {
-        let driver = OpenAILlmDriver::new("test-key");
+        let driver = OpenAIChatDriver::new("test-key");
         // Just verify it can be created
-        assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
+        assert!(format!("{:?}", driver).contains("OpenAIChatDriver"));
         assert!(format!("{:?}", driver).contains("Open Responses"));
         // URL should be for Open Responses API
         assert!(driver.api_url().contains("responses"));
@@ -22,21 +22,21 @@ mod driver_tests {
     #[test]
     fn test_driver_with_base_url() {
         let driver =
-            OpenAILlmDriver::with_base_url("test-key", "https://custom.api.com/v1/responses");
-        assert!(format!("{:?}", driver).contains("OpenAILlmDriver"));
+            OpenAIChatDriver::with_base_url("test-key", "https://custom.api.com/v1/responses");
+        assert!(format!("{:?}", driver).contains("OpenAIChatDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
         assert!(driver.uses_custom_url());
     }
 
     #[test]
     fn test_driver_normalizes_v1_base_url() {
-        let driver = OpenAILlmDriver::with_base_url("test-key", "https://api.openai.com/v1");
+        let driver = OpenAIChatDriver::with_base_url("test-key", "https://api.openai.com/v1");
         assert_eq!(driver.api_url(), "https://api.openai.com/v1/responses");
     }
 
     #[test]
     fn test_driver_normalizes_azure_v1_base_url() {
-        let driver = OpenAILlmDriver::with_base_url(
+        let driver = OpenAIChatDriver::with_base_url(
             "test-key",
             "https://resource.openai.azure.com/openai/v1/",
         );
@@ -48,8 +48,8 @@ mod driver_tests {
 
     #[test]
     fn test_completions_driver_with_api_key() {
-        let driver = OpenAICompletionsLlmDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        let driver = OpenAICompletionsChatDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsChatDriver"));
         assert!(format!("{:?}", driver).contains("Chat Completions"));
         // URL should be for Chat Completions API
         assert!(driver.api_url().contains("chat/completions"));
@@ -57,15 +57,15 @@ mod driver_tests {
 
     #[test]
     fn test_openrouter_driver_defaults_to_responses_api() {
-        let driver = OpenRouterLlmDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenRouterLlmDriver"));
+        let driver = OpenRouterChatDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenRouterChatDriver"));
         assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
         assert_eq!(driver.provider_type(), &LlmProviderType::Openrouter);
     }
 
     #[test]
     fn test_openrouter_driver_with_base_url_marks_custom_url() {
-        let driver = OpenRouterLlmDriver::with_base_url(
+        let driver = OpenRouterChatDriver::with_base_url(
             "test-key",
             "https://openrouter.ai/api/v1/responses",
         );
@@ -75,7 +75,7 @@ mod driver_tests {
 
     #[tokio::test]
     async fn test_openrouter_custom_non_openrouter_host_skips_model_listing() {
-        let driver = OpenRouterLlmDriver::with_base_url(
+        let driver = OpenRouterChatDriver::with_base_url(
             "test-key",
             "https://custom.api.example/v1/responses",
         );
@@ -90,11 +90,11 @@ mod driver_tests {
 
     #[test]
     fn test_completions_driver_with_base_url() {
-        let driver = OpenAICompletionsLlmDriver::with_base_url(
+        let driver = OpenAICompletionsChatDriver::with_base_url(
             "test-key",
             "https://custom.api.com/v1/chat/completions",
         );
-        assert!(format!("{:?}", driver).contains("OpenAICompletionsLlmDriver"));
+        assert!(format!("{:?}", driver).contains("OpenAICompletionsChatDriver"));
         assert_eq!(
             driver.api_url(),
             "https://custom.api.com/v1/chat/completions"
@@ -119,24 +119,24 @@ mod driver_tests {
 
         // Verify OpenAI driver can be created
         let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
-        let driver = registry.create_driver(&config);
+        let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
 
         let openrouter_config =
             ProviderConfig::new(ProviderType::OpenRouter).with_api_key("test-key");
-        let openrouter_driver = registry.create_driver(&openrouter_config);
+        let openrouter_driver = registry.create_chat_driver(&openrouter_config);
         assert!(openrouter_driver.is_ok());
 
         let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI)
             .with_api_key("test-key")
             .with_base_url("https://resource.openai.azure.com/openai/v1");
-        let azure_driver = registry.create_driver(&azure_config);
+        let azure_driver = registry.create_chat_driver(&azure_config);
         assert!(azure_driver.is_ok());
 
         // Verify OpenAI Completions driver can be created
         let completions_config =
             ProviderConfig::new(ProviderType::OpenAICompletions).with_api_key("test-key");
-        let completions_driver = registry.create_driver(&completions_config);
+        let completions_driver = registry.create_chat_driver(&completions_config);
         assert!(completions_driver.is_ok());
     }
 }

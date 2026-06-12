@@ -574,7 +574,7 @@ Worker needs LLM key
     → Control plane fetches llm_providers row
     → EncryptionService.decrypt(api_key_encrypted)
     → Key returned in gRPC response (in-memory only)
-    → Worker creates LlmDriver with key
+    → Worker creates ChatDriver with key
     → LLM API call over HTTPS
     → Key dropped when driver goes out of scope
 ```

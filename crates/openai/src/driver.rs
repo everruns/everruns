@@ -2,10 +2,10 @@
 //
 // This module provides two separate drivers for OpenAI:
 //
-// 1. OpenAILlmDriver - Uses Open Responses API (https://www.openresponses.org/)
+// 1. OpenAIChatDriver - Uses Open Responses API (https://www.openresponses.org/)
 //    Recommended for new projects. Better performance with reasoning models.
 //
-// 2. OpenAICompletionsLlmDriver - Uses Chat Completions API
+// 2. OpenAICompletionsChatDriver - Uses Chat Completions API
 //    For backward compatibility with /v1/chat/completions endpoint.
 
 use async_trait::async_trait;
@@ -13,11 +13,11 @@ use chrono::TimeZone;
 use reqwest::RequestBuilder;
 use reqwest::Url;
 
-use everruns_core::OpenAIProtocolLlmDriver;
-use everruns_core::OpenResponsesProtocolLlmDriver;
+use everruns_core::OpenAIProtocolChatDriver;
+use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmDriver, LlmMessage,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmMessage,
     LlmResponseStream, ProviderType,
 };
 use everruns_core::llm_models::LlmProviderType;
@@ -44,33 +44,33 @@ const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
 /// - 40-80% better cache utilization
 ///
 /// For backward compatibility with the Chat Completions API, use
-/// `OpenAICompletionsLlmDriver` instead.
+/// `OpenAICompletionsChatDriver` instead.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use everruns_openai::OpenAILlmDriver;
+/// use everruns_openai::OpenAIChatDriver;
 ///
-/// let driver = OpenAILlmDriver::new("your-api-key");
+/// let driver = OpenAIChatDriver::new("your-api-key");
 ///
 /// // With custom endpoint
-/// let driver = OpenAILlmDriver::with_base_url(
+/// let driver = OpenAIChatDriver::with_base_url(
 ///     "your-api-key",
 ///     "https://api.example.com/v1/responses",
 /// );
 /// ```
 #[derive(Clone)]
-pub struct OpenAILlmDriver {
-    inner: OpenResponsesProtocolLlmDriver,
+pub struct OpenAIChatDriver {
+    inner: OpenResponsesProtocolChatDriver,
     /// Whether using a custom base URL (not OpenAI's API)
     uses_custom_url: bool,
 }
 
-impl OpenAILlmDriver {
+impl OpenAIChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            inner: OpenResponsesProtocolLlmDriver::new(api_key),
+            inner: OpenResponsesProtocolChatDriver::new(api_key),
             uses_custom_url: false,
         }
     }
@@ -78,7 +78,7 @@ impl OpenAILlmDriver {
     /// Create a new driver from the OPENAI_API_KEY environment variable
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            inner: OpenResponsesProtocolLlmDriver::from_env()?,
+            inner: OpenResponsesProtocolChatDriver::from_env()?,
             uses_custom_url: false,
         })
     }
@@ -87,7 +87,7 @@ impl OpenAILlmDriver {
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         let api_url = normalize_api_url(&api_url.into(), "/responses");
         Self {
-            inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, api_url),
+            inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url),
             uses_custom_url: true,
         }
     }
@@ -130,7 +130,7 @@ impl OpenAILlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAILlmDriver {
+impl ChatDriver for OpenAIChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -158,9 +158,9 @@ impl LlmDriver for OpenAILlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenAILlmDriver {
+impl std::fmt::Debug for OpenAIChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAILlmDriver")
+        f.debug_struct("OpenAIChatDriver")
             .field("api_url", &self.api_url())
             .field("api", &"Open Responses")
             .field("api_key", &"[REDACTED]")
@@ -174,18 +174,21 @@ impl std::fmt::Debug for OpenAILlmDriver {
 
 /// OpenRouter driver using its OpenAI-compatible Responses API.
 #[derive(Clone)]
-pub struct OpenRouterLlmDriver {
-    inner: OpenResponsesProtocolLlmDriver,
+pub struct OpenRouterChatDriver {
+    inner: OpenResponsesProtocolChatDriver,
     /// Whether constructed with an explicit base URL override via [`with_base_url`].
     uses_custom_url: bool,
 }
 
-impl OpenRouterLlmDriver {
+impl OpenRouterChatDriver {
     /// Create a new OpenRouter driver with the default Responses API endpoint.
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, OPENROUTER_RESPONSES_URL)
-                .with_provider_type(LlmProviderType::Openrouter),
+            inner: OpenResponsesProtocolChatDriver::with_base_url(
+                api_key,
+                OPENROUTER_RESPONSES_URL,
+            )
+            .with_provider_type(LlmProviderType::Openrouter),
             uses_custom_url: false,
         }
     }
@@ -194,7 +197,7 @@ impl OpenRouterLlmDriver {
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         let api_url = normalize_api_url(&api_url.into(), "/responses");
         Self {
-            inner: OpenResponsesProtocolLlmDriver::with_base_url(api_key, api_url)
+            inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url)
                 .with_provider_type(LlmProviderType::Openrouter),
             uses_custom_url: true,
         }
@@ -217,7 +220,7 @@ impl OpenRouterLlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for OpenRouterLlmDriver {
+impl ChatDriver for OpenRouterChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -238,9 +241,9 @@ impl LlmDriver for OpenRouterLlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenRouterLlmDriver {
+impl std::fmt::Debug for OpenRouterChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenRouterLlmDriver")
+        f.debug_struct("OpenRouterChatDriver")
             .field("api_url", &self.api_url())
             .field("api", &"OpenRouter Responses")
             .field("api_key", &"[REDACTED]")
@@ -258,34 +261,34 @@ impl std::fmt::Debug for OpenRouterLlmDriver {
 /// (/v1/chat/completions). Use this for backward compatibility with
 /// existing integrations or when Open Responses API is not suitable.
 ///
-/// For new projects, prefer `OpenAILlmDriver` which uses the Open Responses
+/// For new projects, prefer `OpenAIChatDriver` which uses the Open Responses
 /// specification (<https://www.openresponses.org/>).
 ///
 /// # Example
 ///
 /// ```ignore
-/// use everruns_openai::OpenAICompletionsLlmDriver;
+/// use everruns_openai::OpenAICompletionsChatDriver;
 ///
-/// let driver = OpenAICompletionsLlmDriver::new("your-api-key");
+/// let driver = OpenAICompletionsChatDriver::new("your-api-key");
 ///
 /// // With custom endpoint
-/// let driver = OpenAICompletionsLlmDriver::with_base_url(
+/// let driver = OpenAICompletionsChatDriver::with_base_url(
 ///     "your-api-key",
 ///     "https://api.example.com/v1/chat/completions",
 /// );
 /// ```
 #[derive(Clone)]
-pub struct OpenAICompletionsLlmDriver {
-    inner: OpenAIProtocolLlmDriver,
+pub struct OpenAICompletionsChatDriver {
+    inner: OpenAIProtocolChatDriver,
     /// Whether using a custom base URL (not OpenAI's API)
     uses_custom_url: bool,
 }
 
-impl OpenAICompletionsLlmDriver {
+impl OpenAICompletionsChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            inner: OpenAIProtocolLlmDriver::new(api_key),
+            inner: OpenAIProtocolChatDriver::new(api_key),
             uses_custom_url: false,
         }
     }
@@ -293,7 +296,7 @@ impl OpenAICompletionsLlmDriver {
     /// Create a new driver from the OPENAI_API_KEY environment variable
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            inner: OpenAIProtocolLlmDriver::from_env()?,
+            inner: OpenAIProtocolChatDriver::from_env()?,
             uses_custom_url: false,
         })
     }
@@ -302,7 +305,7 @@ impl OpenAICompletionsLlmDriver {
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         let api_url = normalize_api_url(&api_url.into(), "/chat/completions");
         Self {
-            inner: OpenAIProtocolLlmDriver::with_base_url(api_key, api_url),
+            inner: OpenAIProtocolChatDriver::with_base_url(api_key, api_url),
             uses_custom_url: true,
         }
     }
@@ -319,7 +322,7 @@ impl OpenAICompletionsLlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAICompletionsLlmDriver {
+impl ChatDriver for OpenAICompletionsChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -339,9 +342,9 @@ impl LlmDriver for OpenAICompletionsLlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenAICompletionsLlmDriver {
+impl std::fmt::Debug for OpenAICompletionsChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAICompletionsLlmDriver")
+        f.debug_struct("OpenAICompletionsChatDriver")
             .field("api_url", &self.api_url())
             .field("api", &"Chat Completions")
             .field("api_key", &"[REDACTED]")
@@ -540,38 +543,38 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register(ProviderType::OpenAI, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
-            None => OpenAILlmDriver::new(api_key),
+            Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
+            None => OpenAIChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 
     registry.register(ProviderType::OpenRouter, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => OpenRouterLlmDriver::with_base_url(api_key, url),
-            None => OpenRouterLlmDriver::new(api_key),
+            Some(url) => OpenRouterChatDriver::with_base_url(api_key, url),
+            None => OpenRouterChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 
     registry.register(ProviderType::AzureOpenAI, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAILlmDriver::with_base_url(api_key, url),
-            None => OpenAILlmDriver::new(api_key),
+            Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
+            None => OpenAIChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 
     // Register OpenAI Completions with Chat Completions API
     registry.register(ProviderType::OpenAICompletions, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAICompletionsLlmDriver::with_base_url(api_key, url),
-            None => OpenAICompletionsLlmDriver::new(api_key),
+            Some(url) => OpenAICompletionsChatDriver::with_base_url(api_key, url),
+            None => OpenAICompletionsChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 }
 

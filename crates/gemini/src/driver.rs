@@ -1,6 +1,6 @@
 // Google Gemini LLM Driver
 //
-// Implementation of LlmDriver for Google's Gemini API.
+// Implementation of ChatDriver for Google's Gemini API.
 // Uses the generateContent API with streaming support.
 //
 // API docs: https://ai.google.dev/api/generate-content
@@ -22,9 +22,9 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
-    LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent, ProviderType,
 };
 use everruns_core::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
@@ -33,10 +33,10 @@ const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta
 
 /// Google Gemini LLM Driver
 ///
-/// Implements `LlmDriver` for Google's Gemini API.
+/// Implements `ChatDriver` for Google's Gemini API.
 /// Supports streaming responses and tool calls.
 #[derive(Clone)]
-pub struct GeminiLlmDriver {
+pub struct GeminiChatDriver {
     client: Client,
     api_key: String,
     base_url: String,
@@ -44,7 +44,7 @@ pub struct GeminiLlmDriver {
     retry_config: LlmRetryConfig,
 }
 
-impl GeminiLlmDriver {
+impl GeminiChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -287,7 +287,7 @@ impl GeminiLlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for GeminiLlmDriver {
+impl ChatDriver for GeminiChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -820,9 +820,9 @@ impl LlmDriver for GeminiLlmDriver {
     }
 }
 
-impl std::fmt::Debug for GeminiLlmDriver {
+impl std::fmt::Debug for GeminiChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GeminiLlmDriver")
+        f.debug_struct("GeminiChatDriver")
             .field("base_url", &self.base_url)
             .field("api_key", &"[REDACTED]")
             .finish()
@@ -838,10 +838,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register(ProviderType::Gemini, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => GeminiLlmDriver::with_base_url(api_key, url),
-            None => GeminiLlmDriver::new(api_key),
+            Some(url) => GeminiChatDriver::with_base_url(api_key, url),
+            None => GeminiChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 }
 
@@ -1071,14 +1071,14 @@ mod tests {
     #[test]
     fn test_convert_content_text() {
         let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let parts = GeminiLlmDriver::convert_content(&content);
+        let parts = GeminiChatDriver::convert_content(&content);
         assert_eq!(parts.len(), 1);
     }
 
     #[test]
     fn test_convert_content_empty_text() {
         let content = LlmMessageContent::Text(String::new());
-        let parts = GeminiLlmDriver::convert_content(&content);
+        let parts = GeminiChatDriver::convert_content(&content);
         assert!(parts.is_empty());
     }
 
@@ -1105,7 +1105,7 @@ mod tests {
             },
         ];
 
-        let (system, contents) = GeminiLlmDriver::convert_messages(&messages);
+        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
 
         assert!(system.is_some());
         assert_eq!(contents.len(), 1); // Only user message
@@ -1132,7 +1132,7 @@ mod tests {
             full_parameters: None,
         })];
 
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools);
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
         assert!(gemini_tools.is_some());
         let tools = gemini_tools.unwrap();
         assert_eq!(tools.len(), 1);
@@ -1162,7 +1162,7 @@ mod tests {
             full_parameters: None,
         })];
 
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
         let params = &gemini_tools[0].function_declarations[0].parameters;
         assert!(params.get("additionalProperties").is_none());
         assert!(
@@ -1217,7 +1217,7 @@ mod tests {
             full_parameters: None,
         })];
 
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
         let params = &gemini_tools[0].function_declarations[0].parameters;
 
         fn assert_no_additional_properties(v: &Value) {
@@ -1268,7 +1268,7 @@ mod tests {
             full_parameters: None,
         })];
 
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
         let params = &gemini_tools[0].function_declarations[0].parameters;
 
         assert!(params.get("additionalProperties").is_none());
@@ -1285,7 +1285,7 @@ mod tests {
     #[test]
     fn test_convert_file_system_capability_strips_nested_additional_properties() {
         let tools = FileSystemCapability.tool_definitions();
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools).unwrap();
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools).unwrap();
 
         fn assert_no_additional_properties(v: &Value) {
             match v {
@@ -1315,7 +1315,7 @@ mod tests {
     #[test]
     fn test_convert_tools_empty() {
         let tools: Vec<ToolDefinition> = vec![];
-        let gemini_tools = GeminiLlmDriver::convert_tools(&tools);
+        let gemini_tools = GeminiChatDriver::convert_tools(&tools);
         assert!(gemini_tools.is_none());
     }
 
@@ -1359,7 +1359,7 @@ mod tests {
 
     #[test]
     fn test_stream_url() {
-        let driver = GeminiLlmDriver::new("test-key");
+        let driver = GeminiChatDriver::new("test-key");
         let url = driver.stream_url("gemini-2.5-pro");
         assert!(url.contains("gemini-2.5-pro:streamGenerateContent"));
         assert!(url.contains("alt=sse"));
@@ -1378,7 +1378,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, contents) = GeminiLlmDriver::convert_messages(&messages);
+        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
 
         assert_eq!(contents.len(), 1);
         assert_eq!(contents[0].role.as_deref(), Some("user"));

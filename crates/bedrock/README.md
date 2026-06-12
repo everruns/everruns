@@ -9,7 +9,7 @@
 `everruns-bedrock` registers an AWS Bedrock driver with
 [`everruns-core`](https://crates.io/crates/everruns-core) so
 the same Everruns agent loop can run against models hosted on Amazon Bedrock. It
-implements the provider-neutral `LlmDriver` contract using the Bedrock Runtime
+implements the provider-neutral `ChatDriver` contract using the Bedrock Runtime
 `ConverseStream` API, mapping Everruns' messages, tools, and reasoning onto the
 Bedrock wire format.
 
@@ -23,7 +23,7 @@ backends, or run with no key using the built-in LLM simulator in
 ## Quick Example
 
 ```rust
-use everruns_bedrock::{BedrockLlmDriver, register_driver};
+use everruns_bedrock::{BedrockChatDriver, register_driver};
 use everruns_core::DriverRegistry;
 
 let mut registry = DriverRegistry::new();

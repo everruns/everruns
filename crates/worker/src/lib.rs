@@ -45,7 +45,7 @@ pub use grpc_durable_store::{
 pub use runner::{AgentRunner, RunnerBackend, create_runner, create_runner_with_backend};
 
 // Re-export LLM driver factory helpers
-pub use adapters::{create_driver_registry, create_llm_driver};
+pub use adapters::{create_chat_driver, create_driver_registry};
 pub use platform::{default_platform_definition, default_platform_definition_for_grade};
 
 // Re-export gRPC adapters for worker communication with control plane
@@ -65,7 +65,7 @@ pub use worker_adapters::{
 };
 
 // Re-export OpenAI driver from the openai crate
-pub use everruns_openai::OpenAILlmDriver;
+pub use everruns_openai::OpenAIChatDriver;
 
 // Re-export app builder for composable worker configurations
 pub use app_builder::WorkerAppBuilder;

@@ -14,6 +14,6 @@ fn test_register_driver() {
 
     // Verify driver can be created via registry
     let config = ProviderConfig::new(ProviderType::Anthropic).with_api_key("test-key");
-    let driver = registry.create_driver(&config);
+    let driver = registry.create_chat_driver(&config);
     assert!(driver.is_ok());
 }

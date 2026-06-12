@@ -15,7 +15,7 @@ use crate::capabilities::CapabilityRegistry;
 use crate::command::CommandResult;
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
-    BoxedLlmDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
+    BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
     LlmMessageRole, LlmResponseStream, ProviderConfig, ToolSearchConfig,
 };
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
@@ -398,7 +398,7 @@ impl StoreCommandHost {
 
         let driver = self
             .driver_registry
-            .create_driver(&ProviderConfig::from(&model))
+            .create_chat_driver(&ProviderConfig::from(&model))
             .map_err(|error| SessionCompletionError::Completion {
                 error: error.to_string(),
                 context: context.clone(),
@@ -418,7 +418,7 @@ impl StoreCommandHost {
 struct PreparedCompletion {
     llm_messages: Vec<LlmMessage>,
     llm_config: LlmCallConfig,
-    driver: BoxedLlmDriver,
+    driver: BoxedChatDriver,
     context: UserFacingErrorContext,
 }
 

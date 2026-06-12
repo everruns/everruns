@@ -138,7 +138,7 @@ Capability.tools()  →  collect_capabilities() sets tool_search config
                     ↓                      ↓
               RuntimeAgent.tool_search=None    RuntimeAgent.tool_search=Some(config)
                     ↓                      ↓
-              LlmCallConfig.tools    LlmDriver restructures:
+              LlmCallConfig.tools    ChatDriver restructures:
               (full schemas)         - Namespace groupings
                                      - defer_loading: true
                                      - { "type": "tool_search" }

@@ -1,6 +1,6 @@
 // AWS Bedrock Runtime LLM Driver
 //
-// Implements LlmDriver using the AWS Bedrock Runtime ConverseStream API.
+// Implements ChatDriver using the AWS Bedrock Runtime ConverseStream API.
 // Uses the aws-sdk-bedrockruntime crate for typed event stream handling,
 // which handles SigV4 signing and binary event stream framing internally.
 //
@@ -22,9 +22,9 @@ use aws_smithy_types::Document;
 use base64::prelude::*;
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
-    LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent, ProviderType,
 };
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
@@ -38,14 +38,14 @@ use crate::credential::BedrockCredential;
 
 /// AWS Bedrock Runtime LLM Driver.
 ///
-/// Implements `LlmDriver` using the `ConverseStream` API.
+/// Implements `ChatDriver` using the `ConverseStream` API.
 /// Credentials are parsed from the JSON-encoded `api_key` field.
 #[derive(Clone, Debug)]
-pub struct BedrockLlmDriver {
+pub struct BedrockChatDriver {
     credential: BedrockCredential,
 }
 
-impl BedrockLlmDriver {
+impl BedrockChatDriver {
     pub fn new(api_key: &str) -> Result<Self> {
         let credential = BedrockCredential::from_api_key(api_key)?;
         Ok(Self { credential })
@@ -72,9 +72,9 @@ impl BedrockLlmDriver {
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register(ProviderType::Bedrock, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
-        match BedrockLlmDriver::new(api_key) {
-            Ok(driver) => Box::new(driver) as BoxedLlmDriver,
-            Err(e) => Box::new(FailDriver(e.to_string())) as BoxedLlmDriver,
+        match BedrockChatDriver::new(api_key) {
+            Ok(driver) => Box::new(driver) as BoxedChatDriver,
+            Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
         }
     });
 }
@@ -83,7 +83,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 struct FailDriver(String);
 
 #[async_trait]
-impl LlmDriver for FailDriver {
+impl ChatDriver for FailDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<LlmMessage>,
@@ -94,7 +94,7 @@ impl LlmDriver for FailDriver {
 }
 
 #[async_trait]
-impl LlmDriver for BedrockLlmDriver {
+impl ChatDriver for BedrockChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

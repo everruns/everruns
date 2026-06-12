@@ -1,7 +1,7 @@
 //! Anthropic Claude provider driver for Everruns.
 //!
 //! `everruns-anthropic` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`LlmDriver`] contract from `everruns-core` and
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core` and
 //! registers Anthropic's Messages API driver into a [`DriverRegistry`].
 //!
 //! Provider crates depend on `everruns-core`; `everruns-core` does not depend on
@@ -11,15 +11,15 @@
 //! # Example
 //!
 //! ```
-//! use everruns_anthropic::{AnthropicLlmDriver, register_driver};
+//! use everruns_anthropic::{AnthropicChatDriver, register_driver};
 //! use everruns_core::DriverRegistry;
 //!
-//! let driver = AnthropicLlmDriver::new("your-api-key");
+//! let driver = AnthropicChatDriver::new("your-api-key");
 //!
 //! let mut registry = DriverRegistry::new();
 //! register_driver(&mut registry);
 //!
-//! assert!(format!("{driver:?}").contains("AnthropicLlmDriver"));
+//! assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
 //! ```
 
 mod driver;
@@ -27,7 +27,7 @@ mod driver;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{AnthropicLlmDriver, register_driver};
+pub use driver::{AnthropicChatDriver, register_driver};
 
 // Re-export core types for convenience
-pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};
+pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};

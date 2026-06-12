@@ -1,7 +1,7 @@
 // LLM Driver Abstractions
 //
 // This module encapsulates all abstractions needed to interact with LLM Providers:
-// - LlmDriver trait and types for provider-agnostic LLM interactions
+// - ChatDriver trait and types for provider-agnostic LLM interactions
 // - DriverRegistry for dynamic driver registration at startup
 // - Message types for LLM calls
 //
@@ -26,7 +26,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 // ============================================================================
-// LlmDriver Trait
+// ChatDriver Trait
 // ============================================================================
 
 /// Type alias for the LLM response stream
@@ -154,7 +154,7 @@ pub struct LlmCompletionMetadata {
 /// and must not be retried by driver retry loops even when the provider
 /// reports it under a transient status like 429.
 #[async_trait]
-pub trait LlmDriver: Send + Sync {
+pub trait ChatDriver: Send + Sync {
     /// Call the LLM with streaming response
     async fn chat_completion_stream(
         &self,
@@ -262,9 +262,9 @@ pub trait LlmDriver: Send + Sync {
     }
 }
 
-/// Implement LlmDriver for `Box<dyn LlmDriver>` to allow dynamic dispatch
+/// Implement ChatDriver for `Box<dyn ChatDriver>` to allow dynamic dispatch
 #[async_trait]
-impl LlmDriver for Box<dyn LlmDriver> {
+impl ChatDriver for Box<dyn ChatDriver> {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -1247,7 +1247,7 @@ impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
 }
 
 /// Boxed LLM driver for dynamic dispatch
-pub type BoxedLlmDriver = Box<dyn LlmDriver>;
+pub type BoxedChatDriver = Box<dyn ChatDriver>;
 
 // ============================================================================
 // Driver Registry
@@ -1257,7 +1257,7 @@ pub type BoxedLlmDriver = Box<dyn LlmDriver>;
 ///
 /// Receives a [`DriverConfig`] (provider type, optional key/base URL, and
 /// provider metadata) and returns a boxed driver.
-pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync>;
+pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync>;
 
 /// Registry for LLM drivers
 ///
@@ -1276,7 +1276,7 @@ pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sy
 /// everruns_openai::register_driver(&mut registry);
 ///
 /// // Later, create a driver from config
-/// let driver = registry.create_driver(&config)?;
+/// let driver = registry.create_chat_driver(&config)?;
 /// ```
 #[derive(Clone, Default)]
 pub struct DriverRegistry {
@@ -1298,7 +1298,7 @@ impl DriverRegistry {
     /// [`Self::register_or_replace`] to overwrite intentionally.
     pub fn register<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
     where
-        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
+        F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
         let provider_type = provider_type.into();
         if self.factories.contains_key(&provider_type) {
@@ -1316,7 +1316,7 @@ impl DriverRegistry {
     /// for tests). Prefer [`Self::register`] otherwise so duplicates surface.
     pub fn register_or_replace<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
     where
-        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
+        F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
         self.factories
             .insert(provider_type.into(), Arc::new(factory));
@@ -1328,7 +1328,7 @@ impl DriverRegistry {
     /// the casing stored in the database or sent on the wire.
     pub fn register_external<F>(&mut self, id: impl Into<Arc<str>>, factory: F)
     where
-        F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
+        F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
         self.register(ProviderType::external(id), factory);
     }
@@ -1341,7 +1341,7 @@ impl DriverRegistry {
     /// (external providers may authenticate via [`ProviderMetadata`]).
     ///
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
-    pub fn create_driver(&self, config: &ProviderConfig) -> Result<BoxedLlmDriver> {
+    pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
         // API key is required for real built-in providers, but not for LlmSim
         // (testing) or External providers (which may use metadata-based auth).
         let requires_api_key = !matches!(
@@ -1687,7 +1687,7 @@ mod tests {
             // Return a mock driver - just need something that compiles
             struct MockDriver;
             #[async_trait]
-            impl LlmDriver for MockDriver {
+            impl ChatDriver for MockDriver {
                 async fn chat_completion_stream(
                     &self,
                     _messages: Vec<LlmMessage>,
@@ -1701,12 +1701,12 @@ mod tests {
 
         // Driver without API key should fail
         let config = ProviderConfig::new(ProviderType::OpenAI);
-        let result = registry.create_driver(&config);
+        let result = registry.create_chat_driver(&config);
         assert!(result.is_err());
 
         // Driver with API key should succeed
         let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
-        let result = registry.create_driver(&config_with_key);
+        let result = registry.create_chat_driver(&config_with_key);
         assert!(result.is_ok());
     }
 
@@ -1715,7 +1715,7 @@ mod tests {
         let registry = DriverRegistry::new();
         let config = ProviderConfig::new(ProviderType::Anthropic).with_api_key("test-key");
 
-        let result = registry.create_driver(&config);
+        let result = registry.create_chat_driver(&config);
 
         // Should fail with DriverNotRegistered error
         if let Err(AgentLoopError::DriverNotRegistered(provider)) = result {
@@ -1735,7 +1735,7 @@ mod tests {
         registry.register(ProviderType::OpenAI, |_config| {
             struct MockDriver;
             #[async_trait]
-            impl LlmDriver for MockDriver {
+            impl ChatDriver for MockDriver {
                 async fn chat_completion_stream(
                     &self,
                     _messages: Vec<LlmMessage>,
@@ -1755,7 +1755,7 @@ mod tests {
     fn test_register_external_and_create_driver_without_api_key() {
         struct MockDriver;
         #[async_trait]
-        impl LlmDriver for MockDriver {
+        impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
                 _messages: Vec<LlmMessage>,
@@ -1781,7 +1781,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert!(registry.create_driver(&config).is_ok());
+        assert!(registry.create_chat_driver(&config).is_ok());
     }
 
     #[test]
@@ -1789,7 +1789,7 @@ mod tests {
     fn test_register_duplicate_panics() {
         struct MockDriver;
         #[async_trait]
-        impl LlmDriver for MockDriver {
+        impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
                 _messages: Vec<LlmMessage>,
@@ -1809,7 +1809,7 @@ mod tests {
     fn test_register_or_replace_overwrites() {
         struct MockDriver;
         #[async_trait]
-        impl LlmDriver for MockDriver {
+        impl ChatDriver for MockDriver {
             async fn chat_completion_stream(
                 &self,
                 _messages: Vec<LlmMessage>,

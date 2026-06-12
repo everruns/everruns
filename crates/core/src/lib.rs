@@ -168,7 +168,7 @@ pub mod in_memory_loop;
 // Turn orchestration (state machine, context, outcomes)
 pub mod turn;
 
-// Note: LLM Driver implementations (AnthropicLlmDriver, OpenAILlmDriver) are now in
+// Note: LLM Driver implementations (AnthropicChatDriver, OpenAIChatDriver) are now in
 // separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.
 // This enables dependency inversion - provider crates register their drivers at startup.
 
@@ -263,23 +263,22 @@ pub use utility_llm::{
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
-    BoxedLlmDriver, DiscoveredModel, DriverFactory, DriverRegistry, LlmCallConfig,
-    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
-    ProviderConfig, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverFactory, DriverRegistry, LlmCallConfig,
+    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType,
 };
 
 // LLM retry types re-exports
 pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata};
 
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
-pub use openai_protocol::OpenAIProtocolLlmDriver;
+pub use openai_protocol::OpenAIProtocolChatDriver;
 
 // Open Responses Protocol driver (https://www.openresponses.org/)
 // Vendor-neutral API standard, recommended for new projects
 pub use openresponses_protocol::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, OpenResponsesProtocolLlmDriver, compact_output_to_messages,
+    CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, compact_output_to_messages,
     messages_to_compact_input,
 };
 

@@ -62,9 +62,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ## Driver-Only Example
 
 ```rust
-use everruns_openai::OpenAILlmDriver;
+use everruns_openai::OpenAIChatDriver;
 
-let driver = OpenAILlmDriver::new("your-api-key");
+let driver = OpenAIChatDriver::new("your-api-key");
 assert!(!driver.uses_custom_url());
 ```
 

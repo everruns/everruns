@@ -49,7 +49,7 @@ Provider cache telemetry feeds this same model-view step. If the previous call r
 ```rust
 pub enum CompactionStrategy {
     /// Use provider's native compact endpoint (e.g., OpenAI /responses/compact).
-    /// Highest fidelity, opaque output. Only works if LlmDriver::supports_compact().
+    /// Highest fidelity, opaque output. Only works if ChatDriver::supports_compact().
     Native,
 
     /// Strip tool outputs from older turns, replace with one-line summaries.
@@ -479,5 +479,5 @@ visibility rather than changing the capability ownership model.
 - `specs/infinity-context.md` — complementary capability (optional, independent)
 - `specs/events.md` — event schema
 - `specs/capabilities.md` — capability system
-- `crates/core/src/llm_driver_registry.rs` — `LlmDriver` trait with `supports_compact()` / `compact()`
+- `crates/core/src/llm_driver_registry.rs` — `ChatDriver` trait with `supports_compact()` / `compact()`
 - `crates/core/src/openresponses_protocol.rs` — `CompactRequest` / `CompactResponse` types
