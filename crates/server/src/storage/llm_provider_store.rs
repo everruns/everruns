@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    ModelId, Result, StoreResultExt,
+    AgentLoopError, ModelId, Result, StoreResultExt,
     llm_models::LlmProviderType,
     traits::{LlmProviderStore, ModelWithProvider},
 };
@@ -134,15 +134,19 @@ impl LlmProviderStore for DbLlmProviderStore {
     }
 }
 
-/// Parse a provider type string to its enum. Unknown ids map to the open
-/// `External` variant so embedder-defined providers stored in the database
-/// resolve to a usable provider type instead of erroring.
+/// Parse a provider type string to its enum. Unknown non-empty ids map to the
+/// open `External` variant so embedder-defined providers stored in the database
+/// resolve to a usable provider type instead of erroring. An empty/whitespace
+/// value is a corrupt row and surfaces as a configuration error rather than a
+/// silent `External("")`.
 fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
+    if provider_type_str.trim().is_empty() {
+        return Err(AgentLoopError::Configuration(
+            "empty provider_type in database".to_string(),
+        ));
+    }
     // FromStr is infallible: unknown ids become External.
-    Ok(provider_type_str
-        .to_lowercase()
-        .parse()
-        .unwrap_or_else(|_| unreachable!()))
+    Ok(provider_type_str.parse().unwrap_or_else(|_| unreachable!()))
 }
 
 // ============================================================================
@@ -167,6 +171,13 @@ mod tests {
         // Unknown ids resolve to External, preserving the stored id.
         let parsed = parse_provider_type("totally-custom").unwrap();
         assert_eq!(parsed.to_string(), "totally-custom");
+    }
+
+    #[test]
+    fn parse_provider_type_rejects_empty_value() {
+        // Empty/whitespace is a corrupt row, not a valid external provider.
+        assert!(parse_provider_type("").is_err());
+        assert!(parse_provider_type("   ").is_err());
     }
 
     #[test]

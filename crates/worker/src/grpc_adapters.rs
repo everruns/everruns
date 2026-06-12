@@ -1457,7 +1457,14 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
 fn proto_model_with_provider_to_model(
     proto: proto::ModelWithProvider,
 ) -> Result<ModelWithProvider> {
-    // Parsing is infallible: unknown ids become External providers, so
+    // An empty provider_type is a corrupt/missing proto field; fail fast with
+    // a clear store error rather than parsing it into an unusable External("").
+    if proto.provider_type.trim().is_empty() {
+        return Err(AgentLoopError::store(
+            "empty provider_type in ModelWithProvider proto",
+        ));
+    }
+    // Parsing is otherwise infallible: unknown ids become External providers, so
     // embedder-defined providers round-trip across the worker boundary.
     let provider_type: everruns_core::LlmProviderType = proto
         .provider_type

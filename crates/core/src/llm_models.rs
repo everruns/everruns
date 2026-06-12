@@ -68,7 +68,10 @@ impl std::str::FromStr for LlmProviderType {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s {
+        // Normalize once so built-in matching and the External id share the
+        // same lowercased form; casing variance never yields duplicate ids.
+        let lower = s.to_lowercase();
+        Ok(match lower.as_str() {
             "openai" => LlmProviderType::Openai,
             "openrouter" => LlmProviderType::Openrouter,
             "azure_openai" => LlmProviderType::AzureOpenai,
@@ -77,7 +80,7 @@ impl std::str::FromStr for LlmProviderType {
             "gemini" => LlmProviderType::Gemini,
             "llmsim" => LlmProviderType::LlmSim,
             "bedrock" => LlmProviderType::Bedrock,
-            other => LlmProviderType::External(std::sync::Arc::from(other)),
+            _ => LlmProviderType::External(std::sync::Arc::from(lower.as_str())),
         })
     }
 }

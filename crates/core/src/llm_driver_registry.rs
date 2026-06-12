@@ -1080,13 +1080,22 @@ pub enum ProviderType {
 impl ProviderType {
     /// Construct an external provider type from its canonical id.
     ///
+    /// The id is normalized to lowercase so registration and lookup match
+    /// case-insensitively, consistent with built-in parsing.
+    ///
     /// ```
     /// use everruns_core::llm_driver_registry::ProviderType;
-    /// let p = ProviderType::external("openai-codex");
+    /// let p = ProviderType::external("OpenAI-Codex");
     /// assert_eq!(p.as_str(), "openai-codex");
     /// ```
     pub fn external(id: impl Into<Arc<str>>) -> Self {
-        ProviderType::External(id.into())
+        let id: Arc<str> = id.into();
+        // Avoid reallocating when the id is already lowercase.
+        if id.bytes().any(|b| b.is_ascii_uppercase()) {
+            ProviderType::External(Arc::from(id.to_lowercase().as_str()))
+        } else {
+            ProviderType::External(id)
+        }
     }
 
     /// Canonical string identifier for this provider.
@@ -1110,7 +1119,10 @@ impl std::str::FromStr for ProviderType {
     type Err = std::convert::Infallible;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(match s.to_lowercase().as_str() {
+        // Normalize once: built-in matching and the External id share the same
+        // lowercased form so casing variance never produces duplicate externals.
+        let lower = s.to_lowercase();
+        Ok(match lower.as_str() {
             "openai" => ProviderType::OpenAI,
             "openrouter" => ProviderType::OpenRouter,
             "azure_openai" => ProviderType::AzureOpenAI,
@@ -1119,7 +1131,7 @@ impl std::str::FromStr for ProviderType {
             "gemini" => ProviderType::Gemini,
             "llmsim" => ProviderType::LlmSim,
             "bedrock" => ProviderType::Bedrock,
-            _ => ProviderType::External(Arc::from(s)),
+            _ => ProviderType::External(Arc::from(lower.as_str())),
         })
     }
 }
@@ -1311,12 +1323,14 @@ impl DriverRegistry {
     }
 
     /// Register a driver factory for an embedder-defined external provider,
-    /// keyed by its canonical id.
+    /// keyed by its canonical id. The id is normalized to lowercase (via
+    /// [`ProviderType::external`]) so it matches parsed lookups regardless of
+    /// the casing stored in the database or sent on the wire.
     pub fn register_external<F>(&mut self, id: impl Into<Arc<str>>, factory: F)
     where
         F: Fn(&DriverConfig) -> BoxedLlmDriver + Send + Sync + 'static,
     {
-        self.register(ProviderType::External(id.into()), factory);
+        self.register(ProviderType::external(id), factory);
     }
 
     /// Create an LLM driver based on configuration
@@ -1615,6 +1629,29 @@ mod tests {
         assert_eq!(
             "custom".parse::<ProviderType>().unwrap(),
             ProviderType::external("custom")
+        );
+    }
+
+    #[test]
+    fn test_external_provider_id_is_case_insensitive() {
+        // Built-in matching and external normalization are both case-folding,
+        // so the same id in different casing resolves to one provider.
+        assert_eq!(
+            "OpenAI".parse::<ProviderType>().unwrap(),
+            ProviderType::OpenAI
+        );
+        assert_eq!(
+            "Ollama".parse::<ProviderType>().unwrap(),
+            "ollama".parse::<ProviderType>().unwrap()
+        );
+        assert_eq!(
+            ProviderType::external("OpenAI-Codex").as_str(),
+            "openai-codex"
+        );
+        // Registration and parsed lookup agree regardless of casing.
+        assert_eq!(
+            ProviderType::external("MyProvider"),
+            "myprovider".parse::<ProviderType>().unwrap()
         );
     }
 
