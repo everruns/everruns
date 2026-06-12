@@ -35,6 +35,7 @@ import { normalizeCapabilityConfigs } from "@/components/agents/capability-confi
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
+import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
 import {
@@ -43,7 +44,7 @@ import {
   type FieldErrors,
   parseTagList,
 } from "@/lib/form-validation";
-import type { AgentCapabilityConfig, InitialFile } from "@/lib/api/types";
+import type { AgentCapabilityConfig, InitialFile, NetworkAccessList } from "@/lib/api/types";
 import { getDisplayName, isReadOnlyStatus } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 
@@ -127,6 +128,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const initialFiles = useMemo(() => agent?.initial_files ?? [], [agent?.initial_files]);
   const [localInitialFiles, setLocalInitialFiles] = useState<InitialFile[] | null>(null);
   const selectedInitialFiles = localInitialFiles ?? initialFiles;
+  const initialNetworkAccess = agent?.network_access ?? null;
+  const [localNetworkAccess, setLocalNetworkAccess] = useState<NetworkAccessList | null>(null);
 
   // Capabilities change handler
   const handleCapabilitiesChange = useCallback((newCapabilities: AgentCapabilityConfig[]) => {
@@ -153,6 +156,11 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       const initialFilesToSave = localInitialFiles ?? initialFiles;
       const initialFilesChanged =
         JSON.stringify(initialFilesToSave) !== JSON.stringify(initialFiles);
+      // Omitting network_access leaves it unchanged; {} clears the layer.
+      const networkAccessChanged =
+        localNetworkAccess !== null &&
+        JSON.stringify(normalizeNetworkAccess(localNetworkAccess)) !==
+          JSON.stringify(normalizeNetworkAccess(initialNetworkAccess));
 
       // Update agent (capabilities are now part of the agent resource)
       await updateAgent.mutateAsync({
@@ -167,6 +175,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           // Only include capabilities if they changed
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
           ...(initialFilesChanged && { initial_files: initialFilesToSave }),
+          ...(networkAccessChanged && { network_access: localNetworkAccess }),
         },
       });
 
@@ -385,6 +394,13 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       onChange={setLocalInitialFiles}
                       disabled={isSaving || isReadOnly}
                       description="Files copied into each new session for this agent."
+                    />
+
+                    <NetworkAccessEditor
+                      value={initialNetworkAccess}
+                      onChange={setLocalNetworkAccess}
+                      disabled={isSaving || isReadOnly}
+                      description="Control which hosts this agent's sessions can reach via network-capable tools. Narrows the harness policy; sessions can narrow it further."
                     />
                   </CardContent>
                 </Card>

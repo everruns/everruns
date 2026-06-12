@@ -57,6 +57,7 @@ pub const TURN_CANCELLED: &str = "turn.cancelled";
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
 pub const REASON_COMPLETED: &str = "reason.completed";
+pub const REASON_RECOVERED: &str = "reason.recovered";
 pub const CAPABILITY_USAGE: &str = "capability.usage";
 pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
@@ -65,6 +66,7 @@ pub const TOOL_COMPLETED: &str = "tool.completed";
 pub const TOOL_PROGRESS: &str = "tool.progress";
 pub const TOOL_OUTPUT_DELTA: &str = "tool.output.delta";
 pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
+pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -110,6 +112,12 @@ pub const SUBAGENT_COMPLETED: &str = "subagent.completed";
 pub const SUBAGENT_FAILED: &str = "subagent.failed";
 pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
 
+// Session task lifecycle events (specs/session-tasks.md)
+pub const TASK_CREATED: &str = "task.created";
+pub const TASK_UPDATED: &str = "task.updated";
+pub const TASK_MESSAGE_SENT: &str = "task.message.sent";
+pub const TASK_MESSAGE_RECEIVED: &str = "task.message.received";
+
 // Context compaction events
 pub const CONTEXT_COMPACTING: &str = "context.compacting";
 pub const CONTEXT_COMPACTED: &str = "context.compacted";
@@ -147,6 +155,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TURN_CANCELLED,
     REASON_STARTED,
     REASON_COMPLETED,
+    REASON_RECOVERED,
     ACT_STARTED,
     ACT_COMPLETED,
     TOOL_STARTED,
@@ -458,12 +467,14 @@ impl Event {
             self.event_type.as_str(),
             REASON_STARTED
                 | REASON_COMPLETED
+                | REASON_RECOVERED
                 | ACT_STARTED
                 | ACT_COMPLETED
                 | TOOL_STARTED
                 | TOOL_COMPLETED
                 | TOOL_PROGRESS
                 | TOOL_CALL_REQUESTED
+                | TRANSCRIPT_REPAIRED
         )
     }
 
@@ -842,6 +853,37 @@ impl ReasonCompletedData {
             usage: None,
         }
     }
+}
+
+/// Recovery mode chosen by the ContinuePartial classifier (EVE-532).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum RecoveryMode {
+    /// Persisted accumulated text was finalised as the assistant message;
+    /// no second provider call was made.
+    Finalize,
+    /// Partial was unusable (empty accumulated); re-issued the provider call.
+    Restart,
+}
+
+/// Data for the `reason.recovered` event (EVE-532).
+///
+/// Emitted by `ReasonAtom` when it detects an in-flight partial assistant
+/// message from a previous worker execution and applies the ContinuePartial
+/// recovery policy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasonRecoveredData {
+    /// Turn ID the partial belonged to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Recovery action taken.
+    pub mode: RecoveryMode,
+
+    /// Character length of the persisted accumulated text.
+    pub accumulated_len: usize,
 }
 
 /// Reporting-only capability usage kinds.
@@ -1242,6 +1284,36 @@ pub struct ToolOutputDeltaData {
 
     /// Output stream identifier (e.g., "stdout", "stderr")
     pub stream: String,
+}
+
+/// Action taken during transcript repair for a dangling tool call.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum TranscriptRepairAction {
+    /// A settled result was found in durable storage and replayed into the transcript.
+    Replay,
+    /// A synthetic interrupted result was synthesized to make the transcript well-formed.
+    Synthesize,
+}
+
+/// Data for transcript.repaired event (EVE-533).
+///
+/// Emitted once per dangling tool call when transcript repair runs before a `reason` call.
+/// A dangling call is an assistant `tool_call` with no matching `ToolResult` in the
+/// message history. Repair makes the transcript well-formed so the next LLM call succeeds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TranscriptRepairedData {
+    /// The tool call ID that was repaired.
+    pub tool_call_id: String,
+
+    /// The tool name, if known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+
+    /// Action taken: `replay` (settled result reused) or `synthesize` (interrupted placeholder added).
+    pub action: TranscriptRepairAction,
 }
 
 /// Data for tool.call_requested event
@@ -1975,6 +2047,28 @@ impl From<SubagentEventData> for EventData {
 }
 
 // ============================================================================
+// Session task event data
+// ============================================================================
+
+/// Data for task lifecycle events (`task.created`, `task.updated`).
+///
+/// Carries the full task snapshot so consumers never need a follow-up read;
+/// UIs reconcile by `task.id` (snapshot-then-delta).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionTaskEventData {
+    pub task: crate::session_task::SessionTask,
+}
+
+/// Data for task message events (`task.message.sent`, `task.message.received`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TaskMessageEventData {
+    pub task_id: String,
+    pub message: crate::session_task::TaskMessage,
+}
+
+// ============================================================================
 // Context compaction event data
 // ============================================================================
 
@@ -2255,6 +2349,7 @@ pub enum EventData {
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData),
     ReasonCompleted(ReasonCompletedData),
+    ReasonRecovered(ReasonRecoveredData),
     CapabilityUsage(CapabilityUsageData),
     ActStarted(ActStartedData),
     ActCompleted(ActCompletedData),
@@ -2263,6 +2358,9 @@ pub enum EventData {
     ToolProgress(ToolProgressData),
     ToolOutputDelta(ToolOutputDeltaData),
     ToolCallRequested(ToolCallRequestedData),
+
+    // Recovery / repair events
+    TranscriptRepaired(TranscriptRepairedData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -2298,6 +2396,12 @@ pub enum EventData {
     SubagentCompleted(SubagentEventData),
     SubagentFailed(SubagentEventData),
     SubagentCancelled(SubagentEventData),
+
+    // Session task lifecycle events (full snapshots)
+    TaskCreated(SessionTaskEventData),
+    TaskUpdated(SessionTaskEventData),
+    TaskMessageSent(TaskMessageEventData),
+    TaskMessageReceived(TaskMessageEventData),
 
     // Context compaction events
     ContextCompacting(ContextCompactingData),
@@ -2349,6 +2453,7 @@ impl EventData {
             EventData::TurnCancelled(_) => TURN_CANCELLED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
+            EventData::ReasonRecovered(_) => REASON_RECOVERED,
             EventData::CapabilityUsage(_) => CAPABILITY_USAGE,
             EventData::ActStarted(_) => ACT_STARTED,
             EventData::ActCompleted(_) => ACT_COMPLETED,
@@ -2357,6 +2462,7 @@ impl EventData {
             EventData::ToolProgress(_) => TOOL_PROGRESS,
             EventData::ToolOutputDelta(_) => TOOL_OUTPUT_DELTA,
             EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
+            EventData::TranscriptRepaired(_) => TRANSCRIPT_REPAIRED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
@@ -2369,6 +2475,10 @@ impl EventData {
             EventData::SubagentCompleted(_) => SUBAGENT_COMPLETED,
             EventData::SubagentFailed(_) => SUBAGENT_FAILED,
             EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
+            EventData::TaskCreated(_) => TASK_CREATED,
+            EventData::TaskUpdated(_) => TASK_UPDATED,
+            EventData::TaskMessageSent(_) => TASK_MESSAGE_SENT,
+            EventData::TaskMessageReceived(_) => TASK_MESSAGE_RECEIVED,
             EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
             EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
             EventData::FileWritten(_) => FILE_WRITTEN,
@@ -2450,6 +2560,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ReasonStarted),
             REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
                 .map(EventData::ReasonCompleted),
+            REASON_RECOVERED => serde_json::from_value::<ReasonRecoveredData>(data.clone())
+                .map(EventData::ReasonRecovered),
             CAPABILITY_USAGE => serde_json::from_value::<CapabilityUsageData>(data.clone())
                 .map(EventData::CapabilityUsage),
             ACT_STARTED => {
@@ -2468,6 +2580,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ToolOutputDelta),
             TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
                 .map(EventData::ToolCallRequested),
+            TRANSCRIPT_REPAIRED => serde_json::from_value::<TranscriptRepairedData>(data.clone())
+                .map(EventData::TranscriptRepaired),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
                 .map(EventData::LlmGeneration),
             REASON_THINKING_STARTED => {
@@ -2539,6 +2653,14 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::SubagentFailed),
             SUBAGENT_CANCELLED => serde_json::from_value::<SubagentEventData>(data.clone())
                 .map(EventData::SubagentCancelled),
+            TASK_CREATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
+                .map(EventData::TaskCreated),
+            TASK_UPDATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
+                .map(EventData::TaskUpdated),
+            TASK_MESSAGE_SENT => serde_json::from_value::<TaskMessageEventData>(data.clone())
+                .map(EventData::TaskMessageSent),
+            TASK_MESSAGE_RECEIVED => serde_json::from_value::<TaskMessageEventData>(data.clone())
+                .map(EventData::TaskMessageReceived),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);
@@ -2587,6 +2709,7 @@ impl_from_event_data! {
     TurnCancelledData => TurnCancelled,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
+    ReasonRecoveredData => ReasonRecovered,
     CapabilityUsageData => CapabilityUsage,
     ActStartedData => ActStarted,
     ActCompletedData => ActCompleted,
@@ -2595,6 +2718,7 @@ impl_from_event_data! {
     ToolProgressData => ToolProgress,
     ToolOutputDeltaData => ToolOutputDelta,
     ToolCallRequestedData => ToolCallRequested,
+    TranscriptRepairedData => TranscriptRepaired,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

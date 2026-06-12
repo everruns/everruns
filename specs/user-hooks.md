@@ -18,7 +18,7 @@ contributors compose into a single ordered chain per event.
 
 - A single, small, finite event taxonomy that covers the high-value
   pre/post points without exploding into per-internal-detail callbacks.
-- One executor contract today (bash, sandboxed via `virtual_bash`), designed so
+- One executor contract today (bash, sandboxed via `bashkit_shell`), designed so
   webhook/wasm/blueprint backends slot in later without API churn.
 - Hooks are *data*: a `UserHookSpec` is a JSON-serializable spec the runtime
   translates into adapter `Arc<dyn …>` values. No capability hands the runtime
@@ -188,7 +188,7 @@ Enforced centrally by `HookAdapterBuilder`, capability authors cannot opt out:
 - **Output size**: 64 KiB total stdout + stderr (reuses the
   `OutputHardLimitHook` ceiling). Exceeding the limit is treated as an
   executor error.
-- **Exec environment**: runs through `virtual_bash` against the session VFS.
+- **Exec environment**: runs through `bashkit_shell` against the session VFS.
   No host shell. Inherits the session's egress policy.
 - **stderr** is captured into the audit log only; never surfaced to the
   model or user unless `decision == "block"` with no `reason`.
@@ -243,7 +243,7 @@ The on-the-wire / in-config shape:
   "matcher": { "tool_name": "edit_file" },   // optional
   "executor": {
     "type": "bash",
-    "command": "scripts/fmt.sh",             // run inside virtual_bash
+    "command": "scripts/fmt.sh",             // run inside bashkit_shell
     "env": { "FMT_PROFILE": "ci" }           // optional, capped at 16 vars
   },
   "timeout_ms": 5000,                        // optional, 100..30_000
@@ -376,7 +376,7 @@ Threat model entries added to `specs/threat-model.md` under `TM-HOOK`:
 
 - **TM-HOOK-001 — Hook-as-injection-amplifier**: a model-controlled file
   (`scripts/fmt.sh`) lets a prompt-injected agent influence hook behavior.
-  Mitigation: hooks run in `virtual_bash`, same FS sandbox as `bash`; the
+  Mitigation: hooks run in `bashkit_shell`, same FS sandbox as `bash`; the
   hook script is loaded by path from session VFS; running scripts that
   live in agent-writable paths is admin's choice.
 - **TM-HOOK-002 — Hook-as-exfil-channel**: a hook command makes outbound

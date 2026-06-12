@@ -53,6 +53,8 @@ import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { localizedCapabilityName } from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
 
 export type SearchResultCategory =
@@ -131,8 +133,8 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["ability", "tool"],
   },
   {
-    title: "Volumes",
-    href: "/volumes",
+    title: "Memory",
+    href: "/memory",
     icon: HardDrive,
     keywords: ["workspace", "files", "storage"],
   },
@@ -243,7 +245,7 @@ const ID_PREFIX_MAP: Record<
   cap_: { category: "capability", label: "Declarative Capability", path: "/capabilities" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
-  vol_: { category: "id", label: "Volume", path: "/volumes" },
+  mem_: { category: "id", label: "Memory", path: "/memory" },
   identity_: {
     category: "agent_identity",
     label: "Agent Identity",
@@ -268,6 +270,7 @@ function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]
 const EMPTY_ARRAY: never[] = [];
 
 export function useGlobalSearch(query: string) {
+  const { locale } = useLocale();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: agentsData } = useAgents();
   const { data: sessionsData } = useSessions(undefined, { limit: 100 });
@@ -500,6 +503,12 @@ export function useGlobalSearch(query: string) {
     let capabilityCount = 0;
     for (const capability of capabilities) {
       if (capabilityCount >= MAX_PER_CATEGORY) break;
+      // Match localized strings from every locale so e.g. Ukrainian queries
+      // find capabilities regardless of the active UI locale.
+      const localizedTexts = Object.values(capability.localizations ?? {}).flatMap((loc) => [
+        loc.name,
+        loc.description,
+      ]);
       if (
         matchesTokens(
           tokens,
@@ -508,14 +517,16 @@ export function useGlobalSearch(query: string) {
           capability.id,
           capability.category,
           "capability",
+          ...localizedTexts,
         )
       ) {
+        const capabilityName = localizedCapabilityName(capability, locale);
         results.push({
           id: `capability:${capability.id}`,
           category: "capability",
           icon: Puzzle,
-          title: capability.name,
-          subtitle: `Capabilities > ${capability.name}`,
+          title: capabilityName,
+          subtitle: `Capabilities > ${capabilityName}`,
           href: `/capabilities/${capability.id}`,
         });
         capabilityCount++;
@@ -605,6 +616,7 @@ export function useGlobalSearch(query: string) {
     return results;
   }, [
     query,
+    locale,
     currentOrg?.public_id,
     organizations,
     setCurrentOrg,

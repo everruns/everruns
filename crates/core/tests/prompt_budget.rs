@@ -13,9 +13,9 @@
 
 use everruns_core::capabilities::{
     BudgetingCapability, Capability, DataKnowledgeCapability, FileSystemCapability,
-    InfinityContextCapability, MemoryCapability, SampleDataCapability, SelfBudgetCapability,
-    SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability, SubagentCapability,
-    SystemPromptContext, WebFetchCapability,
+    InfinityContextCapability, MemoryCapability, MessageMetadataCapability, SampleDataCapability,
+    SelfBudgetCapability, SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability,
+    SubagentCapability, SystemPromptContext, WebFetchCapability,
 };
 use everruns_core::typed_id::SessionId;
 
@@ -56,13 +56,27 @@ async fn skills_static_prompt_within_budget() {
 }
 
 #[tokio::test]
-async fn memory_prompt_within_budget() {
-    assert_contribution_under(&MemoryCapability, 275).await;
+async fn memory_prompt_is_empty() {
+    // The mounts-based Memory capability surfaces data through the
+    // filesystem, not the system prompt; keep its prompt cost at zero.
+    let ctx = SystemPromptContext::without_file_store(SessionId::new());
+    assert!(
+        MemoryCapability
+            .system_prompt_contribution(&ctx)
+            .await
+            .is_none(),
+        "memory is expected to contribute no prompt"
+    );
 }
 
 #[tokio::test]
 async fn subagents_prompt_within_budget() {
     assert_contribution_under(&SubagentCapability, 350).await;
+}
+
+#[tokio::test]
+async fn message_metadata_prompt_within_budget() {
+    assert_contribution_under(&MessageMetadataCapability, 350).await;
 }
 
 #[tokio::test]

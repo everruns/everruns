@@ -6,6 +6,10 @@ This document captures the contract. Tool-side behavior of `spawn_background` (a
 
 ## Goal
 
+Each accepted background run is tracked as a session task
+(`kind = background_tool`) with progress, state, and `task.*` events — see
+[`specs/session-tasks.md`](./session-tasks.md).
+
 `spawn_background` is the generic background runner. It wraps any registered built-in tool that opts in via hints. Before EVE-501 the meta-tool was registered into the worker's tool registry by default but was never advertised to the model — sessions had `bash` with `supports_background=true` but no visible `spawn_background`, so models fell back to raw shell detaching. The fix is to expose `spawn_background` through the same capability path that contributes all other model-visible tools.
 
 ## Contract
@@ -18,7 +22,7 @@ This document captures the contract. Tool-side behavior of `spawn_background` (a
 
 4. **Lockstep with the worker registry.** Both `tool_definitions` (model-visible) and `tools` (worker execution registry) gain `spawn_background` from the same activation event. `ToolRegistry::with_defaults()` does **not** include `SpawnBackgroundTool` — if the model cannot see the tool, the worker must not silently dispatch it from a hidden default.
 
-5. **No owner capability.** `virtual_bash` only advertises `supports_background=true` on the `bash` tool and implements `BackgroundExecutableTool`. It does not contribute `spawn_background`. The same rule applies to any future background-capable tool: declare the hint, implement the trait, and the meta-tool surfaces via the generic capability.
+5. **No owner capability.** `bashkit_shell` only advertises `supports_background=true` on the `bash` tool and implements `BackgroundExecutableTool`. It does not contribute `spawn_background`. The same rule applies to any future background-capable tool: declare the hint, implement the trait, and the meta-tool surfaces via the generic capability.
 
 ## Cross-cutting capability pattern
 
@@ -36,7 +40,7 @@ When a new cross-cutting capability is added, extend the auto-activation block r
 The capability ships with three layers of tests:
 
 - **Capability unit tests** (`crates/core/src/capabilities/background_execution.rs`): metadata, single-tool contribution, presence in the built-in registry.
-- **Activation unit tests** (`crates/core/src/capabilities/mod.rs`): positive trigger via `virtual_bash`, negative trigger with `current_time`, idempotence under explicit + auto-activation.
+- **Activation unit tests** (`crates/core/src/capabilities/mod.rs`): positive trigger via `bashkit_shell`, negative trigger with `current_time`, idempotence under explicit + auto-activation.
 - **Lockstep regression** (`crates/core/src/tools.rs`, `crates/core/src/capabilities/mod.rs`): `ToolRegistry::with_defaults()` must not include `spawn_background`.
 
 End-to-end scripted-session coverage (using `llmsim` scripted mode to drive an agent through a real `spawn_background` call) is the suggested next layer; it belongs alongside the existing `crates/server/tests/workflow_test.rs` LlmSim scenarios.

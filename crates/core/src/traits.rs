@@ -903,6 +903,19 @@ pub enum ToolCallClaimResult {
     },
 }
 
+/// Read-only status of a tool call in durable storage (EVE-533).
+#[derive(Debug, Clone)]
+pub enum DurableToolCallStatus {
+    /// Tool completed successfully or with an error; result is stored.
+    Settled { result_json: serde_json::Value },
+    /// Tool was settled with `interrupted` status; result may contain error details.
+    Interrupted {
+        result_json: Option<serde_json::Value>,
+    },
+    /// A claim exists but the tool never finished.
+    Running,
+}
+
 /// Durable per-tool-call idempotency store (EVE-530).
 ///
 /// Implements the claim/settle CAS that prevents double-execution of
@@ -937,6 +950,16 @@ pub trait DurableToolResultStore: Send + Sync + 'static {
         status: &str,
         claim_token: uuid::Uuid,
     ) -> Result<bool>;
+
+    /// Read-only lookup of a tool call's current status in durable storage (EVE-533).
+    ///
+    /// Used by transcript repair to decide whether to replay a stored result or
+    /// synthesize an interrupted placeholder. Returns `None` if no row exists.
+    async fn get_tool_call_status(
+        &self,
+        turn_id: &str,
+        tool_call_id: &str,
+    ) -> Result<Option<DurableToolCallStatus>>;
 }
 
 /// No-op implementation — used when no durable store is configured (dev/test).
@@ -966,6 +989,14 @@ impl DurableToolResultStore for NoopDurableToolResultStore {
         _claim_token: uuid::Uuid,
     ) -> Result<bool> {
         Ok(true)
+    }
+
+    async fn get_tool_call_status(
+        &self,
+        _turn_id: &str,
+        _tool_call_id: &str,
+    ) -> Result<Option<DurableToolCallStatus>> {
+        Ok(None)
     }
 }
 
@@ -1003,6 +1034,50 @@ pub struct NoopStreamHeartbeater;
 #[async_trait]
 impl StreamHeartbeater for NoopStreamHeartbeater {
     async fn heartbeat(&self, _progress: StreamProgress) {}
+}
+
+// ============================================================================
+// PartialStreamStore — partial-stream recovery for Reason activity (EVE-532)
+// ============================================================================
+
+/// State of a partially-streamed assistant message detected in the event log.
+#[derive(Debug, Clone)]
+pub struct PartialStreamState {
+    /// Accumulated text from the last `output.message.delta` for the turn.
+    /// Empty when `output.message.started` was emitted but no delta arrived.
+    pub accumulated: String,
+}
+
+/// Consults the persisted event log to detect whether a `reason` activity
+/// was interrupted after `output.message.started` but before
+/// `output.message.completed` or `output.message.replaced`.
+///
+/// Used by `ReasonAtom` on re-entry to apply the ContinuePartial recovery
+/// policy (EVE-532): finalize the partial text without a second provider call,
+/// or restart clean if the partial is unusable.
+#[async_trait]
+pub trait PartialStreamStore: Send + Sync {
+    /// Return the partial-stream state for `(session_id, turn_id)` if an
+    /// in-flight assistant message exists (started but not completed).
+    async fn get_partial_stream(
+        &self,
+        session_id: SessionId,
+        turn_id: &str,
+    ) -> Result<Option<PartialStreamState>>;
+}
+
+/// No-op — always reports no partial stream (dev/test / in-memory mode).
+pub struct NoopPartialStreamStore;
+
+#[async_trait]
+impl PartialStreamStore for NoopPartialStreamStore {
+    async fn get_partial_stream(
+        &self,
+        _session_id: SessionId,
+        _turn_id: &str,
+    ) -> Result<Option<PartialStreamState>> {
+        Ok(None)
+    }
 }
 
 /// Runtime context provided to tools during execution.
@@ -1065,6 +1140,10 @@ pub struct ToolContext {
     /// Optional session resource registry — generic registry of active resources.
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
 
+    /// Optional session task registry — background work owned by the session
+    /// (specs/session-tasks.md).
+    pub session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
+
     /// Optional event emitter for tools that need to stream progress updates.
     /// When set, tools can emit `tool.progress` events during execution.
     pub event_emitter: Option<Arc<dyn EventEmitter>>,
@@ -1088,10 +1167,7 @@ pub struct ToolContext {
     /// sibling tool metadata, because the execution registry can be a superset.
     pub visible_tool_names: Option<Arc<HashSet<String>>>,
 
-    /// Optional memory store backend for persistent cross-session memory.
-    pub memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
-
-    /// Optional org ID for org-scoped operations (memory stores, etc.).
+    /// Optional org ID for org-scoped operations.
     pub org_id: Option<crate::typed_id::OrgId>,
 
     /// Merged network access list (harness ∩ agent ∩ session).
@@ -1108,6 +1184,11 @@ pub struct ToolContext {
 
     /// Optional internal payment authority for paid capability tools.
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
+
+    /// Optional durable spawn handle store for subagent reattach (EVE-535).
+    /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
+    /// on parent worker reclaim.
+    pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
 }
 
 impl ToolContext {
@@ -1131,18 +1212,19 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1166,18 +1248,19 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1204,18 +1287,19 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1243,18 +1327,19 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1320,18 +1405,19 @@ impl ToolContext {
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             event_emitter: None,
             event_context: None,
             tool_call_id: None,
             capability_registry: None,
             tool_registry: None,
             visible_tool_names: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            subagent_spawn_store: None,
         }
     }
 
@@ -1386,12 +1472,12 @@ impl ToolContext {
         self
     }
 
-    /// Add a memory store backend for persistent cross-session memory.
-    pub fn with_memory_store(
+    /// Add a session task registry to this context.
+    pub fn with_session_task_registry(
         mut self,
-        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
+        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
     ) -> Self {
-        self.memory_store = Some(store);
+        self.session_task_registry = Some(registry);
         self
     }
 
@@ -1425,6 +1511,12 @@ impl ToolContext {
     /// Set the internal payment authority for paid capability operations.
     pub fn with_payment_authority(mut self, authority: Arc<dyn PaymentAuthority>) -> Self {
         self.payment_authority = Some(authority);
+        self
+    }
+
+    /// Set the durable subagent spawn handle store (EVE-535).
+    pub fn with_subagent_spawn_store(mut self, store: Arc<dyn SubagentSpawnStore>) -> Self {
+        self.subagent_spawn_store = Some(store);
         self
     }
 
@@ -1520,8 +1612,8 @@ impl std::fmt::Debug for ToolContext {
             )
             .field("event_emitter", &self.event_emitter.is_some())
             .field("tool_registry", &self.tool_registry.is_some())
-            .field("memory_store", &self.memory_store.is_some())
             .field("payment_authority", &self.payment_authority.is_some())
+            .field("subagent_spawn_store", &self.subagent_spawn_store.is_some())
             .field("org_id", &self.org_id)
             .finish()
     }
@@ -1649,6 +1741,186 @@ pub trait ImageResolver: Send + Sync {
     ///
     /// Returns `None` if the image is not found.
     async fn resolve_image(&self, image_id: Uuid) -> Result<Option<ResolvedImage>>;
+}
+
+// ============================================================================
+// SubagentSpawnStore — durable spawn handles for subagent reattach (EVE-535)
+// ============================================================================
+
+/// Result of attempting to claim a subagent spawn slot.
+#[derive(Debug)]
+pub enum SpawnClaimResult {
+    /// First claim — child session does not yet exist.
+    /// Proceed to create the child, then call `register_child_session`.
+    Claimed {
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+    },
+    /// Row exists but `child_session_id` was never registered (crash between
+    /// claim and `register_child_session`). Re-create the child and call
+    /// `register_child_session` — same flow as `Claimed`.
+    ClaimedPendingChild {
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+    },
+    /// Child session was created and is still running.
+    /// Reattach: wait for the existing child and settle with the stored claim_token.
+    AlreadyRunning {
+        child_session_id: crate::typed_id::SessionId,
+        /// Stored claim token — must be used for `settle_spawn` on this replay.
+        claim_token: uuid::Uuid,
+    },
+    /// Child already finished on a previous execution.
+    /// Fast-path: return the stored result immediately without waiting.
+    AlreadySettled {
+        child_session_id: crate::typed_id::SessionId,
+        /// The `wait_for_idle` return value from the original execution.
+        terminal_status: String,
+        terminal_result: String,
+    },
+}
+
+/// Durable spawn handle store for subagent idempotency (EVE-535).
+///
+/// Maps `(parent_session_id, tool_call_id) → child_session_id` so that when
+/// a parent's `act` is reclaimed mid-`wait_for_idle`, the tool can reattach
+/// to the existing child instead of spawning a duplicate.
+///
+/// Lifecycle: claim → register_child_session → settle_spawn.
+#[async_trait]
+pub trait SubagentSpawnStore: Send + Sync + 'static {
+    /// Attempt to claim a spawn slot for `(parent_session_id, tool_call_id)`.
+    ///
+    /// Does NOT accept `child_session_id` — the child session does not exist yet.
+    /// Call `register_child_session` with the actual child ID after creating it.
+    async fn try_claim_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        subagent_name: &str,
+        subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult>;
+
+    /// Register the actual child session ID after it has been created.
+    ///
+    /// Must be called after `try_claim_spawn` returns `Claimed` or
+    /// `ClaimedPendingChild`, before waiting for the child to complete.
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()>;
+
+    /// Record the terminal result once the child has completed.
+    ///
+    /// `claim_token` must match the stored token. `terminal_status` is the
+    /// `wait_for_idle` return value ("idle", "error", "timeout", etc.) and
+    /// `terminal_result` is the last agent message.
+    async fn settle_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        claim_token: uuid::Uuid,
+        terminal_status: &str,
+        terminal_result: &str,
+    ) -> Result<()>;
+}
+
+/// Blanket impl: `Arc<S>` delegates to the inner store.
+#[async_trait]
+impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
+    async fn try_claim_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        subagent_name: &str,
+        subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult> {
+        (**self)
+            .try_claim_spawn(
+                parent_session_id,
+                tool_call_id,
+                subagent_name,
+                subagent_task,
+                claim_token,
+            )
+            .await
+    }
+
+    async fn register_child_session(
+        &self,
+        spawn_handle_id: uuid::Uuid,
+        claim_token: uuid::Uuid,
+        child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        (**self)
+            .register_child_session(spawn_handle_id, claim_token, child_session_id)
+            .await
+    }
+
+    async fn settle_spawn(
+        &self,
+        parent_session_id: crate::typed_id::SessionId,
+        tool_call_id: &str,
+        claim_token: uuid::Uuid,
+        terminal_status: &str,
+        terminal_result: &str,
+    ) -> Result<()> {
+        (**self)
+            .settle_spawn(
+                parent_session_id,
+                tool_call_id,
+                claim_token,
+                terminal_status,
+                terminal_result,
+            )
+            .await
+    }
+}
+
+/// No-op spawn store — used when no durable store is configured (dev/test).
+///
+/// Always claims (no dedup); settle and register are no-ops.
+pub struct NoopSubagentSpawnStore;
+
+#[async_trait]
+impl SubagentSpawnStore for NoopSubagentSpawnStore {
+    async fn try_claim_spawn(
+        &self,
+        _parent_session_id: crate::typed_id::SessionId,
+        _tool_call_id: &str,
+        _subagent_name: &str,
+        _subagent_task: &str,
+        claim_token: uuid::Uuid,
+    ) -> Result<SpawnClaimResult> {
+        Ok(SpawnClaimResult::Claimed {
+            spawn_handle_id: uuid::Uuid::new_v4(),
+            claim_token,
+        })
+    }
+
+    async fn register_child_session(
+        &self,
+        _spawn_handle_id: uuid::Uuid,
+        _claim_token: uuid::Uuid,
+        _child_session_id: crate::typed_id::SessionId,
+    ) -> Result<()> {
+        Ok(())
+    }
+
+    async fn settle_spawn(
+        &self,
+        _parent_session_id: crate::typed_id::SessionId,
+        _tool_call_id: &str,
+        _claim_token: uuid::Uuid,
+        _terminal_status: &str,
+        _terminal_result: &str,
+    ) -> Result<()> {
+        Ok(())
+    }
 }
 
 // ============================================================================

@@ -423,7 +423,7 @@ When `activate_skill` runs, the SKILL.md body is transformed through a fixed pip
 
 1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`) — synchronous, always runs.
 2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`) — synchronous, always runs.
-3. **Command injection** (`` !`cmd` ``) — asynchronous shell execution inside the session sandbox (virtual bash / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
+3. **Command injection** (`` !`cmd` ``) — asynchronous shell execution inside the session sandbox (bashkit shell / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
 
 ### Command-Injection Trust Gate
 
@@ -442,7 +442,7 @@ When `activate_skill` runs, the SKILL.md body is transformed through a fixed pip
 Re-enabling the feature requires BOTH:
 
 1. A platform-controlled provenance signal (for example, a `mount_capability_id` column on `session_files` that is populated only by mount application code and rejected on all user-facing API paths), AND
-2. Replacing the default `ProcessCommandExecutor` (which spawns worker-host `bash -c`) with a session-sandbox-backed executor so commands run against **virtual bash (bashkit / managed session sandbox) and the session virtual filesystem**, not the worker host. Flipping provenance alone is insufficient — a trusted but misbehaving skill would otherwise be able to reach worker state.
+2. Replacing the default `ProcessCommandExecutor` (which spawns worker-host `bash -c`) with a session-sandbox-backed executor so commands run against **the bashkit shell (managed session sandbox) and the session virtual filesystem**, not the worker host. Flipping provenance alone is insufficient — a trusted but misbehaving skill would otherwise be able to reach worker state.
 
 See threat-model entry [`TM-TOOL-020`](./threat-model.md) for the mitigation state and EVE-388 for follow-up.
 
@@ -458,7 +458,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
    - Total decompressed size limit (10 MB)
 
 2. **Script Execution**: Skills may contain scripts. Execution should be:
-   - Sandboxed (via virtual_bash capability)
+   - Sandboxed (via bashkit_shell capability)
    - Logged for auditing
    - Subject to existing session filesystem permissions
 

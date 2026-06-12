@@ -1,6 +1,6 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
@@ -20,6 +20,14 @@ impl Capability for CurrentTimeCapability {
 
     fn description(&self) -> &str {
         "Adds a tool to get the current date and time in various formats and timezones."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Поточний час",
+            "Додає інструмент для отримання поточної дати й часу в різних форматах і часових поясах.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

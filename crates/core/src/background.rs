@@ -12,8 +12,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::Arc;
 
+#[cfg(feature = "openapi")]
+use utoipa::ToSchema;
+
 /// Structured progress reported by background tools.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct BackgroundProgress {
     pub current: Option<u64>,
     pub total: Option<u64>,

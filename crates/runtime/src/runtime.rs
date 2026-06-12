@@ -34,13 +34,12 @@ use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
-    SessionStorageStore, SessionStore,
+    SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
-    InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
-    SessionFileSystemFactoryContext,
+    InputMessage, MessageRetriever, SessionFileSystem, SessionFileSystemFactoryContext,
 };
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
@@ -404,10 +403,11 @@ impl InProcessRuntimeBuilder {
             persisting_emitter,
             file_store,
             storage_store: backends.storage_store,
-            memory_store: backends.memory_store,
+            connection_resolver: backends.connection_resolver,
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
+            mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
         })
     }
 }
@@ -444,8 +444,9 @@ pub struct InProcessRuntime {
     persisting_emitter: PersistingEventEmitter,
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
-    memory_store: Arc<dyn MemoryStoreBackend>,
+    connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
+    mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
 }
 
 impl InProcessRuntime {
@@ -704,7 +705,23 @@ impl InProcessRuntime {
     ) -> Result<everruns_core::command::CommandResult> {
         let ctx = self.load_context(session_id).await?;
         let registry = self.platform_definition.capability_registry();
-        let exec_ctx = everruns_core::command::CommandExecutionContext { session_id };
+        // Context-aware commands (e.g. /btw) get the same store-backed host
+        // facilities the server provides; the already-assembled context seeds
+        // the host so dispatch and execution assemble it once.
+        let host = everruns_core::command_host::StoreCommandHost::new(
+            session_id,
+            self.harness_store.clone(),
+            self.agent_store.clone(),
+            self.session_store.clone(),
+            self.message_store.clone(),
+            self.provider_store.clone(),
+            registry.clone(),
+            self.platform_definition.driver_registry().clone(),
+        )
+        .with_file_store(self.file_store.clone())
+        .with_assembled_context(ctx.clone());
+        let exec_ctx =
+            everruns_core::command::CommandExecutionContext::new(session_id, Arc::new(host));
         for config in &ctx.resolved_capability_configs {
             let Some(capability) = registry.get(config.capability_id()) else {
                 continue;
@@ -822,7 +839,8 @@ impl RuntimeHostAdapter for InProcessRuntime {
             vec![]
         } else {
             crate::mcp::discover_tool_definitions(
-                &self.mcp_client(),
+                &self.mcp_discovery_cache,
+                self.mcp_client(),
                 session_id.uuid(),
                 &scoped_servers,
             )
@@ -896,16 +914,16 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.storage_store.clone())
     }
 
+    fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
+        self.connection_resolver.clone()
+    }
+
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
         Some(self.platform_definition.utility_llm_service())
     }
 
     fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
         Some(self.platform_definition.egress_service())
-    }
-
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
-        Some(self.memory_store.clone())
     }
 }
 

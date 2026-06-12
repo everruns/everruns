@@ -33,11 +33,12 @@ mod session_files;
 mod session_git;
 mod session_resources;
 mod session_storage;
+mod session_tasks;
 mod sessions;
 mod skills;
+pub mod subagent_spawn_handles;
 mod user_connections;
 mod users;
-mod volumes;
 
 #[cfg(test)]
 mod tests;
@@ -127,6 +128,9 @@ pub struct InMemoryDatabase {
     leased_resources: RwLock<HashMap<LeasedResourceId, LeasedResourceRow>>,
     // Session resource registry (generic active-resource tracking).
     session_resources: RwLock<HashMap<(SessionId, String), SessionResourceRow>>,
+    // Session tasks (background work owned by a session), keyed by task id.
+    session_tasks: RwLock<HashMap<String, SessionTaskRow>>,
+    session_task_messages: RwLock<Vec<SessionTaskMessageRow>>,
     // Audit logs (TM-OBS-007)
     audit_logs: RwLock<Vec<AuditLogRow>>,
     // Apps (deployable agent+harness bundles)
@@ -153,12 +157,9 @@ pub struct InMemoryDatabase {
     payment_accounts: RwLock<HashMap<Uuid, PaymentAccountRow>>,
     payment_policies: RwLock<HashMap<Uuid, PaymentPolicyRow>>,
     payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
-    // Workspace volumes
-    volumes: RwLock<HashMap<Uuid, VolumeRow>>,
-    volume_files: RwLock<HashMap<Uuid, VolumeFileRow>>,
-    // Memory stores and memories (org-scoped agent memory)
-    memory_stores: RwLock<HashMap<Uuid, MemoryStoreDbRow>>,
-    memories: RwLock<HashMap<Uuid, MemoryDbRow>>,
+    // Memories (org-scoped named Memories — see specs/memory.md)
+    memories: RwLock<HashMap<Uuid, MemoryRow>>,
+    memory_files: RwLock<HashMap<Uuid, MemoryFileRow>>,
     // Knowledge bases (curated org knowledge)
     knowledge_bases: RwLock<HashMap<Uuid, KnowledgeBaseRow>>,
     knowledge_entries: RwLock<HashMap<Uuid, KnowledgeEntryRow>>,
@@ -221,6 +222,8 @@ impl Default for InMemoryDatabase {
             session_schedules: RwLock::new(HashMap::new()),
             leased_resources: RwLock::new(HashMap::new()),
             session_resources: RwLock::new(HashMap::new()),
+            session_tasks: RwLock::new(HashMap::new()),
+            session_task_messages: RwLock::new(Vec::new()),
             audit_logs: RwLock::new(Vec::new()),
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),
@@ -239,10 +242,8 @@ impl Default for InMemoryDatabase {
             payment_accounts: RwLock::new(HashMap::new()),
             payment_policies: RwLock::new(HashMap::new()),
             payment_attempts: RwLock::new(HashMap::new()),
-            volumes: RwLock::new(HashMap::new()),
-            volume_files: RwLock::new(HashMap::new()),
-            memory_stores: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),
+            memory_files: RwLock::new(HashMap::new()),
             knowledge_bases: RwLock::new(HashMap::new()),
             knowledge_entries: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),

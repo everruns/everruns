@@ -1038,8 +1038,8 @@ impl ServerAppBuilder {
             platform_definition.built_in_harnesses().to_vec(),
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
-        let volumes_state = api::volumes::AppState::new(db.clone(), auth_state.clone());
-        let memory_stores_state = api::memory_stores::AppState::new(db.clone(), auth_state.clone());
+        let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
+        let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
         let payments_state =
@@ -1066,6 +1066,11 @@ impl ServerAppBuilder {
         );
         let session_resources_state =
             api::session_resources::AppState::new(db.clone(), auth_state.clone());
+        let session_tasks_state = api::session_tasks::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            event_service.clone(),
+        );
 
         // MCP endpoint: derive the protected-resource metadata URL from
         // auth_config.base_url. Path-derived per RFC 9728 §3.1 for resource
@@ -1145,6 +1150,7 @@ impl ServerAppBuilder {
             .merge(api::session_files::routes(session_files_state))
             .merge(api::session_git::routes(session_git_state))
             .merge(api::session_resources::routes(session_resources_state))
+            .merge(api::session_tasks::routes(session_tasks_state))
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))
@@ -1177,8 +1183,8 @@ impl ServerAppBuilder {
                     feature_flags.clone(),
                 ),
             ))
-            .merge(api::volumes::routes(volumes_state))
-            .merge(api::memory_stores::routes(memory_stores_state))
+            .merge(api::memory::routes(memory_state))
+            .merge(api::memory_files::routes(memory_files_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
             .merge(api::payments::routes(payments_state))
             .merge(api::reporting::routes(reporting_state))
@@ -1774,6 +1780,14 @@ impl ServerAppBuilder {
             {
                 tracing::error!(error = %e, "Failed to bootstrap leased-resource cleanup schedule");
             }
+            if let Err(e) =
+                crate::session_task_reaper_scheduler::ensure_session_task_reaper_schedule(
+                    store.clone(),
+                )
+                .await
+            {
+                tracing::error!(error = %e, "Failed to bootstrap session-task reaper schedule");
+            }
             let scheduler = everruns_durable::DurableScheduler::with_defaults(
                 store,
                 format!("scheduler-{}", uuid::Uuid::now_v7()),
@@ -1798,8 +1812,8 @@ impl ServerAppBuilder {
             std::time::Duration::from_secs(15),
         );
 
-        // -- Source-backed workspace volume sync (both prod and dev) --
-        let volume_connection_resolver = encryption.as_ref().map(|enc| {
+        // -- Source-backed Memory sync (both prod and dev) --
+        let memory_connection_resolver = encryption.as_ref().map(|enc| {
             let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
                 crate::storage::GitHubAppTokenMinter::new(
                     config.app_id.clone(),
@@ -1812,9 +1826,9 @@ impl ServerAppBuilder {
                 github_app_minter,
             )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
         });
-        crate::domains::volumes::source_sync::spawn_volume_source_sync_task(
+        crate::domains::memory::source_sync::spawn_memory_source_sync_task(
             db.clone(),
-            volume_connection_resolver,
+            memory_connection_resolver,
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --

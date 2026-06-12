@@ -9,6 +9,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.11.0] - 2026-06-12
+
+### Highlights
+
+- **Declarative Capability Editor** - New full-page UI for managing MCP servers, skills, and files in one place ([#2141](https://github.com/everruns/everruns/pull/2141)).
+- **Web Fetch via Egress + Network Access UI** - `web_fetch` is now routed through the egress service with a network access controls panel in the UI ([#2118](https://github.com/everruns/everruns/pull/2118)).
+- **Session Tasks** - Background task registry with cancellation, wake policy, reaper, and chat chips for visibility ([#2119](https://github.com/everruns/everruns/pull/2119)).
+- **Memory API** - Memory file CRUD HTTP API; "Workspace Volume" renamed to "Memory" throughout ([#2111](https://github.com/everruns/everruns/pull/2111), [#2106](https://github.com/everruns/everruns/pull/2106)).
+- **Subagent Durable Reattach** - Durable spawn handles let long-running subagents reconnect after interruption (EVE-535).
+- **OpenRouter Routing Controls** - Fine-grained model routing configuration for OpenRouter ([#2123](https://github.com/everruns/everruns/pull/2123)).
+
+### What's Changed
+
+- feat(ui): full-page declarative capability editor with MCP, skills, files UI ([#2141](https://github.com/everruns/everruns/pull/2141)) by [@chaliy](https://github.com/chaliy)
+- feat(core): fetchkit 0.4 transport injection for web_fetch egress ([#2139](https://github.com/everruns/everruns/pull/2139)) by [@chaliy](https://github.com/chaliy)
+- perf(runtime-mcp): concurrent + cached per-session tool discovery ([#2138](https://github.com/everruns/everruns/pull/2138)) by [@chaliy](https://github.com/chaliy)
+- feat(core): progressive disclosure + never-defer for tool_search ([#2130](https://github.com/everruns/everruns/pull/2130)) by [@chaliy](https://github.com/chaliy)
+- feat(harness): enable message_metadata on generic harness ([#2136](https://github.com/everruns/everruns/pull/2136)) by [@chaliy](https://github.com/chaliy)
+- perf(mcp): stale-while-revalidate + single-flight tool cache ([#2131](https://github.com/everruns/everruns/pull/2131)) by [@chaliy](https://github.com/chaliy)
+- feat: monitor session task kind ([#2129](https://github.com/everruns/everruns/pull/2129)) by [@chaliy](https://github.com/chaliy)
+- feat(llm): add OpenRouter routing controls ([#2123](https://github.com/everruns/everruns/pull/2123)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): handle non-terminal subagent waits ([#2124](https://github.com/everruns/everruns/pull/2124)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): config schemas and localized metadata (uk) ([#2120](https://github.com/everruns/everruns/pull/2120)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): rename virtual_bash to bashkit_shell ([#2122](https://github.com/everruns/everruns/pull/2122)) by [@chaliy](https://github.com/chaliy)
+- feat: session task cancellation, wake policy, reaper, and chat chips ([#2119](https://github.com/everruns/everruns/pull/2119)) by [@chaliy](https://github.com/chaliy)
+- feat(core): streaming session completions for command host (EVE-543) ([#2117](https://github.com/everruns/everruns/pull/2117)) by [@chaliy](https://github.com/chaliy)
+- feat: web_fetch via egress service + network access UI ([#2118](https://github.com/everruns/everruns/pull/2118)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): annotate LLM-facing messages with metadata ([#2116](https://github.com/everruns/everruns/pull/2116)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): inject user connection resolver into in-process runtime ([#2115](https://github.com/everruns/everruns/pull/2115)) by [@chaliy](https://github.com/chaliy)
+- fix(core): simplify web_fetch system-policy block message ([#2113](https://github.com/everruns/everruns/pull/2113)) by [@chaliy](https://github.com/chaliy)
+- feat: session task registry for background work ([#2110](https://github.com/everruns/everruns/pull/2110)) by [@chaliy](https://github.com/chaliy)
+- feat(memory): Memory file CRUD HTTP API ([#2111](https://github.com/everruns/everruns/pull/2111)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): /btw via extended command contract (EVE-543) ([#2109](https://github.com/everruns/everruns/pull/2109)) by [@chaliy](https://github.com/chaliy)
+- feat(core): durable spawn handles and subagent reattach (EVE-535) by [@chaliy](https://github.com/chaliy)
+- refactor: rename Workspace Volume to Memory; drop legacy memory_stores ([#2106](https://github.com/everruns/everruns/pull/2106)) by [@chaliy](https://github.com/chaliy)
+- feat(core): partial-stream finalize on replay (EVE-532) ([#2098](https://github.com/everruns/everruns/pull/2098)) by [@chaliy](https://github.com/chaliy)
+- fix(a2a): accept linked client JSON-RPC methods (EVE-540) by [@chaliy](https://github.com/chaliy)
+- feat(core): transcript repair for dangling tool calls (EVE-533) by [@chaliy](https://github.com/chaliy)
+- fix(worker): support subagent metadata over grpc (EVE-538) by [@chaliy](https://github.com/chaliy)
+- feat(ui): custom HTTP headers in Add MCP Server form (EVE-541) ([#2107](https://github.com/everruns/everruns/pull/2107)) by [@chaliy](https://github.com/chaliy)
+- fix(core): guard thinking stream output ([#2103](https://github.com/everruns/everruns/pull/2103)) by [@chaliy](https://github.com/chaliy)
+- fix(egress): narrow system allowlist hosts ([#2101](https://github.com/everruns/everruns/pull/2101)) by [@chaliy](https://github.com/chaliy)
+- fix(openai): restrict OpenRouter model discovery ([#2100](https://github.com/everruns/everruns/pull/2100)) by [@chaliy](https://github.com/chaliy)
+- fix(bedrock): bound stream event buffering by [@chaliy](https://github.com/chaliy)
+- refactor(brand): mathematically center the three-ring logo ([#2099](https://github.com/everruns/everruns/pull/2099)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.10.0] - 2026-06-10
 
 ### Highlights

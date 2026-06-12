@@ -189,6 +189,7 @@ pub fn declarative_capability_info(
         agent_count: 0,
         harness_count: 0,
         docs_slug: None,
+        localizations: Default::default(),
     }
 }
 

@@ -272,7 +272,7 @@ Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy
 | TM-API-015 | Provider secret leakage via leased-resource metadata | High | Leased-resource metadata is explicitly non-secret; cleanup reconstructs provider auth from user connections/session secrets, and session resources stay org/session scoped | MITIGATED |
 | TM-API-016 | Public-endpoint internal error and tool-detail leakage | High | AG-UI streaming `RUN_ERROR` payloads route every payload-phase error through `crates/server/src/api/public.rs::PublicError`, mapping internal codes to a stable public set (`rate_limited`, `service_unavailable`, `request_too_large`, `internal_error`); raw provider strings, model IDs, HTTP status codes, quota state, and stack traces never reach the wire. Public AG-UI tool activity is translated at the endpoint boundary according to `AgUiChannelConfig.tool_visibility` (`none`, `generic`, `narrated`) and never emits raw tool names, arguments, results, or internal tool call IDs. Universal fallback is `internal_error`. Pre-stream HTTP rejections (`bad_request`, `forbidden`, `not_found`, generic 500) keep their existing texts but already avoid internal detail. Other public endpoints (Slack webhook + manifest) inherit the same contract for any payload-phase errors they add. See `specs/public-endpoints.md` | MITIGATED |
 | TM-API-017 | Public AG-UI image upload abuse: oversize writes, MIME spoofing, decompression bombs | High | The public `/v1/apps/{app_id}/ag-ui/images` route caps body size at 10 MB (router `DefaultBodyLimit` plus in-handler check), validates the uploaded bytes match the declared content type via `image::guess_format` (rejecting MIME spoofing), and decodes thumbnails through `image::ImageReader` with explicit `Limits` (max width/height 20_000 px, max alloc 160 MB) so a crafted image cannot exhaust CPU or memory. Authenticated `/v1/images` retains the larger 100 MB cap behind authentication and rate limits | MITIGATED |
-| TM-API-018 | Workspace Volume source credential leakage | High | Source-backed Volume creation stores only non-secret repository coordinates in `volumes.source_config`; GitHub credentials resolve from user/identity connections at sync time, and generic Git URLs with inline credentials are rejected before storage. Sync failures must sanitize `last_sync_error`. | MITIGATED |
+| TM-API-018 | Memory source credential leakage | High | Source-backed Memory creation stores only non-secret repository coordinates in `memories.source_config`; GitHub credentials resolve from user/identity connections at sync time, and generic Git URLs with inline credentials are rejected before storage. Sync failures must sanitize `last_sync_error`. | MITIGATED |
 | TM-API-019 | CSV formula injection in report exports | Medium | Reporting CSV exports prefix formula-like cells (`=`, `+`, `-`, `@`, tab, CR, LF) with an apostrophe before RFC 4180 quoting so spreadsheet clients treat exported values as data, not formulas | MITIGATED |
 
 ### Mitigation Details
@@ -471,7 +471,7 @@ SKILL.md content may contain `` !`command` `` placeholders that, if expanded by 
 3. The function itself is preserved (full implementation, unit-test coverage) with bounded fan-out: at most `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) placeholders expanded per activation, at most 4 shells concurrently. These bounds protect a future re-enable from per-activation CPU / process exhaustion.
 4. SKILL.md content originating from user-facing session/file creation or update flows — including the session-files API, `initial_files`, and runtime `write_file` calls — stays untrusted regardless of metadata.
 5. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
-6. Command execution MUST target the session sandbox (virtual bash via `bashkit`) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
+6. Command execution MUST target the session sandbox (bashkit shell) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
 
 Follow-up work (tracked on EVE-388): (a) add a platform-controlled provenance field — e.g. a `mount_capability_id` column on `session_files` populated only by mount application code and rejected on all user-facing API paths, AND (b) replace `ProcessCommandExecutor` with a session-sandbox-backed executor (`bashkit` / managed session sandbox) so execution is confined to the session VFS. Both must land before the gate is flipped. See `specs/skills-registry.md` "Activation Substitution Pipeline" for the source/outcome matrix.
 
@@ -562,6 +562,7 @@ MCP server URLs are validated twice:
 | TM-LLM-020 | Client-supplied privileged message roles in AG-UI input | Medium | Anonymous AG-UI/CopilotKit clients could send `role: "system"` / `developer` / `tool` messages that flow into the LLM context alongside the agent's real system prompt. Mitigated in `crates/server/src/api/ag_ui.rs::validate_input_messages` by rejecting any non-{user,assistant} role at the runtime trust boundary with a generic 400 `invalid_request`, and by rejecting duplicate message ids. | MITIGATED |
 | TM-LLM-021 | Utility LLM key exposed through agent model configuration | High | The utility LLM uses deployment env secret `UTILITY_OPENAI_API_KEY`, is carried as a host service on `PlatformDefinition`, and is threaded only into capability `ToolContext`. It is not stored in provider records, exposed through model selection, or accepted from session/agent config. | MITIGATED |
 | TM-LLM-022 | Tenant execution silently spending platform env keys | High | `LlmResolverService::resolve_provider_api_key` and `resolve_provider_credentials` are fail-closed: they return `None` when no database key is found rather than falling back to `DEFAULT_*_API_KEY` env vars. Callers surface a "no provider configured" error. Env var helpers remain available only for explicit dev/CLI entrypoints. For single-tenant/dev convenience, `seed::seed_default_provider_keys_from_env` may materialize `DEFAULT_*_API_KEY` into the **default org's** provider rows at startup (encrypted), gated by `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` (defaults to `DeploymentGrade::is_dev()`). Non-dev opt-in is ignored while built-in signup or built-in OAuth can self-provision users into `DEFAULT_ORG_ID`, so open-registration deployments cannot seed platform keys into an org that untrusted users can join and spend from. See `specs/llm-drivers.md` (Key Resolution Contract). | MITIGATED |
+| TM-LLM-023 | Provider credentials exposed through the capability command contract | High | The `CommandHost` facilities (specs/commands.md, EVE-543) give capability `execute_command` implementations access to the session's turn context and a tool-less completion against the session's resolved model. `CommandTurnContext` is a deliberately credential-free view (model name and provider type only); driver creation and `ModelWithProvider` (decrypted key, base URL) stay inside the host-owned `StoreCommandHost`. Per-invocation model overrides resolve through the same org-scoped `LlmProviderStore` as a main turn. Completions are out-of-band: nothing is persisted to messages or events. | MITIGATED |
 
 ### Mitigation Details
 
@@ -710,7 +711,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-002 | Indirect prompt injection via tool results | High | Tool results use `tool_result` role, not `system`; LLM may still follow adversarial instructions in results | **ACCEPTED** |
 | TM-AGENT-003 | Indirect prompt injection via MCP tool descriptions | Medium | MCP tool names/descriptions fed to LLM as tool schema; adversarial descriptions could influence behavior | **ACCEPTED** |
 | TM-AGENT-004 | Agent jailbreak via system prompt | Medium | System prompt set by org member at agent creation; no sanitization of prompt content | **BY DESIGN** |
-| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`) require Admin role to assign via API; gate is at create/update only, member-owned agents that already had high-risk capabilities are grandfathered (see `specs/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
+| TM-AGENT-005 | Capability escalation via agent creation | High | RiskLevel enum on Capability trait; high-risk capabilities (`a2a_agent_delegation`, `docker_container`, `daytona`, `e2b`, `deno`, `bashkit_shell`, `web_fetch`) require Admin role to assign via API; gate is at create/update only, member-owned agents that already had high-risk capabilities are grandfathered (see `specs/capabilities.md` "Admin-Only Tier Decision") | MITIGATED |
 | TM-AGENT-006 | Cost runaway — unbounded LLM calls | High | Max iterations per turn (default 100); configurable per agent | MITIGATED |
 | TM-AGENT-007 | Cost runaway — many tools per iteration | Medium | No per-iteration tool call limit; agent can invoke many tools in a single LLM response | **OPEN** |
 | TM-AGENT-008 | Context window poisoning | Medium | Auto-compaction via `llm_driver.compact()` on `RequestTooLarge`; older messages compressed | MITIGATED |
@@ -723,7 +724,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-015 | Dangling tool calls cause LLM confusion | Low | Patched with synthetic "cancelled" results before LLM call; prevents API errors | MITIGATED |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | When agent asks user for API key in chat, plaintext value stored in events table as message content; session secrets encrypt separately but chat retains plaintext | **OPEN** |
 | TM-AGENT-017 | Agent-initiated entity management | High | Agents with `platform_management` can create/update/delete harnesses, agents, sessions org-wide; no fine-grained RBAC within org; capability must be explicitly assigned | **OPEN** |
-| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
+| TM-AGENT-018 | Outbound URL filtering on web_fetch | Medium | Per-layer `NetworkAccessList` (harness ∩ agent ∩ session, narrow-only merge) plus optional deployment-wide system allowlist, both enforced at the `EgressService` boundary; web_fetch routes through egress with per-redirect-hop re-validation | MITIGATED |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
 | TM-AGENT-021 | System prompt regurgitation | Medium | Opt-in `prompt_canary_guardrail` capability runs a streaming output guardrail that replaces the assistant message when the first sentence of the system prompt appears verbatim in the model output; original tokens are dropped and never persisted. Catches verbatim leaks only — paraphrased or partial leaks pass through. See `specs/capabilities.md` § Output Guardrails | MITIGATED (partial, opt-in) |
@@ -794,21 +795,17 @@ Agents with the `platform_management` capability can create, update, and delete 
 
 - **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
 - **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) Platform tool execution resolves the owning session's user into a real `Caller` and evaluates command policy with the active `PermissionResolver`, so member-owned Platform Chat sessions do not inherit internal/owner bypass. (4) Both in-process (`DirectPlatformStore`) and gRPC (`ExecuteCommand`) platform paths route mutating operations through the normal command/policy boundary instead of raw storage writes. (5) `WorkerAdapters::platform_store(org_id, session_id)` receives the session's actual org_id and session_id from activity context, preventing cross-org access via hardcoded defaults and preserving session-owner authorization.
-- **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
+- **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `bashkit_shell`). Add recursion depth limits for agent-spawned session chains.
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
 
-**TM-AGENT-018 — No Outbound URL Filtering on web_fetch (OPEN):**
+**TM-AGENT-018 — Outbound URL Filtering on web_fetch (MITIGATED):**
 An agent influenced by prompt injection (via tool results or user messages) could chain data access tools with `web_fetch` to exfiltrate sensitive session data. While TM-AGENT-013 accepts this risk for legitimate use by trusted org members, prompt injection (TM-AGENT-001, TM-AGENT-002) can cause the agent to act against the user's intent.
 
 - **Attack chain:** Injected instruction in tool result → agent reads sensitive file → agent calls `web_fetch` with file contents to attacker-controlled URL
-- **Impact:** Data exfiltration of session files, environment variables, or conversation history
-- **Recommendation:** Add configurable URL allowlist/blocklist to `web_fetch` capability. Options:
-  1. Per-agent allowlist of permitted outbound domains (strictest)
-  2. Global blocklist of known-bad patterns (e.g., webhook.site, requestbin)
-  3. Block outbound POST/PUT by default; require explicit opt-in
-  4. Log all outbound `web_fetch` calls with URL + payload size for audit
-- **Complements:** fetchkit's DnsPolicy already blocks private IPs (TM-API-008). This adds application-layer URL policy on top.
+- **Current mitigations:** (1) Per-layer `NetworkAccessList` (allowed/blocked patterns) on harness, agent, and session, merged narrow-only (intersection on `allowed`, union on `blocked`) — see `specs/network-access.md`; configurable via API and the agent/harness edit UI. (2) Optional deployment-wide system allowlist of curated public hosts, AND-ed as a hard ceiling — see `specs/system-allowlist.md`. (3) Both are enforced at the `EgressService` boundary; `web_fetch` routes through egress (`crates/core/src/capabilities/web_fetch_egress.rs`) with the list re-checked on every redirect hop.
+- **Residual risk:** Defaults are open — with no `NetworkAccessList` configured and the system allowlist disabled, outbound destinations are unrestricted (TM-AGENT-013 ACCEPTED). Outbound calls are not yet audit-logged with URL + payload size.
+- **Complements:** SSRF protection blocks private IPs with DNS pinning on the egress path (`validate_url_dns_pinned`, TM-API-008/TM-TOOL-018).
 - **Priority:** Medium
 
 **TM-AGENT-019 — Internal Network Probing via High-Risk Execution Capabilities (ACCEPTED):**
@@ -858,7 +855,7 @@ See [voice.md](voice.md) for the feature contract.
 
 ## 15. Bash Sandbox (TM-BASH)
 
-Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
+Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `bashkit_shell` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -937,7 +934,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 Experimental sandboxed Lua execution capability (`crates/core/src/capabilities/lua.rs`,
 `specs/lua-execution.md`). Engine: **mlua** (vendored Lua 5.4, never LuaJIT),
 behind the `lua` cargo feature. High risk, admin-gated (same gates as
-`virtual_bash`), and runtime-gated by `FEATURE_LUA`. One fresh VM per invocation,
+`bashkit_shell`), and runtime-gated by `FEATURE_LUA`. One fresh VM per invocation,
 never shared across sessions/tenants. All hardening is on by default — no
 configuration knobs.
 
@@ -984,7 +981,7 @@ configuration knobs.
 | TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints. App owners can also configure a per-app, per-IP request cap via `AgUiChannelConfig.rate_limit_per_minute`: in-memory backend is a per-minute governor quota; when `VALKEY_URL` is set it becomes a Valkey sliding-window counter shared across instances and fail-closed on Valkey errors | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
 | TM-DOS-011 | Authenticated personal access token sprawl | Low | Per-user cap enforced at creation (`max_personal_access_tokens_per_user`, default 25, via `RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER`); creation requires an authenticated user session and tokens remain user-owned/revocable. Operators tune the cap or clean up excessive tokens if they need stricter controls. | **ACCEPTED** |
-| TM-DOS-012 | Source-backed Volume repository storage abuse | Medium | Volume source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `volume_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
+| TM-DOS-012 | Source-backed Memory repository storage abuse | Medium | Memory source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `memory_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
 | TM-DOS-013 | Hidden Agent snapshot storage growth | Medium | Automatic Agent draft snapshots are active only when `FEATURE_AGENT_VERSIONS` is enabled, skipped when the latest stored config hash already matches the draft, and pruned to a bounded per-Agent unpublished auto-snapshot window after each write. | MITIGATED |
 | TM-DOS-014 | Tool output context growth | Medium | Read-like tools use windowed responses and truncation envelopes (`read_file`, `list_directory`, `grep_files`, browser DOM content); platform message reads cap message count and per-message content; non-image binary reads return metadata instead of base64 or lossy UTF-8; opted-in exec tools persist full output under `/outputs/` so the inline prompt payload can stay bounded and recoverable. | MITIGATED |
 | TM-DOS-015 | Unbounded tool fan-out within an act batch | Medium | A single model turn can request an arbitrary number of tool calls; `ActAtom` previously executed them all concurrently with no bound. The `tool_scheduler` (`crates/core/src/atoms/tool_scheduler.rs`) now caps simultaneously-executing calls with a semaphore (default 32, `EVERRUNS_ACT_MAX_TOOL_CONCURRENCY`), serializes same-`concurrency_class` mutations, and offloads `cpu_bound` tools to their own task so an in-process interpreter burst cannot starve the runtime worker. Does not bound calls across time/agents (see TM-TOOL-009). | MITIGATED |
@@ -1254,8 +1251,8 @@ entries from `user_hooks()`. See `specs/user-hooks.md`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-HOOK-001 | Hook-as-injection-amplifier: model-controlled file at the hook command path lets prompt-injected agent influence hook behavior | High | Hooks execute through `virtual_bash` against the session VFS, identical FS isolation as the `bash` tool. Operators who reference scripts from agent-writable paths (`/workspace`) opt in to that risk; the recommended pattern is to inline the command or read scripts from read-only capability mounts | MITIGATED |
-| TM-HOOK-002 | Hook-as-exfil-channel: a hook command makes outbound network calls to leak session state | High | This build of bashkit is compiled **without** the `http_client` feature (see `virtual_bash.rs::642` and TM-BASH-003), so `curl`/`after_http`/etc. builtins do not exist in the hook's vocabulary at all. The interpreter has no built-in path to open a socket. If a future build flips `http_client` on, this entry must be re-evaluated and an outbound allowlist enforced at the hook layer. | MITIGATED |
+| TM-HOOK-001 | Hook-as-injection-amplifier: model-controlled file at the hook command path lets prompt-injected agent influence hook behavior | High | Hooks execute through `bashkit_shell` against the session VFS, identical FS isolation as the `bash` tool. Operators who reference scripts from agent-writable paths (`/workspace`) opt in to that risk; the recommended pattern is to inline the command or read scripts from read-only capability mounts | MITIGATED |
+| TM-HOOK-002 | Hook-as-exfil-channel: a hook command makes outbound network calls to leak session state | High | This build of bashkit is compiled **without** the `http_client` feature (see `bashkit_shell.rs::642` and TM-BASH-003), so `curl`/`after_http`/etc. builtins do not exist in the hook's vocabulary at all. The interpreter has no built-in path to open a socket. If a future build flips `http_client` on, this entry must be re-evaluated and an outbound allowlist enforced at the hook layer. | MITIGATED |
 | TM-HOOK-003 | Stdout poisoning: a long-running or malicious hook fills stdout with bogus JSON or floods to deny tool execution | Medium | Per-hook timeout (default 5 s, max 30 s) + 64 KiB combined stdout/stderr cap (reuses `OutputHardLimitHook` ceiling) + `on_error` policy (`block`/`allow`/`warn`). Overrun is treated as an executor error, not a decision | MITIGATED |
 | TM-HOOK-004 | Privilege escalation via capability contribution: a built-in capability ships hooks that exfiltrate or block | High | The built-in `user_hooks` capability is permanently `High` and admin-gated on assignment via `check_high_risk_caps`. Capability-contributed hooks are surfaced in audit logs with their `{capability_id}:{name}` `HookId` so operators can locate and mute them via the `disabled_contributions` list on a sibling `user_hooks` config. Declarative-capability-contributed hook bundles (with the matching auto-elevation rule) are **not yet implemented** — see `specs/user-hooks.md` for the deferred path | MITIGATED |
 | TM-HOOK-005 | Hook chain DoS via fan-out across many configured hooks | Medium | Per-hook timeout caps wall-clock; hook execution is serial within a single event firing; combined chain wall-clock for `pre_tool_use` is bounded by `Σ timeout_ms` which is itself bounded by `(MAX_HOOK_TIMEOUT_MS × N hooks)`. Operators set the contributing capability list, capping `N` in practice | MITIGATED |
@@ -1277,7 +1274,7 @@ trusting the contents of that path. Recommended patterns:
 
 **TM-HOOK-002 — Egress inheritance:** `BashHookExecutor` does not
 construct a separate `NetworkAccessList`; the session sandbox supplies
-the same policy `virtual_bash` honors. There is no way to "opt out" a
+the same policy `bashkit_shell` honors. There is no way to "opt out" a
 hook command from session egress controls without explicit operator
 action on the agent.
 
@@ -1355,7 +1352,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |
-| TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Add URL allowlist/blocklist to web_fetch capability; audit outbound calls |
+| ~~TM-AGENT-018~~ | ~~No outbound URL filtering on web_fetch~~ | ~~Medium~~ | Mitigated: `NetworkAccessList` layers + system allowlist enforced at the egress boundary; outbound call audit logging still open |
 
 ### Accepted Risks
 
@@ -1433,7 +1430,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 - `specs/authentication.md` — Authentication modes, JWT, personal access tokens, OAuth
 - `specs/encryption.md` — Envelope encryption design
 - `specs/multitenancy.md` — Org-based isolation model
-- `specs/session-filesystem.md` — Session file storage and path validation
+- `specs/workspace.md` — Session file storage and path validation
 - `specs/session-sqldb.md` — SQLite sandbox and VFS design
 - `specs/tool-execution.md` — Tool types and execution flow
 - `specs/mcp-servers.md` — MCP server integration

@@ -33,12 +33,13 @@ use crate::events::{
     LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo, LlmRequestOptions, LlmRetryInfo,
     LlmToolSearchInfo, OutputMessageCompletedData, OutputMessageDeltaData,
     OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonItemData,
-    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
+    ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
+    TranscriptRepairAction, TranscriptRepairedData,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmStreamEvent, ProviderConfig, ProviderType,
+    LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
 use crate::llm_retry::is_transient_error_message;
 use crate::message::{Message, MessageRole};
@@ -52,8 +53,9 @@ use crate::output_guardrail::{
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
-    AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
-    ResolvedImage, SessionStore,
+    AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
+    ImageResolver, LlmProviderStore, ModelWithProvider, PartialStreamStore, ResolvedImage,
+    SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{UserFacingErrorContext, user_facing_error_codes};
@@ -62,35 +64,160 @@ use crate::{UserFacingErrorContext, user_facing_error_codes};
 // Helper Functions
 // ============================================================================
 
-/// Patch dangling tool calls by adding synthetic "cancelled" results.
+/// Repair dangling tool calls (EVE-533): for every assistant tool_call with no matching
+/// ToolResult, synthesize a well-formed result so the next LLM call does not reject the
+/// transcript. Consults `durable_tool_results` (EVE-530) when available:
 ///
-/// This ensures every tool call has a corresponding tool result,
-/// preventing LLM API errors (e.g., OpenAI requires every tool_call to have a result).
-fn patch_dangling_tool_calls(messages: &[Message]) -> Vec<Message> {
+/// - `Settled` row found   → replay the stored result directly.
+/// - `Interrupted` row     → replay the stored interrupted error.
+/// - `Running` (stale)     → synthesize an "interrupted – uncertain – do not retry" placeholder.
+/// - Row not found         → synthesize an "interrupted – not executed – safe to retry" placeholder.
+/// - Store error           → synthesize an "interrupted – status unknown – do not retry" placeholder.
+///
+/// Emits `transcript.repaired` events via `event_emitter` for each repaired call.
+async fn repair_dangling_tool_calls(
+    messages: &[Message],
+    durable_store: Option<&dyn DurableToolResultStore>,
+    event_emitter: &dyn EventEmitter,
+    session_id: crate::typed_id::SessionId,
+    event_context: &EventContext,
+    turn_id: &str,
+) -> Vec<Message> {
     let mut result = Vec::new();
 
     for (i, msg) in messages.iter().enumerate() {
         result.push(msg.clone());
 
-        // After an assistant message with tool calls, add cancelled results for any missing ones
-        if msg.role == MessageRole::Agent && msg.has_tool_calls() {
-            for tc in msg.tool_calls() {
-                // Look for a matching tool result in ALL subsequent messages
-                let has_result = messages[(i + 1)..]
-                    .iter()
-                    .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+        if msg.role != MessageRole::Agent || !msg.has_tool_calls() {
+            continue;
+        }
 
-                if !has_result {
-                    result.push(Message::tool_result(
+        for tc in msg.tool_calls() {
+            let has_result = messages[(i + 1)..]
+                .iter()
+                .any(|m| m.role == MessageRole::ToolResult && m.tool_call_id() == Some(&tc.id));
+
+            if has_result {
+                continue;
+            }
+
+            // Consult durable_tool_results to determine the best repair strategy.
+            let (repair_msg, action) = if let Some(store) = durable_store {
+                match store.get_tool_call_status(turn_id, &tc.id).await {
+                    Ok(Some(DurableToolCallStatus::Settled { result_json })) => {
+                        // A settled result exists in durable storage; deserialize and replay it.
+                        let repair = match serde_json::from_value::<crate::tool_types::ToolResult>(
+                            result_json.clone(),
+                        ) {
+                            Ok(tr) => Message::tool_result(&tc.id, tr.result, tr.error),
+                            Err(_) => Message::tool_result(&tc.id, Some(result_json), None),
+                        };
+                        (repair, TranscriptRepairAction::Replay)
+                    }
+                    Ok(Some(DurableToolCallStatus::Interrupted { result_json })) => {
+                        // Settled as interrupted by a prior recovery.
+                        let err = result_json
+                            .as_ref()
+                            .and_then(|v| {
+                                serde_json::from_value::<crate::tool_types::ToolResult>(v.clone())
+                                    .ok()
+                            })
+                            .and_then(|tr| tr.error)
+                            .unwrap_or_else(|| {
+                                "tool execution did not complete before recovery; result unknown"
+                                    .to_string()
+                            });
+                        (
+                            Message::tool_result(&tc.id, None, Some(err)),
+                            TranscriptRepairAction::Replay,
+                        )
+                    }
+                    Ok(Some(DurableToolCallStatus::Running)) => {
+                        // Stale running claim from a dead worker; safe to synthesize.
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool execution was interrupted by worker \
+                                     failure and the result is uncertain; do not retry \
+                                     automatically"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                    Ok(None) => {
+                        // No durable record: tool was never dispatched before recovery.
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool was not executed before recovery; \
+                                     safe to retry"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                    Err(e) => {
+                        // Store temporarily unavailable: we cannot know whether the tool ran.
+                        tracing::warn!(
+                            tool_call_id = %tc.id,
+                            error = %e,
+                            "transcript repair: durable store error; status unknown"
+                        );
+                        (
+                            Message::tool_result(
+                                &tc.id,
+                                None,
+                                Some(
+                                    "interrupted - tool execution status unknown due to \
+                                     store error; do not retry automatically"
+                                        .to_string(),
+                                ),
+                            ),
+                            TranscriptRepairAction::Synthesize,
+                        )
+                    }
+                }
+            } else {
+                // No durable store; fall back to generic cancelled.
+                (
+                    Message::tool_result(
                         &tc.id,
                         None,
                         Some(
                             "cancelled - another message came in before it could be completed"
                                 .to_string(),
                         ),
-                    ));
-                }
+                    ),
+                    TranscriptRepairAction::Synthesize,
+                )
+            };
+
+            // Emit transcript.repaired event for observability.
+            let repair_event = EventRequest::new(
+                session_id,
+                event_context.clone(),
+                TranscriptRepairedData {
+                    tool_call_id: tc.id.clone(),
+                    tool_name: Some(tc.name.clone()),
+                    action,
+                },
+            );
+            if let Err(e) = event_emitter.emit(repair_event).await {
+                tracing::warn!(
+                    tool_call_id = %tc.id,
+                    error = %e,
+                    "transcript repair: failed to emit transcript.repaired event"
+                );
             }
+
+            result.push(repair_msg);
         }
     }
 
@@ -135,6 +262,26 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
     }
     let text = msg.text().unwrap_or("");
     ERROR_PLACEHOLDER_MESSAGES.contains(&text) || is_dynamic_error_placeholder(text)
+}
+
+fn append_guarded_thinking_delta(
+    armed_guardrails: &mut [ArmedGuardrail],
+    thinking: &mut String,
+    pending_thinking_delta: &mut String,
+    delta: &str,
+) -> Option<TrippedGuardrail> {
+    thinking.push_str(delta);
+
+    // Thinking streams are user-visible and persisted on completion, so they
+    // must pass the same output guardrails as assistant text before any delta
+    // is emitted.
+    if let Some(t) = evaluate_guardrails(armed_guardrails, thinking, delta) {
+        pending_thinking_delta.clear();
+        Some(t)
+    } else {
+        pending_thinking_delta.push_str(delta);
+        None
+    }
 }
 
 fn is_dynamic_error_placeholder(text: &str) -> bool {
@@ -385,6 +532,10 @@ pub struct ReasonAtom {
     stream_heartbeater: Option<Arc<dyn crate::traits::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
+    /// Optional durable tool result store for transcript repair (EVE-533).
+    durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    /// Optional partial-stream store for ContinuePartial recovery (EVE-532).
+    partial_stream_store: Option<Arc<dyn PartialStreamStore>>,
 }
 
 impl ReasonAtom {
@@ -413,6 +564,8 @@ impl ReasonAtom {
             file_store: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,
+            durable_tool_result_store: None,
+            partial_stream_store: None,
         }
     }
 
@@ -460,6 +613,25 @@ impl ReasonAtom {
     /// the stream is aborted and the activity fails with a retryable error.
     pub fn with_provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.provider_stall_timeout = Some(timeout);
+        self
+    }
+
+    /// Set the durable tool result store for transcript repair (EVE-533).
+    ///
+    /// When provided, transcript repair consults this store to replay settled tool
+    /// results or synthesize appropriate interrupted placeholders rather than always
+    /// emitting a generic "cancelled" message.
+    pub fn with_durable_tool_result_store(
+        mut self,
+        store: Arc<dyn DurableToolResultStore>,
+    ) -> Self {
+        self.durable_tool_result_store = Some(store);
+        self
+    }
+
+    /// Set the partial-stream store for ContinuePartial recovery (EVE-532).
+    pub fn with_partial_stream_store(mut self, store: Arc<dyn PartialStreamStore>) -> Self {
+        self.partial_stream_store = Some(store);
         self
     }
 }
@@ -869,8 +1041,73 @@ impl ReasonAtom {
                 }
             });
 
-        // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
-        let patched_messages = patch_dangling_tool_calls(&messages);
+        // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
+        // If found, apply the ContinuePartial recovery policy: finalize from accumulated
+        // text (if non-empty) or restart clean (if empty/usable partial only).
+        if let Some(ref store) = self.partial_stream_store {
+            let turn_id_str = context.turn_id.to_string();
+            match store.get_partial_stream(session_id, &turn_id_str).await {
+                Ok(Some(partial)) if !partial.accumulated.is_empty() => {
+                    // Finalize: emit completed from persisted accumulated text.
+                    return self
+                        .finalize_partial_stream(
+                            session_id,
+                            context,
+                            partial.accumulated,
+                            iteration,
+                            runtime_agent.max_iterations,
+                            &runtime_agent.tools,
+                        )
+                        .await;
+                }
+                Ok(Some(_)) => {
+                    // Empty accumulated: restart clean — fall through to normal LLM call.
+                    // Emit reason.recovered { mode: Restart } for observability.
+                    let recovery_ctx = EventContext::from_atom_context(context);
+                    let _ = self
+                        .event_emitter
+                        .emit(EventRequest::new(
+                            session_id,
+                            recovery_ctx,
+                            ReasonRecoveredData {
+                                turn_id: context.turn_id,
+                                mode: RecoveryMode::Restart,
+                                accumulated_len: 0,
+                            },
+                        ))
+                        .await;
+                    tracing::info!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        "ReasonAtom: partial stream detected with empty accumulated; restarting clean"
+                    );
+                }
+                Ok(None) => {} // No partial; normal first-run execution.
+                Err(e) => {
+                    // Best-effort: log and continue with normal execution.
+                    tracing::warn!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        error = %e,
+                        "ReasonAtom: partial-stream store error; proceeding with normal execution"
+                    );
+                }
+            }
+        }
+
+        // 10. Repair dangling tool calls (EVE-533): ensure every assistant tool_call
+        // has a matching ToolResult before the LLM call. Consults durable_tool_results
+        // when available to replay settled results or synthesize interrupted placeholders.
+        let repair_event_context = EventContext::from_atom_context(context);
+        let patched_messages = repair_dangling_tool_calls(
+            &messages,
+            self.durable_tool_result_store.as_deref(),
+            self.event_emitter.as_ref(),
+            session_id,
+            &repair_event_context,
+            &context.turn_id.to_string(),
+        )
+        .await;
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -1475,6 +1712,7 @@ impl ReasonAtom {
                                 previous_response_id: None,
                                 tool_search: None,
                                 prompt_cache: None,
+                                openrouter_routing: None,
                             };
 
                             match llm_driver
@@ -1725,9 +1963,21 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingDelta(delta) => {
-                        // Accumulate thinking content from extended thinking models
-                        thinking.push_str(&delta);
-                        pending_thinking_delta.push_str(&delta);
+                        if let Some(t) = append_guarded_thinking_delta(
+                            &mut armed_guardrails,
+                            &mut thinking,
+                            &mut pending_thinking_delta,
+                            &delta,
+                        ) {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                guardrail_capability_id = %t.capability_id,
+                                guardrail_id = %t.guardrail_id,
+                                "ReasonAtom: output guardrail tripped on thinking stream, replacing assistant message"
+                            );
+                            tripped = Some(t);
+                            break;
+                        }
                         last_token_at_unix = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
@@ -2195,34 +2445,94 @@ impl ReasonAtom {
         })
     }
 
+    /// Finalize a partial assistant stream without making a new provider call (EVE-532).
+    ///
+    /// Emits `output.message.started`, `output.message.completed` from the persisted
+    /// `accumulated` text, and `reason.recovered { mode: Finalize }`.
+    async fn finalize_partial_stream(
+        &self,
+        session_id: SessionId,
+        context: &AtomContext,
+        accumulated: String,
+        iteration: u32,
+        max_iterations: usize,
+        tool_definitions: &[ToolDefinition],
+    ) -> Result<ReasonResult> {
+        let event_context = EventContext::from_atom_context(context);
+        let turn_id = context.turn_id;
+
+        // Signal that output is starting (keeps the streaming protocol intact).
+        let _ = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                OutputMessageStartedData {
+                    turn_id,
+                    model: None,
+                    iteration: Some(iteration),
+                },
+            ))
+            .await;
+
+        // Build the assistant message from accumulated text and persist via event.
+        let assistant_message = Message::assistant(&accumulated);
+        let output_message_id = assistant_message.id;
+        self.event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                OutputMessageCompletedData::new(assistant_message),
+            ))
+            .await?;
+
+        // Emit observability event.
+        let accumulated_len = accumulated.len();
+        let _ = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                event_context.clone(),
+                ReasonRecoveredData {
+                    turn_id,
+                    mode: RecoveryMode::Finalize,
+                    accumulated_len,
+                },
+            ))
+            .await;
+
+        tracing::info!(
+            session_id = %session_id,
+            turn_id = %turn_id,
+            accumulated_len,
+            "ReasonAtom: finalized partial stream from persisted accumulated text"
+        );
+
+        Ok(ReasonResult {
+            success: true,
+            text: accumulated,
+            tool_calls: vec![],
+            has_tool_calls: false,
+            tool_definitions: tool_definitions.to_vec(),
+            max_iterations,
+            error: None,
+            usage: None,
+            output_message_id: Some(output_message_id),
+            time_to_first_token_ms: None,
+            response_id: None,
+            locale: None,
+            network_access: None,
+        })
+    }
+
     /// Resolve model using priority chain: controls > session > agent > harness > system default
     /// Create LLM driver using the driver registry
     fn create_llm_driver(
         &self,
         model: &ModelWithProvider,
     ) -> Result<crate::llm_driver_registry::BoxedLlmDriver> {
-        let provider_type = match model.provider_type {
-            crate::llm_models::LlmProviderType::Openai => ProviderType::OpenAI,
-            crate::llm_models::LlmProviderType::Openrouter => ProviderType::OpenRouter,
-            crate::llm_models::LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
-            crate::llm_models::LlmProviderType::OpenaiCompletions => {
-                ProviderType::OpenAICompletions
-            }
-            crate::llm_models::LlmProviderType::Anthropic => ProviderType::Anthropic,
-            crate::llm_models::LlmProviderType::Gemini => ProviderType::Gemini,
-            crate::llm_models::LlmProviderType::LlmSim => ProviderType::LlmSim,
-            crate::llm_models::LlmProviderType::Bedrock => ProviderType::Bedrock,
-        };
-
-        let mut config = ProviderConfig::new(provider_type);
-        if let Some(ref api_key) = model.api_key {
-            config = config.with_api_key(api_key);
-        }
-        if let Some(ref base_url) = model.base_url {
-            config = config.with_base_url(base_url);
-        }
-
-        self.driver_registry.create_driver(&config)
+        self.driver_registry
+            .create_driver(&ProviderConfig::from(model))
     }
 
     /// Resolve image_file references to actual image data
@@ -2302,6 +2612,72 @@ mod tests {
     use crate::llm_driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
     use std::collections::HashMap;
 
+    struct BlockWhenDeltaContains {
+        needle: &'static str,
+    }
+
+    impl crate::output_guardrail::OutputGuardrailRun for BlockWhenDeltaContains {
+        fn check(
+            &mut self,
+            _accumulated: &str,
+            delta: &str,
+        ) -> crate::output_guardrail::GuardrailDecision {
+            if delta.contains(self.needle) {
+                crate::output_guardrail::GuardrailDecision::block("test_leak", "[blocked]")
+            } else {
+                crate::output_guardrail::GuardrailDecision::Pass
+            }
+        }
+    }
+
+    fn test_armed_guardrail() -> ArmedGuardrail {
+        ArmedGuardrail {
+            capability_id: "test_capability".to_string(),
+            guardrail_id: "test_guardrail".to_string(),
+            run: Box::new(BlockWhenDeltaContains { needle: "secret" }),
+        }
+    }
+
+    #[test]
+    fn test_append_guarded_thinking_delta_blocks_before_pending_emit() {
+        let mut guardrails = vec![test_armed_guardrail()];
+        let mut thinking = "safe ".to_string();
+        let mut pending = "safe ".to_string();
+
+        let tripped = append_guarded_thinking_delta(
+            &mut guardrails,
+            &mut thinking,
+            &mut pending,
+            "secret instructions",
+        )
+        .expect("thinking delta should trip guardrail");
+
+        assert_eq!(tripped.capability_id, "test_capability");
+        assert_eq!(tripped.guardrail_id, "test_guardrail");
+        assert_eq!(tripped.block.reason_code, "test_leak");
+        assert_eq!(tripped.block.replacement, "[blocked]");
+        assert_eq!(thinking, "safe secret instructions");
+        assert!(pending.is_empty());
+    }
+
+    #[test]
+    fn test_append_guarded_thinking_delta_allows_safe_pending_emit() {
+        let mut guardrails = vec![test_armed_guardrail()];
+        let mut thinking = String::new();
+        let mut pending = String::new();
+
+        let tripped = append_guarded_thinking_delta(
+            &mut guardrails,
+            &mut thinking,
+            &mut pending,
+            "ordinary reasoning",
+        );
+
+        assert!(tripped.is_none());
+        assert_eq!(thinking, "ordinary reasoning");
+        assert_eq!(pending, "ordinary reasoning");
+    }
+
     #[test]
     fn test_reason_result_default() {
         let result = ReasonResult::default();
@@ -2355,15 +2731,24 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_no_tool_calls() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_no_tool_calls() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let messages = vec![Message::user("Hello"), Message::assistant("Hi there!")];
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         assert_eq!(patched.len(), 2);
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_with_result() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_with_result() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let tool_call = ToolCall {
             id: "call_123".to_string(),
             name: "get_weather".to_string(),
@@ -2376,12 +2761,19 @@ mod tests {
             Message::tool_result("call_123", Some(serde_json::json!({"temp": 72})), None),
         ];
 
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         assert_eq!(patched.len(), 3);
     }
 
-    #[test]
-    fn test_patch_dangling_tool_calls_missing_result() {
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_missing_result_no_store() {
+        use crate::events::EventContext;
+        use crate::typed_id::SessionId;
         let tool_call = ToolCall {
             id: "call_456".to_string(),
             name: "search_web".to_string(),
@@ -2394,11 +2786,326 @@ mod tests {
             Message::user("Actually, never mind"),
         ];
 
-        let patched = patch_dangling_tool_calls(&messages);
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched =
+            repair_dangling_tool_calls(&messages, None, &emitter, session_id, &ctx, "turn_01")
+                .await;
         // Should have added a cancelled result
         assert_eq!(patched.len(), 4);
         assert_eq!(patched[2].role, MessageRole::ToolResult);
         assert_eq!(patched[2].tool_call_id(), Some("call_456"));
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_settled_result_replayed() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockSettledStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockSettledStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Settled {
+                    result_json: serde_json::json!({
+                        "tool_call_id": "call_789",
+                        "result": {"answer": 42},
+                        "error": null,
+                        "images": null,
+                        "connection_required": null,
+                        "raw_output": null
+                    }),
+                }))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_789".to_string(),
+            name: "compute".to_string(),
+            arguments: serde_json::json!({"x": 21}),
+        };
+        let messages = vec![
+            Message::user("Compute"),
+            Message::assistant_with_tools("Computing...", vec![tool_call]),
+        ];
+
+        let store = MockSettledStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        // Settled result should be replayed (not cancelled message)
+        assert_eq!(patched.len(), 3);
+        assert_eq!(patched[2].role, MessageRole::ToolResult);
+        assert_eq!(patched[2].tool_call_id(), Some("call_789"));
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_interrupted_result_replayed() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockInterruptedStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockInterruptedStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Interrupted {
+                    result_json: None,
+                }))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_int".to_string(),
+            name: "slow_op".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Do it"),
+            Message::assistant_with_tools("Doing...", vec![tool_call]),
+        ];
+
+        let store = MockInterruptedStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_int"));
+        // Interrupted replay uses the stored error or fallback text; must contain "interrupted"
+        let content = format!("{:?}", repair);
+        assert!(
+            content.contains("interrupted") || content.contains("not complete"),
+            "expected interrupted message, got: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_running_synthesized() {
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockRunningStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockRunningStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<DurableToolCallStatus>> {
+                Ok(Some(DurableToolCallStatus::Running))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_run".to_string(),
+            name: "long_job".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Start job"),
+            Message::assistant_with_tools("Starting...", vec![tool_call]),
+        ];
+
+        let store = MockRunningStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_run"));
+        // Running stale claim must warn "uncertain; do not retry automatically"
+        let content = format!("{:?}", repair);
+        assert!(
+            content.contains("uncertain") || content.contains("do not retry"),
+            "expected uncertain/do-not-retry message, got: {content}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_repair_dangling_tool_calls_store_error_unknown() {
+        use crate::error::AgentLoopError;
+        use crate::events::EventContext;
+        use crate::traits::{DurableToolResultStore, ToolCallClaimResult};
+        use crate::typed_id::SessionId;
+
+        struct MockErrorStore;
+        #[async_trait::async_trait]
+        impl DurableToolResultStore for MockErrorStore {
+            async fn try_claim_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> crate::error::Result<ToolCallClaimResult> {
+                Ok(ToolCallClaimResult::Claimed {
+                    claim_token: uuid::Uuid::new_v4(),
+                })
+            }
+            async fn settle_tool_call(
+                &self,
+                _: &str,
+                _: &str,
+                _: serde_json::Value,
+                _: &str,
+                _: uuid::Uuid,
+            ) -> crate::error::Result<bool> {
+                Ok(true)
+            }
+            async fn get_tool_call_status(
+                &self,
+                _turn_id: &str,
+                _tool_call_id: &str,
+            ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+                Err(AgentLoopError::tool("simulated store failure"))
+            }
+        }
+
+        let tool_call = ToolCall {
+            id: "call_err".to_string(),
+            name: "risky_op".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        let messages = vec![
+            Message::user("Do risky op"),
+            Message::assistant_with_tools("On it...", vec![tool_call]),
+        ];
+
+        let store = MockErrorStore;
+        let emitter = crate::traits::NoopEventEmitter;
+        let session_id = SessionId::new();
+        let ctx = EventContext::empty();
+        let patched = repair_dangling_tool_calls(
+            &messages,
+            Some(&store as &dyn DurableToolResultStore),
+            &emitter,
+            session_id,
+            &ctx,
+            "turn_01",
+        )
+        .await;
+
+        assert_eq!(patched.len(), 3);
+        let repair = &patched[2];
+        assert_eq!(repair.role, MessageRole::ToolResult);
+        assert_eq!(repair.tool_call_id(), Some("call_err"));
+        // Store error must NOT say "safe to retry"
+        let content = format!("{:?}", repair);
+        assert!(
+            !content.contains("safe to retry"),
+            "store error must not say 'safe to retry', got: {content}"
+        );
+        assert!(
+            content.contains("do not retry") || content.contains("status unknown"),
+            "expected do-not-retry/status-unknown message, got: {content}"
+        );
     }
 
     #[test]
@@ -2417,6 +3124,7 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
+            openrouter_routing: None,
         };
 
         let request_options = build_request_options(&config, "openai").unwrap();
@@ -2448,6 +3156,7 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
+            openrouter_routing: None,
         };
 
         let request_options = build_request_options(&config, "gemini").unwrap();
@@ -2479,8 +3188,60 @@ mod tests {
                 strategy: PromptCacheStrategy::Auto,
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
+            openrouter_routing: None,
         };
 
         assert!(build_request_options(&config, "gemini").is_none());
+    }
+
+    // =========================================================================
+    // ContinuePartial recovery tests (EVE-532)
+    // =========================================================================
+
+    use crate::traits::{NoopPartialStreamStore, PartialStreamState, PartialStreamStore};
+
+    struct MockPartialStore(Option<String>);
+
+    #[async_trait::async_trait]
+    impl PartialStreamStore for MockPartialStore {
+        async fn get_partial_stream(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _turn_id: &str,
+        ) -> crate::error::Result<Option<PartialStreamState>> {
+            Ok(self.0.as_deref().map(|s| PartialStreamState {
+                accumulated: s.to_string(),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_noop_partial_stream_store_returns_none() {
+        let store = NoopPartialStreamStore;
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
+        let store = MockPartialStore(Some("partial text so far".to_string()));
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert_eq!(result.unwrap().accumulated, "partial text so far");
+    }
+
+    #[tokio::test]
+    async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
+        let store = MockPartialStore(Some(String::new()));
+        let result = store
+            .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
+            .await
+            .unwrap();
+        assert!(result.unwrap().accumulated.is_empty());
     }
 }

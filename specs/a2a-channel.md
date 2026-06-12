@@ -33,9 +33,10 @@ References:
 
 ## Non-Goals
 
-1. The full A2A method surface — this iteration supports `message/send`,
-   `message/stream`, `tasks/get`, and `tasks/cancel`. `tasks/resubscribe`,
-   push notifications, and authenticated extensions remain out of scope.
+1. The full A2A method surface — this iteration canonically supports
+   `message/send`, `message/stream`, `tasks/get`, and `tasks/cancel`.
+   `tasks/resubscribe`, push notifications, and authenticated extensions
+   remain out of scope.
 2. Persistent per-task identity beyond the session lifecycle. Tasks are
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
@@ -105,7 +106,11 @@ API key generation:
   `google_oidc`, `oidc`, and `oauth2_introspection` use bearer tokens;
   `http_basic` uses HTTP Basic; `mtls` uses the configured trusted reverse
   proxy identity header.
-- Body: A2A JSON-RPC 2.0 envelope. Only `message/send` is honored:
+- Body: A2A JSON-RPC 2.0 envelope. Canonical methods are `message/send`,
+  `message/stream`, `tasks/get`, and `tasks/cancel`. For compatibility with
+  linked clients that still emit legacy method names, the endpoint accepts
+  `SendMessage`, `SendStreamingMessage`, `GetTask`, and `CancelTask` as aliases
+  for the canonical methods.
 
 ```json
 {
@@ -155,7 +160,7 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 404  | —             | App or channel not found              |
 | 400  | —             | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
-| 200  | `-32601`      | Method not found (only `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` are supported) |
+| 200  | `-32601`      | Method not found (only canonical `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` and their legacy linked-client aliases are supported) |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id) |
 | 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
 

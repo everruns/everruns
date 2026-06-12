@@ -123,6 +123,39 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
+    /// Localized display strings keyed by lowercase language tag (e.g. "uk").
+    /// The "en" entry carries only `config_description`, since the base
+    /// name/description/config_schema strings are already English.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = json!({
+                "uk": {"name": "Пам'ять", "description": "Монтує спільні файли пам'яті в сесії."}
+            })
+        )
+    )]
+    pub localizations: std::collections::BTreeMap<String, CapabilityLocalizationInfo>,
+}
+
+/// Localized display strings for one locale of a capability.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CapabilityLocalizationInfo {
+    /// Localized display name; absent means fall back to `name`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Localized description; absent means fall back to `description`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// One-line summary of what this capability's config controls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_description: Option<String>,
+    /// Overlay merged into `config_schema` before rendering: mirrors the
+    /// schema property tree with `title`/`description`/`enum_labels` leaves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub config_overlay: Option<serde_json::Value>,
 }
 
 fn is_low_risk(r: &RiskLevel) -> bool {
@@ -166,7 +199,7 @@ pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
         "session_sql_database" => Some("sql-database"),
         "subagents" => Some("sub-agents"),
         "stateless_todo_list" => Some("task-management"),
-        "virtual_bash" => Some("virtual-bash"),
+        "bashkit_shell" => Some("bashkit-shell"),
         "web_fetch" => Some("web-fetch"),
         _ => None,
     }
@@ -212,6 +245,21 @@ impl CapabilityInfo {
             agent_count: 0,
             harness_count: 0,
             docs_slug: builtin_capability_docs_slug(id_str).map(|s| s.to_string()),
+            localizations: cap
+                .localizations()
+                .into_iter()
+                .map(|entry| {
+                    (
+                        entry.locale.to_lowercase(),
+                        CapabilityLocalizationInfo {
+                            name: entry.name.map(str::to_string),
+                            description: entry.description.map(str::to_string),
+                            config_description: entry.config_description.map(str::to_string),
+                            config_overlay: entry.config_overlay,
+                        },
+                    )
+                })
+                .collect(),
         }
     }
 }
@@ -252,6 +300,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -289,6 +338,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -316,6 +366,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -375,6 +426,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -422,6 +474,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
         let json = serde_json::to_string(&cap).unwrap();
         assert!(
@@ -442,8 +495,8 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // virtual_bash is High risk (code execution)
-        let bash_cap = registry.get("virtual_bash").unwrap();
+        // bashkit_shell is High risk (code execution)
+        let bash_cap = registry.get("bashkit_shell").unwrap();
         let info = CapabilityInfo::from_core(bash_cap.as_ref());
         assert_eq!(info.risk_level, RiskLevel::High);
 
@@ -479,6 +532,7 @@ mod tests {
             agent_count: 0,
             harness_count: 0,
             docs_slug: None,
+            localizations: Default::default(),
         };
 
         // Matches by name (case-insensitive)

@@ -23,6 +23,11 @@ import {
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
 
@@ -84,8 +89,9 @@ export default function CapabilityDetailPage({
   params: Promise<{ capabilityId: string }>;
 }) {
   const { capabilityId } = use(params);
+  const { locale } = useLocale();
   const { data: capability, isLoading, error } = useCapability(capabilityId);
-  usePageTitle(capability?.name ?? null, "Capability");
+  usePageTitle(capability ? localizedCapabilityName(capability, locale) : null, "Capability");
   const { data: allCapabilities } = useCapabilities();
 
   // Create a map of capability ID to capability for resolving dependency names
@@ -139,7 +145,7 @@ export default function CapabilityDetailPage({
           </div>
           <div className="min-w-0">
             <h1 className="text-2xl font-bold flex items-center gap-3 flex-wrap">
-              {capability.name}
+              {localizedCapabilityName(capability, locale)}
               <CopyButton value={capability.id} />
               <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
                 {getStatusLabel(capability.status)}
@@ -179,7 +185,7 @@ export default function CapabilityDetailPage({
             </CardHeader>
             <CardContent>
               <InlineStreamdownMessage className="text-muted-foreground">
-                {capability.description}
+                {localizedCapabilityDescription(capability, locale)}
               </InlineStreamdownMessage>
             </CardContent>
           </Card>
@@ -267,7 +273,7 @@ export default function CapabilityDetailPage({
                           href={`/capabilities/${depId}`}
                           className="block text-sm text-primary hover:underline"
                         >
-                          {depCap?.name || depId}
+                          {depCap ? localizedCapabilityName(depCap, locale) : depId}
                         </Link>
                       );
                     })}

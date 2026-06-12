@@ -5,7 +5,9 @@
 //! Used by the Data Analyst harness to ground SQL generation in organizational
 //! knowledge (layers 1-3 of the six-layer context pattern).
 
-use super::{Capability, CapabilityStatus, MountDirectoryBuilder, MountPoint};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
+};
 
 pub struct DataKnowledgeCapability;
 
@@ -58,6 +60,14 @@ impl Capability for DataKnowledgeCapability {
 
     fn description(&self) -> &str {
         "Mounts a `/knowledge/` scaffold with directories for table docs, business rules, and validated SQL patterns. Provides curated ground truth for data analysis."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Знання про дані",
+            "Монтує каркас `/knowledge/` з каталогами для документації таблиць, бізнес-правил і перевірених SQL-шаблонів. Надає кураторське достовірне джерело для аналізу даних.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -14,7 +14,7 @@
 //! - Content wrapped in `<agent-instructions>` XML tags to separate user-provided
 //!   instructions from system capability prompts (reduces prompt injection surface)
 
-use super::{Capability, CapabilityStatus, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -128,6 +128,7 @@ impl Capability for AgentInstructionsCapability {
                     "description": "Workspace-root Markdown files to read in order. Defaults to AGENTS.md.",
                     "items": {
                         "type": "string",
+                        "title": "File path",
                         "description": "File path relative to /workspace, for example AGENTS.md or CLAUDE.md.",
                         "minLength": 1
                     },
@@ -153,6 +154,49 @@ impl Capability for AgentInstructionsCapability {
 
     fn validate_config(&self, config: &Value) -> Result<(), String> {
         AgentInstructionsConfig::from_value(config).map(|_| ())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Chooses which workspace-root instruction files are read into the \
+                     system prompt and in what order.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                // The display name "AGENTS.md" is a filename, so it stays
+                // untranslated (name: None falls back to `name()`).
+                locale: "uk",
+                name: None,
+                description: Some(
+                    "Зчитує налаштовані файли інструкцій проєкту з робочого простору сесії \
+                     та додає їхній вміст як контекст до системного промпту. Типово \
+                     використовується AGENTS.md. Вміст перечитується на кожному ході, тож \
+                     зміни підхоплюються автоматично.",
+                ),
+                config_description: Some(
+                    "Визначає, які файли інструкцій із кореня робочого простору зчитуються \
+                     до системного промпту та в якому порядку.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "files": {
+                            "title": "Файли інструкцій",
+                            "description": "Markdown-файли з кореня робочого простору, що зчитуються по порядку. Типово AGENTS.md.",
+                            "items": {
+                                "title": "Шлях до файлу",
+                                "description": "Шлях до файлу відносно /workspace, наприклад AGENTS.md або CLAUDE.md."
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 
     /// Reads configured instruction files from the session filesystem and
@@ -577,6 +621,19 @@ mod tests {
 
         assert_eq!(cap.id(), "agent_instructions");
         assert_eq!(cap.name(), "AGENTS.md");
+    }
+
+    #[test]
+    fn test_uk_localization_resolves() {
+        let cap = AgentInstructionsCapability;
+        // The display name is a filename, so uk falls back to it.
+        assert_eq!(cap.localized_name(Some("uk-UA")), "AGENTS.md");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("робочого простору")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

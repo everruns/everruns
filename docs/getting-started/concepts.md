@@ -144,7 +144,7 @@ Each session has an isolated virtual filesystem stored in PostgreSQL.
 
 - Paths are relative to `/workspace`
 - Capabilities can mount initial files and directories
-- Shared between the FileSystem and VirtualBash capabilities
+- Shared between the FileSystem and BashkitShell capabilities
 - Files support an optional read-only flag
 
 ### Key-Value Store

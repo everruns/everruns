@@ -5,7 +5,7 @@
 // - sql_query: Read-only SELECT queries returning columns + rows as JSON.
 // - sql_schema: Introspect database schema (tables, columns, types).
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_sqldb::SessionSqlDbError;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -28,6 +28,14 @@ impl Capability for SessionSqlDatabaseCapability {
 
     fn description(&self) -> &str {
         "Session-scoped SQLite databases for structured data storage and querying."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "База даних SQL",
+            "SQLite-бази даних у межах сесії для зберігання структурованих даних і запитів до них.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

@@ -1,4 +1,4 @@
-import { render, screen, act } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 import { Suspense } from "react";
 import EditAgentPage from "@/app/(main)/agents/[agentId]/edit/page";
 import type { Agent } from "@/lib/api/types";
@@ -140,5 +140,61 @@ describe("EditAgentPage", () => {
     expect(screen.getByRole("heading", { name: "Edit Agent" })).toBeInTheDocument();
     expect(screen.getByLabelText("Tags")).toHaveValue("");
     expect(screen.getByDisplayValue("test-agent")).toBeInTheDocument();
+  });
+
+  it("omits network_access from the update when not edited", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].request).not.toHaveProperty("network_access");
+  });
+
+  it("includes parsed network_access in the update when edited", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    fireEvent.change(screen.getByLabelText("Allowed hosts"), {
+      target: { value: "api.example.com\n*.github.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Blocked hosts"), {
+      target: { value: "internal.corp" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].request.network_access).toEqual({
+      allowed: ["api.example.com", "*.github.com"],
+      blocked: ["internal.corp"],
+    });
+  });
+
+  it("sends an empty network_access object when an existing list is cleared", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseAgent.mockReturnValue({
+      data: { ...malformedAgent, network_access: { allowed: ["api.example.com"] } },
+      isLoading: false,
+    });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    expect(screen.getByLabelText("Allowed hosts")).toHaveValue("api.example.com");
+
+    fireEvent.change(screen.getByLabelText("Allowed hosts"), { target: { value: "" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    // {} clears the layer server-side (omitting would leave it unchanged).
+    expect(mutateAsync.mock.calls[0][0].request.network_access).toEqual({});
   });
 });

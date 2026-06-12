@@ -12,6 +12,5 @@ export * from "./organizations";
 export * from "./auth";
 export * from "./durable";
 export * from "./agent-identities";
-export * from "./volumes";
-export * from "./memory-stores";
+export * from "./memory";
 export * from "./reporting";

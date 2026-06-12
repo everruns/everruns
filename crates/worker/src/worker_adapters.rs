@@ -270,12 +270,18 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Get the session task registry for background work tracking.
+    /// Returns None when the registry is not available (e.g. gRPC workers
+    /// without the task RPCs — follow-up work).
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        None
+    }
+
     /// Get the session schedule store for scheduling tools.
     /// Takes org_id so the store is scoped to the current session's organization.
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
-
-    /// Get the org-scoped memory store for `remember`/`recall`/`forget` tools.
-    fn memory_store(&self, org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>>;
 
     /// Get the budget checker for the current turn, if available.
     ///
@@ -312,6 +318,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Per-turn durable tool result store for act-activity idempotency (EVE-530).
     /// Default: `None` (no durable idempotency — suitable for dev/test environments).
     fn durable_tool_result_store(&self) -> Option<Arc<dyn everruns_core::DurableToolResultStore>> {
+        None
+    }
+
+    /// Durable subagent spawn handle store for reattach on reclaim (EVE-535).
+    /// Default: `None` (no spawn dedup — suitable for dev/test environments).
+    fn subagent_spawn_store(&self) -> Option<Arc<dyn everruns_core::SubagentSpawnStore>> {
         None
     }
 
@@ -369,6 +381,25 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         retry_after_seconds: u32,
         error: &str,
     ) -> Result<bool>;
+
+    // =========================================================================
+    // Session task reaper (orphan reconciler)
+    // =========================================================================
+
+    /// Return (session_id, task_id) pairs for tasks whose worker heartbeat has
+    /// gone stale. Tasks with NULL heartbeat_at are excluded (foreground tasks
+    /// with no liveness probe are covered by EVE-535 spawn handles).
+    async fn list_orphaned_session_task_ids(
+        &self,
+        stale_after: chrono::Duration,
+        limit: i64,
+    ) -> Result<Vec<(everruns_core::SessionId, String)>>;
+
+    /// Session task registry for the reaper to call `update` through.
+    /// Must include an event emitter so task.updated events fire on reap.
+    fn reaper_session_task_registry(
+        &self,
+    ) -> std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>;
 }
 
 // =============================================================================

@@ -1,8 +1,8 @@
-// PostgreSQL implementation of DurableToolResultStore (EVE-530).
+// PostgreSQL implementation of DurableToolResultStore (EVE-530, EVE-533).
 
 use async_trait::async_trait;
 use everruns_core::error::AgentLoopError;
-use everruns_core::traits::{DurableToolResultStore, ToolCallClaimResult};
+use everruns_core::traits::{DurableToolCallStatus, DurableToolResultStore, ToolCallClaimResult};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -147,5 +147,32 @@ impl DurableToolResultStore for PgDurableToolResultStore {
         };
 
         Ok(rows > 0)
+    }
+
+    async fn get_tool_call_status(
+        &self,
+        turn_id: &str,
+        tool_call_id: &str,
+    ) -> Result<Option<DurableToolCallStatus>, AgentLoopError> {
+        let row = sqlx::query_as::<_, (String, Option<serde_json::Value>)>(
+            r#"
+            SELECT status, result_json
+            FROM durable_tool_results
+            WHERE turn_id = $1 AND tool_call_id = $2
+            "#,
+        )
+        .bind(turn_id)
+        .bind(tool_call_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| AgentLoopError::tool(format!("durable_tool_results status lookup: {e}")))?;
+
+        Ok(row.map(|(status, result_json)| match status.as_str() {
+            "settled" => DurableToolCallStatus::Settled {
+                result_json: result_json.unwrap_or(serde_json::Value::Null),
+            },
+            "interrupted" => DurableToolCallStatus::Interrupted { result_json },
+            _ => DurableToolCallStatus::Running,
+        }))
     }
 }

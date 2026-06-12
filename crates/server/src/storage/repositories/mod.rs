@@ -17,7 +17,7 @@ mod harnesses;
 mod knowledge_bases;
 mod llm;
 mod mcp_servers;
-mod memories;
+mod memory;
 mod notifications;
 mod org_feature_flags;
 mod organizations;
@@ -29,11 +29,11 @@ mod session_files;
 mod session_git;
 mod session_resources;
 mod session_storage;
+mod session_tasks;
 mod sessions;
 mod skills;
 mod user_connections;
 mod users;
-mod volumes;
 
 #[cfg(test)]
 mod tests;

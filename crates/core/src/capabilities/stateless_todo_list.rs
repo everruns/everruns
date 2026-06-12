@@ -38,7 +38,7 @@
 //! Consider adding context compaction (prune old write_todos calls) if context
 //! growth becomes an issue in long-running sessions.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
@@ -59,6 +59,14 @@ impl Capability for StatelessTodoListCapability {
 
     fn description(&self) -> &str {
         "Enables agents to create and manage structured task lists for tracking multi-step work progress. State is maintained in conversation history."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Керування завданнями",
+            "Дає агентам змогу створювати структуровані списки завдань і керувати ними для відстеження прогресу багатоетапної роботи. Стан зберігається в історії розмови.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

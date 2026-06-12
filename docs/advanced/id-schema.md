@@ -69,7 +69,7 @@ The prefix in the table below is the token that appears before the `_` separator
 | Session | `session` |
 | Skill | `skill` |
 | Knowledge base | `kb` |
-| Volume | `vol` |
+| Memory | `mem` |
 | MCP server | `mcp` |
 | Schedule | `sched` |
 | Image | `img` |

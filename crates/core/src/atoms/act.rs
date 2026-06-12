@@ -236,12 +236,11 @@ where
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional session resource registry
     session_resource_registry: Option<Arc<dyn crate::traits::SessionResourceRegistry>>,
+    session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
     /// Optional capability registry for blueprint lookups in subagent tools
     capability_registry: Option<crate::capabilities::CapabilityRegistry>,
     /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
     tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
-    /// Optional memory store backend for persistent cross-session memory.
-    memory_store: Option<Arc<dyn crate::memory_store::MemoryStoreBackend>>,
     /// Optional org ID for org-scoped operations.
     org_id: Option<crate::typed_id::OrgId>,
     /// Merged network access list for URL filtering in tools.
@@ -259,6 +258,10 @@ where
     /// workers can skip already-settled calls and avoid double side-effects for
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
+    /// Durable spawn handle store for subagent reattach (EVE-535). When present,
+    /// `spawn_subagent` claims a slot before creating the child and settles after
+    /// completion, enabling reattach on reclaim.
+    subagent_spawn_store: Option<Arc<dyn crate::traits::SubagentSpawnStore>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -304,15 +307,16 @@ where
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             capability_registry: None,
             tool_registry: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             budget_checker: None,
             payment_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            subagent_spawn_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -345,15 +349,16 @@ where
             platform_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
+            session_task_registry: None,
             capability_registry: None,
             tool_registry: None,
-            memory_store: None,
             org_id: None,
             network_access: None,
             budget_checker: None,
             payment_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
+            subagent_spawn_store: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -491,6 +496,15 @@ where
         self
     }
 
+    /// Add a session task registry passed to tool contexts.
+    pub fn with_session_task_registry(
+        mut self,
+        registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
+    ) -> Self {
+        self.session_task_registry = Some(registry);
+        self
+    }
+
     pub fn with_capability_registry(
         mut self,
         registry: crate::capabilities::CapabilityRegistry,
@@ -529,15 +543,6 @@ where
         hooks: Vec<Arc<dyn crate::capabilities::ToolCallHook>>,
     ) -> Self {
         self.tool_call_hooks.extend(hooks);
-        self
-    }
-
-    /// Set memory store backend for persistent cross-session memory tools.
-    pub fn with_memory_store(
-        mut self,
-        store: Arc<dyn crate::memory_store::MemoryStoreBackend>,
-    ) -> Self {
-        self.memory_store = Some(store);
         self
     }
 
@@ -586,6 +591,15 @@ where
         store: Arc<dyn DurableToolResultStore>,
     ) -> Self {
         self.durable_tool_result_store = Some(store);
+        self
+    }
+
+    /// Set the durable subagent spawn handle store (EVE-535).
+    pub fn with_subagent_spawn_store(
+        mut self,
+        store: Arc<dyn crate::traits::SubagentSpawnStore>,
+    ) -> Self {
+        self.subagent_spawn_store = Some(store);
         self
     }
 }
@@ -1491,6 +1505,9 @@ where
         if let Some(ref registry) = self.session_resource_registry {
             tool_context.session_resource_registry = Some(registry.clone());
         }
+        if let Some(ref registry) = self.session_task_registry {
+            tool_context.session_task_registry = Some(registry.clone());
+        }
         if let Some(ref registry) = self.capability_registry {
             tool_context.capability_registry = Some(registry.clone());
         }
@@ -1498,14 +1515,14 @@ where
             tool_context.tool_registry = Some(registry.clone());
         }
         tool_context.visible_tool_names = Some(visible_tool_names.clone());
-        if let Some(ref store) = self.memory_store {
-            tool_context.memory_store = Some(store.clone());
-        }
         if let Some(ref checker) = self.budget_checker {
             tool_context.budget_checker = Some(checker.clone());
         }
         if let Some(ref authority) = self.payment_authority {
             tool_context.payment_authority = Some(authority.clone());
+        }
+        if let Some(ref store) = self.subagent_spawn_store {
+            tool_context.subagent_spawn_store = Some(store.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence
@@ -2342,7 +2359,7 @@ mod tests {
         let mut executor = ToolRegistry::new();
         executor.register(ArgumentEchoTool);
         let tool_def = executor.get("argument_echo").unwrap().to_definition();
-        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter.clone())
             .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
 
@@ -2422,7 +2439,7 @@ mod tests {
         use crate::capabilities::{Capability, HumanIntentCapability};
 
         let executor = ToolRegistry::new();
-        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let emitter = crate::in_memory::InMemoryEventEmitter::new();
         let atom = ActAtom::new(executor, emitter)
             .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
 
@@ -2863,6 +2880,24 @@ mod tests {
                 return Ok(true);
             }
             Ok(false)
+        }
+
+        async fn get_tool_call_status(
+            &self,
+            turn_id: &str,
+            tool_call_id: &str,
+        ) -> crate::error::Result<Option<crate::traits::DurableToolCallStatus>> {
+            let key = (turn_id.to_string(), tool_call_id.to_string());
+            let rows = self.rows.lock().unwrap();
+            Ok(rows.get(&key).map(|row| match row.status.as_str() {
+                "settled" => crate::traits::DurableToolCallStatus::Settled {
+                    result_json: row.result_json.clone(),
+                },
+                "interrupted" => crate::traits::DurableToolCallStatus::Interrupted {
+                    result_json: Some(row.result_json.clone()),
+                },
+                _ => crate::traits::DurableToolCallStatus::Running,
+            }))
         }
     }
 

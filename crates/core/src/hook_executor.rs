@@ -2,7 +2,7 @@
 //
 // `HookExecutor` is the per-backend trait. v1 ships only `BashHookExecutor`,
 // which routes the user-authored shell command through the session's
-// `virtual_bash` sandbox (the same FS isolation `bash` itself uses) and parses
+// `bashkit_shell` sandbox (the same FS isolation `bash` itself uses) and parses
 // the structured JSON contract documented in `specs/user-hooks.md`.
 //
 // The trait is deliberately backend-agnostic so future variants
@@ -88,7 +88,7 @@ pub trait HookExecutor: Send + Sync {
 // BashHookExecutor
 // ============================================================================
 
-/// Bash backend. Runs the configured command inside `virtual_bash` against
+/// Bash backend. Runs the configured command inside `bashkit_shell` against
 /// the session VFS. JSON payload is delivered to the script via
 /// `$EVERRUNS_HOOK_PAYLOAD_JSON` (and the same JSON written to
 /// `$EVERRUNS_HOOK_PAYLOAD_PATH` on the session VFS); the script writes a
@@ -98,8 +98,8 @@ pub trait HookExecutor: Send + Sync {
 /// This struct is backend-agnostic: it serializes the payload, hands it to a
 /// `BashHookDispatcher`, and parses the dispatcher's stdout/exit_code/stderr
 /// into a `HookOutcome`. The production dispatcher
-/// (`crate::hook_dispatch::VirtualBashHookDispatcher`) runs the command
-/// through the same bashkit interpreter the `virtual_bash` capability uses.
+/// (`crate::hook_dispatch::BashkitShellHookDispatcher`) runs the command
+/// through the same bashkit interpreter the `bashkit_shell` capability uses.
 pub struct BashHookExecutor {
     /// Command the user authored (validated non-empty).
     pub command: String,
@@ -129,12 +129,12 @@ impl BashHookExecutor {
 
 /// Workspace-relative directory the hook script reads the payload file from.
 /// Concrete dispatchers may map this onto a different storage path (e.g.
-/// the bashkit `virtual_bash` adapter strips the `/workspace` prefix before
+/// the bashkit `bashkit_shell` adapter strips the `/workspace` prefix before
 /// hitting the session VFS).
 pub const HOOK_PAYLOAD_WORKSPACE_DIR: &str = "/workspace/.hooks";
 
 /// Storage-relative directory used by `SessionFileSystem` impls that strip
-/// the workspace prefix. The bashkit `VirtualBashHookDispatcher` writes to
+/// the workspace prefix. The bashkit `BashkitShellHookDispatcher` writes to
 /// this path and exposes the workspace-prefixed equivalent to scripts.
 pub const HOOK_PAYLOAD_DIR: &str = "/.hooks";
 
@@ -204,9 +204,9 @@ pub fn payload_filename(payload: &HookPayload) -> String {
 }
 
 /// Indirection used to route bash hook invocations through the session's
-/// existing `virtual_bash` sandbox without `everruns-core`'s executor module
+/// existing `bashkit_shell` sandbox without `everruns-core`'s executor module
 /// having to depend on bashkit directly. The concrete
-/// `VirtualBashHookDispatcher` (see `crate::hook_dispatch`) is the production
+/// `BashkitShellHookDispatcher` (see `crate::hook_dispatch`) is the production
 /// implementation.
 #[async_trait]
 pub trait BashHookDispatcher: Send + Sync {

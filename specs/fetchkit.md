@@ -7,10 +7,20 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 - `WebFetchCapability` uses `fetchkit::ToolBuilder` to configure the tool
 - `WebFetchTool` wraps `fetchkit::Tool` — delegates schema, description, llmtxt, and execution
 - All metadata (description, system prompt, input schema) comes from `fetchkit::ToolBuilder`, not constants
-- SSRF: `DnsPolicy::block_private_ips()` (default) blocks loopback, RFC1918, link-local, cloud metadata
-- Outbound HTTP must migrate behind `EgressService`; fetchkit should become a
-  request/response adapter at the Everruns boundary rather than owning final
-  network transport inside workers.
+- **Egress path (default in the runtime)**: when `ToolContext.egress_service`
+  is present, fetchkit's `HttpTransport` (fetchkit >= 0.4) is injected via
+  `ToolBuilder::transport` with `EgressHttpTransport`
+  (`crates/core/src/capabilities/web_fetch_egress.rs`). fetchkit keeps the
+  whole pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
+  via `DnsPolicy` (resolve-then-check; pinned addresses forwarded to
+  `EgressRequest.pinned_addrs`), per-hop redirect validation, bot-auth
+  signing, body caps — while every HTTP hop crosses the egress boundary,
+  which enforces the network access list and system allowlist.
+- **Direct path** (no egress service in context, e.g. embedded hosts):
+  fetchkit owns transport; SSRF via `DnsPolicy::block_private_ips()` (blocks
+  loopback, RFC1918, link-local, cloud metadata).
+- The system allowlist and network access list are pre-checked on the initial
+  URL in the tool for clear user-facing errors on both paths.
 - See `crates/core/src/capabilities/web_fetch.rs`
 
 ## File download (`FileSaver`)
@@ -43,7 +53,7 @@ Server-wide via environment variables:
 | `BOT_AUTH_AGENT_FQDN` | no | FQDN for `Signature-Agent` header (key discovery) |
 | `BOT_AUTH_VALIDITY_SECS` | no | signature validity window, default 300 |
 
-When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` HTTP requests are signed. When unset, signing is disabled (no crypto dependencies loaded at runtime). This is the existing implementation; new signing work should put signing policy behind `EgressService` so web_fetch, LLM drivers, and integrations share the same outbound signing path.
+When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` requests are signed by fetchkit on both paths: signing happens before each hop is handed to the transport (re-signed per redirect hop), so it applies equally when the hop crosses the egress boundary. Egress-routed hops additionally request `EgressSigning::PlatformDefault`, a no-op until a platform egress signer exists; when one lands, signing policy should consolidate behind `EgressService` so web_fetch, LLM drivers, and integrations share one outbound signing path (see `specs/egress.md`).
 
 Generate a seed: `python3 -c "import os, base64; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"`
 

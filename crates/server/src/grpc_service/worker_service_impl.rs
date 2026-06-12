@@ -75,61 +75,6 @@ fn command_schema_hash(
     format!("{:x}", hasher.finalize())
 }
 
-fn memory_kind_from_str(kind: &str) -> everruns_core::memory_store::MemoryKind {
-    match kind {
-        "preference" => everruns_core::memory_store::MemoryKind::Preference,
-        "correction" => everruns_core::memory_store::MemoryKind::Correction,
-        "procedure" => everruns_core::memory_store::MemoryKind::Procedure,
-        "context" => everruns_core::memory_store::MemoryKind::Context,
-        _ => everruns_core::memory_store::MemoryKind::Fact,
-    }
-}
-
-fn memory_store_to_proto(store: everruns_core::MemoryStoreEntity) -> ProtoMemoryStore {
-    ProtoMemoryStore {
-        id: store.id.to_string(),
-        org_id: store.org_id.to_string(),
-        name: store.name,
-        is_default: store.is_default,
-        created_at: Some(everruns_internal_protocol::datetime_to_proto_timestamp(
-            store.created_at,
-        )),
-    }
-}
-
-fn memory_to_proto(memory: everruns_core::Memory) -> Result<ProtoMemory, Status> {
-    let content_parts_json = serde_json::to_vec(&memory.content_parts)
-        .map_err(|e| Status::internal(format!("Failed to encode memory content parts: {e}")))?;
-    Ok(ProtoMemory {
-        id: memory.id.to_string(),
-        store_id: memory.store_id.to_string(),
-        content: memory.content,
-        content_parts_json,
-        kind: memory.kind.to_string(),
-        importance: memory.importance as u32,
-        tags: memory.tags,
-        active: memory.active,
-        created_at: Some(everruns_internal_protocol::datetime_to_proto_timestamp(
-            memory.created_at,
-        )),
-        updated_at: Some(everruns_internal_protocol::datetime_to_proto_timestamp(
-            memory.updated_at,
-        )),
-    })
-}
-
-fn memory_store_backend(db: &Arc<StorageBackend>, org_id: i64) -> crate::storage::DbMemoryStore {
-    crate::storage::DbMemoryStore::new(db.clone(), org_id)
-}
-
-fn memory_error_to_status(error: everruns_core::error::AgentLoopError) -> Status {
-    match error {
-        everruns_core::error::AgentLoopError::ToolExecution(msg)
-        | everruns_core::error::AgentLoopError::Configuration(msg) => Status::invalid_argument(msg),
-        other => Status::internal(other.to_string()),
-    }
-}
-
 #[tonic::async_trait]
 impl WorkerService for WorkerServiceImpl {
     // ========================================================================
@@ -529,6 +474,72 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(SetSessionTitleResponse {
             session: Some(proto_session),
+        }))
+    }
+
+    async fn set_subagent_metadata(
+        &self,
+        request: Request<SetSubagentMetadataRequest>,
+    ) -> Result<Response<SetSubagentMetadataResponse>, Status> {
+        use everruns_internal_protocol::schema_session_to_proto;
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let parent_session_id = parse_uuid(req.parent_session_id.as_ref())?;
+        let valid_statuses = [
+            "spawning",
+            "running",
+            "completed",
+            "failed",
+            "cancelled",
+            "max_iterations_reached",
+        ];
+        if !valid_statuses.contains(&req.subagent_status.as_str()) {
+            return Err(Status::invalid_argument(format!(
+                "Invalid subagent_status '{}'. Must be one of: {}",
+                req.subagent_status,
+                valid_statuses.join(", ")
+            )));
+        }
+
+        let row = self
+            .db
+            .set_subagent_metadata(
+                req.org_id,
+                everruns_core::SessionId::from_uuid(session_id),
+                everruns_core::SessionId::from_uuid(parent_session_id),
+                &req.subagent_name,
+                &req.subagent_task,
+                &req.subagent_status,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to set subagent metadata: {}", e);
+                Status::internal("Failed to set subagent metadata")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        let fallback_harness = if row.harness_id.is_none() {
+            Some(
+                crate::org_init::base_harness_id(&self.db, req.org_id)
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to resolve base harness: {}", e);
+                        Status::internal("Failed to resolve base harness")
+                    })?,
+            )
+        } else {
+            None
+        };
+        let org_public_id = everruns_core::org_public_id_from_internal(req.org_id);
+        let session = crate::domains::sessions::SessionService::row_to_session(
+            row,
+            &org_public_id,
+            fallback_harness,
+        );
+
+        Ok(Response::new(SetSubagentMetadataResponse {
+            session: Some(schema_session_to_proto(&session)),
         }))
     }
 
@@ -2201,155 +2212,6 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
-    async fn memory_get_or_create_default_store(
-        &self,
-        request: Request<MemoryGetOrCreateDefaultStoreRequest>,
-    ) -> Result<Response<MemoryGetOrCreateDefaultStoreResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let public_org_id = req
-            .public_org_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid public_org_id: {e}")))?;
-        let store = memory_store_backend(&self.db, req.org_id)
-            .get_or_create_default_store(public_org_id)
-            .await
-            .map_err(memory_error_to_status)?;
-
-        Ok(Response::new(MemoryGetOrCreateDefaultStoreResponse {
-            store: Some(memory_store_to_proto(store)),
-        }))
-    }
-
-    async fn memory_get_store(
-        &self,
-        request: Request<MemoryGetStoreRequest>,
-    ) -> Result<Response<MemoryGetStoreResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let store_id = req
-            .store_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid store_id: {e}")))?;
-        let store = memory_store_backend(&self.db, req.org_id)
-            .get_store(store_id)
-            .await
-            .map_err(memory_error_to_status)?
-            .map(memory_store_to_proto);
-
-        Ok(Response::new(MemoryGetStoreResponse { store }))
-    }
-
-    async fn memory_create(
-        &self,
-        request: Request<MemoryCreateRequest>,
-    ) -> Result<Response<MemoryCreateResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let store_id = req
-            .store_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid store_id: {e}")))?;
-        let content_parts = serde_json::from_slice(&req.content_parts_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid content_parts_json: {e}")))?;
-        let memory = memory_store_backend(&self.db, req.org_id)
-            .create_memory(
-                store_id,
-                req.content,
-                content_parts,
-                memory_kind_from_str(&req.kind),
-                req.importance.clamp(1, 10) as u8,
-                req.tags,
-            )
-            .await
-            .map_err(memory_error_to_status)?;
-
-        Ok(Response::new(MemoryCreateResponse {
-            memory: Some(memory_to_proto(memory)?),
-        }))
-    }
-
-    async fn memory_recall(
-        &self,
-        request: Request<MemoryRecallRequest>,
-    ) -> Result<Response<MemoryRecallResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let store_id = req
-            .store_id
-            .as_deref()
-            .map(str::parse)
-            .transpose()
-            .map_err(|e| Status::invalid_argument(format!("Invalid store_id: {e}")))?;
-        let (memories, total) = memory_store_backend(&self.db, req.org_id)
-            .recall(everruns_core::memory_store::MemoryQuery {
-                store_id,
-                query: req.query,
-                tags: req.has_tags.then_some(req.tags),
-                kind: req.kind.as_deref().map(memory_kind_from_str),
-                limit: req.limit as usize,
-            })
-            .await
-            .map_err(memory_error_to_status)?;
-        let proto_memories = memories
-            .into_iter()
-            .map(memory_to_proto)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        Ok(Response::new(MemoryRecallResponse {
-            memories: proto_memories,
-            total: total as u32,
-        }))
-    }
-
-    async fn memory_forget(
-        &self,
-        request: Request<MemoryForgetRequest>,
-    ) -> Result<Response<MemoryForgetResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let store_id = req
-            .store_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid store_id: {e}")))?;
-        let memory_id = req
-            .memory_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid memory_id: {e}")))?;
-        let forgotten = memory_store_backend(&self.db, req.org_id)
-            .forget(store_id, memory_id)
-            .await
-            .map_err(memory_error_to_status)?;
-
-        Ok(Response::new(MemoryForgetResponse { forgotten }))
-    }
-
-    async fn memory_count_active(
-        &self,
-        request: Request<MemoryCountActiveRequest>,
-    ) -> Result<Response<MemoryCountActiveResponse>, Status> {
-        use everruns_core::MemoryStoreBackend;
-
-        let req = request.into_inner();
-        let store_id = req
-            .store_id
-            .parse()
-            .map_err(|e| Status::invalid_argument(format!("Invalid store_id: {e}")))?;
-        let count = memory_store_backend(&self.db, req.org_id)
-            .count_active(store_id)
-            .await
-            .map_err(memory_error_to_status)?;
-
-        Ok(Response::new(MemoryCountActiveResponse {
-            count: count as u32,
-        }))
-    }
-
     // ========================================================================
     // MCP server operations
     // ========================================================================
@@ -2982,6 +2844,193 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(DeregisterSessionResourceResponse { removed }))
+    }
+
+    // ========================================================================
+    // Session task registry
+    // ========================================================================
+
+    async fn create_session_task(
+        &self,
+        request: Request<CreateSessionTaskRequest>,
+    ) -> Result<Response<SessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let input: everruns_core::CreateSessionTask = serde_json::from_slice(&req.create_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task create JSON: {e}")))?;
+
+        let task = self
+            .session_task_registry()
+            .create(input)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to create session task: {e}");
+                Status::internal("Failed to create session task")
+            })?;
+
+        Ok(Response::new(SessionTaskResponse {
+            task_json: serde_json::to_vec(&task)
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn update_session_task(
+        &self,
+        request: Request<UpdateSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let update: everruns_core::SessionTaskUpdate = serde_json::from_slice(&req.update_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task update JSON: {e}")))?;
+
+        let task = self
+            .session_task_registry()
+            .update(session_id.into(), &req.task_id, update)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to update session task: {e}");
+                Status::internal("Failed to update session task")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn get_session_task(
+        &self,
+        request: Request<GetSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let task = self
+            .session_task_registry()
+            .get(session_id.into(), &req.task_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session task: {e}");
+                Status::internal("Failed to get session task")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn list_session_tasks(
+        &self,
+        request: Request<ListSessionTasksRequest>,
+    ) -> Result<Response<ListSessionTasksResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let filter = if req.kind.is_some() || req.state.is_some() {
+            Some(everruns_core::SessionTaskFilter {
+                kind: req.kind,
+                state: req
+                    .state
+                    .as_deref()
+                    .map(everruns_core::SessionTaskState::from),
+            })
+        } else {
+            None
+        };
+
+        let tasks = self
+            .session_task_registry()
+            .list(session_id.into(), filter.as_ref())
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list session tasks: {e}");
+                Status::internal("Failed to list session tasks")
+            })?;
+
+        Ok(Response::new(ListSessionTasksResponse {
+            task_json: tasks
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<_, _>>()
+                .map_err(|e| Status::internal(format!("Failed to encode tasks: {e}")))?,
+        }))
+    }
+
+    async fn request_cancel_session_task(
+        &self,
+        request: Request<RequestCancelSessionTaskRequest>,
+    ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let task = self
+            .session_task_registry()
+            .request_cancel(session_id.into(), &req.task_id)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to request session task cancel: {e}");
+                Status::internal("Failed to request session task cancel")
+            })?;
+
+        Ok(Response::new(OptionalSessionTaskResponse {
+            task_json: task
+                .map(|t| serde_json::to_vec(&t))
+                .transpose()
+                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+        }))
+    }
+
+    async fn record_session_task_message(
+        &self,
+        request: Request<RecordSessionTaskMessageRequest>,
+    ) -> Result<Response<SessionTaskMessageResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        let message: everruns_core::NewTaskMessage = serde_json::from_slice(&req.message_json)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task message JSON: {e}")))?;
+
+        let stored = self
+            .session_task_registry()
+            .record_message(session_id.into(), &req.task_id, message)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to record session task message: {e}");
+                Status::internal("Failed to record session task message")
+            })?;
+
+        Ok(Response::new(SessionTaskMessageResponse {
+            message_json: serde_json::to_vec(&stored)
+                .map_err(|e| Status::internal(format!("Failed to encode task message: {e}")))?,
+        }))
+    }
+
+    async fn list_session_task_messages(
+        &self,
+        request: Request<ListSessionTaskMessagesRequest>,
+    ) -> Result<Response<ListSessionTaskMessagesResponse>, Status> {
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+
+        let messages = self
+            .session_task_registry()
+            .list_messages(session_id.into(), &req.task_id, req.limit)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to list session task messages: {e}");
+                Status::internal("Failed to list session task messages")
+            })?;
+
+        Ok(Response::new(ListSessionTaskMessagesResponse {
+            message_json: messages
+                .iter()
+                .map(serde_json::to_vec)
+                .collect::<Result<_, _>>()
+                .map_err(|e| Status::internal(format!("Failed to encode task messages: {e}")))?,
+        }))
     }
 
     // ========================================================================

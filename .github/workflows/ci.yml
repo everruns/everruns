@@ -272,6 +272,9 @@ jobs:
             -p everruns-anthropic \
             -p everruns-integrations-duckduckgo \
             -p everruns-integrations-github \
+            -p everruns-integrations-daytona \
+            -p everruns-integrations-e2b \
+            -p everruns-integrations-parallel \
             -p everruns-runtime
 
   migration-immutability:
@@ -567,7 +570,7 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-binstall
             ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.9
 
       - name: Install sqlx-cli
         run: |
@@ -575,7 +578,7 @@ jobs:
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
               cargo install cargo-binstall --locked
             fi
-            cargo binstall sqlx-cli --no-confirm --version '~0.8'
+            cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
 
       - name: Run migrations
@@ -754,7 +757,7 @@ jobs:
           path: |
             ~/.cargo/bin/cargo-binstall
             ~/.cargo/bin/sqlx
-          key: ${{ runner.os }}-cargo-bins-sqlx-0.8
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.9
 
       - name: Install sqlx-cli
         run: |
@@ -762,7 +765,7 @@ jobs:
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
               cargo install cargo-binstall --locked
             fi
-            cargo binstall sqlx-cli --no-confirm --version '~0.8'
+            cargo binstall sqlx-cli --no-confirm --version '~0.9'
           fi
 
       - name: Run migrations

@@ -15,7 +15,10 @@ use everruns_core::{
     Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
+use futures::future::join_all;
 use uuid::Uuid;
+
+use crate::mcp_cache::McpDiscoveryCache;
 
 /// Merge harness-chain → agent → session scoped MCP servers (last layer wins).
 pub(crate) fn merge_session_scoped_servers(
@@ -95,34 +98,63 @@ fn stdio_endpoint(name: &str, _server: &ScopedMcpServer) -> Option<McpEndpoint> 
 }
 
 /// Discover tool definitions for all scoped servers with `tool_discovery`
-/// enabled, prefixed via [`McpCapability`]. Failures are logged and skipped so
-/// one unreachable server doesn't fail the whole turn.
+/// enabled, prefixed via [`McpCapability`].
+///
+/// Discovery is concurrent across servers (a turn's latency is the slowest
+/// server, not the sum) and cached per session via [`McpDiscoveryCache`]:
+/// fresh entries are served from memory, stale entries are served immediately
+/// and revalidated in the background, and a cold entry blocks on a
+/// single-flight `tools/list`. Per-server failures degrade to whatever is
+/// cached (empty when cold) so one unreachable server doesn't fail the turn.
 pub(crate) async fn discover_tool_definitions(
-    client: &McpClient,
+    cache: &Arc<McpDiscoveryCache>,
+    client: Arc<McpClient>,
     session_uuid: Uuid,
     servers: &ScopedMcpServers,
 ) -> Vec<ToolDefinition> {
-    let mut definitions = Vec::new();
-    for resolved in resolve_servers(servers) {
-        if !resolved.tool_discovery {
-            continue;
-        }
-        match client.discover(&resolved.connection).await {
-            Ok(tools) => {
-                let id = Uuid::new_v5(&session_uuid, resolved.name.as_bytes());
-                let capability = McpCapability::new(id, resolved.name.clone(), None, tools);
-                definitions.extend(capability.tool_definitions());
+    let discoveries = resolve_servers(servers)
+        .into_iter()
+        .filter(|resolved| resolved.tool_discovery)
+        .map(|resolved| {
+            let cache = cache.clone();
+            let client = client.clone();
+            async move {
+                let key = (session_uuid, resolved.name.clone());
+                let name = resolved.name.clone();
+                let connection = resolved.connection.clone();
+                cache
+                    .resolve(key, move || {
+                        let client = client.clone();
+                        let connection = connection.clone();
+                        let name = name.clone();
+                        async move {
+                            match client.discover(&connection).await {
+                                Ok(tools) => Some(build_definitions(session_uuid, &name, tools)),
+                                Err(error) => {
+                                    tracing::warn!(
+                                        server = %name,
+                                        %error,
+                                        "scoped MCP tool discovery failed; skipping server"
+                                    );
+                                    None
+                                }
+                            }
+                        }
+                    })
+                    .await
             }
-            Err(error) => {
-                tracing::warn!(
-                    server = %resolved.name,
-                    %error,
-                    "scoped MCP tool discovery failed; skipping server"
-                );
-            }
-        }
-    }
-    definitions
+        });
+    join_all(discoveries).await.into_iter().flatten().collect()
+}
+
+/// Map a server's raw `tools/list` result into prefixed tool definitions.
+fn build_definitions(
+    session_uuid: Uuid,
+    name: &str,
+    tools: Vec<everruns_core::McpToolDefinition>,
+) -> Vec<ToolDefinition> {
+    let id = Uuid::new_v5(&session_uuid, name.as_bytes());
+    McpCapability::new(id, name.to_string(), None, tools).tool_definitions()
 }
 
 /// Build an MCP executor for the session's scoped servers, or `None` when no
