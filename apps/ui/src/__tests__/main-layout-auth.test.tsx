@@ -8,7 +8,12 @@ const mockPathname = jest.fn();
 const mockSearchParams = jest.fn();
 
 const authState = {
-  config: { mode: "password", oauth_providers: [] } as unknown as AuthConfigResponse | undefined,
+  config: {
+    mode: "full",
+    password_auth_enabled: true,
+    oauth_providers: [],
+    signup_enabled: false,
+  } as AuthConfigResponse | undefined,
   configLoading: false,
   configError: null as Error | null,
   user: {
@@ -74,9 +79,11 @@ describe("MainLayout auth availability", () => {
     mockSearchParams.mockReturnValue(new URLSearchParams("tab=models"));
 
     authState.config = {
-      mode: "password",
+      mode: "full",
+      password_auth_enabled: true,
       oauth_providers: [],
-    } as unknown as AuthConfigResponse;
+      signup_enabled: false,
+    };
     authState.configLoading = false;
     authState.configError = null;
     authState.user = {

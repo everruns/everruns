@@ -234,8 +234,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-1",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "observation_masking",
         messages_before: 42,
@@ -250,7 +250,7 @@ describe("ChatPanel compaction divider", () => {
         ],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
+    mockSessionContext.chatEvents = [compactedEvent];
 
     render(<ChatPanel />);
 
@@ -264,8 +264,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-2",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "none",
         messages_before: 20,
@@ -274,7 +274,7 @@ describe("ChatPanel compaction divider", () => {
         steps: [],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
+    mockSessionContext.chatEvents = [compactedEvent];
 
     render(<ChatPanel />);
 
@@ -289,8 +289,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-3",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "auto",
         messages_before: 100,
@@ -302,7 +302,7 @@ describe("ChatPanel compaction divider", () => {
         ],
       },
     };
-    mockSessionContext.chatEvents = [compactedEvent as unknown as Event];
+    mockSessionContext.chatEvents = [compactedEvent];
 
     render(<ChatPanel />);
 
@@ -369,15 +369,33 @@ describe("ChatPanel placeholder", () => {
   it("renders inline composer selects with non-native triggers to avoid nested picker chrome", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
     mockSessionContext.llmModel = {
+      id: "model-1",
+      provider_id: "provider-1",
+      model_id: "gpt-5.4",
       display_name: "GPT-5.4",
+      capabilities: ["chat"],
+      enabled: true,
+      healthy: true,
+      created_at: "2025-01-01T00:00:00Z",
+      updated_at: "2025-01-01T00:00:00Z",
+      provider_name: "OpenAI",
+      provider_type: "openai",
+      is_favorite: false,
       profile: {
+        name: "GPT-5.4",
+        family: "gpt-5",
+        attachment: false,
         reasoning: true,
+        temperature: true,
+        tool_call: true,
+        structured_output: true,
+        open_weights: false,
         reasoning_effort: {
           default: "medium",
           values: [{ value: "medium", name: "Medium" }],
         },
       },
-    } as unknown as LlmModelWithProvider;
+    };
 
     render(<ChatPanel />);
 
@@ -442,7 +460,7 @@ describe("ChatPanel placeholder", () => {
           error: "backend temporarily unavailable",
           error_code: "dependency_unavailable",
         },
-      } as unknown as Event,
+      },
     ];
 
     render(<ChatPanel />);
@@ -466,7 +484,7 @@ describe("ChatPanel placeholder", () => {
           turn_id: "turn-1",
           error: "provider token leaked in diagnostic payload",
         },
-      } as unknown as Event,
+      },
     ];
 
     render(<ChatPanel />);
