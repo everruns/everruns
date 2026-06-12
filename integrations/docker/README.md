@@ -2,6 +2,10 @@
 
 > Session-scoped Docker container execution for Everruns agents.
 
+[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-docker.svg)](https://crates.io/crates/everruns-integrations-docker)
+[![Documentation](https://docs.rs/everruns-integrations-docker/badge.svg)](https://docs.rs/everruns-integrations-docker)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
 `everruns-integrations-docker` gives agents a Docker container tied to the
 session lifecycle. The container starts lazily on first tool use, and agents can
 run commands, read and write files, and stop it when done — a self-hosted way to
@@ -32,6 +36,7 @@ assert_eq!(capability.id(), "docker_container");
 
 ## Documentation
 
+- [API reference (docs.rs)](https://docs.rs/everruns-integrations-docker)
 - [Everruns documentation](https://docs.everruns.com)
 
 ## License

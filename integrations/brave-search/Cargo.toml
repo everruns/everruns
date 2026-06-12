@@ -7,13 +7,17 @@
 name = "everruns-integrations-brave-search"
 readme = "README.md"
 version.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Brave Search web search integration for Everruns"
+documentation = "https://docs.rs/everruns-integrations-brave-search"
 
 [dependencies]
-everruns-core = { path = "../../crates/core" }
+everruns-core.workspace = true
 inventory.workspace = true
 
 # HTTP client for Brave Search API

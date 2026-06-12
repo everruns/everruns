@@ -2,8 +2,12 @@
 
 > Google Gemini LLM provider for Everruns agents.
 
+[![Crates.io](https://img.shields.io/crates/v/everruns-gemini.svg)](https://crates.io/crates/everruns-gemini)
+[![Documentation](https://docs.rs/everruns-gemini/badge.svg)](https://docs.rs/everruns-gemini)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
 `everruns-gemini` registers a Google Gemini driver with
-[`everruns-core`](https://github.com/everruns/everruns/tree/main/crates/core) so
+[`everruns-core`](https://crates.io/crates/everruns-core) so
 the same Everruns agent loop can run against Gemini models. It implements the
 provider-neutral `LlmDriver` contract and maps Everruns' messages, tools, and
 reasoning onto the Gemini API. Core has no knowledge of specific providers; hosts
@@ -11,8 +15,10 @@ register whichever drivers they want available.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. Providers are swappable: see
-`everruns-openai` and `everruns-anthropic` for other backends, or run with no key
-using the built-in LLM simulator in `everruns-runtime`.
+[`everruns-openai`](https://crates.io/crates/everruns-openai) and
+[`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for other
+backends, or run with no key using the built-in LLM simulator in
+[`everruns-runtime`](https://crates.io/crates/everruns-runtime).
 
 ## Quick Example
 
@@ -34,6 +40,7 @@ Register the driver into a platform and drive a full turn with `everruns-runtime
 
 ## Documentation
 
+- [API reference (docs.rs)](https://docs.rs/everruns-gemini)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

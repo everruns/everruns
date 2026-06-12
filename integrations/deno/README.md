@@ -2,6 +2,10 @@
 
 > Deno cloud sandboxes for Everruns agents.
 
+[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-deno.svg)](https://crates.io/crates/everruns-integrations-deno)
+[![Documentation](https://docs.rs/everruns-integrations-deno/badge.svg)](https://docs.rs/everruns-integrations-deno)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
 `everruns-integrations-deno` adds cloud-based sandboxed code execution backed by
 Deno Sandboxes, letting agents run code inside isolated environments without
 touching the host. Sandboxes are managed per session, each identified by its own
@@ -31,6 +35,7 @@ assert_eq!(capability.id(), "deno");
 
 ## Documentation
 
+- [API reference (docs.rs)](https://docs.rs/everruns-integrations-deno)
 - [Deno integration](https://docs.everruns.com/integrations/deno/)
 - [Everruns documentation](https://docs.everruns.com)
 

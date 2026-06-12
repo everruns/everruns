@@ -2,6 +2,10 @@
 
 > Cloud browser automation for Everruns agents.
 
+[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-browserless.svg)](https://crates.io/crates/everruns-integrations-browserless)
+[![Documentation](https://docs.rs/everruns-integrations-browserless/badge.svg)](https://docs.rs/everruns-integrations-browserless)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
 `everruns-integrations-browserless` gives agents a headless cloud browser through
 the [Browserless](https://www.browserless.io) REST API and CDP (Chrome DevTools
 Protocol) WebSocket sessions. Agents can capture screenshots, read the DOM, scrape
@@ -32,6 +36,7 @@ assert_eq!(capability.id(), "browserless");
 
 ## Documentation
 
+- [API reference (docs.rs)](https://docs.rs/everruns-integrations-browserless)
 - [Browserless integration](https://docs.everruns.com/integrations/browserless/)
 - [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
 - [Everruns documentation](https://docs.everruns.com)

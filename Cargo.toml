@@ -9,7 +9,6 @@ members = [
     "crates/mcp",
     "crates/llm-tests",
     "crates/runtime",
-    "crates/macros",
     "crates/openai",
     "crates/anthropic",
     "crates/gemini",
