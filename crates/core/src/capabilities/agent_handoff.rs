@@ -6,7 +6,7 @@
 // Credentials are never accepted as tool arguments or config. Required
 // provider connections are resolved server-side before the child session starts.
 
-use super::{Capability, CapabilityStatus, RiskLevel, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::platform_store::PlatformStore;
 use crate::session::SubagentStatus;
 use crate::session_resource::{
@@ -66,31 +66,45 @@ impl Capability for AgentHandoffCapability {
             "properties": {
                 "targets": {
                     "type": "array",
+                    "title": "Handoff targets",
                     "description": "Configured agents this agent may hand work off to.",
                     "items": {
                         "type": "object",
                         "properties": {
                             "id": {
                                 "type": "string",
+                                "title": "Target ID",
                                 "description": "Stable target key used in start_agent_handoff."
                             },
-                            "name": { "type": "string" },
-                            "description": { "type": "string" },
+                            "name": {
+                                "type": "string",
+                                "title": "Name",
+                                "description": "Human-readable name of the handoff target."
+                            },
+                            "description": {
+                                "type": "string",
+                                "title": "Description",
+                                "description": "Optional description of what the target agent does."
+                            },
                             "agent_id": {
                                 "type": "string",
+                                "title": "Agent ID",
                                 "description": "Public id of the configured target agent."
                             },
                             "harness_id": {
                                 "type": "string",
+                                "title": "Harness ID",
                                 "description": "Public id of the configured target harness."
                             },
                             "required_connections": {
                                 "type": "array",
+                                "title": "Required connections",
                                 "items": { "type": "string" },
                                 "description": "Provider connections required before handoff starts."
                             },
                             "required_scopes": {
                                 "type": "array",
+                                "title": "Required scopes",
                                 "items": { "type": "string" },
                                 "description": "Non-secret scope labels recorded for audit and resource metadata."
                             }
@@ -106,8 +120,75 @@ impl Capability for AgentHandoffCapability {
     }
 
     fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
-        let parsed = AgentHandoffConfig::from_value(config).map_err(|e| e.to_string())?;
+        let parsed = AgentHandoffConfig::from_value(config)
+            .map_err(|e| format!("invalid agent_handoff config: {e}"))?;
         parsed.validate()
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Defines the configured agents this agent may hand work off to and \
+                     the connections each handoff requires.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Передання роботи агентам"),
+                description: Some(
+                    "Делегує роботу налаштованим власним агентам через автентифікований \
+                     шлюз передання.",
+                ),
+                config_description: Some(
+                    "Визначає налаштованих агентів, яким цей агент може передавати роботу, та підключення, потрібні для кожного передання.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "targets": {
+                            "title": "Цілі передання",
+                            "description": "Налаштовані агенти, яким цей агент може передавати роботу.",
+                            "items": {
+                                "properties": {
+                                    "id": {
+                                        "title": "Ідентифікатор цілі",
+                                        "description": "Стабільний ключ цілі, що використовується у start_agent_handoff."
+                                    },
+                                    "name": {
+                                        "title": "Назва",
+                                        "description": "Зрозуміла людині назва цілі передання."
+                                    },
+                                    "description": {
+                                        "title": "Опис",
+                                        "description": "Необов'язковий опис того, що робить цільовий агент."
+                                    },
+                                    "agent_id": {
+                                        "title": "Ідентифікатор агента",
+                                        "description": "Публічний ідентифікатор налаштованого цільового агента."
+                                    },
+                                    "harness_id": {
+                                        "title": "Ідентифікатор harness",
+                                        "description": "Публічний ідентифікатор налаштованого цільового harness."
+                                    },
+                                    "required_connections": {
+                                        "title": "Обов'язкові підключення",
+                                        "description": "Підключення до провайдерів, потрібні перед початком передання."
+                                    },
+                                    "required_scopes": {
+                                        "title": "Обов'язкові scope",
+                                        "description": "Несекретні мітки scope, що записуються для аудиту та метаданих ресурсів."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
@@ -972,6 +1053,21 @@ mod tests {
 
         let schema = cap.config_schema().expect("config schema");
         assert_eq!(schema["properties"]["targets"]["type"], "array");
+    }
+
+    #[test]
+    fn uk_localization_resolves() {
+        let cap = AgentHandoffCapability;
+        assert_eq!(
+            cap.localized_name(Some("uk-UA")),
+            "Передання роботи агентам"
+        );
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("Делегує роботу")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

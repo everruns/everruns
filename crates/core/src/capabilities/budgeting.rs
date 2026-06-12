@@ -10,7 +10,7 @@
 //
 // See specs/budgeting.md (Phase 4: Agent awareness)
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -33,6 +33,14 @@ impl Capability for BudgetingCapability {
         "Enables budget awareness. The agent receives information about active budgets \
          and can check remaining balance. When budget is running low, the agent will \
          prioritize completing current tasks efficiently."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Бюджетування",
+            "Вмикає обізнаність про бюджет. Агент отримує інформацію про активні бюджети й може перевіряти залишок коштів. Коли бюджет добігає кінця, агент надає пріоритет ефективному завершенню поточних завдань.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

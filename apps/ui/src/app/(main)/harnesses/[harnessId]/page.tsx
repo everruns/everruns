@@ -30,6 +30,11 @@ import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
+import {
   getDisplayName,
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
@@ -39,6 +44,7 @@ import { normalizeTags } from "@/lib/tags";
 
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
   const { harnessId } = use(params);
+  const { locale } = useLocale();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
@@ -234,8 +240,12 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                           >
                             <IconComponent className="w-4 h-4" />
                             <div className="flex-1">
-                              <p className="text-sm font-medium">{cap.name}</p>
-                              <p className="text-xs text-muted-foreground">{cap.description}</p>
+                              <p className="text-sm font-medium">
+                                {localizedCapabilityName(cap, locale)}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {localizedCapabilityDescription(cap, locale)}
+                              </p>
                             </div>
                           </div>
                         );

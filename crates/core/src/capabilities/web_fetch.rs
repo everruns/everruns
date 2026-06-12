@@ -28,7 +28,7 @@
 //!   Admin assignment remains the explicit trust gate for enabling the
 //!   capability at all.
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
@@ -237,6 +237,71 @@ impl Capability for WebFetchCapability {
             enable_file_download,
             self.bot_auth.clone(),
         ))]
+    }
+
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "enable_file_download": {
+                    "type": "boolean",
+                    "title": "Allow saving fetched files",
+                    "description": "Let the web_fetch tool save large or binary responses \
+                                    into the session workspace via save_to_file instead of \
+                                    inlining them.",
+                    "default": false
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("web_fetch config must be an object".to_string());
+        }
+        match config.get("enable_file_download") {
+            None | Some(serde_json::Value::Bool(_)) => Ok(()),
+            Some(other) => Err(format!(
+                "enable_file_download must be a boolean, got {other}"
+            )),
+        }
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls whether fetched responses may be saved into the session \
+                     workspace.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Отримання вебвмісту"),
+                description: Some(
+                    "Отримує вміст за URL-адресою (GET/HEAD) і за потреби зберігає його у \
+                     файлову систему сесії.",
+                ),
+                config_description: Some(
+                    "Визначає, чи можна зберігати отримані відповіді в робочий простір сесії.",
+                ),
+                config_overlay: Some(serde_json::json!({
+                    "properties": {
+                        "enable_file_download": {
+                            "title": "Дозволити збереження файлів",
+                            "description": "Дозволяє інструменту web_fetch зберігати великі або бінарні відповіді у файли робочого простору (save_to_file) замість вбудовування у відповідь."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 

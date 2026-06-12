@@ -27,6 +27,11 @@ import { CircleOff, Search as SearchIcon, Bot, Layers, X, Plus } from "lucide-re
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
+import {
+  localizedCapabilityDescription,
+  localizedCapabilityName,
+} from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
@@ -168,15 +173,20 @@ function DeclarativeCapabilityDialog() {
 }
 
 function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
+  const { locale } = useLocale();
   const deleteCapability = useDeleteDeclarativeCapability();
   return (
     <div className="flex items-center justify-between gap-3 border p-3">
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-medium truncate">{capability.display_name ?? capability.name}</p>
+          <p className="font-medium truncate">
+            {capability.display_name ?? localizedCapabilityName(capability, locale)}
+          </p>
           <CopyButton value={capability.capability_id} />
         </div>
-        <p className="text-sm text-muted-foreground line-clamp-1">{capability.description}</p>
+        <p className="text-sm text-muted-foreground line-clamp-1">
+          {localizedCapabilityDescription(capability, locale)}
+        </p>
       </div>
       <Button
         type="button"
@@ -209,6 +219,7 @@ function CapabilityStats({ capability }: { capability: Capability }) {
 }
 
 function CapabilityCard({ capability }: { capability: Capability }) {
+  const { locale } = useLocale();
   const IconComponent = getCapabilityIcon(capability.icon);
 
   return (
@@ -220,7 +231,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
               <IconComponent className="icon-sharp h-5 w-5" />
             </div>
             <div className="flex items-center gap-2 min-w-0">
-              <CardTitle className="text-lg truncate">{capability.name}</CardTitle>
+              <CardTitle className="text-lg truncate">
+                {localizedCapabilityName(capability, locale)}
+              </CardTitle>
               <CopyButton value={capability.id} />
             </div>
           </div>
@@ -230,7 +243,9 @@ function CapabilityCard({ capability }: { capability: Capability }) {
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
-            <InlineStreamdownMessage>{capability.description}</InlineStreamdownMessage>
+            <InlineStreamdownMessage>
+              {localizedCapabilityDescription(capability, locale)}
+            </InlineStreamdownMessage>
           </div>
           <div className="flex items-center justify-between gap-2 flex-wrap">
             {capability.category ? (
@@ -248,6 +263,14 @@ function CapabilityCard({ capability }: { capability: Capability }) {
   );
 }
 
+function matchesLocalizations(capability: Pick<Capability, "localizations">, q: string): boolean {
+  return Object.values(capability.localizations ?? {}).some(
+    (loc) =>
+      (loc.name?.toLowerCase().includes(q) ?? false) ||
+      (loc.description?.toLowerCase().includes(q) ?? false),
+  );
+}
+
 function matches(capability: Capability, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
@@ -255,7 +278,8 @@ function matches(capability: Capability, query: string): boolean {
     capability.name.toLowerCase().includes(q) ||
     capability.description.toLowerCase().includes(q) ||
     capability.id.toLowerCase().includes(q) ||
-    (capability.category?.toLowerCase().includes(q) ?? false)
+    (capability.category?.toLowerCase().includes(q) ?? false) ||
+    matchesLocalizations(capability, q)
   );
 }
 

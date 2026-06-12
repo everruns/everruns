@@ -13,7 +13,7 @@
 
 use serde_json::{Value, json};
 
-use super::{Capability, CapabilityStatus, RiskLevel};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::memory::{MemoryConfig, validate_memory_config};
 
 /// Stable string id for the memory capability.
@@ -89,7 +89,10 @@ impl Capability for MemoryCapability {
                                 "type": "string",
                                 "title": "Access mode",
                                 "description": "Access mode for the mount.",
-                                "enum": ["readonly", "readwrite"],
+                                "oneOf": [
+                                    { "const": "readonly", "title": "Read-only" },
+                                    { "const": "readwrite", "title": "Read-write" }
+                                ],
                                 "default": "readonly"
                             }
                         }
@@ -117,6 +120,62 @@ impl Capability for MemoryCapability {
         let typed: MemoryConfig = serde_json::from_value(config.clone())
             .map_err(|e| format!("invalid memory config: {e}"))?;
         validate_memory_config(&typed)
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose which Memories are mounted into /workspace and whether each \
+                     mount is read-only or read-write.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Пам'ять"),
+                description: Some(
+                    "Підключає іменовані Пам'яті організації до робочого простору сесії як \
+                     довідкові дані лише для читання або як спільну робочу пам'ять із \
+                     читанням і записом.",
+                ),
+                config_description: Some(
+                    "Визначає, які Пам'яті монтуються у /workspace і чи доступні вони лише \
+                     для читання, чи для читання й запису.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "mounts": {
+                            "title": "Монтування",
+                            "description": "Пам'яті, що монтуються у /workspace для сесій із цією можливістю.",
+                            "items": {
+                                "properties": {
+                                    "memory": {
+                                        "title": "Пам'ять",
+                                        "description": "Ідентифікатор Пам'яті (mem_<32-hex>) для монтування."
+                                    },
+                                    "path": {
+                                        "title": "Шлях монтування",
+                                        "description": "Абсолютний шлях у /workspace (наприклад, /workspace/research)."
+                                    },
+                                    "mode": {
+                                        "title": "Режим доступу",
+                                        "description": "Режим доступу до монтування.",
+                                        "enum_labels": {
+                                            "readonly": "Лише читання",
+                                            "readwrite": "Читання й запис"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 

@@ -19,7 +19,9 @@
 //! ```
 
 use everruns_core::ToolHints;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
@@ -194,6 +196,45 @@ impl Capability for DockerContainerCapability {
         serde_json::from_value::<DockerContainerConfig>(config.clone())
             .map(|_| ())
             .map_err(|error| format!("Invalid docker_container config: {error}"))
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose the container base image and the default working directory inside it.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("[Експериментально] Контейнер Docker"),
+                description: Some(
+                    "Виконуйте команди та керуйте файлами в контейнері Docker, прив'язаному до \
+                     сесії. Контейнер ліниво запускається при першому використанні та \
+                     зберігається протягом сесії. ЕКСПЕРИМЕНТАЛЬНО: ця можливість може суттєво \
+                     змінитися.",
+                ),
+                config_description: Some(
+                    "Визначає базовий образ контейнера та типовий робочий каталог усередині нього.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "image": {
+                            "title": "Образ Docker",
+                            "description": "Власний базовий образ для контейнера."
+                        },
+                        "working_dir": {
+                            "title": "Робочий каталог",
+                            "description": "Типовий робочий каталог усередині контейнера."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -1082,6 +1123,13 @@ mod tests {
                 tool.name()
             );
         }
+    }
+
+    #[test]
+    fn localizations_cover_schema_summary_and_uk_name() {
+        let cap = DockerContainerCapability;
+        assert!(cap.describe_schema(None).is_some());
+        assert_ne!(cap.localized_name(Some("uk-UA")), cap.name());
     }
 
     // --- Config tests ---

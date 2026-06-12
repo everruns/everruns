@@ -22,7 +22,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileSystem, ToolContext};
@@ -162,6 +162,14 @@ impl Capability for ToolOutputPersistenceCapability {
     fn description(&self) -> &str {
         "Persists full exec tool output to session VFS before truncation, \
          enabling lossless retrieval via read_file or grep."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Збереження виводу інструментів",
+            "Зберігає повний вивід інструментів виконання у VFS сесії перед обрізанням, що дає змогу отримати його без втрат через read_file або grep.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

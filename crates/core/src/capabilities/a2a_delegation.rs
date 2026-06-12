@@ -5,7 +5,7 @@
 // `agent_run`, which gives agents and UI a unified local/remote delegation
 // handle without introducing inbound A2A app-channel exposure.
 
-use super::{Capability, CapabilityStatus, RiskLevel, SystemPromptContext};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::session_resource::{
     RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
 };
@@ -80,41 +80,61 @@ impl Capability for A2aAgentDelegationCapability {
             "properties": {
                 "agents": {
                     "type": "array",
+                    "title": "External agents",
                     "description": "External A2A agents available for delegation.",
                     "items": {
                         "type": "object",
                         "properties": {
                             "id": {
                                 "type": "string",
+                                "title": "Agent ID",
                                 "description": "Stable ID used in spawn_agent target.external_agent_id."
                             },
-                            "name": { "type": "string" },
-                            "description": { "type": "string" },
+                            "name": {
+                                "type": "string",
+                                "title": "Name",
+                                "description": "Human-readable name of the external agent."
+                            },
+                            "description": {
+                                "type": "string",
+                                "title": "Description",
+                                "description": "Optional description of what the external agent does."
+                            },
                             "base_url": {
                                 "type": "string",
+                                "title": "Base URL",
                                 "description": "Base URL for AgentCard discovery. The client fetches /.well-known/agent-card.json."
                             },
                             "agent_card": {
                                 "type": "object",
+                                "title": "Agent card",
                                 "description": "Optional cached/inline AgentCard. If omitted, base_url discovery is used."
                             },
                             "headers": {
                                 "type": "object",
+                                "title": "Headers",
                                 "additionalProperties": { "type": "string" },
                                 "description": "Non-secret static headers to send to the A2A endpoint."
                             },
                             "preferred_binding": {
                                 "type": "string",
-                                "enum": ["JSONRPC", "HTTP+JSON"],
-                                "description": "Optional transport preference."
+                                "title": "Preferred transport",
+                                "description": "Optional transport preference.",
+                                "oneOf": [
+                                    { "const": "JSONRPC", "title": "JSON-RPC" },
+                                    { "const": "HTTP+JSON", "title": "HTTP+JSON" }
+                                ]
                             },
                             "poll_interval_ms": {
                                 "type": "integer",
+                                "title": "Poll interval (ms)",
+                                "description": "Polling interval for remote task status, in milliseconds.",
                                 "minimum": 100,
                                 "maximum": 60000
                             },
                             "allow_local_urls": {
                                 "type": "boolean",
+                                "title": "Allow local URLs",
                                 "description": "Testing/dev escape hatch for localhost A2A agents. Keep false in production.",
                                 "default": false
                             }
@@ -130,11 +150,89 @@ impl Capability for A2aAgentDelegationCapability {
     }
 
     fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
-        let parsed = A2aDelegationConfig::from_value(config).map_err(|e| e.to_string())?;
+        let parsed = A2aDelegationConfig::from_value(config)
+            .map_err(|e| format!("invalid a2a_agent_delegation config: {e}"))?;
         for agent in parsed.agents {
             agent.validate()?;
         }
         Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Defines the external A2A agents this agent may delegate work to and \
+                     how to reach them.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Делегування агентам A2A"),
+                description: Some(
+                    "Делегує роботу налаштованим зовнішнім агентам за протоколом A2A.",
+                ),
+                config_description: Some(
+                    "Визначає зовнішніх агентів A2A, яким цей агент може делегувати роботу, та параметри підключення до них.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "agents": {
+                            "title": "Зовнішні агенти",
+                            "description": "Зовнішні агенти A2A, доступні для делегування.",
+                            "items": {
+                                "properties": {
+                                    "id": {
+                                        "title": "Ідентифікатор агента",
+                                        "description": "Стабільний ідентифікатор, що використовується у spawn_agent (target.external_agent_id)."
+                                    },
+                                    "name": {
+                                        "title": "Назва",
+                                        "description": "Зрозуміла людині назва зовнішнього агента."
+                                    },
+                                    "description": {
+                                        "title": "Опис",
+                                        "description": "Необов'язковий опис того, що робить зовнішній агент."
+                                    },
+                                    "base_url": {
+                                        "title": "Базовий URL",
+                                        "description": "Базовий URL для виявлення AgentCard. Клієнт завантажує /.well-known/agent-card.json."
+                                    },
+                                    "agent_card": {
+                                        "title": "AgentCard",
+                                        "description": "Необов'язковий кешований або вбудований AgentCard. Якщо не задано, використовується виявлення через base_url."
+                                    },
+                                    "headers": {
+                                        "title": "Заголовки",
+                                        "description": "Несекретні статичні заголовки, що надсилаються на кінцеву точку A2A."
+                                    },
+                                    "preferred_binding": {
+                                        "title": "Бажаний транспорт",
+                                        "description": "Необов'язкове налаштування транспорту.",
+                                        "enum_labels": {
+                                            "JSONRPC": "JSON-RPC",
+                                            "HTTP+JSON": "HTTP+JSON"
+                                        }
+                                    },
+                                    "poll_interval_ms": {
+                                        "title": "Інтервал опитування (мс)",
+                                        "description": "Інтервал опитування стану віддаленої задачі в мілісекундах."
+                                    },
+                                    "allow_local_urls": {
+                                        "title": "Дозволити локальні URL",
+                                        "description": "Обхідний шлях для тестування та розробки з локальними агентами A2A. У продакшені тримайте вимкненим."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                })),
+            },
+        ]
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
@@ -2114,6 +2212,53 @@ mod tests {
         };
         assert_eq!(value["status"], "completed");
         assert_eq!(value["result"], "echo: background");
+    }
+
+    #[test]
+    fn uk_localization_and_schema_one_of_match_validation() {
+        let cap = A2aAgentDelegationCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Делегування агентам A2A");
+        assert!(
+            cap.localized_description(Some("uk-UA"))
+                .contains("Делегує роботу")
+        );
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert!(cap.describe_schema(None).is_some());
+
+        // preferred_binding oneOf consts must be exactly the values
+        // validate_config accepts.
+        let schema = cap.config_schema().expect("config schema");
+        let consts: Vec<&str> =
+            schema["properties"]["agents"]["items"]["properties"]["preferred_binding"]["oneOf"]
+                .as_array()
+                .expect("oneOf")
+                .iter()
+                .map(|v| v["const"].as_str().expect("const"))
+                .collect();
+        assert_eq!(consts, vec!["JSONRPC", "HTTP+JSON"]);
+        for binding in consts {
+            let config = json!({
+                "agents": [{
+                    "id": "echo",
+                    "name": "Echo",
+                    "base_url": "https://agent.example.com",
+                    "preferred_binding": binding
+                }]
+            });
+            cap.validate_config(&config)
+                .unwrap_or_else(|e| panic!("{binding} should validate: {e}"));
+        }
+        assert!(
+            cap.validate_config(&json!({
+                "agents": [{
+                    "id": "echo",
+                    "name": "Echo",
+                    "base_url": "https://agent.example.com",
+                    "preferred_binding": "SMTP"
+                }]
+            }))
+            .is_err()
+        );
     }
 
     #[test]

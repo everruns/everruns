@@ -3,12 +3,12 @@
 //! One managed sandbox per session. The concrete provider is chosen by config
 //! (`provider: "daytona"` initially), while the tool surface stays stable.
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus};
 pub use crate::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use crate::session_sandbox::{
-    SessionSandboxConfig, create_session_sandbox_provider, delete_session_sandbox,
-    ensure_session_sandbox_running, load_session_sandbox_state, pause_session_sandbox,
-    session_sandbox_tool_hints,
+    DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS, SessionSandboxConfig,
+    create_session_sandbox_provider, delete_session_sandbox, ensure_session_sandbox_running,
+    load_session_sandbox_state, pause_session_sandbox, session_sandbox_tool_hints,
 };
 use crate::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
@@ -72,6 +72,105 @@ impl Capability for SessionSandboxCapability {
 
     fn features(&self) -> Vec<&'static str> {
         vec!["managed_sandbox"]
+    }
+
+    /// Exposes only the lifecycle knobs users tune: `provider`, `auto_start`,
+    /// and `idle_pause_after_seconds`. `provider_config` (provider-specific
+    /// payload) and `init` (bootstrap commands) are advanced settings kept out
+    /// of the schema; `validate_config` still accepts them through the typed
+    /// `SessionSandboxConfig` parse.
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "provider": {
+                    "type": "string",
+                    "title": "Provider",
+                    "description": "Sandbox provider id (e.g. daytona)."
+                },
+                "auto_start": {
+                    "type": "boolean",
+                    "title": "Auto-start",
+                    "description": "Start the sandbox proactively when the session is created.",
+                    "default": true
+                },
+                "idle_pause_after_seconds": {
+                    "type": "integer",
+                    "title": "Idle pause timeout (seconds)",
+                    "description": "Pause the sandbox after this many seconds of session inactivity.",
+                    "minimum": 1,
+                    "default": DEFAULT_SESSION_SANDBOX_IDLE_TIMEOUT_SECS
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        // The capability may be attached before it is configured, so null and
+        // empty-object configs are valid; tools reject unconfigured use at
+        // execution time via `parse_config`.
+        if config.is_null() {
+            return Ok(());
+        }
+        let Some(object) = config.as_object() else {
+            return Err("session_sandbox config must be an object".to_string());
+        };
+        if object.is_empty() {
+            return Ok(());
+        }
+        let typed: SessionSandboxConfig = serde_json::from_value(config.clone())
+            .map_err(|e| format!("invalid session_sandbox config: {e}"))?;
+        // Same checks `parse_config` applies at tool-execution time.
+        if typed.provider.trim().is_empty() {
+            return Err("session_sandbox requires a non-empty provider".to_string());
+        }
+        if typed.idle_pause_after_seconds == 0 {
+            return Err("idle_pause_after_seconds must be >= 1".to_string());
+        }
+        Ok(())
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Controls the sandbox provider, auto-start behavior, and how long the \
+                     sandbox may sit idle before pausing.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Пісочниця сесії"),
+                description: Some(
+                    "Одна керована пісочниця, що належить поточній сесії. Підтримує \
+                     виконання команд і файлові операції з життєвим циклом, яким керує \
+                     провайдер.",
+                ),
+                config_description: Some(
+                    "Визначає провайдера пісочниці, автозапуск і час простою до призупинення.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        "provider": {
+                            "title": "Провайдер",
+                            "description": "Ідентифікатор провайдера пісочниці (наприклад, daytona)."
+                        },
+                        "auto_start": {
+                            "title": "Автозапуск",
+                            "description": "Запускати пісочницю одразу після створення сесії."
+                        },
+                        "idle_pause_after_seconds": {
+                            "title": "Призупинення після простою (секунди)",
+                            "description": "Призупиняти пісочницю після зазначеної кількості секунд неактивності сесії."
+                        }
+                    }
+                })),
+            },
+        ]
     }
 }
 
@@ -661,6 +760,53 @@ mod tests {
         assert!(names.contains(&"sandbox_write_file"));
         assert!(names.contains(&"sandbox_status"));
         assert!(names.contains(&"sandbox_manage"));
+    }
+
+    #[test]
+    fn session_sandbox_config_schema_and_validation() {
+        let cap = SessionSandboxCapability;
+
+        let schema = cap.config_schema().expect("config schema");
+        assert_eq!(schema["type"], "object");
+        assert!(schema["properties"]["provider"].is_object());
+        assert!(schema["properties"]["auto_start"].is_object());
+        assert!(schema["properties"]["idle_pause_after_seconds"].is_object());
+        // Advanced settings stay out of the schema.
+        assert!(schema["properties"].get("provider_config").is_none());
+        assert!(schema["properties"].get("init").is_none());
+
+        // Unconfigured attachment is valid.
+        assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+        assert!(cap.validate_config(&json!({})).is_ok());
+
+        // Valid config, including tolerated advanced fields.
+        assert!(
+            cap.validate_config(&json!({
+                "provider": "daytona",
+                "auto_start": false,
+                "idle_pause_after_seconds": 60,
+                "provider_config": { "snapshot": "base" },
+                "init": { "commands": ["echo ok"] }
+            }))
+            .is_ok()
+        );
+
+        // Invalid configs are rejected with the same checks parse_config applies.
+        assert!(cap.validate_config(&json!({ "provider": "  " })).is_err());
+        let err = cap
+            .validate_config(&json!({
+                "provider": "daytona",
+                "idle_pause_after_seconds": 0
+            }))
+            .unwrap_err();
+        assert!(err.contains("idle_pause_after_seconds"));
+    }
+
+    #[test]
+    fn session_sandbox_localizations_resolve_uk() {
+        let cap = SessionSandboxCapability;
+        assert_eq!(cap.localized_name(Some("uk-UA")), "Пісочниця сесії");
+        assert!(cap.describe_schema(None).is_some());
     }
 
     #[test]

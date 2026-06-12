@@ -25,7 +25,7 @@
 // results work exactly as before — the only difference is how schemas reach the
 // model. No driver or agent-loop changes are required.
 
-use super::{Capability, CapabilityStatus, ToolDefinitionHook};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, ToolDefinitionHook};
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -92,6 +92,14 @@ impl Capability for ToolSearchCapability {
         "Provider-agnostic deferred tool loading. Hides tool parameter schemas \
          until the model loads them via the tool_search tool, reducing token \
          usage for agents with many tools. Works with any model."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Пошук інструментів",
+            "Відкладене завантаження інструментів незалежно від провайдера. Приховує схеми параметрів інструментів, доки модель не завантажить їх через інструмент tool_search, що зменшує використання токенів для агентів із багатьма інструментами. Працює з будь-якою моделлю.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {

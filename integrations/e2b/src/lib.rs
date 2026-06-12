@@ -13,7 +13,9 @@ pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
-use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::capabilities::{
+    Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
@@ -68,6 +70,15 @@ impl Capability for E2BCapability {
 
     fn description(&self) -> &str {
         "Run code in cloud sandboxes powered by E2B. Create isolated Linux environments, execute commands, and manage sandbox files."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "E2B",
+            "Запускайте код у хмарних пісочницях на основі E2B. Створюйте ізольовані \
+             середовища Linux, виконуйте команди та керуйте файлами пісочниці.",
+        )]
     }
 
     fn status(&self) -> CapabilityStatus {
