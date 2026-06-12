@@ -28,6 +28,7 @@ use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
+use everruns_core::plugins::{PluginFileSet, compile_plugin};
 use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::session_file::{InitialFile, SessionFile};
@@ -39,9 +40,11 @@ use everruns_core::traits::{
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
-    InputMessage, MessageRetriever, SessionFileSystem, SessionFileSystemFactoryContext,
+    AgentCapabilityConfig, InputMessage, MessageRetriever, SessionFileSystem,
+    SessionFileSystemFactoryContext, plugin_capability_id,
 };
 use sha2::{Digest, Sha256};
+use std::path::Path;
 use std::sync::Arc;
 
 /// Cap on the input length hashed by [`hash_public_org_id`].
@@ -172,6 +175,14 @@ pub struct InProcessRuntimeBuilder {
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
     mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
+    /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`].
+    ///
+    /// Keyed by `plugin:{name}`. Agents and harnesses reference these by the
+    /// same `plugin:{name}` capability ref; the hydrated config carries the
+    /// compiled `DeclarativeCapabilityDefinition` so no registry entry is needed.
+    plugin_capability_configs: Vec<AgentCapabilityConfig>,
+    /// Non-fatal warnings collected during plugin compilation.
+    plugin_warnings: Vec<String>,
 }
 
 impl Default for InProcessRuntimeBuilder {
@@ -204,6 +215,8 @@ impl InProcessRuntimeBuilder {
             default_session_id: None,
             seeded_files: Vec::new(),
             mcp_auth_provider: None,
+            plugin_capability_configs: Vec::new(),
+            plugin_warnings: Vec::new(),
         }
     }
 
@@ -318,6 +331,59 @@ impl InProcessRuntimeBuilder {
         self
     }
 
+    /// Load a plugin from a local directory and make it available as a
+    /// `plugin:{name}` capability.
+    ///
+    /// Reads the plugin directory via [`PluginFileSet::from_dir`] and compiles
+    /// it with [`compile_plugin`] at call time. A compilation failure is
+    /// surfaced immediately as a configuration error so the problem is visible
+    /// before the runtime is built. Non-fatal compilation warnings are logged
+    /// via `tracing::warn!` and also collected so they can be inspected on the
+    /// built runtime via [`InProcessRuntime::plugin_warnings`].
+    ///
+    /// After loading, agents and harnesses can reference the plugin by its
+    /// `plugin:{name}` capability ref. The hydrated config carries the compiled
+    /// `DeclarativeCapabilityDefinition`, which the core capability resolution
+    /// path recognises without a registry entry (same path as declarative
+    /// capabilities).
+    ///
+    /// When using [`Self::single_session`], call
+    /// [`SingleSessionBuilder::agent_plugin`] to add the capability ref to the
+    /// seeded agent, or use [`AgentBuilder::capability`] / `with_capability`
+    /// directly.
+    pub fn with_plugin_dir(mut self, path: &Path) -> Result<Self> {
+        let file_set = PluginFileSet::from_dir(path)
+            .map_err(|e| AgentLoopError::config(format!("plugin directory load failed: {e}")))?;
+        let compiled = compile_plugin(&file_set)
+            .map_err(|e| AgentLoopError::config(format!("plugin compilation failed: {e}")))?;
+
+        for warning in &compiled.warnings {
+            tracing::warn!(plugin = %compiled.definition.name, warning = %warning, "plugin compile warning");
+        }
+        self.plugin_warnings.extend(compiled.warnings);
+
+        let cap_id = plugin_capability_id(&compiled.definition.name);
+        let hydrated_config = serde_json::to_value(&compiled.definition)
+            .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        self.plugin_capability_configs
+            .push(AgentCapabilityConfig::with_config(cap_id, hydrated_config));
+
+        Ok(self)
+    }
+
+    /// Return a hydrated `AgentCapabilityConfig` for a previously loaded plugin.
+    ///
+    /// Returns `None` when no plugin with that name was loaded via
+    /// [`Self::with_plugin_dir`]. Primarily used by callers that need the
+    /// hydrated config to seed it onto a harness or agent before building.
+    pub fn plugin_capability(&self, name: &str) -> Option<AgentCapabilityConfig> {
+        let cap_id = plugin_capability_id(name);
+        self.plugin_capability_configs
+            .iter()
+            .find(|c| c.capability_id() == cap_id)
+            .cloned()
+    }
+
     /// Build the in-process runtime.
     ///
     /// Returns a configuration error when no default model is available after
@@ -364,6 +430,19 @@ impl InProcessRuntimeBuilder {
             .set_default_model(default_model)
             .await?;
 
+        // Hydrate bare plugin: refs in harnesses/agents/sessions with the
+        // compiled definition config so the capability resolution path can
+        // deserialise them without a registry entry (same path as declarative:).
+        for harness in &mut self.harnesses {
+            hydrate_plugin_refs(&mut harness.capabilities, &self.plugin_capability_configs);
+        }
+        for agent in &mut self.agents {
+            hydrate_plugin_refs(&mut agent.capabilities, &self.plugin_capability_configs);
+        }
+        for session in &mut self.sessions {
+            hydrate_plugin_refs(&mut session.capabilities, &self.plugin_capability_configs);
+        }
+
         for harness in &self.harnesses {
             backends.harness_store.add_harness(harness.clone()).await?;
         }
@@ -408,6 +487,7 @@ impl InProcessRuntimeBuilder {
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
             mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
+            plugin_warnings: self.plugin_warnings,
         })
     }
 }
@@ -447,6 +527,9 @@ pub struct InProcessRuntime {
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
     mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
+    /// Non-fatal warnings collected during plugin compilation (see
+    /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
+    plugin_warnings: Vec<String>,
 }
 
 impl InProcessRuntime {
@@ -481,6 +564,14 @@ impl InProcessRuntime {
     /// [`InProcessRuntimeBuilder::single_session`], if one was configured.
     pub fn default_session_id(&self) -> Option<SessionId> {
         self.default_session_id
+    }
+
+    /// Return non-fatal warnings collected during plugin compilation.
+    ///
+    /// Warnings are also emitted at `tracing::warn!` level when
+    /// [`InProcessRuntimeBuilder::with_plugin_dir`] is called.
+    pub fn plugin_warnings(&self) -> &[String] {
+        &self.plugin_warnings
     }
 
     /// Execute one turn for an existing session.
@@ -967,6 +1058,37 @@ fn effective_overlay(
             .chain(agent_layers)
             .chain([AgentConfigOverlay::from(session)]),
     )
+}
+
+/// Replace bare `plugin:{name}` refs (empty config) with the hydrated version
+/// (config = serialised `DeclarativeCapabilityDefinition`) so that the core
+/// capability resolution path can deserialise them without a registry entry.
+///
+/// Only replaces entries whose config is empty / `null`; entries that already
+/// carry a non-empty config are left unchanged so explicit overrides are honoured.
+fn hydrate_plugin_refs(
+    capabilities: &mut [AgentCapabilityConfig],
+    plugin_configs: &[AgentCapabilityConfig],
+) {
+    for cap in capabilities.iter_mut() {
+        let cap_id = cap.capability_id();
+        if !everruns_core::is_plugin_capability(cap_id) {
+            continue;
+        }
+        // Only replace if the config is missing / empty so explicit overrides are honoured.
+        let is_bare = cap.config.is_null()
+            || cap
+                .config
+                .as_object()
+                .map(|o| o.is_empty())
+                .unwrap_or(false);
+        if !is_bare {
+            continue;
+        }
+        if let Some(hydrated) = plugin_configs.iter().find(|c| c.capability_id() == cap_id) {
+            cap.config = hydrated.config.clone();
+        }
+    }
 }
 
 async fn seed_runtime_initial_files(

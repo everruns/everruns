@@ -7,7 +7,7 @@ use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentId, AgentStatus, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
     HarnessStatus, ModelId, PrincipalId, ScopedMcpServers, Session, SessionId, SessionStatus,
-    ToolDefinition,
+    ToolDefinition, plugin_capability_id,
 };
 use uuid::Uuid;
 
@@ -681,6 +681,23 @@ impl SingleSessionBuilder {
     /// Add an agent-level capability.
     pub fn agent_capability(mut self, capability: impl Into<AgentCapabilityConfig>) -> Self {
         self.agent = self.agent.capability(capability);
+        self
+    }
+
+    /// Enable a previously loaded plugin on the seeded agent.
+    ///
+    /// Adds a `plugin:{name}` capability ref to the agent with an empty config.
+    /// The hydrated definition must be supplied separately via
+    /// [`InProcessRuntimeBuilder::with_plugin_dir`] — this method only records
+    /// the capability ref on the agent so the capability is active for this
+    /// session. The builder looks up the hydrated config at build time from the
+    /// `plugin_capability_configs` accumulated by `with_plugin_dir` calls.
+    ///
+    /// If you need to pass the fully hydrated `AgentCapabilityConfig` (e.g.
+    /// from [`InProcessRuntimeBuilder::plugin_capability`]), use
+    /// [`Self::agent_capability`] directly.
+    pub fn agent_plugin(mut self, name: &str) -> Self {
+        self.agent = self.agent.capability(plugin_capability_id(name));
         self
     }
 
