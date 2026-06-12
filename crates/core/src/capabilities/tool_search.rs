@@ -429,7 +429,12 @@ impl ToolSearchTool {
     /// permanently un-deferring loosely related tools. An empty query lists tools
     /// so the model can browse. The search tool itself is always excluded.
     fn search(defs: &[ToolDefinition], query: &str) -> Vec<Value> {
-        let normalized = query.trim().to_lowercase();
+        // Strip wrapping punctuation so an exact-name query still matches when the
+        // model echoes the stub's quoted/backticked tool name, e.g. `"read_file"`.
+        let normalized = query
+            .trim()
+            .trim_matches(|c: char| !c.is_alphanumeric())
+            .to_lowercase();
         let terms: Vec<String> = query
             .split_whitespace()
             .map(|t| {
@@ -982,6 +987,27 @@ mod tests {
         let results = ToolSearchTool::search(&defs, "read_file");
         assert_eq!(results.len(), 1, "exact name match dominates the band");
         assert_eq!(results[0]["name"], "read_file");
+    }
+
+    #[test]
+    fn test_search_exact_name_match_tolerates_quoting() {
+        // The deferred stub and system prompt show the tool name in quotes, so the
+        // model may echo a quoted/backticked name. Wrapping punctuation must not
+        // defeat the exact-name bonus (otherwise it degrades to a substring match
+        // and reveals near-duplicates).
+        let defs = vec![
+            builtin(
+                "read_file_lines",
+                "Read selected lines",
+                DeferrablePolicy::Automatic,
+            ),
+            builtin("read_file", "Read a file", DeferrablePolicy::Automatic),
+        ];
+        for q in ["\"read_file\"", "`read_file`", "'read_file'"] {
+            let results = ToolSearchTool::search(&defs, q);
+            assert_eq!(results.len(), 1, "query {q:?} should dominate");
+            assert_eq!(results[0]["name"], "read_file", "query {q:?}");
+        }
     }
 
     #[test]
