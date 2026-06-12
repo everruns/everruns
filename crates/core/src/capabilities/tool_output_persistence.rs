@@ -1,4 +1,4 @@
-// Tool Output Persistence Capability (EVE-222, EVE-245)
+// Tool Output Persistence Capability (EVE-222, EVE-245, EVE-562)
 //
 // Persists full exec tool output to session VFS before truncation,
 // enabling lossless retrieval via read_file/grep. The LLM gets a
@@ -16,6 +16,9 @@
 // - Runs as an always-on final hook before EVE-225 hard-limit truncation
 // - EVE-245: annotates truncated stdout with file reference so agent knows
 //   it can read_file the full output with offset/limit
+// - EVE-562: after persistence, compacts model-facing stdout/stderr so the
+//   LLM never receives unbounded inline output when full output is already
+//   in /outputs. Success → AUTO_SUCCESS_BUDGET; failure → NORMAL_BUDGET.
 
 use std::sync::Arc;
 
@@ -24,6 +27,7 @@ use serde_json::json;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
+use crate::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET, priority_aware_truncate};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -147,6 +151,66 @@ pub fn annotate_truncated_output(truncated: &str, file_path: &str, full_size: us
     )
 }
 
+/// After successful persistence, compact the inline model-facing output fields
+/// in the result JSON so the LLM never carries unbounded content forward.
+///
+/// Budget policy (EVE-562):
+/// - Success (`exit_code == 0` or `success == true`): `AUTO_SUCCESS_BUDGET` (≈384 B)
+/// - Failure: `NORMAL_BUDGET` (≈8 KiB diagnostic window)
+///
+/// The same budget applies to both `stdout`/`output` and `stderr`. Full content
+/// is always recoverable from the persisted `/outputs/` files.
+pub fn compact_persisted_result_for_model(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    stdout_path: &str,
+    stdout_full_size: usize,
+) {
+    let budget = if is_success_result(obj) {
+        AUTO_SUCCESS_BUDGET
+    } else {
+        NORMAL_BUDGET
+    };
+
+    // Compact stdout (or output fallback field) and append file pointer.
+    for field in ["stdout", "output"] {
+        if let Some(text) = obj.get(field).and_then(|v| v.as_str()) {
+            let compacted = compact_with_annotation(text, budget, stdout_path, stdout_full_size);
+            obj.insert(field.to_string(), json!(compacted));
+            break; // only one of stdout/output is expected
+        }
+    }
+
+    // Compact stderr inline if present (no separate file pointer needed — already in output_files).
+    if let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str()) {
+        if stderr_text.len() > budget {
+            let compacted = priority_aware_truncate(stderr_text, budget);
+            obj.insert("stderr".to_string(), json!(compacted));
+        }
+    }
+}
+
+/// Determine whether a result JSON object represents success.
+fn is_success_result(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+    if let Some(code) = obj.get("exit_code").and_then(|v| v.as_i64()) {
+        return code == 0;
+    }
+    if let Some(ok) = obj.get("success").and_then(|v| v.as_bool()) {
+        return ok;
+    }
+    // Default to success when neither field is present (non-exec tools).
+    true
+}
+
+/// Compact `text` to `budget` bytes and append a file-reference annotation.
+fn compact_with_annotation(text: &str, budget: usize, file_path: &str, full_size: usize) -> String {
+    if text.len() <= budget {
+        annotate_truncated_output(text, file_path, full_size)
+    } else {
+        let compacted = priority_aware_truncate(text, budget);
+        annotate_truncated_output(&compacted, file_path, full_size)
+    }
+}
+
 /// Capability that persists full tool output to session VFS.
 pub struct ToolOutputPersistenceCapability;
 
@@ -241,19 +305,19 @@ impl PostToolExecHook for PersistOutputHook {
         )
         .await
         {
-            // Enrich result JSON with file references
+            // Enrich result JSON with file references and compact inline output (EVE-562).
             if let Some(ref mut json_val) = result.result
                 && let Some(obj) = json_val.as_object_mut()
             {
                 let mut output_files = Vec::new();
 
                 if let Some(ref path) = persist_result.stdout_path {
-                    // Annotate the truncated stdout with file reference
-                    if let Some(current_stdout) = obj.get("stdout").and_then(|v| v.as_str()) {
-                        let annotated =
-                            annotate_truncated_output(current_stdout, path, stdout.len());
-                        obj.insert("stdout".to_string(), json!(annotated));
-                    }
+                    // Compact inline stdout/output to the success/failure budget and
+                    // append the file-reference pointer. Explicit modes (verbose, full,
+                    // normal) cannot produce unbounded model-facing output after
+                    // persistence succeeds — full content is in /outputs/.
+                    compact_persisted_result_for_model(obj, path, stdout.len());
+
                     output_files.push(format!("/workspace{path}"));
                     // full_output points to the stdout file only; stderr (if persisted)
                     // is available via the output_files array
@@ -643,5 +707,143 @@ mod tests {
             persist_large_output(&store, test_session_id(), "call-lines", &large, "").await;
         let r = result.expect("should persist");
         assert_eq!(r.stdout_total_lines, 100);
+    }
+
+    // -------------------------------------------------------------------------
+    // compact_persisted_result_for_model (EVE-562)
+    // -------------------------------------------------------------------------
+    use crate::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET};
+
+    #[test]
+    fn test_compact_success_caps_stdout_to_auto_success_budget() {
+        let large_stdout = "x".repeat(NORMAL_BUDGET + 1);
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(large_stdout));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+
+        let inline = obj["stdout"].as_str().unwrap();
+        // Inline stdout must be compact (budget + annotation pointer).
+        assert!(
+            inline.len() <= AUTO_SUCCESS_BUDGET + 200,
+            "inline stdout ({} bytes) should be ≤ AUTO_SUCCESS_BUDGET + pointer",
+            inline.len()
+        );
+        assert!(
+            inline.contains("full output saved to"),
+            "must have file pointer"
+        );
+    }
+
+    #[test]
+    fn test_compact_failure_caps_stdout_to_normal_budget() {
+        let large_stdout = "y".repeat(NORMAL_BUDGET * 2);
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(large_stdout));
+        obj.insert("exit_code".to_string(), json!(1));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+
+        let inline = obj["stdout"].as_str().unwrap();
+        assert!(
+            inline.len() <= NORMAL_BUDGET + 200,
+            "failure stdout ({} bytes) should be ≤ NORMAL_BUDGET + pointer",
+            inline.len()
+        );
+        assert!(
+            inline.contains("full output saved to"),
+            "must have file pointer"
+        );
+    }
+
+    #[test]
+    fn test_compact_small_stdout_unchanged_except_annotation() {
+        let small = "hello world";
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(small));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", small.len());
+
+        let inline = obj["stdout"].as_str().unwrap();
+        assert!(
+            inline.starts_with("hello world"),
+            "small content must be preserved"
+        );
+        assert!(
+            inline.contains("full output saved to"),
+            "must have file pointer"
+        );
+    }
+
+    #[test]
+    fn test_compact_oversized_full_mode_is_capped() {
+        // Explicit "full" mode would have left large inline stdout; persistence
+        // must compact it regardless of the verbosity mode.
+        let large = "z".repeat(NORMAL_BUDGET * 3);
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(large));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large.len());
+
+        let inline = obj["stdout"].as_str().unwrap();
+        assert!(
+            inline.len() <= AUTO_SUCCESS_BUDGET + 200,
+            "full-mode output must still be compacted after persistence"
+        );
+    }
+
+    #[test]
+    fn test_compact_large_stderr_capped_on_failure() {
+        let large_stderr = "e".repeat(NORMAL_BUDGET * 2);
+        let large_stdout = "o".repeat(100);
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(large_stdout));
+        obj.insert("stderr".to_string(), json!(large_stderr));
+        obj.insert("exit_code".to_string(), json!(1));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout.len());
+
+        let inline_stderr = obj["stderr"].as_str().unwrap();
+        assert!(
+            inline_stderr.len() <= NORMAL_BUDGET + 200,
+            "stderr ({} bytes) must be capped to NORMAL_BUDGET",
+            inline_stderr.len()
+        );
+    }
+
+    #[test]
+    fn test_compact_non_exec_output_field() {
+        // daytona_exec uses "output" instead of "stdout"
+        let large_output = "d".repeat(NORMAL_BUDGET + 1);
+        let mut obj = serde_json::Map::new();
+        obj.insert("output".to_string(), json!(large_output));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_output.len());
+
+        let inline = obj["output"].as_str().unwrap();
+        assert!(
+            inline.len() <= AUTO_SUCCESS_BUDGET + 200,
+            "output field must be compacted"
+        );
+        assert!(inline.contains("full output saved to"));
+    }
+
+    #[test]
+    fn test_compact_no_file_store_preserves_current_behavior() {
+        // When there's no stdout field (unusual result shape), nothing is corrupted.
+        let mut obj = serde_json::Map::new();
+        obj.insert("result".to_string(), json!("ok"));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", 0);
+
+        // Non-exec result shape untouched
+        assert_eq!(obj.get("stdout"), None);
+        assert_eq!(obj.get("output"), None);
+        assert_eq!(obj["result"].as_str(), Some("ok"));
     }
 }
