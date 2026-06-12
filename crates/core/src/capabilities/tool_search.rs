@@ -78,8 +78,24 @@ pub const TOOL_SEARCH_CAPABILITY_ID: &str = "tool_search";
 /// Name of the tool the model calls to load deferred schemas.
 pub const TOOL_SEARCH_TOOL_NAME: &str = "tool_search";
 
-/// Maximum number of tools returned (and revealed) by a single `tool_search` call.
-const MAX_SEARCH_RESULTS: usize = 12;
+/// Maximum number of tools returned (and revealed) by a single `tool_search`
+/// call. Kept small: every returned tool is also recorded as *revealed*, which
+/// un-defers its full schema for the rest of the session (see "Progressive
+/// disclosure" above), so a loose query must not permanently un-defer a large
+/// slice of the catalogue.
+const MAX_SEARCH_RESULTS: usize = 8;
+
+/// Per-term score for a query term hit in the tool *name* vs its *description*.
+/// A name hit is a far stronger signal of intent than an incidental word in a
+/// description, so it is weighted higher.
+const NAME_TERM_WEIGHT: usize = 3;
+const DESC_TERM_WEIGHT: usize = 1;
+
+/// Dominant bonus when the whole query is exactly a tool name. The deferred stub
+/// tells the model to call `tool_search` with the exact tool name to load its
+/// schema, so this is the common "load this specific tool" path and that tool
+/// must rank first regardless of incidental matches elsewhere.
+const EXACT_NAME_BONUS: usize = 100;
 
 /// Upper bound on the number of sessions tracked in the revealed registry. The
 /// capability is a process-global singleton with no session-end callback, so the
@@ -403,11 +419,17 @@ pub struct ToolSearchTool {
 impl ToolSearchTool {
     /// Rank `defs` against `query` and return the best matches (full schemas).
     ///
-    /// Scoring is a simple keyword overlap: each whitespace-separated query term
-    /// that appears in a tool's name or description scores a point. Ties keep
-    /// registry order. An empty query lists tools (names + descriptions) so the
-    /// model can browse. The search tool itself is always excluded.
+    /// Scoring is keyword overlap with field weighting: each whitespace-separated
+    /// query term scores [`NAME_TERM_WEIGHT`] if it appears in the tool's name and
+    /// [`DESC_TERM_WEIGHT`] if it only appears in the description. A query that is
+    /// exactly a tool name gets [`EXACT_NAME_BONUS`] (the deferred stub nudges the
+    /// model to query the exact name to load a specific tool). Ties keep registry
+    /// order. Only the top score band is returned — every result is also *revealed*
+    /// (un-deferred) for the session, so weak tail matches are dropped rather than
+    /// permanently un-deferring loosely related tools. An empty query lists tools
+    /// so the model can browse. The search tool itself is always excluded.
     fn search(defs: &[ToolDefinition], query: &str) -> Vec<Value> {
+        let normalized = query.trim().to_lowercase();
         let terms: Vec<String> = query
             .split_whitespace()
             .map(|t| {
@@ -424,14 +446,34 @@ impl ToolSearchTool {
                 if terms.is_empty() {
                     return Some((0, d));
                 }
-                let haystack = format!("{} {}", d.name(), d.description()).to_lowercase();
-                let score = terms.iter().filter(|t| haystack.contains(*t)).count();
+                let name = d.name().to_lowercase();
+                let desc = d.description().to_lowercase();
+                let mut score = 0;
+                for t in &terms {
+                    if name.contains(t) {
+                        score += NAME_TERM_WEIGHT;
+                    } else if desc.contains(t) {
+                        score += DESC_TERM_WEIGHT;
+                    }
+                }
+                // Whole-query exact name match dominates everything else.
+                if normalized == name {
+                    score += EXACT_NAME_BONUS;
+                }
                 (score > 0).then_some((score, d))
             })
             .collect();
 
         // Stable sort by descending score; equal scores keep registry order.
         scored.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+
+        // Keep only the top score band (>= half the best score). Scores are now
+        // monotonically non-increasing, so this trims the weak tail while always
+        // retaining the best match — bounding the sticky reveal set to tools that
+        // are genuinely close to what the model asked for.
+        let max_score = scored.first().map(|(s, _)| *s).unwrap_or(0);
+        let cutoff = max_score.div_ceil(2);
+        scored.retain(|(s, _)| *s >= cutoff);
 
         scored
             .into_iter()
@@ -910,6 +952,52 @@ mod tests {
         let email = ToolSearchTool::search(&defs, "email");
         assert_eq!(email.len(), 1);
         assert_eq!(email[0]["name"], "send_email");
+    }
+
+    #[test]
+    fn test_search_weights_name_above_description() {
+        // A name hit outranks a description-only hit for the same term, and the
+        // weaker match falls outside the top score band entirely.
+        let defs = vec![
+            builtin("find_user", "Search the logs", DeferrablePolicy::Automatic),
+            builtin("search_logs", "Find stuff", DeferrablePolicy::Automatic),
+        ];
+        let results = ToolSearchTool::search(&defs, "search");
+        assert_eq!(results.len(), 1, "description-only match is below the band");
+        assert_eq!(results[0]["name"], "search_logs");
+    }
+
+    #[test]
+    fn test_search_exact_name_match_dominates() {
+        // Querying the exact tool name (as the deferred stub instructs) ranks that
+        // tool first and drops near-duplicates whose name merely contains it.
+        let defs = vec![
+            builtin(
+                "read_file_lines",
+                "Read selected lines",
+                DeferrablePolicy::Automatic,
+            ),
+            builtin("read_file", "Read a file", DeferrablePolicy::Automatic),
+        ];
+        let results = ToolSearchTool::search(&defs, "read_file");
+        assert_eq!(results.len(), 1, "exact name match dominates the band");
+        assert_eq!(results[0]["name"], "read_file");
+    }
+
+    #[test]
+    fn test_search_caps_results_and_reveal_set() {
+        // A loose query that matches many tools is capped, bounding both the
+        // payload and the (sticky) reveal set.
+        let mut defs = Vec::new();
+        for i in 0..20 {
+            defs.push(builtin(
+                &format!("tool_{i}"),
+                "does a thing",
+                DeferrablePolicy::Automatic,
+            ));
+        }
+        let results = ToolSearchTool::search(&defs, "thing");
+        assert_eq!(results.len(), MAX_SEARCH_RESULTS);
     }
 
     #[test]
