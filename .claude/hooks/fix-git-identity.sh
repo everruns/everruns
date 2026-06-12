@@ -20,4 +20,4 @@ configure_commit_git_identity_if_needed 2>/dev/null || true
 # the platform Stop hook flags every commit as "Unverified" on each turn.
 # Disable local signing: GitHub shows the same "Unverified" badge either way,
 # and this silences the false alarm without resorting to bot attribution.
-git config commit.gpgsign false 2>/dev/null || true
+git -C "$REPO_ROOT" config --local commit.gpgsign false 2>/dev/null || true
