@@ -50,6 +50,19 @@ impl AutoToolSearchCapability {
             generic: ToolSearchCapability::with_threshold(threshold),
         }
     }
+
+    /// Keep the named tools' full schemas under the generic (client-side)
+    /// mechanism. Forwarded to the inner [`ToolSearchCapability`]; the hosted
+    /// OpenAI path is unaffected (use `DeferrablePolicy::Never` there). See
+    /// [`ToolSearchCapability::with_never_defer`].
+    pub fn with_never_defer<I, S>(mut self, names: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.generic = self.generic.with_never_defer(names);
+        self
+    }
 }
 
 impl Default for AutoToolSearchCapability {

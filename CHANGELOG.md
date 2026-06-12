@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### Added
+
+- **Generic `tool_search`: progressive disclosure + never-defer allowlist.** The provider-agnostic `ToolSearchCapability` now restores a revealed tool's full schema on its *registered* definition after a `tool_search` call (not just as result text), so structured tool callers can actually pass arguments to previously deferred tools. A new `with_never_defer([...])` constructor and a `never_defer` config array let an embedder keep hot-path tools (e.g. file/shell) fully loaded even when it does not own their `DeferrablePolicy`. Also exposed on `AutoToolSearchCapability`.
+
 ## [0.10.0] - 2026-06-10
 
 ### Highlights

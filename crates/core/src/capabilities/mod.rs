@@ -771,6 +771,23 @@ pub trait Capability: Send + Sync {
         self.tool_definition_hooks()
     }
 
+    /// Returns tool definition hooks adapted to per-capability config and the
+    /// collection context (session id, model, ...).
+    ///
+    /// Default delegates to [`Self::tool_definition_hooks_with_config`], which
+    /// ignores the context. Capabilities whose hooks carry session-scoped state
+    /// override this to capture `ctx` — e.g. `tool_search` keys its
+    /// progressive-disclosure reveal set by `ctx.session_id`, since the
+    /// capability is a process-global singleton shared across sessions and a
+    /// `ToolDefinitionHook::transform` has no session context of its own.
+    fn tool_definition_hooks_with_context(
+        &self,
+        _ctx: &SystemPromptContext,
+        config: &serde_json::Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        self.tool_definition_hooks_with_config(config)
+    }
+
     /// Returns tool call hooks provided by this capability.
     ///
     /// These hooks run after the model has produced a tool call. They can read
@@ -2041,7 +2058,7 @@ pub async fn collect_capabilities_with_configs(
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
             tools.extend(effective.tools_with_config(&cap_config.config));
             tool_definition_hooks
-                .extend(effective.tool_definition_hooks_with_config(&cap_config.config));
+                .extend(effective.tool_definition_hooks_with_context(ctx, &cap_config.config));
             tool_call_hooks.extend(effective.tool_call_hooks());
             // Output guardrails are NOT collected here — see CollectedCapabilities
             // for rationale. ReasonAtom re-derives them at stream-arming time.
