@@ -168,9 +168,9 @@ transition to `succeeded` after their single fire; recurring monitors stay
 transitions the task to `canceled`.
 
 Known limitation: canceling the underlying session schedule directly (not via
-`cancel_task`) currently leaves the monitor task in `running` — prefer
-`cancel_task` to cancel both atomically; reconciling orphaned monitors is a
-follow-up (EVE-monitor-orphan).
+`cancel_task` or the API cancel endpoint) leaves the monitor task in `running` —
+prefer `cancel_task` or `POST …/cancel` to cancel both atomically; reconciling
+orphaned monitors is a follow-up (EVE-monitor-orphan).
 
 ## Results and artifacts
 
@@ -270,6 +270,22 @@ GET  /v1/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
 POST /v1/sessions/{session_id}/tasks/{task_id}/messages — inbound message
 POST /v1/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
 ```
+
+Message posts and cancels both invoke the kind's `TaskExecutor` best-effort
+after the durable registry write: the message is recorded and the cancel intent
+is set regardless of executor outcome. A delivery or cancel error is logged at
+`warn` and never fails the HTTP call.
+
+Specifically:
+- `POST …/messages`: records the message durably, then re-fetches the task
+  (it may have transitioned to `running` if the message answered an input
+  request) and calls `executor.deliver`. For kinds without a registered
+  executor the message is still recorded (delivery = no-op).
+- `POST …/cancel`: sets `cancel_requested_at`, then calls `executor.cancel`.
+  `MonitorTaskExecutor.cancel` disables the linked schedule and transitions
+  the task to `canceled` — so API cancel of a monitor task now atomically
+  cancels the schedule too. The response reflects the task state after the
+  executor runs (re-fetched), so a monitor task is returned as `canceled`.
 
 Webhooks on terminal transitions are out of scope for v1.
 

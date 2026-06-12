@@ -4,7 +4,7 @@ use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use everruns_core::SessionTask;
 use everruns_core::session_task::{
     NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TaskMessage,
-    TaskMessagePart,
+    TaskMessagePart, find_task_executor,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -172,6 +172,7 @@ impl Command for PostSessionTaskMessage {
                 ));
             }
         };
+        let task_id = self.task_id.clone();
         let mut message = NewTaskMessage {
             direction: everruns_core::session_task::TaskMessageDirection::Inbound,
             content,
@@ -182,10 +183,34 @@ impl Command for PostSessionTaskMessage {
         };
         message.in_reply_to = message.in_reply_to.filter(|s| !s.is_empty());
 
-        q::registry_for_ctx(ctx)
-            .record_message(session_id, &self.task_id, message)
+        let recorded = q::registry_for_ctx(ctx)
+            .record_message(session_id, &task_id, message)
             .await
-            .map_err(registry_err)
+            .map_err(registry_err)?;
+
+        // Best-effort executor delivery: re-fetch the task (it may have
+        // transitioned to running if the message answered an input request),
+        // then call deliver so the running work receives the message.
+        // The message is durably recorded regardless — a delivery error is
+        // logged but never fails the HTTP call.
+        if let Some(task) = q::registry_for_ctx(ctx)
+            .get(session_id, &task_id)
+            .await
+            .map_err(registry_err)?
+            && let Some(executor) = find_task_executor(&task.kind)
+        {
+            let tool_ctx = q::tool_context_for_ctx(ctx, session_id);
+            if let Err(e) = executor.deliver(&task, &recorded, &tool_ctx).await {
+                tracing::warn!(
+                    task_id = %task_id,
+                    kind = %task.kind,
+                    error = %e,
+                    "PostSessionTaskMessage: executor deliver failed (best-effort; message is recorded)"
+                );
+            }
+        }
+
+        Ok(recorded)
     }
 }
 
@@ -224,12 +249,269 @@ impl Command for CancelSessionTask {
         {
             return Err(CommandError::not_found("Session"));
         }
-        q::registry_for_ctx(ctx)
+        let task = q::registry_for_ctx(ctx)
             .request_cancel(session_id, &self.task_id)
             .await
             .map_err(registry_err)?
-            .ok_or_else(|| CommandError::not_found("Session task"))
+            .ok_or_else(|| CommandError::not_found("Session task"))?;
+
+        // Best-effort executor cancel: invoke the kind-specific cancel so
+        // active executors (notably MonitorTaskExecutor) can act immediately.
+        // MonitorTaskExecutor.cancel disables the linked schedule AND
+        // transitions the task to Canceled in the registry — so we re-fetch
+        // the task afterwards to return the freshest snapshot.
+        if let Some(executor) = find_task_executor(&task.kind) {
+            let tool_ctx = q::tool_context_for_ctx(ctx, session_id);
+            if let Err(e) = executor.cancel(&task, &tool_ctx).await {
+                tracing::warn!(
+                    task_id = %task.id,
+                    kind = %task.kind,
+                    error = %e,
+                    "CancelSessionTask: executor cancel failed (best-effort)"
+                );
+            }
+        }
+
+        // Re-fetch to return the freshest snapshot: the executor may have
+        // transitioned the task to Canceled (e.g. MonitorTaskExecutor does).
+        let fresh = q::registry_for_ctx(ctx)
+            .get(session_id, &self.task_id)
+            .await
+            .map_err(registry_err)?
+            .unwrap_or(task);
+
+        Ok(fresh)
     }
 }
 
 inventory::submit! { CommandDescriptor::of::<CancelSessionTask>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::{CreateSessionRow, StorageBackend};
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskRegistry, SessionTaskState, TASK_KIND_BACKGROUND_TOOL,
+        TASK_KIND_MONITOR, TaskLinks, TaskWakePolicy,
+    };
+    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use std::sync::Arc;
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /// Build a minimal test Ctx backed by an in-memory StorageBackend.
+    fn test_ctx(db: Arc<StorageBackend>) -> Ctx {
+        Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
+    }
+
+    /// Create a session in the in-memory database, returning its ID.
+    async fn create_session(db: &Arc<StorageBackend>) -> everruns_core::SessionId {
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("test session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    // -------------------------------------------------------------------------
+    // CancelSessionTask — monitor task
+    // -------------------------------------------------------------------------
+
+    /// API cancel of a monitor task must disable the linked schedule via
+    /// MonitorTaskExecutor and return the task in Canceled state.
+    #[tokio::test]
+    async fn cancel_monitor_task_cancels_linked_schedule() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        // Create a schedule directly in storage so we have a real schedule_id.
+        let schedule = db
+            .create_session_schedule(crate::storage::CreateSessionScheduleRow {
+                org_id: DEFAULT_ORG_ID,
+                session_id,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                description: "test monitor schedule".to_string(),
+                cron_expression: Some("0 * * * *".to_string()),
+                scheduled_at: None,
+                timezone: "UTC".to_string(),
+                next_trigger_at: None,
+            })
+            .await
+            .unwrap();
+        assert!(schedule.enabled, "schedule must start enabled");
+        let schedule_id = schedule.id;
+
+        // Create a monitor task with the schedule_id in spec.
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_MONITOR.to_string(),
+                display_name: "Test Monitor".to_string(),
+                spec: serde_json::json!({ "schedule_id": schedule_id.to_string() }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // Call the cancel command via execute (bypassing policy).
+        let result = CancelSessionTask {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        // Task must be Canceled (MonitorTaskExecutor transitions it).
+        assert_eq!(
+            result.state,
+            SessionTaskState::Canceled,
+            "monitor task must be Canceled after API cancel"
+        );
+
+        // Schedule must be disabled (MonitorTaskExecutor called cancel_schedule).
+        let updated_schedule = db
+            .get_session_schedule(DEFAULT_ORG_ID, schedule_id)
+            .await
+            .unwrap()
+            .expect("schedule must still exist");
+        assert!(
+            !updated_schedule.enabled,
+            "schedule must be disabled after monitor task cancel"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // PostSessionTaskMessage — unknown/no-executor kind
+    // -------------------------------------------------------------------------
+
+    /// Posting a message to a task whose kind has no executor registered
+    /// must still return 200 and a recorded TaskMessage (no executor → no-op
+    /// delivery, message is durably stored).
+    #[tokio::test]
+    async fn post_message_to_no_executor_kind_returns_recorded_message() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        // Create a task with a kind that has no registered executor.
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: "unknown_test_kind".to_string(),
+                display_name: "Unknown Kind Task".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let result = PostSessionTaskMessage {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            text: Some("hello from API".to_string()),
+            content: None,
+            in_reply_to: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        // The returned message must be the recorded inbound message.
+        assert_eq!(
+            result.task_id, task.id,
+            "recorded message must belong to the task"
+        );
+        assert_eq!(
+            result.direction,
+            everruns_core::session_task::TaskMessageDirection::Inbound
+        );
+
+        // The message thread must contain the message.
+        let messages = registry
+            .list_messages(session_id, &task.id, Some(10))
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1, "message must be persisted");
+    }
+
+    // -------------------------------------------------------------------------
+    // PostSessionTaskMessage — background_tool kind (executor registered, deliver
+    // returns unsupported — best-effort: HTTP call still succeeds)
+    // -------------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn post_message_to_background_tool_still_returns_200() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_BACKGROUND_TOOL.to_string(),
+                display_name: "Background Tool Task".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // BackgroundToolTaskExecutor.deliver returns an error (unsupported).
+        // The command must still return Ok with the recorded message.
+        let result = PostSessionTaskMessage {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            text: Some("steer the tool".to_string()),
+            content: None,
+            in_reply_to: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        assert_eq!(result.task_id, task.id);
+        let messages = registry
+            .list_messages(session_id, &task.id, Some(10))
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+    }
+}
