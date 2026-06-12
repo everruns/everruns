@@ -1097,20 +1097,66 @@ impl Tool for SpawnBackgroundTool {
                 )
                 .await
             {
-                Ok(schedule) => ToolExecutionResult::success(json!({
-                    "created": true,
-                    "status": "scheduled",
-                    "title": title,
-                    "tool": tool_name,
-                    "signal_on_completion": signal_on_completion,
-                    "schedule_id": schedule.id.to_string(),
-                    "schedule_type": schedule.schedule_type,
-                    "cron_expression": schedule.cron_expression,
-                    "scheduled_at": schedule.scheduled_at,
-                    "timezone": schedule.timezone,
-                    "next_trigger_at": schedule.next_trigger_at,
-                    "enabled": schedule.enabled
-                })),
+                Ok(schedule) => {
+                    // Best-effort: create a monitor task linked to this schedule.
+                    // The schedule is the source of truth; task creation failure
+                    // does not fail the spawn.
+                    let mut monitor_task_id: Option<String> = None;
+                    if let Some(ref task_registry) = context.session_task_registry {
+                        let spec = json!({
+                            "tool": tool_name,
+                            "arguments": &tool_args,
+                            "schedule_id": schedule.id.to_string(),
+                            "schedule_type": schedule.schedule_type,
+                            "cron_expression": schedule.cron_expression,
+                            "scheduled_at": schedule.scheduled_at,
+                            "timezone": schedule.timezone,
+                            "signal_on_completion": signal_on_completion,
+                        });
+                        match task_registry
+                            .create(crate::session_task::CreateSessionTask {
+                                session_id: context.session_id,
+                                id: None,
+                                kind: crate::session_task::TASK_KIND_MONITOR.to_string(),
+                                display_name: title.clone(),
+                                spec,
+                                state: crate::session_task::SessionTaskState::Running,
+                                links: crate::session_task::TaskLinks::default(),
+                                // Silent: the schedule's injected prompt message already
+                                // wakes the session; a second wake on every fire would be noise.
+                                wake_policy: crate::session_task::TaskWakePolicy::Silent,
+                            })
+                            .await
+                        {
+                            Ok(task) => {
+                                monitor_task_id = Some(task.id);
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    session_id = %context.session_id,
+                                    schedule_id = %schedule.id,
+                                    error = %e,
+                                    "Failed to create monitor task for schedule (best-effort)"
+                                );
+                            }
+                        }
+                    }
+                    ToolExecutionResult::success(json!({
+                        "created": true,
+                        "status": "scheduled",
+                        "title": title,
+                        "tool": tool_name,
+                        "signal_on_completion": signal_on_completion,
+                        "schedule_id": schedule.id.to_string(),
+                        "schedule_type": schedule.schedule_type,
+                        "cron_expression": schedule.cron_expression,
+                        "scheduled_at": schedule.scheduled_at,
+                        "timezone": schedule.timezone,
+                        "next_trigger_at": schedule.next_trigger_at,
+                        "enabled": schedule.enabled,
+                        "task_id": monitor_task_id,
+                    }))
+                }
                 Err(err) => ToolExecutionResult::internal_error(err),
             };
         }

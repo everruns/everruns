@@ -31,6 +31,9 @@ pub type TaskProgress = crate::background::BackgroundProgress;
 pub const TASK_KIND_SUBAGENT: &str = "subagent";
 pub const TASK_KIND_EXTERNAL_AGENT: &str = "external_agent";
 pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
+/// Long-lived monitor task linked to a session schedule. Stays `running`
+/// until the linked schedule is exhausted (one-shot) or `cancel_task` is called.
+pub const TASK_KIND_MONITOR: &str = "monitor";
 
 /// Generate a new task ID (`task_` prefix per specs/id-schema.md).
 pub fn generate_task_id() -> String {
