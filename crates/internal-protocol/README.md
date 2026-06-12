@@ -11,6 +11,20 @@ Everruns workspace and is not a stable public API.
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents.
 
+## Quick Example
+
+```rust
+use everruns_internal_protocol::{proto_uuid_to_uuid, uuid_to_proto_uuid};
+
+// Domain UUIDs convert to and from their protobuf wire representation.
+let id = uuid::Uuid::now_v7();
+let wire = uuid_to_proto_uuid(id);
+assert_eq!(proto_uuid_to_uuid(&wire).unwrap(), id);
+```
+
+The `WorkerServiceClient` / `WorkerServiceServer` tonic stubs build on these
+conversions for worker ↔ control-plane calls.
+
 ## What It Provides
 
 - The `WorkerService` gRPC client and server stubs

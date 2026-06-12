@@ -5,6 +5,23 @@
 //! by PostgreSQL page-level storage in production (or an in-memory backend in
 //! dev mode), so agents can create tables, run queries, and persist structured
 //! data with multi-tenant isolation.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::typed_id::SessionId;
+//! use everruns_session_sqldb::InMemorySqlDbBackend;
+//!
+//! let backend = InMemorySqlDbBackend::new();
+//! let session = SessionId::new();
+//!
+//! // `execute` auto-creates the database on first use.
+//! backend.execute(session, "notes", "CREATE TABLE notes (id INTEGER, body TEXT)").unwrap();
+//! backend.execute(session, "notes", "INSERT INTO notes VALUES (1, 'hello')").unwrap();
+//!
+//! let result = backend.query(session, "notes", "SELECT body FROM notes").unwrap();
+//! assert_eq!(result.row_count, 1);
+//! ```
 
 // Architecture:
 // - types.rs: Shared types (DatabaseInfo, SqlQueryResult, etc.)

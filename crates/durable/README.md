@@ -11,6 +11,18 @@ and worker use it to keep long-running agent sessions progressing.
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents.
 
+## Quick Example
+
+```rust
+use everruns_durable::WorkflowRegistry;
+
+// Register workflows in a registry, then run them with a `WorkflowExecutor`
+// backed by a PostgreSQL event store (`PostgresWorkflowEventStore`).
+let mut registry = WorkflowRegistry::new();
+// registry.register("my-workflow", ...);
+let _ = &mut registry;
+```
+
 ## What It Provides
 
 - A PostgreSQL-backed workflow executor with a workflow registry

@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
 `everruns-openui` builds the system-prompt text that teaches an LLM to produce
-`openui` fenced blocks — generative UI that Everruns clients understanding OpenUI
-Lang can render directly in a conversation. It ships a static component library
+`openui` fenced blocks — generative UI that Everruns clients that understand
+OpenUI Lang can render directly in a conversation. It ships a static component library
 and lets you extend the prompt with your own rules and examples.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic

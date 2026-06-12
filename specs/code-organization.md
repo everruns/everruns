@@ -8,9 +8,11 @@ Developer conventions for formatting, testing, error handling, and UI patterns. 
 
 Every workspace crate ships a `README.md` (referenced by `readme = "README.md"`
 in its `Cargo.toml`) and a crate-level rustdoc comment (`//!`) on its
-`lib.rs`/`main.rs`. Both are user-facing surfaces: the README renders on
-crates.io, the rustdoc renders on docs.rs. They must read as documentation for a
-newcomer, not as internal notes.
+`lib.rs`/`main.rs`. Both are user-facing surfaces. For published crates the
+README renders on crates.io and the rustdoc on docs.rs; for unpublished
+workspace crates the README is read on GitHub and the rustdoc via local
+`cargo doc`. Either way they must read as documentation for a newcomer, not as
+internal notes.
 
 **Every README must include:**
 
@@ -18,7 +20,9 @@ newcomer, not as internal notes.
 2. An abstract: one short paragraph stating what the crate is and does.
 3. An ecosystem line linking [everruns.com](https://everruns.com) and naming how
    the crate fits (which crates it builds on or pairs with).
-4. A runnable quick example.
+4. A quick example — runnable when the crate exposes a usable standalone API;
+   a minimal usage snippet for internal or generated crates that cannot run
+   standalone.
 5. A short "What It Provides" / "Features" list.
 6. A "Documentation" section linking the relevant
    [docs.everruns.com](https://docs.everruns.com) page(s), and — for published
