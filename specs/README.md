@@ -28,6 +28,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/tool-execution.md` - Tool types and execution flow
+- `specs/tool-output-distillation.md` - Content-aware distillation of large non-exec tool results at capture time
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/background-execution.md` - `background_execution` capability and cross-cutting / auto-activation contract
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
