@@ -21,7 +21,7 @@ This is the recommended default for harnesses that may run on different models. 
 `auto_tool_search` resolves to one of two underlying mechanisms based on the model:
 
 - **Models with native tool search** (OpenAI GPT-5.4 and newer) → the hosted mechanism described in [OpenAI Tool Search](/capabilities/openai-tool-search/): namespaces + `defer_loading` + a `{"type": "tool_search"}` activator. No extra tool is added; the provider handles search server-side.
-- **All other models** (Anthropic, Gemini, OpenAI Completions, …) → the client-side mechanism described in [Tool Search](/capabilities/generic-tool-search/): schemas are stripped to stubs and a `tool_search` tool loads them back on demand.
+- **All other models** (Anthropic, Gemini, OpenAI Completions, …) → the client-side mechanism described in [Tool Search](/capabilities/tool-search/): schemas are stripped to stubs and a `tool_search` tool loads them back on demand.
 
 The choice is made when the agent's capabilities are assembled, once the model is known. You don't have to know in advance which provider an agent will use.
 
@@ -59,12 +59,12 @@ The threshold (minimum tool count before deferral activates) applies to both mec
 Prefer the single-mechanism capabilities when you know the model and want explicit behavior:
 
 - [OpenAI Tool Search](/capabilities/openai-tool-search/) (`openai_tool_search`) — hosted only; silently disabled on unsupported models (full schemas sent, no fallback).
-- [Tool Search](/capabilities/generic-tool-search/) (`tool_search`) — client-side only; works on any model including OpenAI.
+- [Tool Search](/capabilities/tool-search/) (`tool_search`) — client-side only; works on any model including OpenAI.
 
 Do not combine `auto_tool_search` with either of the above on the same agent — it already provides both paths.
 
 ## See Also
 
 - [OpenAI Tool Search](/capabilities/openai-tool-search/) — the hosted mechanism
-- [Tool Search](/capabilities/generic-tool-search/) — the client-side mechanism
+- [Tool Search](/capabilities/tool-search/) — the client-side mechanism
 - [Capabilities Overview](/capabilities/)

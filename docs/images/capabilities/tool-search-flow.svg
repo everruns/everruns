@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 12px; fill: #0A0A0A; font-weight: 600; }
+    .step-num { font-size: 10px; fill: #FFFFFF; font-weight: 600; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+    .arrow-mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #0A1636; font-weight: 500; }
+  </style>
+
+  <!-- Background -->
+  <rect width="800" height="440" fill="#FFFFFF"/>
+
+  <!-- Participant boxes -->
+  <rect x="30" y="20" width="120" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="90" y="43" text-anchor="middle" class="label">Model</text>
+
+  <rect x="240" y="20" width="120" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="300" y="43" text-anchor="middle" class="label">Agent Runtime</text>
+
+  <rect x="450" y="20" width="120" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="510" y="43" text-anchor="middle" class="mono">tool_search</text>
+
+  <rect x="650" y="20" width="120" height="36" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="710" y="43" text-anchor="middle" class="label">Tool Registry</text>
+
+  <!-- Lifelines -->
+  <line x1="90" y1="56" x2="90" y2="420" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="300" y1="56" x2="300" y2="420" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="510" y1="56" x2="510" y2="420" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+  <line x1="710" y1="56" x2="710" y2="420" stroke="#A0A0A0" stroke-width="1" stroke-dasharray="3 3"/>
+
+  <!-- Step 1: Agent Runtime self — strip schemas -->
+  <rect x="306" y="76" width="18" height="18" fill="#0A1636"/>
+  <text x="315" y="89" text-anchor="middle" class="step-num">1</text>
+  <polyline points="300,80 335,80 335,92 300,92" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="305,87 295,92 305,97" fill="#0A1636"/>
+  <text x="340" y="89" text-anchor="start" class="arrow-label">Strip schemas: 18/19 → stubs</text>
+
+  <!-- Step 2: Agent Runtime -> Model (left) — send names + descriptions -->
+  <rect x="96" y="111" width="18" height="18" fill="#0A1636"/>
+  <text x="105" y="124" text-anchor="middle" class="step-num">2</text>
+  <line x1="300" y1="120" x2="98" y2="120" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="103,115 93,120 103,125" fill="#0A1636"/>
+  <text x="199" y="114" text-anchor="middle" class="arrow-label">Send names + descriptions only</text>
+
+  <!-- Step 3: Model -> tool_search (right) — call tool_search -->
+  <rect x="96" y="146" width="18" height="18" fill="#0A1636"/>
+  <text x="105" y="159" text-anchor="middle" class="step-num">3</text>
+  <line x1="90" y1="155" x2="502" y2="155" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="497,150 507,155 497,160" fill="#0A1636"/>
+  <text x="300" y="149" text-anchor="middle" class="arrow-mono">tool_search("read file")</text>
+
+  <!-- Step 4: tool_search -> Tool Registry (right) — rank visible tools -->
+  <rect x="516" y="181" width="18" height="18" fill="#0A1636"/>
+  <text x="525" y="194" text-anchor="middle" class="step-num">4</text>
+  <line x1="510" y1="190" x2="702" y2="190" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="697,185 707,190 697,195" fill="#0A1636"/>
+  <text x="610" y="184" text-anchor="middle" class="arrow-label">Rank visible tools by keyword</text>
+
+  <!-- Step 5: Tool Registry -> tool_search (left) — top matches + schemas -->
+  <rect x="516" y="216" width="18" height="18" fill="#0A1636"/>
+  <text x="525" y="229" text-anchor="middle" class="step-num">5</text>
+  <line x1="710" y1="225" x2="518" y2="225" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="523,220 513,225 523,230" fill="#0A1636"/>
+  <text x="610" y="219" text-anchor="middle" class="arrow-label">Top matches + full schemas</text>
+
+  <!-- Step 6: tool_search self — record reveal -->
+  <rect x="516" y="251" width="18" height="18" fill="#0A1636"/>
+  <text x="525" y="264" text-anchor="middle" class="step-num">6</text>
+  <polyline points="510,255 545,255 545,267 510,267" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="515,262 505,267 515,272" fill="#0A1636"/>
+  <text x="550" y="264" text-anchor="start" class="arrow-label">Record reveal (session-scoped)</text>
+
+  <!-- Step 7: tool_search -> Model (left) — return matching schemas -->
+  <rect x="96" y="286" width="18" height="18" fill="#0A1636"/>
+  <text x="105" y="299" text-anchor="middle" class="step-num">7</text>
+  <line x1="510" y1="295" x2="98" y2="295" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="103,290 93,295 103,300" fill="#0A1636"/>
+  <text x="300" y="289" text-anchor="middle" class="arrow-label">Return matching schemas</text>
+
+  <!-- Step 8: Agent Runtime self — re-run hook, restore schema -->
+  <rect x="306" y="321" width="18" height="18" fill="#0A1636"/>
+  <text x="315" y="334" text-anchor="middle" class="step-num">8</text>
+  <polyline points="300,325 335,325 335,337 300,337" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="305,332 295,337 305,342" fill="#0A1636"/>
+  <text x="340" y="334" text-anchor="start" class="arrow-label">Re-run hook → restore schema</text>
+
+  <!-- Step 9: Model -> Tool Registry (right) — call real tool with full params -->
+  <rect x="96" y="356" width="18" height="18" fill="#0A1636"/>
+  <text x="105" y="369" text-anchor="middle" class="step-num">9</text>
+  <line x1="90" y1="365" x2="702" y2="365" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="697,360 707,365 697,370" fill="#0A1636"/>
+  <text x="400" y="359" text-anchor="middle" class="arrow-mono">Call read_file(path), full params</text>
+
+  <!-- Step 10: Tool Registry -> Model (left, dashed) — result -->
+  <rect x="96" y="391" width="18" height="18" fill="#0A1636"/>
+  <text x="105" y="404" text-anchor="middle" class="step-num">10</text>
+  <line x1="710" y1="400" x2="98" y2="400" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <polygon points="103,395 93,400 103,405" fill="#0A1636"/>
+  <text x="400" y="394" text-anchor="middle" class="arrow-label">Result</text>
+</svg>

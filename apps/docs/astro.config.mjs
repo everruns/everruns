@@ -16,6 +16,8 @@ export default defineConfig({
   redirects: {
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
+    // generic-tool-search page renamed to tool-search
+    "/capabilities/generic-tool-search/": "/capabilities/tool-search/",
   },
   vite: {
     resolve: {
