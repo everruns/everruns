@@ -239,9 +239,11 @@ async fn fire_monitor_tasks(
     let tasks = match registry
         .list(
             session_id,
+            // Active monitors are `running`; terminal ones never re-fire, so
+            // filter at the DB to avoid scanning history as it grows.
             Some(&SessionTaskFilter {
                 kind: Some(TASK_KIND_MONITOR.to_string()),
-                state: None,
+                state: Some(SessionTaskState::Running),
             }),
         )
         .await
@@ -259,14 +261,14 @@ async fn fire_monitor_tasks(
     };
 
     // Filter to the task(s) whose spec["schedule_id"] matches this schedule.
+    // (The list above already restricts to running monitors.)
     let matched: Vec<_> = tasks
         .into_iter()
         .filter(|t| {
-            !t.state.is_terminal()
-                && t.spec
-                    .get("schedule_id")
-                    .and_then(|v| v.as_str())
-                    .is_some_and(|id| id == schedule_id_str)
+            t.spec
+                .get("schedule_id")
+                .and_then(|v| v.as_str())
+                .is_some_and(|id| id == schedule_id_str)
         })
         .collect();
 

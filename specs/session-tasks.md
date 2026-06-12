@@ -163,12 +163,12 @@ A monitor is a long-lived task (`running` until canceled or exhausted).
 `spawn_background` with a `schedule` argument creates a `monitor` task linked
 to the backing session schedule via `spec["schedule_id"]`. Each schedule fire
 appends an outbound message to the monitor's thread. One-shot monitors
-transition to `Succeeded` after their single fire; recurring monitors stay
-`Running` until `cancel_task` is called, which cancels the linked schedule and
-transitions the task to `Canceled`.
+transition to `succeeded` after their single fire; recurring monitors stay
+`running` until `cancel_task` is called, which cancels the linked schedule and
+transitions the task to `canceled`.
 
 Known limitation: canceling the underlying session schedule directly (not via
-`cancel_task`) currently leaves the monitor task in `Running` — prefer
+`cancel_task`) currently leaves the monitor task in `running` — prefer
 `cancel_task` to cancel both atomically; reconciling orphaned monitors is a
 follow-up (EVE-monitor-orphan).
 
@@ -294,7 +294,7 @@ No backward compatibility is required; data migrates forward once:
   to the session schedule via `spec["schedule_id"]`. The `session_scheduler`
   server loop finds matching monitors on each schedule fire, records an outbound
   message on their thread, and completes one-shot monitors (cron_expression
-  absent) to `Succeeded`. Recurring monitors stay `Running` until
+  absent) to `succeeded`. Recurring monitors stay `running` until
   `cancel_task`, which cancels the linked schedule via `MonitorTaskExecutor`.
   `TASK_KIND_MONITOR` and the other `TASK_KIND_*` constants are now re-exported
   from `everruns-core`.

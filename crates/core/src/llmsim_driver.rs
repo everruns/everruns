@@ -919,7 +919,7 @@ pub fn monitor_demo_script() -> LlmSimConfig {
             }],
         },
         SimTurn::Assistant(
-            "Monitor demo complete: a recurring monitor was scheduled and tracked              as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
+            "Monitor demo complete: a recurring monitor was scheduled and tracked as a session task. Inspect it via GET /v1/sessions/{session_id}/tasks."
                 .to_string(),
         ),
     ];
