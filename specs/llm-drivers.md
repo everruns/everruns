@@ -2,11 +2,11 @@
 
 > **Domain model note:** the canonical provider domain model (drivers, services,
 > providers, models, model profiles) is [providers.md](providers.md). That
-> refactor is in progress: as its phases land, `LlmDriver` will be renamed
-> `ChatDriver` and the entity/resolution content will move out of this document,
-> leaving this spec as the chat-service wire contract (streaming, error types,
-> retries, thinking, prompt cache, compaction). Until then, this document still
-> describes the current names in code.
+> refactor is in progress: the driver trait is now `ChatDriver` (it implements
+> the chat service of a provider). As later phases land, the entity/resolution
+> content will move out of this document, leaving this spec as the chat-service
+> wire contract (streaming, error types, retries, thinking, prompt cache,
+> compaction).
 
 ## Abstract
 
