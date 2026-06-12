@@ -1,15 +1,14 @@
 // Session Files (Virtual Filesystem) API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 //
-// RESTful API design:
-// - GET    /fs/{path}  - Read file or list directory
-// - POST   /fs/{path}  - Create file or directory
-// - PUT    /fs/{path}  - Update file
-// - DELETE /fs/{path}  - Delete file or directory
-// - POST   /fs/_/move  - Move/rename
-// - POST   /fs/_/copy  - Copy
-// - POST   /fs/_/grep  - Search
-// - POST   /fs/_/stat  - Get file metadata
+// Target endpoints are the canonical Workspace filesystem surface
+// (/v1/workspaces/{workspace_id}/fs/*). The hooks/components keep passing a
+// `sessionId` because every UI flow today operates on the default per-session
+// Workspace; the API client derives the workspace public ID from it via
+// `workspaceIdFromSessionId` (the migration backs each session with a default
+// Workspace whose UUID equals the session's UUID, so the hex portion of the
+// public IDs is identical). Move/copy and download still live on the legacy
+// session routes — those are not exposed through the workspace surface yet.
 
 import { api } from "./client";
 import type {
@@ -26,13 +25,31 @@ import type {
   ListResponse,
 } from "./types";
 
-// Base path for filesystem
+// Derive the default Workspace public ID for a Session. The server creates a
+// 1:1 default Workspace with the same UUID per session, so the public IDs
+// share the same 32-hex suffix and only differ by prefix.
+function workspaceIdFromSessionId(sessionId: string): string {
+  return sessionId.startsWith("session_") ? `wsp_${sessionId.slice("session_".length)}` : sessionId;
+}
+
+// Base path for the workspace filesystem.
 function fsPath(sessionId: string, path?: string): string {
-  const base = `/v1/sessions/${sessionId}/fs`;
+  const workspaceId = workspaceIdFromSessionId(sessionId);
+  const base = `/v1/workspaces/${workspaceId}/fs`;
   if (!path || path === "/") return base;
-  // Ensure path doesn't have double slashes
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
   return `${base}/${normalizedPath}`;
+}
+
+function actionPath(sessionId: string, action: string): string {
+  const workspaceId = workspaceIdFromSessionId(sessionId);
+  return `/v1/workspaces/${workspaceId}/fs/_/${action}`;
+}
+
+// Legacy session-scoped path: used only for move/copy which the workspace
+// surface does not yet expose.
+function legacySessionActionPath(sessionId: string, action: string): string {
+  return `/v1/sessions/${sessionId}/fs/_/${action}`;
 }
 
 // ============================================
@@ -78,7 +95,7 @@ export async function updateFile(
 
 /** Get file stat (metadata) */
 export async function statFile(sessionId: string, path: string): Promise<FileStat> {
-  const response = await api.post<FileStat>(`/v1/sessions/${sessionId}/fs/_/stat`, { path });
+  const response = await api.post<FileStat>(actionPath(sessionId, "stat"), { path });
   return response.data;
 }
 
@@ -109,13 +126,13 @@ export async function mkdir(sessionId: string, path: string): Promise<SessionFil
 
 /** Move/rename a file or directory */
 export async function moveFile(sessionId: string, request: MoveFileRequest): Promise<SessionFile> {
-  const response = await api.post<SessionFile>(`/v1/sessions/${sessionId}/fs/_/move`, request);
+  const response = await api.post<SessionFile>(legacySessionActionPath(sessionId, "move"), request);
   return response.data;
 }
 
 /** Copy a file */
 export async function copyFile(sessionId: string, request: CopyFileRequest): Promise<SessionFile> {
-  const response = await api.post<SessionFile>(`/v1/sessions/${sessionId}/fs/_/copy`, request);
+  const response = await api.post<SessionFile>(legacySessionActionPath(sessionId, "copy"), request);
   return response.data;
 }
 
@@ -125,10 +142,7 @@ export async function copyFile(sessionId: string, request: CopyFileRequest): Pro
 
 /** Search files using grep-like pattern matching */
 export async function grepFiles(sessionId: string, request: GrepRequest): Promise<GrepResult[]> {
-  const response = await api.post<ListResponse<GrepResult>>(
-    `/v1/sessions/${sessionId}/fs/_/grep`,
-    request,
-  );
+  const response = await api.post<ListResponse<GrepResult>>(actionPath(sessionId, "grep"), request);
   return response.data.data;
 }
 
