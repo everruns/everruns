@@ -96,10 +96,9 @@ pub struct BuiltinTool {
     #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
     pub hints: ToolHints,
     /// Original full parameter schema saved by `DeferSchemaHook` before stripping.
-    /// Never serialized; used only within the worker process so `tool_search` can
-    /// return the real schema even after the hook has replaced `parameters` with
-    /// the deferred stub.
-    #[serde(skip)]
+    /// Serialized only when present so durable reason-to-act scheduling can
+    /// preserve deferred schemas for `tool_search` in the act phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_parameters: Option<serde_json::Value>,
 }
 
@@ -127,10 +126,9 @@ pub struct ClientSideTool {
     #[serde(default, skip_serializing_if = "ToolHints::is_empty")]
     pub hints: ToolHints,
     /// Original full parameter schema saved by `DeferSchemaHook` before stripping.
-    /// Never serialized; used only within the worker process so `tool_search` can
-    /// return the real schema even after the hook has replaced `parameters` with
-    /// the deferred stub.
-    #[serde(skip)]
+    /// Serialized only when present so durable reason-to-act scheduling can
+    /// preserve deferred schemas for `tool_search` in the act phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub full_parameters: Option<serde_json::Value>,
 }
 
