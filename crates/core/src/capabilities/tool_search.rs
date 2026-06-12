@@ -922,6 +922,38 @@ mod tests {
     }
 
     #[test]
+    fn test_search_returns_full_schema_after_serde_round_trip() {
+        // Durable execution serializes reason output before scheduling act. The
+        // saved full schema must survive that boundary for deferred MCP proxies.
+        let hook = hook(1);
+        let tools = vec![builtin(
+            "mcp_docs__search",
+            "Search MCP docs",
+            DeferrablePolicy::Automatic,
+        )];
+        let deferred = hook.transform(tools);
+        let round_tripped: Vec<ToolDefinition> =
+            serde_json::from_value(serde_json::to_value(&deferred).unwrap()).unwrap();
+
+        let mcp = round_tripped
+            .iter()
+            .find(|t| t.name() == "mcp_docs__search")
+            .unwrap();
+        assert!(
+            mcp.parameters().get("properties").is_none(),
+            "visible MCP schema remains deferred after serde"
+        );
+
+        let results = ToolSearchTool::search(&round_tripped, "docs search");
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0]["name"], "mcp_docs__search");
+        assert!(
+            results[0]["parameters"].get("properties").is_some(),
+            "tool_search must return the full MCP schema after durable serde"
+        );
+    }
+
+    #[test]
     fn test_hook_opts_out_of_native_tool_search() {
         // Generic (client-side) deferral is mutually exclusive with hosted
         // tool_search; build() uses this to skip the hook when native is active.
