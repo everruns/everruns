@@ -66,6 +66,8 @@ const mockAgent: Agent = {
   status: "active",
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
+  archived_at: null,
+  deleted_at: null,
 };
 
 // Session status: started → active → idle (cycles)
@@ -78,6 +80,7 @@ const mockSessions: Session[] = [
     organization_id: "org-1",
     harness_id: "harness-1",
     agent_id: "agent-1",
+    owner_principal_id: "principal_1",
     title: "Session with GPT-4o",
     tags: [],
     model_id: "model-1",
@@ -92,6 +95,7 @@ const mockSessions: Session[] = [
     organization_id: "org-1",
     harness_id: "harness-1",
     agent_id: "agent-1",
+    owner_principal_id: "principal_1",
     title: "Session with Claude",
     tags: [],
     model_id: "model-2",
@@ -106,6 +110,7 @@ const mockSessions: Session[] = [
     organization_id: "org-1",
     harness_id: "harness-1",
     agent_id: "agent-1",
+    owner_principal_id: "principal_1",
     title: "Session without model",
     tags: [],
     model_id: null,
@@ -130,6 +135,7 @@ const mockLlmModels: LlmModelWithProvider[] = [
     updated_at: "2025-01-01T00:00:00Z",
     provider_name: "OpenAI",
     provider_type: "openai",
+    is_favorite: false,
   },
   {
     id: "model-2",
@@ -143,6 +149,7 @@ const mockLlmModels: LlmModelWithProvider[] = [
     updated_at: "2025-01-01T00:00:00Z",
     provider_name: "Anthropic",
     provider_type: "anthropic",
+    is_favorite: false,
   },
 ];
 

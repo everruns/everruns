@@ -5,6 +5,8 @@ describe("SlackSetupGuidance", () => {
   const baseProps = {
     hasSlackConfig: true,
     isPublished: false,
+    webhookVerified: false,
+    firstMessageReceived: false,
     webhookUrl: "https://example.com/api/v1/apps/app-123/slack/events",
     webhookPath: "/api/v1/apps/app-123/slack/events",
     isLocalhost: false,

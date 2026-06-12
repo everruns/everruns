@@ -86,7 +86,10 @@ jest.mock("@/hooks/use-llm-providers", () => ({
 
 const mockUsePolicies = jest.fn(() => ({
   data: { policies: { "durable.view": true } },
-  can: (policyId: string) => policyId === "durable.view",
+  // Annotate the return as boolean so it matches the real usePolicies().can
+  // signature; without it, TS 5.5+ infers a `policyId is "durable.view"`
+  // predicate from the comparison, which then rejects plain boolean mocks.
+  can: (policyId: string): boolean => policyId === "durable.view",
 }));
 jest.mock("@/hooks/use-policies", () => ({
   usePolicies: () => mockUsePolicies(),

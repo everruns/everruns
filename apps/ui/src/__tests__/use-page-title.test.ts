@@ -25,7 +25,7 @@ describe("usePageTitle", () => {
     const { rerender } = renderHook(
       ({ name }: { name: string | null }) => usePageTitle(name, "Agent"),
       {
-        initialProps: { name: null },
+        initialProps: { name: null } as { name: string | null },
       },
     );
     expect(document.title).toBe("Agent · Everruns");

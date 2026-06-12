@@ -2,10 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
+import type { Event, LlmModelWithProvider } from "@/lib/api/types";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
-const mockUseFeatureFlag = jest.fn(() => false);
+const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
 const mockSelectTrigger = jest.fn(
@@ -24,8 +25,8 @@ const mockSessionContext = {
   agentId: "agent-1",
   events: [],
   sessionId: "session-1",
-  llmModel: null,
-  chatEvents: [],
+  llmModel: null as LlmModelWithProvider | null,
+  chatEvents: [] as Event[],
   toolResultsMap: new Map(),
   toolProgressMap: new Map(),
   toolOutputMap: new Map(),
@@ -233,8 +234,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-1",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "observation_masking",
         messages_before: 42,
@@ -263,8 +264,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-2",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "none",
         messages_before: 20,
@@ -288,8 +289,8 @@ describe("ChatPanel compaction divider", () => {
       id: "evt-compacted-3",
       type: "context.compacted",
       session_id: "session-1",
-      turn_id: "turn-1",
-      created_at: new Date().toISOString(),
+      ts: new Date().toISOString(),
+      context: { turn_id: "turn-1" },
       data: {
         strategy_used: "auto",
         messages_before: 100,
@@ -368,9 +369,27 @@ describe("ChatPanel placeholder", () => {
   it("renders inline composer selects with non-native triggers to avoid nested picker chrome", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
     mockSessionContext.llmModel = {
+      id: "model-1",
+      provider_id: "provider-1",
+      model_id: "gpt-5.4",
       display_name: "GPT-5.4",
+      capabilities: ["chat"],
+      enabled: true,
+      healthy: true,
+      created_at: "2025-01-01T00:00:00Z",
+      updated_at: "2025-01-01T00:00:00Z",
+      provider_name: "OpenAI",
+      provider_type: "openai",
+      is_favorite: false,
       profile: {
+        name: "GPT-5.4",
+        family: "gpt-5",
+        attachment: false,
         reasoning: true,
+        temperature: true,
+        tool_call: true,
+        structured_output: true,
+        open_weights: false,
         reasoning_effort: {
           default: "medium",
           values: [{ value: "medium", name: "Medium" }],
@@ -385,7 +404,7 @@ describe("ChatPanel placeholder", () => {
     for (const [triggerProps] of mockSelectTrigger.mock.calls) {
       expect(triggerProps?.nativeButton).toBe(false);
       expect(React.isValidElement(triggerProps?.render)).toBe(true);
-      expect(triggerProps?.render.type).toBe("div");
+      expect(triggerProps?.render?.type).toBe("div");
     }
   });
 

@@ -428,8 +428,8 @@ describe("Auth Hooks", () => {
           name: "Default Key",
           token_prefix: "evr_default",
           scopes: ["*"],
-          expires_at: null,
-          last_used_at: null,
+          expires_at: undefined,
+          last_used_at: undefined,
           created_at: "2024-01-01T00:00:00Z",
         },
       ]);
@@ -455,8 +455,8 @@ describe("Auth Hooks", () => {
           name: "Second Key",
           token_prefix: "evr_second",
           scopes: ["*"],
-          expires_at: null,
-          last_used_at: null,
+          expires_at: undefined,
+          last_used_at: undefined,
           created_at: "2024-01-02T00:00:00Z",
         },
       ]);
@@ -485,7 +485,7 @@ describe("Auth Hooks", () => {
         token: "evr_pat_secret",
         token_prefix: "evr_pat_created",
         scopes: ["*"],
-        expires_at: null,
+        expires_at: undefined,
         created_at: "2024-01-01T00:00:00Z",
       });
 

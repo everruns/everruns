@@ -20,7 +20,7 @@ describe("auth proxy", () => {
       cookies: { has: () => false },
       nextUrl: new URL("http://localhost/settings/providers?tab=models"),
       url: "http://localhost/settings/providers?tab=models",
-    } as Parameters<typeof proxy>[0];
+    } as unknown as Parameters<typeof proxy>[0];
 
     const response = proxy(request);
 
@@ -39,7 +39,7 @@ describe("auth proxy", () => {
         cookies: { has: () => false },
         nextUrl: new URL(`http://localhost${path}`),
         url: `http://localhost${path}`,
-      } as Parameters<typeof proxy>[0];
+      } as unknown as Parameters<typeof proxy>[0];
 
       const response = proxy(request);
 
@@ -53,7 +53,7 @@ describe("auth proxy", () => {
       cookies: { has: (name: string) => name === "access_token" },
       nextUrl: new URL("http://localhost/settings/providers?tab=models"),
       url: "http://localhost/settings/providers?tab=models",
-    } as Parameters<typeof proxy>[0];
+    } as unknown as Parameters<typeof proxy>[0];
 
     const response = proxy(request);
 
@@ -66,7 +66,7 @@ describe("auth proxy", () => {
       cookies: { has: () => false },
       nextUrl: new URL("http://localhost/"),
       url: "http://localhost/",
-    } as Parameters<typeof proxy>[0];
+    } as unknown as Parameters<typeof proxy>[0];
 
     const response = proxy(request);
 
