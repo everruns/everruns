@@ -688,6 +688,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
             base_url: r.base_url,
+            provider_metadata: None,
         }))
     }
 
@@ -706,6 +707,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
             base_url: r.base_url,
+            provider_metadata: None,
         }))
     }
 
@@ -1940,20 +1942,9 @@ impl DirectWorkerAdapters {
 // =============================================================================
 
 fn string_to_provider_type(s: &str) -> LlmProviderType {
-    match s.to_lowercase().as_str() {
-        "openai" => LlmProviderType::Openai,
-        "openrouter" => LlmProviderType::Openrouter,
-        "azure_openai" => LlmProviderType::AzureOpenai,
-        "openai_completions" => LlmProviderType::OpenaiCompletions,
-        "anthropic" => LlmProviderType::Anthropic,
-        "gemini" => LlmProviderType::Gemini,
-        "llmsim" => LlmProviderType::LlmSim,
-        "bedrock" => LlmProviderType::Bedrock,
-        _ => {
-            tracing::warn!(provider_type = %s, "Unknown provider_type in database; falling back to llmsim");
-            LlmProviderType::LlmSim
-        }
-    }
+    // FromStr is infallible: unknown ids become External providers, preserving
+    // the id so embedder-defined providers resolve correctly.
+    s.to_lowercase().parse().unwrap_or_else(|_| unreachable!())
 }
 
 /// Convert an event to a message
@@ -3035,10 +3026,11 @@ mod tests {
     }
 
     #[test]
-    fn string_to_provider_type_falls_back_for_unknown() {
+    fn string_to_provider_type_maps_unknown_to_external() {
+        // Unknown ids resolve to External, preserving the id.
         assert_eq!(
             string_to_provider_type("custom-provider").to_string(),
-            "llmsim"
+            "custom-provider"
         );
     }
 

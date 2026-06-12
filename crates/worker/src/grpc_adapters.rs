@@ -1457,27 +1457,19 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
 fn proto_model_with_provider_to_model(
     proto: proto::ModelWithProvider,
 ) -> Result<ModelWithProvider> {
-    let provider_type = match proto.provider_type.to_lowercase().as_str() {
-        "openai" => everruns_core::LlmProviderType::Openai,
-        "openrouter" => everruns_core::LlmProviderType::Openrouter,
-        "azure_openai" => everruns_core::LlmProviderType::AzureOpenai,
-        "openai_completions" => everruns_core::LlmProviderType::OpenaiCompletions,
-        "anthropic" => everruns_core::LlmProviderType::Anthropic,
-        "gemini" => everruns_core::LlmProviderType::Gemini,
-        "llmsim" => everruns_core::LlmProviderType::LlmSim,
-        _ => {
-            return Err(AgentLoopError::store(format!(
-                "Unknown provider type: {}",
-                proto.provider_type
-            )));
-        }
-    };
+    // Parsing is infallible: unknown ids become External providers, so
+    // embedder-defined providers round-trip across the worker boundary.
+    let provider_type: everruns_core::LlmProviderType = proto
+        .provider_type
+        .parse()
+        .unwrap_or_else(|_| unreachable!());
 
     Ok(ModelWithProvider {
         model: proto.model,
         provider_type,
         api_key: proto.api_key.filter(|s| !s.is_empty()),
         base_url: proto.base_url.filter(|s| !s.is_empty()),
+        provider_metadata: None,
     })
 }
 

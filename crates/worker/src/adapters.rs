@@ -4,7 +4,7 @@
 // This module only contains LLM driver factory helpers.
 
 use everruns_core::{
-    AgentLoopError, BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result,
+    BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result,
 };
 
 /// Create and configure the driver registry with all supported LLM providers
@@ -103,9 +103,8 @@ pub fn create_llm_driver(
     api_key: Option<&str>,
     base_url: Option<&str>,
 ) -> Result<BoxedLlmDriver> {
-    let ptype: ProviderType = provider_type
-        .parse()
-        .map_err(|e: String| AgentLoopError::llm(e))?;
+    // Parsing is infallible: unknown ids become External providers.
+    let ptype: ProviderType = provider_type.parse().unwrap_or_else(|_| unreachable!());
 
     let mut config = ProviderConfig::new(ptype);
     if let Some(key) = api_key {
