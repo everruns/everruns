@@ -1,5 +1,6 @@
 [package]
 name = "everruns-worker"
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

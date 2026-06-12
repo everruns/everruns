@@ -1,11 +1,20 @@
 # everruns-integrations-parallel
 
-Parallel web search integration for Everruns agents.
+> Parallel web search and fetch for Everruns agents.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It
-contributes Parallel's hosted MCP server so agents get provider-owned
-`web_search` and `web_fetch` tools, free by default with an optional
-Parallel API-key connection for authenticated usage.
+[![Crates.io](https://img.shields.io/crates/v/everruns-integrations-parallel.svg)](https://crates.io/crates/everruns-integrations-parallel)
+[![Documentation](https://docs.rs/everruns-integrations-parallel/badge.svg)](https://docs.rs/everruns-integrations-parallel)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-integrations-parallel` contributes [Parallel](https://parallel.ai)'s
+hosted MCP server so agents get provider-owned `web_search` and `web_fetch`
+tools — free by default, with an optional Parallel API-key connection for
+authenticated usage.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. It registers with
+[`everruns-core`](https://crates.io/crates/everruns-core) through the Everruns
+integration plugin system.
 
 ## Quick Example
 
@@ -29,6 +38,13 @@ assert_eq!(capability.id(), "parallel_search");
   `machine_payments` feature flag and off by default
 - Inventory-based Everruns integration registration
 
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-integrations-parallel)
+- [Parallel integration](https://docs.everruns.com/integrations/parallel/)
+- [Give an agent web access](https://docs.everruns.com/how-to/give-an-agent-web-access/)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

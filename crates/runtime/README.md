@@ -1,10 +1,24 @@
 # everruns-runtime
 
-Public in-process runtime for embedding Everruns harnesses.
+> Embed Everruns agents directly in your Rust process — no server, worker, or database required.
 
-This crate is part of the [Everruns](https://everruns.com) ecosystem. It runs
-Everruns sessions in your process with in-memory stores by default, while using
-the same core `input -> reason -> act` flow as worker-backed execution.
+[![Crates.io](https://img.shields.io/crates/v/everruns-runtime.svg)](https://crates.io/crates/everruns-runtime)
+[![Documentation](https://docs.rs/everruns-runtime/badge.svg)](https://docs.rs/everruns-runtime)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
+
+`everruns-runtime` is the in-process entrypoint for embedding Everruns. It runs a
+harness entirely inside your own process — with in-memory stores by default —
+using the same `input → reason → act` loop as worker- and server-backed
+execution, but without the durable engine, gRPC worker boundary, or
+control-plane server. It is the recommended starting point for trying Everruns,
+writing tests, and embedding agents in your own application.
+
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. The runtime builds on the
+contracts in [`everruns-core`](https://crates.io/crates/everruns-core) and pairs
+with provider crates such as
+[`everruns-openai`](https://crates.io/crates/everruns-openai) and
+[`everruns-anthropic`](https://crates.io/crates/everruns-anthropic).
 
 ## Quick Example
 
@@ -46,20 +60,34 @@ assert!(result.success);
 # }
 ```
 
-Runnable examples:
+The example above uses the built-in deterministic LLM simulator so it runs with
+no API key. Swap in a real provider (for example
+[`everruns-openai`](https://crates.io/crates/everruns-openai)) to talk to a
+hosted model.
+
+Runnable examples ship with the crate:
 
 ```text
 cargo run -p everruns-runtime --example in_process_runtime
 cargo run -p everruns-runtime --example inspect_context
+cargo run -p everruns-runtime --example real_disk_file_system_tools
 ```
 
 ## What It Provides
 
-- `InProcessRuntimeBuilder` for embedding sessions
-- In-memory stores for local and test usage
-- Real-disk workspace wiring for file-backed agents
-- Host phase helpers reused by durable and server-backed execution
+- `InProcessRuntimeBuilder` for declaring platforms, harnesses, agents, and sessions in code
+- In-memory stores for local development and tests, with hooks to plug in custom backends
+- Real-disk workspace wiring so file-backed agents can read and write an actual directory
+- Turn-context inspection before and after a turn executes
+- Host-phase helpers reused by durable and server-backed execution
+
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-runtime)
+- [Runtime — embed Everruns in your process](https://docs.everruns.com/features/runtime/)
+- [Tutorial: build your first agent](https://docs.everruns.com/tutorials/building-agents-using-sdk/)
+- [Everruns documentation](https://docs.everruns.com)
 
 ## License
 
-MIT. See the repository-level `LICENSE` file.
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).

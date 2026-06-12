@@ -1,15 +1,31 @@
-//! Daytona Integration (Experimental)
+//! Daytona cloud sandboxes for Everruns agents.
 //!
-//! Cloud-based sandboxed code execution via Daytona REST API.
-//! Supports multiple sandboxes per session, each identified by sandbox_id.
+//! `everruns-integrations-daytona` is part of the
+//! [Everruns](https://everruns.com) ecosystem. It adds cloud-based sandboxed
+//! code execution backed by the [Daytona](https://www.daytona.io) REST API,
+//! letting agents create sandboxes, run commands with streamed output, and read
+//! or write files inside an isolated environment. Sandboxes are managed per
+//! session and authenticated with a user-supplied Daytona API key.
 //!
-//! Decision: External integration crate, auto-registered via inventory plugin system
-//! Decision: Use secrets store for all state (API key + per-sandbox connection info)
-//! Decision: Two-tier API: Management API for lifecycle, Toolbox API for in-sandbox ops
-//! Decision: All exec goes through the Session API (/process/session) using a
-//!           shared session, async execution, and log polling for real-time
-//!           streaming output
-//! Decision: session_storage dependency for API key and state persistence
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_daytona::DaytonaCapability;
+//!
+//! let capability = DaytonaCapability;
+//! assert_eq!(capability.id(), "daytona");
+//! ```
+//!
+//! # Design notes
+//!
+//! - External integration crate, auto-registered via the inventory plugin system.
+//! - State (API key + per-sandbox connection info) lives in the secrets store.
+//! - Two-tier Daytona API: Management API for lifecycle, Toolbox API for
+//!   in-sandbox operations.
+//! - All execution goes through the Session API (`/process/session`) using a
+//!   shared session, async execution, and log polling for real-time streaming
+//!   output.
 
 pub mod client;
 pub mod connection;
