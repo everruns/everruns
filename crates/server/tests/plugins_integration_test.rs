@@ -618,10 +618,11 @@ async fn test_default_marketplace_seeded_at_org_creation() {
         mkt["id"].as_str().unwrap().starts_with("plgmkt_"),
         "marketplace id must have plgmkt_ prefix"
     );
-    // catalog is NULL until synced — last_synced_at must be absent
+    // last_synced_at is NULL until the first explicit sync.
     assert!(
-        mkt["last_synced_at"].is_null() || !mkt["last_synced_at"].is_string(),
-        "default marketplace must be unsynced on creation"
+        mkt["last_synced_at"].is_null(),
+        "default marketplace must be unsynced on creation, got: {}",
+        mkt["last_synced_at"]
     );
 }
 

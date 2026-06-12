@@ -63,13 +63,15 @@ pub async fn seed_default_plugin_marketplace(db: &StorageBackend, org_id: i64) {
             );
         }
         Err(e) => {
-            // Non-fatal: a name conflict means the org already has a marketplace
-            // named "everruns" (manual creation or race); log and continue.
+            // Non-fatal by design: org creation must succeed even if seeding
+            // fails. Possible causes include a name conflict (the org already
+            // has a marketplace named "everruns") or a storage error; the
+            // logged error carries the specifics.
             tracing::warn!(
                 org_id,
                 name = DEFAULT_MARKETPLACE_NAME,
                 error = %e,
-                "Failed to seed default plugin marketplace (non-fatal; marketplace may already exist)"
+                "Failed to seed default plugin marketplace (non-fatal)"
             );
         }
     }
