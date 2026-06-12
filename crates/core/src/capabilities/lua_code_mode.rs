@@ -374,7 +374,13 @@ fn first_sentence(description: &str) -> String {
     let mut s = trimmed[..end].trim().to_string();
     const MAX: usize = 140;
     if s.len() > MAX {
-        s.truncate(MAX);
+        let boundary = s
+            .char_indices()
+            .map(|(idx, _)| idx)
+            .take_while(|idx| *idx <= MAX)
+            .last()
+            .unwrap_or(0);
+        s.truncate(boundary);
         s.push('…');
     }
     s
@@ -546,6 +552,48 @@ mod tests {
         assert!(lua_desc.contains("\"properties\""), "{lua_desc}");
         // The synthetic human_intent arg is stripped from both signature & schema.
         assert!(!lua_desc.contains("human_intent"), "{lua_desc}");
+    }
+
+    #[test]
+    fn first_sentence_truncates_multibyte_descriptions_on_char_boundary() {
+        let desc = format!("{}é", "a".repeat(139));
+
+        let truncated = first_sentence(&desc);
+
+        assert_eq!(truncated, format!("{}…", "a".repeat(139)));
+    }
+
+    #[test]
+    fn catalog_handles_mcp_like_multibyte_tool_descriptions() {
+        let hook = HideCodeModeToolsHook {
+            keep_visible: Vec::new(),
+            full_schemas: false,
+        };
+        let mcp_like_tool = ToolDefinition::Builtin(BuiltinTool {
+            name: "mcp_server_tool".to_string(),
+            display_name: None,
+            description: format!("{}é", "a".repeat(139)),
+            parameters: json!({ "type": "object" }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default().with_open_world(true),
+            full_parameters: None,
+        });
+
+        let kept = hook.transform(vec![
+            builtin("lua", ToolPolicy::Auto, ToolHints::default()),
+            mcp_like_tool,
+        ]);
+
+        assert_eq!(names(&kept), vec!["lua"]);
+        let lua_desc = kept[0].description();
+        assert!(lua_desc.contains("- mcp_server_tool()"), "{lua_desc}");
+        assert!(
+            lua_desc.contains(&format!("{}…", "a".repeat(139))),
+            "{lua_desc}"
+        );
+        assert!(!lua_desc.contains('é'), "{lua_desc}");
     }
 
     #[test]
