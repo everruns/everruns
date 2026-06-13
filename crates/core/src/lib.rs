@@ -265,10 +265,11 @@ pub use utility_llm::{
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverFactory, DriverRegistry,
-    LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
-    ProviderConfig, ProviderType, ServiceKind,
+    BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
+    DriverFactory, DriverRegistry, EmbedRequest, EmbedResponse, EmbeddingsDriver,
+    EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig, LlmCallConfigBuilder,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType, ServiceKind,
 };
 
 // LLM retry types re-exports

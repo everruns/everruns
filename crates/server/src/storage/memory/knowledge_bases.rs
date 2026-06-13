@@ -38,6 +38,7 @@ impl InMemoryDatabase {
             updated_at: now,
             archived_at: None,
             deleted_at: None,
+            embedding_model_id: input.embedding_model_id,
         };
         bases.insert(id, row.clone());
         Ok(row)
@@ -142,6 +143,12 @@ impl InMemoryDatabase {
                 _ => {}
             }
         }
+        match input.embedding_model_id {
+            Some(everruns_durable::UpdateField::Set(v)) => kb.embedding_model_id = Some(v),
+            Some(everruns_durable::UpdateField::Clear) => kb.embedding_model_id = None,
+            Some(everruns_durable::UpdateField::Unchanged) | None => {}
+        }
+
         kb.updated_at = Self::now();
         Ok(Some(kb.clone()))
     }

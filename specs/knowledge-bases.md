@@ -91,6 +91,7 @@ cascades to its entries.
 | `status`                  | VARCHAR     | `active` / `archived` / `deleted`.                     |
 | `created_at` / `updated_at` | TIMESTAMPTZ |                                                       |
 | `archived_at` / `deleted_at` | TIMESTAMPTZ? |                                                     |
+| `embedding_model_id`      | UUID FK?    | FK → `llm_models.id`. Optional embedding model for hybrid retrieval. `NULL` = keyword search only. See "Embedding Configuration" below. |
 
 `UNIQUE(org_id, public_id)` and `UNIQUE(org_id, lower(name)) WHERE status != 'deleted'`.
 
@@ -269,10 +270,21 @@ agent or harness.
 * OpenAPI export updated when API surface changes.
 * Manual test cases (`test_cases/knowledge-bases/`) — added with the UI PR.
 
+## Embedding Configuration
+
+**Decision (phase 6):** Embedding-backed hybrid retrieval is configured **per knowledge base**, not org-wide. The `embedding_model_id` column on `knowledge_bases` links to an embedding model in the org's model catalog.
+
+* `NULL` means the KB uses keyword search only (current default). No embedding provider is required.
+* When set, the referenced model must exist in the org and its provider driver must declare `ServiceKind::Embeddings`. The `EmbeddingsDriver` trait (implemented by `OpenAIEmbeddingsDriver` in phase 6) provides the `embed()` call used during hybrid retrieval.
+* Different KBs in the same org can use different embedding models (e.g., multilingual embeddings for a multilingual KB).
+* The embedding model is validated on create/update: the referenced model UUID must exist in the org's `llm_models` table.
+
+This design is explicit and flexible: orgs pay only for the embedding providers they configure, and different KBs can use different providers independently.
+
 ## Open Questions
 
 * Should KBs support per-KB ACLs (team-scoped), or is org scope sufficient?
-* Should embedding-backed retrieval be opt-in per KB, or org-wide?
+* ~~Should embedding-backed retrieval be opt-in per KB, or org-wide?~~ **Resolved:** per-KB via `embedding_model_id` (phase 6, specs/providers.md).
 * Should entries support attachments (images, files), or only inline
   markdown? Memory already supports image content parts.
 * Should `data_knowledge` remain after the migration path is in place, or

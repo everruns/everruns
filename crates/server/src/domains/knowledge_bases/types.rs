@@ -1,6 +1,6 @@
 use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
+use everruns_core::typed_id::{KnowledgeBaseId, KnowledgeEntryId, ModelId};
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -37,6 +37,10 @@ pub struct KnowledgeBaseResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Timestamp when this resource was soft-deleted, if any (RFC 3339).
     pub deleted_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>)]
+    /// Optional embedding model for hybrid retrieval. `null` = keyword search only.
+    pub embedding_model_id: Option<ModelId>,
 }
 
 /// Request body for the `create_knowledge_base` operation.
@@ -49,6 +53,10 @@ pub struct CreateKnowledgeBaseRequest {
     /// Human-readable description. Safe to render in user-facing messages.
     #[schema(example = "Runbooks for the support team")]
     pub description: Option<String>,
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    /// Optional embedding model for hybrid retrieval. Omit or null for keyword search only.
+    pub embedding_model_id: Option<ModelId>,
 }
 
 /// Request body for the `update_knowledge_base` operation.
@@ -62,6 +70,10 @@ pub struct UpdateKnowledgeBaseRequest {
     #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    /// Optional embedding model for hybrid retrieval. Set to null to clear.
+    pub embedding_model_id: UpdateField<ModelId>,
 }
 
 /// Query parameters for `GET /v1/knowledge-bases` — optional name/desc
@@ -89,6 +101,7 @@ pub fn knowledge_base_response(row: KnowledgeBaseRow) -> anyhow::Result<Knowledg
         updated_at: row.updated_at,
         archived_at: row.archived_at,
         deleted_at: row.deleted_at,
+        embedding_model_id: row.embedding_model_id,
     })
 }
 

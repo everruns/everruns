@@ -54,6 +54,7 @@
 //! ```
 
 mod driver;
+pub(crate) mod embeddings;
 mod image_capability;
 mod images;
 mod types;
@@ -64,6 +65,7 @@ mod tests;
 pub use driver::{
     OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver, register_driver,
 };
+pub use embeddings::OpenAIEmbeddingsDriver;
 pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
