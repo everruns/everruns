@@ -503,6 +503,11 @@ function ManageHeadersDialog({
       setHeaderErrors("All headers must have a name.");
       return;
     }
+    const activeKeys = rows.map((r) => r.key.trim()).filter(Boolean);
+    if (new Set(activeKeys).size !== activeKeys.length) {
+      setHeaderErrors("Header names must be unique.");
+      return;
+    }
     setHeaderErrors(null);
 
     if (!isDirty) {
@@ -572,6 +577,7 @@ function ManageHeadersDialog({
                         setRows((prev) =>
                           prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r)),
                         );
+                        setHeaderErrors(null);
                       }}
                       className="flex-1"
                     />
@@ -579,6 +585,7 @@ function ManageHeadersDialog({
                       type="button"
                       variant="ghost"
                       size="sm"
+                      aria-label="Remove header"
                       className="h-9 w-9 p-0 shrink-0"
                       onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
                     >
