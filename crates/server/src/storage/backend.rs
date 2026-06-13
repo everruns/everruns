@@ -2158,6 +2158,7 @@ impl StorageBackend {
         estimated_cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
+        provider_response_id: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         dispatch!(
@@ -2177,7 +2178,37 @@ impl StorageBackend {
             estimated_cost_usd,
             duration_ms,
             finish_reason,
+            provider_response_id,
             created_at
+        )
+    }
+
+    pub async fn list_unreconciled_llm_generations(
+        &self,
+        provider: &str,
+        limit: i64,
+    ) -> Result<Vec<crate::storage::models::UnreconciledGeneration>> {
+        dispatch!(self, list_unreconciled_llm_generations, provider, limit)
+    }
+
+    pub async fn reconcile_llm_generation(
+        &self,
+        provider_response_id: &str,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+        actual_cost_usd: Option<f64>,
+        reconciled_provider: Option<&str>,
+        reconciled_model: Option<&str>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            reconcile_llm_generation,
+            provider_response_id,
+            input_tokens,
+            output_tokens,
+            actual_cost_usd,
+            reconciled_provider,
+            reconciled_model
         )
     }
 

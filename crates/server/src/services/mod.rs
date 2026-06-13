@@ -19,7 +19,9 @@
 
 pub mod capability;
 pub mod event;
+pub mod generation_reconciler;
 pub mod model_sync;
+pub mod openrouter_generation;
 pub mod org_feature_flags;
 pub mod principal;
 pub mod provider_resolver;
@@ -27,6 +29,7 @@ pub mod usage_tracking;
 
 pub use capability::CapabilityService;
 pub use event::EventService;
+pub use generation_reconciler::GenerationReconcilerService;
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use principal::{PrincipalService, row_to_principal};
 pub use provider_resolver::{ProviderResolverService, ResolvedModel};
