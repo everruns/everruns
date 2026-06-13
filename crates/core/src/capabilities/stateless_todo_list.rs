@@ -80,7 +80,7 @@ impl Capability for StatelessTodoListCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Productivity")
+        Some("Core")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -292,7 +292,7 @@ mod tests {
         assert_eq!(capability.id(), "stateless_todo_list");
         assert_eq!(capability.name(), "Task Management");
         assert_eq!(capability.icon(), Some("list-checks"));
-        assert_eq!(capability.category(), Some("Productivity"));
+        assert_eq!(capability.category(), Some("Core"));
         assert_eq!(capability.status(), CapabilityStatus::Available);
     }
 

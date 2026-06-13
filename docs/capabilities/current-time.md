@@ -6,7 +6,7 @@ description: Get the current date and time in various formats and timezones. Age
 | | |
 |---|---|
 | **ID** | `current_time` |
-| **Category** | Utilities |
+| **Category** | Core |
 | **Features** | None |
 | **Dependencies** | None |
 

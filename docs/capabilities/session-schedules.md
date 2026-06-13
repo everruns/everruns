@@ -6,7 +6,7 @@ description: Schedule one-shot and recurring cron-based tasks within a session. 
 | | |
 |---|---|
 | **ID** | `session_schedule` |
-| **Category** | Session |
+| **Category** | Core |
 | **Features** | `schedules` (unlocks Schedules tab) |
 | **Dependencies** | None |
 

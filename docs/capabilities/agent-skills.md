@@ -6,7 +6,7 @@ description: Discover and activate portable skill packages from the session work
 | | |
 |---|---|
 | **ID** | `skills` |
-| **Category** | Skills |
+| **Category** | Core |
 | **Features** | None |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/) |
 

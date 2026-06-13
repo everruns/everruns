@@ -111,7 +111,7 @@ impl Capability for E2BCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Execution")
+        Some("Sandboxes")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -148,7 +148,7 @@ mod tests {
         assert_eq!(cap.id(), "e2b");
         assert_eq!(cap.name(), "E2B");
         assert_eq!(cap.icon(), Some("cloud"));
-        assert_eq!(cap.category(), Some("Execution"));
+        assert_eq!(cap.category(), Some("Sandboxes"));
         assert_eq!(cap.dependencies(), vec!["session_storage"]);
     }
 

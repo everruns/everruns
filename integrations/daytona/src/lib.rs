@@ -165,7 +165,7 @@ impl Capability for DaytonaCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Execution")
+        Some("Sandboxes")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(cap.name(), "Daytona");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("daytona"));
-        assert_eq!(cap.category(), Some("Execution"));
+        assert_eq!(cap.category(), Some("Sandboxes"));
     }
 
     #[test]

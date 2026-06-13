@@ -6,7 +6,7 @@ description: Structured task lists for tracking multi-step work progress. Agents
 | | |
 |---|---|
 | **ID** | `stateless_todo_list` |
-| **Category** | Productivity |
+| **Category** | Core |
 | **Features** | None |
 | **Dependencies** | None |
 

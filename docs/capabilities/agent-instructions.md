@@ -6,7 +6,7 @@ description: Dynamic project instructions loaded from configured files in the se
 | | |
 |---|---|
 | **ID** | `agent_instructions` |
-| **Category** | Configuration |
+| **Category** | Core |
 | **Features** | None |
 | **Dependencies** | None |
 

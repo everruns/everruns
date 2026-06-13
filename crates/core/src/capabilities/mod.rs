@@ -2570,7 +2570,7 @@ mod tests {
 
         let current_time = registry.get("current_time").unwrap();
         assert_eq!(current_time.icon(), Some("clock"));
-        assert_eq!(current_time.category(), Some("Utilities"));
+        assert_eq!(current_time.category(), Some("Core"));
     }
 
     #[test]

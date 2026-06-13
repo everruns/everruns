@@ -145,7 +145,7 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Skills")
+        Some("Core")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -997,7 +997,7 @@ mod tests {
         assert_eq!(cap.name(), "Agent Skills");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("wand"));
-        assert_eq!(cap.category(), Some("Skills"));
+        assert_eq!(cap.category(), Some("Core"));
     }
 
     #[test]
@@ -1043,7 +1043,7 @@ mod tests {
         );
         let cap = registry.get("skills").unwrap();
         assert_eq!(cap.name(), "Agent Skills");
-        assert_eq!(cap.category(), Some("Skills"));
+        assert_eq!(cap.category(), Some("Core"));
     }
 
     // ========================================================================
@@ -1582,7 +1582,7 @@ mod tests {
         assert_eq!(info.id.as_str(), "skills");
         assert!(info.is_skill, "skills capability should have is_skill=true");
         assert!(!info.is_mcp);
-        assert_eq!(info.category, Some("Skills".to_string()));
+        assert_eq!(info.category, Some("Core".to_string()));
         assert!(!info.tool_definitions.is_empty());
         assert!(!info.dependencies.is_empty());
     }

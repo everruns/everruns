@@ -94,7 +94,7 @@ impl Capability for MessageMetadataCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Utilities")
+        Some("Core")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -264,7 +264,7 @@ mod tests {
         let cap = MessageMetadataCapability;
         assert_eq!(cap.id(), "message_metadata");
         assert_eq!(cap.name(), "Message Metadata");
-        assert_eq!(cap.category(), Some("Utilities"));
+        assert_eq!(cap.category(), Some("Core"));
         assert!(cap.system_prompt_addition().is_some());
         assert!(cap.tools().is_empty());
     }

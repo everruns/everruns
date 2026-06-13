@@ -64,7 +64,7 @@ impl Capability for SubagentCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Orchestration")
+        Some("Core")
     }
 
     fn features(&self) -> Vec<&'static str> {

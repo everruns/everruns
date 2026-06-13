@@ -8,7 +8,7 @@ sidebar:
 | | |
 |---|---|
 | **ID** | `daytona` |
-| **Category** | Execution |
+| **Category** | Sandboxes |
 | **Features** | None |
 | **Dependencies** | [`session_storage`](/capabilities/session-storage/) |
 
