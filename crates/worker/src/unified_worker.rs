@@ -621,6 +621,9 @@ async fn execute_input_activity<A: WorkerAdapters>(
 
     // Create AtomContext
     let context = AtomContext {
+        // Input/Reason atoms do not key file I/O by AtomContext; the act
+        // path receives its workspace-set context from the orchestration.
+        workspace_id: None,
         session_id: input.session_id,
         turn_id: TurnId::new(),
         input_message_id: input.input_message_id,
@@ -662,6 +665,9 @@ async fn execute_reason_activity<A: WorkerAdapters>(
     // Create AtomContext - use turn_id from input if available
     let turn_id = input.turn_id.unwrap_or_default();
     let context = AtomContext {
+        // Input/Reason atoms do not key file I/O by AtomContext; the act
+        // path receives its workspace-set context from the orchestration.
+        workspace_id: None,
         session_id: input.session_id,
         turn_id,
         input_message_id: input.input_message_id,

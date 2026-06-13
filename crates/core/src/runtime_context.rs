@@ -208,6 +208,11 @@ async fn assemble_turn_context_with_mode(
     .await?;
 
     let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
+    // Pin system-prompt file reads (AGENTS.md, skills, …) to the session's
+    // workspace so an attached shared workspace's instructions are used. For the
+    // default 1:1 session this is a transparent pass-through.
+    let file_store = file_store
+        .map(|fs| crate::traits::WorkspaceScopedFileSystem::wrap(fs, session.workspace_id));
     // The resolved model is known here, so model-adaptive capabilities (e.g.
     // `auto_tool_search`) can pick the right mechanism during collection in
     // `build_runtime_agent` below.

@@ -93,16 +93,16 @@ impl Command for ListWorkspaceFiles {
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
 
         let files = if self.recursive {
             q::service(ctx)
-                .list_all(session_id.uuid())
+                .list_all(workspace_key)
                 .await
                 .map_err(q::classify_storage)?
         } else {
             q::service(ctx)
-                .list_directory(session_id.uuid(), "/")
+                .list_directory(workspace_key, "/")
                 .await
                 .map_err(q::classify_storage)?
         };
@@ -140,10 +140,10 @@ impl Command for GetWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         let stat = q::service(ctx)
-            .stat(session_id.uuid(), &path)
+            .stat(workspace_key, &path)
             .await
             .map_err(q::classify_storage)?;
 
@@ -151,12 +151,12 @@ impl Command for GetWorkspaceFile {
             Some(s) if s.is_directory => {
                 let files = if self.recursive {
                     q::service(ctx)
-                        .list_all(session_id.uuid())
+                        .list_all(workspace_key)
                         .await
                         .map_err(q::classify_storage)?
                 } else {
                     q::service(ctx)
-                        .list_directory(session_id.uuid(), &path)
+                        .list_directory(workspace_key, &path)
                         .await
                         .map_err(q::classify_storage)?
                 };
@@ -164,7 +164,7 @@ impl Command for GetWorkspaceFile {
             }
             Some(_) => {
                 let file = q::service(ctx)
-                    .read_file(session_id.uuid(), &path)
+                    .read_file(workspace_key, &path)
                     .await
                     .map_err(q::classify_storage)?
                     .ok_or_else(|| CommandError::not_found("File"))?;
@@ -206,7 +206,7 @@ impl Command for CreateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -216,7 +216,7 @@ impl Command for CreateWorkspaceFile {
 
         let file = if self.req.is_directory.unwrap_or(false) {
             let dir = q::service(ctx)
-                .create_directory(session_id.uuid(), CreateDirectoryInput { path })
+                .create_directory(workspace_key, CreateDirectoryInput { path })
                 .await
                 .map_err(|e| map_create_error(e, true))?;
             SessionFile {
@@ -235,7 +235,7 @@ impl Command for CreateWorkspaceFile {
         } else {
             q::service(ctx)
                 .create_file(
-                    session_id.uuid(),
+                    workspace_key,
                     CreateFileInput {
                         path,
                         content: self.req.content,
@@ -299,7 +299,7 @@ impl Command for UpdateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -309,7 +309,7 @@ impl Command for UpdateWorkspaceFile {
 
         let file = q::service(ctx)
             .update_file(
-                session_id.uuid(),
+                workspace_key,
                 &path,
                 UpdateFileInput {
                     content: self.req.content,
@@ -371,10 +371,10 @@ impl Command for DeleteWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         let deleted = q::service(ctx)
-            .delete(session_id.uuid(), &path, self.recursive)
+            .delete(workspace_key, &path, self.recursive)
             .await
             .map_err(map_delete_error)?;
         Ok(DeleteResponse { deleted })
@@ -410,10 +410,10 @@ impl Command for MoveWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         q::service(ctx)
             .move_file(
-                session_id.uuid(),
+                workspace_key,
                 MoveFileInput {
                     src_path: self.req.src_path,
                     dst_path: self.req.dst_path,
@@ -454,10 +454,10 @@ impl Command for CopyWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         q::service(ctx)
             .copy_file(
-                session_id.uuid(),
+                workspace_key,
                 CopyFileInput {
                     src_path: self.req.src_path,
                     dst_path: self.req.dst_path,
@@ -502,10 +502,10 @@ impl Command for GrepWorkspaceFiles {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         q::service(ctx)
             .grep(
-                session_id.uuid(),
+                workspace_key,
                 GrepInput {
                     pattern: self.req.pattern,
                     path_pattern: self.req.path_pattern,
@@ -556,10 +556,10 @@ impl Command for StatWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.req.path);
         q::service(ctx)
-            .stat(session_id.uuid(), &path)
+            .stat(workspace_key, &path)
             .await
             .map_err(q::classify_storage)?
             .ok_or_else(|| CommandError::not_found("Path"))

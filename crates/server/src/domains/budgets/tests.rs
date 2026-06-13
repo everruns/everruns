@@ -40,6 +40,7 @@ async fn create_session_with_owner_and_tags(
     tags: Vec<String>,
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
+        workspace_id: None,
         org_id,
         app_id: None,
         harness_id: None,

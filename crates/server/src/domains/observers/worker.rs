@@ -210,6 +210,7 @@ mod tests {
 
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
+            workspace_id: None,
             org_id: ORG,
             app_id: None,
             harness_id: Some(harness),

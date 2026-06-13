@@ -1195,6 +1195,9 @@ impl DurableWorker {
 
         // Create AtomContext for this execution
         let context = AtomContext {
+            // Input/Reason atoms do not key file I/O by AtomContext; the act
+            // path receives its workspace-set context from the orchestration.
+            workspace_id: None,
             session_id: input.session_id,
             turn_id: TurnId::new(),
             input_message_id: input.input_message_id,
@@ -1281,6 +1284,9 @@ impl DurableWorker {
         // Create AtomContext - use turn_id from input if available (from input activity)
         let turn_id = input.turn_id.unwrap_or_default();
         let context = AtomContext {
+            // Input/Reason atoms do not key file I/O by AtomContext; the act
+            // path receives its workspace-set context from the orchestration.
+            workspace_id: None,
             session_id: input.session_id,
             turn_id,
             input_message_id: input.input_message_id,
@@ -1649,6 +1655,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,
@@ -1710,6 +1717,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id: SessionId::new(),
                     turn_id: TurnId::new(),
                     input_message_id: MessageId::new(),
@@ -1749,6 +1757,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(42),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,
@@ -1793,6 +1802,7 @@ mod tests {
             act_input: ActInput {
                 org_id: None,
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,

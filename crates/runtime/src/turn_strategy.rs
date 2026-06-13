@@ -199,11 +199,14 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
             let summarized_state = state.with_reason_summary(&reason_result);
 
             if reason_result.has_tool_calls && reason_result.success {
-                let session_blueprint_id = adapter
+                let session = adapter
                     .session_store(state.org_id)
                     .get_session(state.session_id)
-                    .await?
-                    .and_then(|session| session.blueprint_id);
+                    .await?;
+                let session_blueprint_id = session.as_ref().and_then(|s| s.blueprint_id.clone());
+                // Attach the session's workspace so tool file I/O addresses the
+                // (possibly shared) workspace, not the session's own keyspace.
+                let workspace_id = session.as_ref().map(|s| s.workspace_id);
                 let plan = RuntimeActPlan {
                     input: ActInput {
                         org_id: Some(state.org_id),
@@ -212,6 +215,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                             turn_id: state.turn_id.unwrap_or_default(),
                             input_message_id: state.input_message_id,
                             exec_id: ExecId::new(),
+                            workspace_id,
                         },
                         harness_id: state.harness_id,
                         agent_id: state.agent_id,

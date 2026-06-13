@@ -422,6 +422,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -647,6 +648,7 @@ async fn test_session_crud() {
         .expect("Failed to create app");
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: Some(app.id),
             harness_id: None,
@@ -800,6 +802,7 @@ async fn test_event_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -892,6 +895,7 @@ async fn test_event_exclude_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -992,6 +996,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1086,6 +1091,7 @@ async fn test_event_filter_types() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1389,6 +1395,7 @@ async fn test_session_file_crud() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1852,6 +1859,7 @@ async fn test_session_usage_tracking() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -1953,6 +1961,7 @@ async fn test_session_previews() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -2559,6 +2568,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
     let session = backend
         .create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: TEST_ORG_ID,
             app_id: None,
             harness_id: None,

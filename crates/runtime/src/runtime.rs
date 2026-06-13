@@ -626,7 +626,8 @@ impl InProcessRuntime {
                 TurnAction::ExecuteInput => {
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     execute_input_activity(
                         self,
                         org_id,
@@ -640,7 +641,8 @@ impl InProcessRuntime {
                 TurnAction::ExecuteReason => {
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     let reason_result = execute_reason_activity(
                         self,
                         org_id,
@@ -674,7 +676,8 @@ impl InProcessRuntime {
                         .expect("ExecuteAct requires a prior ReasonResult");
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     execute_act_activity(
                         self,
                         ActInput {
@@ -1114,8 +1117,11 @@ async fn seed_runtime_initial_files(
         None => None,
     };
     let overlay = effective_overlay(&harness_chain, agent.as_ref(), session);
+    // Seed into the session's workspace (a shared workspace differs from the
+    // session id; the default 1:1 case is equal).
+    let seed_key = SessionId::from_uuid(session.workspace_id.uuid());
     for file in &overlay.initial_files {
-        file_store.seed_initial_file(session.id, file).await?;
+        file_store.seed_initial_file(seed_key, file).await?;
     }
     Ok(())
 }

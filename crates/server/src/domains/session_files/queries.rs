@@ -2,6 +2,7 @@ use crate::domains::common::{CommandError, Ctx};
 use crate::domains::session_files::WorkspaceFileService;
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
+use uuid::Uuid;
 
 const WORKSPACE_PREFIX: &str = "/workspace";
 
@@ -17,13 +18,18 @@ pub fn parse_session_id(session_id: &str) -> Result<SessionId, CommandError> {
         .map_err(|e| CommandError::bad_request(format!("Invalid session ID: {e}")))
 }
 
-pub async fn verify_session(ctx: &Ctx, session_id: SessionId) -> Result<(), CommandError> {
-    ctx.db
+/// Verify the session exists in the caller's org and return the internal id of
+/// the workspace it is attached to — i.e. the file-store key. For the default
+/// 1:1 session this equals the session uuid; for a shared workspace it differs,
+/// so file operations must key by this value rather than `session_id.uuid()`.
+pub async fn verify_session(ctx: &Ctx, session_id: SessionId) -> Result<Uuid, CommandError> {
+    let row = ctx
+        .db
         .get_session(ctx.org_id(), session_id)
         .await
         .map_err(classify_storage)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
-    Ok(())
+    Ok(row.workspace_id)
 }
 
 pub fn normalize_path(path: &str) -> String {

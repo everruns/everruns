@@ -437,6 +437,7 @@ mod tests {
         // max_active_turns = 1 so 1 active turn exactly hits the cap.
         let session = db
             .create_session(crate::storage::models::CreateSessionRow {
+                workspace_id: None,
                 org_id: 1,
                 harness_id: None,
                 app_id: None,

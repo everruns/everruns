@@ -17,42 +17,44 @@ impl Database {
     // ============================================
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
-        // Auto-create a default workspace for this session in the same
-        // transaction. We pre-generate the session UUID so the workspace's
-        // primary key equals the session's id — that invariant lets all
-        // existing app code that uses session.id as the file-store key keep
-        // working unchanged. See specs/workspace.md, Decision 3.
         let session_id = uuid::Uuid::now_v7();
+        // Attach to an existing workspace when requested; otherwise auto-create
+        // a default workspace whose primary key equals the session's id. That
+        // equality invariant lets existing app code that uses session.id as the
+        // file-store key keep working unchanged. See specs/workspace.md.
+        let workspace_id = input.workspace_id.unwrap_or(session_id);
 
         let mut tx = self.pool.begin().await?;
 
-        sqlx::query(
-            r#"
-            INSERT INTO workspaces (
-                id, org_id, public_id, name, description, status, created_at, updated_at
+        if input.workspace_id.is_none() {
+            sqlx::query(
+                r#"
+                INSERT INTO workspaces (
+                    id, org_id, public_id, name, description, status, created_at, updated_at
+                )
+                VALUES (
+                    $1, $2,
+                    'wsp_' || replace($1::text, '-', ''),
+                    -- Use the full 32-hex so per-org name uniqueness holds under
+                    -- bursty creation (UUIDv7 prefixes repeat in short windows).
+                    'session-' || replace($1::text, '-', ''),
+                    'Default workspace for session ' || $1::text,
+                    'active',
+                    NOW(),
+                    NOW()
+                )
+                "#,
             )
-            VALUES (
-                $1, $2,
-                'wsp_' || replace($1::text, '-', ''),
-                -- Use the full 32-hex so per-org name uniqueness holds under
-                -- bursty creation (UUIDv7 prefixes repeat in short windows).
-                'session-' || replace($1::text, '-', ''),
-                'Default workspace for session ' || $1::text,
-                'active',
-                NOW(),
-                NOW()
-            )
-            "#,
-        )
-        .bind(session_id)
-        .bind(input.org_id)
-        .execute(&mut *tx)
-        .await?;
+            .bind(session_id)
+            .bind(input.org_id)
+            .execute(&mut *tx)
+            .await?;
+        }
 
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             INSERT INTO sessions (id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $1, 'started')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, 'started')
             RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
                       blueprint_id, blueprint_config
@@ -81,6 +83,7 @@ impl Database {
         .bind(&input.blueprint_id)
         .bind(&input.blueprint_config)
         .bind(input.parent_session_id.map(|id| id.uuid()))
+        .bind(workspace_id)
         .fetch_one(&mut *tx)
         .await?;
 

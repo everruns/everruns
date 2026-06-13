@@ -400,6 +400,7 @@ mod tests {
         .unwrap();
 
         db.create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: Some(harness_id),

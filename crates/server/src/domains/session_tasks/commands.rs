@@ -354,6 +354,7 @@ mod tests {
     /// Create a session in the in-memory database, returning its ID.
     async fn create_session(db: &Arc<StorageBackend>) -> everruns_core::SessionId {
         db.create_session(CreateSessionRow {
+            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -680,6 +681,7 @@ mod tests {
         let session_network_access = NetworkAccessList::allow_only(["b.example.com"]);
         let session_id = db
             .create_session(CreateSessionRow {
+                workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),

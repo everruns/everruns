@@ -501,6 +501,7 @@ pub async fn create_agent_voice_session(
 > {
     ensure_voice_enabled(&state)?;
     let session = CreateSession(crate::api::sessions::CreateSessionRequest {
+        workspace_id: None,
         harness_id: None,
         harness_name: None,
         agent_id: Some(agent_id),
