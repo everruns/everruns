@@ -515,6 +515,45 @@ pub struct PromptCacheConfig {
     pub gemini_cached_content: Option<String>,
 }
 
+/// High-level intent presets that compile into OpenRouter provider-routing
+/// controls. Presets let callers express quality, cost, privacy, and capability
+/// goals without knowing every OpenRouter `provider` flag.
+///
+/// Multiple presets may be combined. When a preset and an explicit `provider`
+/// field target the same control, the explicit field wins. Presets applied
+/// earlier in the list may be overridden by later ones for the same field.
+///
+/// Compilation happens in `OpenRouterRoutingConfig::apply_presets()`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OpenRouterRoutingPreset {
+    /// Prefer the cheapest providers that support function-calling parameters.
+    CheapestWithTools,
+    /// Prefer the highest-throughput providers for quick review or triage tasks.
+    LowestLatencyReview,
+    /// Route only to zero-data-retention (ZDR) endpoints.
+    ZdrOnly,
+    /// Try BYOK-registered providers first; fall back to shared capacity.
+    ByokFirst,
+    /// Deny all provider-side data collection (logs and training).
+    NoDataCollection,
+    /// Route only to providers that support strict JSON / structured output.
+    StrictJson,
+    /// Route only to providers that natively support reasoning/thinking models.
+    ReasoningRequired,
+    /// Cap per-token provider cost. Values are USD per million tokens; `None`
+    /// means no cap on that dimension.
+    MaxPrice {
+        /// Maximum prompt cost in USD per million tokens.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        prompt_usd_per_million: Option<f64>,
+        /// Maximum completion cost in USD per million tokens.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        completion_usd_per_million: Option<f64>,
+    },
+}
+
 /// OpenRouter model fallback and provider routing controls.
 ///
 /// Organization-level strategy for how OpenRouter should allocate compute capacity.
@@ -563,6 +602,11 @@ pub struct OpenRouterRoutingConfig {
     /// equivalent (no routing changes).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capacity_strategy: Option<OpenRouterCapacityStrategy>,
+    /// High-level routing quality/policy presets. Compiled into `provider`
+    /// flags by `apply_presets()` before the request is serialized.
+    /// Explicit `provider` fields override preset-derived values.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub presets: Vec<OpenRouterRoutingPreset>,
 }
 
 impl OpenRouterRoutingConfig {
@@ -575,6 +619,7 @@ impl OpenRouterRoutingConfig {
                 self.capacity_strategy,
                 None | Some(OpenRouterCapacityStrategy::SharedCapacity)
             )
+            && self.presets.is_empty()
     }
 
     /// Build an ordered model-fallback routing config.
@@ -587,6 +632,7 @@ impl OpenRouterRoutingConfig {
             provider: None,
             plugins: None,
             capacity_strategy: None,
+            presets: vec![],
         }
     }
 
@@ -647,6 +693,128 @@ impl OpenRouterRoutingConfig {
                 Ok(result)
             }
         }
+    }
+
+    /// Compile `presets` into `OpenRouterProviderRouting` flags and merge with
+    /// any explicit `provider` overrides. Returns a derived config with the
+    /// `presets` list cleared and `provider` reflecting the merged result.
+    ///
+    /// Explicit `provider` fields always win over preset-derived values. When
+    /// multiple presets target the same provider field, later presets in the
+    /// list override earlier ones.
+    ///
+    /// Returns `Err` if any preset values are invalid (e.g. negative `MaxPrice` values).
+    pub fn apply_presets(&self) -> std::result::Result<Self, String> {
+        if self.presets.is_empty() {
+            return Ok(self.clone());
+        }
+
+        let mut derived = OpenRouterProviderRouting::default();
+
+        for preset in &self.presets {
+            match preset {
+                OpenRouterRoutingPreset::CheapestWithTools => {
+                    derived.require_parameters = Some(true);
+                    derived.sort = Some(OpenRouterProviderSort::Simple(
+                        OpenRouterProviderSortBy::Price,
+                    ));
+                }
+                OpenRouterRoutingPreset::LowestLatencyReview => {
+                    derived.sort = Some(OpenRouterProviderSort::Simple(
+                        OpenRouterProviderSortBy::Throughput,
+                    ));
+                }
+                OpenRouterRoutingPreset::ZdrOnly => {
+                    derived.zdr = Some(true);
+                }
+                OpenRouterRoutingPreset::ByokFirst => {
+                    if derived.allow_fallbacks.is_none() {
+                        derived.allow_fallbacks = Some(true);
+                    }
+                }
+                OpenRouterRoutingPreset::NoDataCollection => {
+                    derived.data_collection = Some(OpenRouterDataCollection::Deny);
+                }
+                OpenRouterRoutingPreset::StrictJson
+                | OpenRouterRoutingPreset::ReasoningRequired => {
+                    derived.require_parameters = Some(true);
+                }
+                OpenRouterRoutingPreset::MaxPrice {
+                    prompt_usd_per_million,
+                    completion_usd_per_million,
+                } => {
+                    if prompt_usd_per_million.is_some_and(|v| v < 0.0)
+                        || completion_usd_per_million.is_some_and(|v| v < 0.0)
+                    {
+                        return Err(
+                            "MaxPrice preset values must be non-negative USD per million tokens"
+                                .to_string(),
+                        );
+                    }
+                    if prompt_usd_per_million.is_some() || completion_usd_per_million.is_some() {
+                        let mp = derived.max_price.get_or_insert_with(Default::default);
+                        if let Some(p) = prompt_usd_per_million {
+                            mp.prompt = Some(p / 1_000_000.0);
+                        }
+                        if let Some(c) = completion_usd_per_million {
+                            mp.completion = Some(c / 1_000_000.0);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Explicit provider fields override preset-derived values.
+        let merged = merge_provider_routing(derived, self.provider.clone().unwrap_or_default());
+
+        let mut result = self.clone();
+        result.presets = vec![];
+        result.provider = if merged.is_empty() {
+            None
+        } else {
+            Some(merged)
+        };
+        Ok(result)
+    }
+}
+
+/// Merge preset-derived provider routing with explicit provider overrides.
+/// Explicit fields always win; preset-derived fields fill gaps where explicit
+/// fields are absent (None / empty Vec).
+fn merge_provider_routing(
+    derived: OpenRouterProviderRouting,
+    explicit: OpenRouterProviderRouting,
+) -> OpenRouterProviderRouting {
+    OpenRouterProviderRouting {
+        order: if !explicit.order.is_empty() {
+            explicit.order
+        } else {
+            derived.order
+        },
+        only: if !explicit.only.is_empty() {
+            explicit.only
+        } else {
+            derived.only
+        },
+        ignore: if !explicit.ignore.is_empty() {
+            explicit.ignore
+        } else {
+            derived.ignore
+        },
+        allow_fallbacks: explicit.allow_fallbacks.or(derived.allow_fallbacks),
+        require_parameters: explicit.require_parameters.or(derived.require_parameters),
+        data_collection: explicit.data_collection.or(derived.data_collection),
+        zdr: explicit.zdr.or(derived.zdr),
+        enforce_distillable_text: explicit
+            .enforce_distillable_text
+            .or(derived.enforce_distillable_text),
+        quantizations: if !explicit.quantizations.is_empty() {
+            explicit.quantizations
+        } else {
+            derived.quantizations
+        },
+        sort: explicit.sort.or(derived.sort),
+        max_price: explicit.max_price.or(derived.max_price),
     }
 }
 
@@ -2484,6 +2652,7 @@ mod tests {
         assert!(json.get("search_prompt").is_none());
     }
 
+<<<<<<< HEAD
     #[test]
     fn test_capacity_strategy_shared_capacity_is_noop() {
         let base = OpenRouterRoutingConfig {
@@ -2519,10 +2688,80 @@ mod tests {
         };
         let result = base.apply_capacity_strategy().unwrap();
         let provider = result.provider.as_ref().expect("provider set by ByokFirst");
+=======
+    // -------------------------------------------------------------------------
+    // OpenRouterRoutingPreset tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_preset_no_presets_is_noop() {
+        let base = OpenRouterRoutingConfig {
+            models: vec!["openai/gpt-5-mini".to_string()],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        assert_eq!(result, base);
+    }
+
+    #[test]
+    fn test_preset_cheapest_with_tools_sets_require_parameters_and_sort_price() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        assert!(result.presets.is_empty(), "presets cleared after apply");
+        let provider = result.provider.expect("provider set by preset");
+        assert_eq!(provider.require_parameters, Some(true));
+        assert_eq!(
+            provider.sort,
+            Some(OpenRouterProviderSort::Simple(
+                OpenRouterProviderSortBy::Price
+            ))
+        );
+    }
+
+    #[test]
+    fn test_preset_lowest_latency_review_sets_sort_throughput() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::LowestLatencyReview],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set by preset");
+        assert_eq!(
+            provider.sort,
+            Some(OpenRouterProviderSort::Simple(
+                OpenRouterProviderSortBy::Throughput
+            ))
+        );
+    }
+
+    #[test]
+    fn test_preset_zdr_only_sets_zdr() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        assert_eq!(provider.zdr, Some(true));
+    }
+
+    #[test]
+    fn test_preset_byok_first_sets_allow_fallbacks() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::ByokFirst],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+>>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
         assert_eq!(provider.allow_fallbacks, Some(true));
     }
 
     #[test]
+<<<<<<< HEAD
     fn test_capacity_strategy_byok_first_preserves_explicit_allow_fallbacks() {
         // If allow_fallbacks was already set explicitly, ByokFirst must not override it.
         let base = OpenRouterRoutingConfig {
@@ -2550,20 +2789,101 @@ mod tests {
         assert!(
             err.contains("provider.only"),
             "error should mention provider.only: {err}"
+=======
+    fn test_preset_no_data_collection_sets_data_collection_deny() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::NoDataCollection],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        assert_eq!(
+            provider.data_collection,
+            Some(OpenRouterDataCollection::Deny)
+>>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
         );
     }
 
     #[test]
+<<<<<<< HEAD
     fn test_capacity_strategy_byok_only_disables_fallbacks() {
         let base = OpenRouterRoutingConfig {
             models: vec!["openai/gpt-5-mini".to_string()],
             capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
             provider: Some(OpenRouterProviderRouting {
                 only: vec!["my-byok-provider".to_string()],
+=======
+    fn test_preset_strict_json_sets_require_parameters() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::StrictJson],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        assert_eq!(provider.require_parameters, Some(true));
+    }
+
+    #[test]
+    fn test_preset_reasoning_required_sets_require_parameters() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::ReasoningRequired],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        assert_eq!(provider.require_parameters, Some(true));
+    }
+
+    #[test]
+    fn test_preset_max_price_converts_usd_per_million() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                prompt_usd_per_million: Some(5.0),
+                completion_usd_per_million: Some(15.0),
+            }],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        let max_price = provider.max_price.expect("max_price set");
+        // 5.0 USD/M → 5.0 / 1_000_000 per token
+        let prompt = max_price.prompt.expect("prompt set");
+        assert!((prompt - 5.0 / 1_000_000.0).abs() < f64::EPSILON);
+        let completion = max_price.completion.expect("completion set");
+        assert!((completion - 15.0 / 1_000_000.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_preset_max_price_rejects_negative_values() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                prompt_usd_per_million: Some(-1.0),
+                completion_usd_per_million: None,
+            }],
+            ..Default::default()
+        };
+        let err = base.apply_presets().unwrap_err();
+        assert!(
+            err.contains("non-negative"),
+            "error should mention non-negative: {err}"
+        );
+    }
+
+    #[test]
+    fn test_preset_explicit_provider_overrides_preset() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::CheapestWithTools],
+            provider: Some(OpenRouterProviderRouting {
+                // Caller explicitly wants throughput sort, overriding Price preset
+                sort: Some(OpenRouterProviderSort::Simple(
+                    OpenRouterProviderSortBy::Throughput,
+                )),
+>>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
                 ..Default::default()
             }),
             ..Default::default()
         };
+<<<<<<< HEAD
         let result = base.apply_capacity_strategy().unwrap();
         let provider = result.provider.as_ref().unwrap();
         assert_eq!(provider.allow_fallbacks, Some(false));
@@ -2589,5 +2909,77 @@ mod tests {
             ..Default::default()
         };
         assert!(shared.is_empty());
+=======
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        // Explicit sort wins
+        assert_eq!(
+            provider.sort,
+            Some(OpenRouterProviderSort::Simple(
+                OpenRouterProviderSortBy::Throughput
+            ))
+        );
+        // But preset-derived require_parameters still set (not overridden by explicit)
+        assert_eq!(provider.require_parameters, Some(true));
+    }
+
+    #[test]
+    fn test_preset_multiple_presets_combined() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![
+                OpenRouterRoutingPreset::ZdrOnly,
+                OpenRouterRoutingPreset::NoDataCollection,
+                OpenRouterRoutingPreset::LowestLatencyReview,
+            ],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        assert_eq!(provider.zdr, Some(true));
+        assert_eq!(
+            provider.data_collection,
+            Some(OpenRouterDataCollection::Deny)
+        );
+        assert_eq!(
+            provider.sort,
+            Some(OpenRouterProviderSort::Simple(
+                OpenRouterProviderSortBy::Throughput
+            ))
+        );
+    }
+
+    #[test]
+    fn test_preset_later_preset_overrides_sort() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![
+                OpenRouterRoutingPreset::CheapestWithTools, // sets Price sort
+                OpenRouterRoutingPreset::LowestLatencyReview, // overrides to Throughput
+            ],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        let provider = result.provider.expect("provider set");
+        // Later preset wins for sort
+        assert_eq!(
+            provider.sort,
+            Some(OpenRouterProviderSort::Simple(
+                OpenRouterProviderSortBy::Throughput
+            ))
+        );
+        // require_parameters still set by CheapestWithTools
+        assert_eq!(provider.require_parameters, Some(true));
+    }
+
+    #[test]
+    fn test_preset_non_empty_in_is_empty() {
+        let with_preset = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::ZdrOnly],
+            ..Default::default()
+        };
+        assert!(!with_preset.is_empty());
+
+        let without = OpenRouterRoutingConfig::default();
+        assert!(without.is_empty());
+>>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
     }
 }
