@@ -1,7 +1,7 @@
 //! Integration test: verify Parallel plugin registers via inventory.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 
 use everruns_integrations_parallel as _;
@@ -93,21 +93,19 @@ fn payments_capability_enabled_by_flag() {
 
 #[test]
 fn connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     assert!(
         plugins.iter().any(|p| {
             let provider = (p.factory)();
             provider.provider_id() == "parallel"
         }),
-        "Parallel ConnectionProviderPlugin should be submitted via inventory"
+        "Parallel ConnectorPlugin should be submitted via inventory"
     );
 }
 
 #[test]
 fn connection_provider_has_api_key_form() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

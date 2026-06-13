@@ -19,12 +19,12 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use connection::DenoConnectionProvider;
+use connection::DenoConnector;
 use tools::{
     DenoCreateSandboxTool, DenoExecTool, DenoListSandboxesTool, DenoManageSandboxTool,
     DenoReadFileTool, DenoWriteFileTool,
@@ -39,9 +39,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(DenoConnectionProvider),
+        factory: || Box::new(DenoConnector),
     }
 }
 

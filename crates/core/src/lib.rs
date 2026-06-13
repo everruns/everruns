@@ -84,7 +84,7 @@ pub mod agent;
 pub mod agent_identity;
 pub mod app;
 pub mod capability_dto;
-pub mod connection_provider;
+pub mod connector;
 pub mod credential_schema;
 pub mod eval;
 pub mod events;
@@ -293,11 +293,10 @@ pub use tools::{
 // Shared credential form schema (provider drivers + connection providers)
 pub use credential_schema::CredentialFormSchema;
 
-// Capability re-exports
-// Connection provider plugin system (API key connections like Daytona)
-pub use connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionProviderRegistry,
-    ConnectionProviderRegistryBuilder, ConnectionType, ConnectionValidation, FieldType, FormField,
+// Connector plugin system (user-scoped API key / OAuth connections)
+pub use connector::{
+    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorRegistry, ConnectorRegistryBuilder,
+    ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 pub use platform_definition::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, PlatformDefinition,

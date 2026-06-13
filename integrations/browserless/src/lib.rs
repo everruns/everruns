@@ -27,10 +27,10 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 
-use connection::BrowserlessConnectionProvider;
+use connection::BrowserlessConnector;
 
 use session_tools::{BrowserlessCloseBrowserTool, BrowserlessOpenBrowserTool};
 use tools::{
@@ -51,9 +51,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(BrowserlessConnectionProvider),
+        factory: || Box::new(BrowserlessConnector),
     }
 }
 

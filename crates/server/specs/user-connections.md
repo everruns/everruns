@@ -37,9 +37,9 @@ Two connection types:
 
 For `api_key` connections, OAuth-specific fields (`provider_user_id`, `scopes`, `refresh_token_encrypted`, `expires_at`) are NULL. The API key is stored in `access_token_encrypted`.
 
-### Connection Provider Plugin System
+### Connector Plugin System
 
-API-key providers register themselves via `ConnectionProviderPlugin` (parallel to `IntegrationPlugin`). Each provider defines:
+API-key providers register themselves via `ConnectorPlugin` (parallel to `IntegrationPlugin`). Each provider defines:
 - `provider_id`, `display_name`, `description`, `icon`
 - `connection_type` (OAuth vs ApiKey)
 - `form_schema` — fields and instructions for the UI dialog

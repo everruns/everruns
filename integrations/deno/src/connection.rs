@@ -5,16 +5,15 @@
 
 use crate::client::DenoClient;
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 use std::collections::HashMap;
 
-pub struct DenoConnectionProvider;
+pub struct DenoConnector;
 
 #[async_trait]
-impl ConnectionProvider for DenoConnectionProvider {
+impl Connector for DenoConnector {
     fn provider_id(&self) -> &str {
         "deno"
     }
@@ -31,12 +30,12 @@ impl ConnectionProvider for DenoConnectionProvider {
         "server"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![
                 FormField {
                     name: "api_key".to_string(),
@@ -67,7 +66,7 @@ impl ConnectionProvider for DenoConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         // Single-field validation: only org tokens work without extra fields.
         if credential.starts_with("ddp_") {
             return Err(
@@ -79,7 +78,7 @@ impl ConnectionProvider for DenoConnectionProvider {
         client
             .list_sandboxes(&std::collections::BTreeMap::new())
             .await?;
-        Ok(ConnectionValidation {
+        Ok(ConnectorValidation {
             provider_username: None,
             provider_metadata: None,
         })
@@ -88,7 +87,7 @@ impl ConnectionProvider for DenoConnectionProvider {
     async fn validate_fields(
         &self,
         fields: &HashMap<String, String>,
-    ) -> Result<ConnectionValidation, String> {
+    ) -> Result<ConnectorValidation, String> {
         let api_key = fields.get("api_key").map(|s| s.as_str()).unwrap_or("");
         if api_key.is_empty() {
             return Err("Access token is required.".to_string());
@@ -121,7 +120,7 @@ impl ConnectionProvider for DenoConnectionProvider {
             None
         };
 
-        Ok(ConnectionValidation {
+        Ok(ConnectorValidation {
             provider_username: None,
             provider_metadata,
         })
@@ -134,16 +133,16 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let provider = DenoConnectionProvider;
+        let provider = DenoConnector;
         assert_eq!(provider.provider_id(), "deno");
         assert_eq!(provider.display_name(), "Deno Deploy");
-        assert_eq!(provider.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(provider.connection_type(), ConnectorType::ApiKey);
         assert_eq!(provider.icon(), "server");
     }
 
     #[test]
     fn test_form_schema() {
-        let provider = DenoConnectionProvider;
+        let provider = DenoConnector;
         let schema = provider.form_schema().expect("schema");
         assert_eq!(schema.fields.len(), 2);
         assert_eq!(schema.fields[0].name, "api_key");
@@ -153,14 +152,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_validate_rejects_personal_token_without_org() {
-        let provider = DenoConnectionProvider;
+        let provider = DenoConnector;
         let err = provider.validate("ddp_test_token").await.unwrap_err();
         assert!(err.contains("organization slug"));
     }
 
     #[tokio::test]
     async fn test_validate_fields_rejects_personal_token_without_org() {
-        let provider = DenoConnectionProvider;
+        let provider = DenoConnector;
         let mut fields = HashMap::new();
         fields.insert("api_key".to_string(), "ddp_test_token".to_string());
         let err = provider.validate_fields(&fields).await.unwrap_err();

@@ -4,17 +4,16 @@
 // Decision: Validate token by calling GET /v1/sprites — 200 means valid, 401 means invalid.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 
 use crate::SPRITES_API_BASE;
 
-pub struct SpritesConnectionProvider;
+pub struct SpritesConnector;
 
 #[async_trait]
-impl ConnectionProvider for SpritesConnectionProvider {
+impl Connector for SpritesConnector {
     fn provider_id(&self) -> &str {
         "sprites"
     }
@@ -31,12 +30,12 @@ impl ConnectionProvider for SpritesConnectionProvider {
         "sprites"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "API Token".to_string(),
@@ -54,7 +53,7 @@ impl ConnectionProvider for SpritesConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!("{SPRITES_API_BASE}/sprites"))
@@ -64,7 +63,7 @@ impl ConnectionProvider for SpritesConnectionProvider {
             .map_err(|e| format!("Failed to reach Sprites API: {e}"))?;
 
         match response.status().as_u16() {
-            200 => Ok(ConnectionValidation {
+            200 => Ok(ConnectorValidation {
                 provider_username: None,
                 provider_metadata: None,
             }),
@@ -84,16 +83,16 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let p = SpritesConnectionProvider;
+        let p = SpritesConnector;
         assert_eq!(p.provider_id(), "sprites");
         assert_eq!(p.display_name(), "Sprites");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "sprites");
     }
 
     #[test]
     fn test_form_schema() {
-        let p = SpritesConnectionProvider;
+        let p = SpritesConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

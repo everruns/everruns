@@ -6,17 +6,16 @@
 //   lives in this crate, not in the server crate.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 
 use crate::BRAVE_SEARCH_API_BASE;
 
-pub struct BraveSearchConnectionProvider;
+pub struct BraveSearchConnector;
 
 #[async_trait]
-impl ConnectionProvider for BraveSearchConnectionProvider {
+impl Connector for BraveSearchConnector {
     fn provider_id(&self) -> &str {
         "brave_search"
     }
@@ -33,12 +32,12 @@ impl ConnectionProvider for BraveSearchConnectionProvider {
         "search"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "API Key".to_string(),
@@ -56,7 +55,7 @@ impl ConnectionProvider for BraveSearchConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!("{BRAVE_SEARCH_API_BASE}/web/search?q=test&count=1"))
@@ -67,7 +66,7 @@ impl ConnectionProvider for BraveSearchConnectionProvider {
             .map_err(|e| format!("Failed to reach Brave Search API: {e}"))?;
 
         match response.status().as_u16() {
-            200 => Ok(ConnectionValidation {
+            200 => Ok(ConnectorValidation {
                 provider_username: None,
                 provider_metadata: None,
             }),
@@ -86,16 +85,16 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let p = BraveSearchConnectionProvider;
+        let p = BraveSearchConnector;
         assert_eq!(p.provider_id(), "brave_search");
         assert_eq!(p.display_name(), "Brave Search");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "search");
     }
 
     #[test]
     fn test_form_schema() {
-        let p = BraveSearchConnectionProvider;
+        let p = BraveSearchConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

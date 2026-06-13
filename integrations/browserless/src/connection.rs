@@ -7,16 +7,15 @@
 //      401/403 means token lacks CDP access.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 use tracing::warn;
 
-pub struct BrowserlessConnectionProvider;
+pub struct BrowserlessConnector;
 
 #[async_trait]
-impl ConnectionProvider for BrowserlessConnectionProvider {
+impl Connector for BrowserlessConnector {
     fn provider_id(&self) -> &str {
         "browserless"
     }
@@ -33,12 +32,12 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
         "browserless"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "API Token".to_string(),
@@ -55,7 +54,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let client = reqwest::Client::new();
         let api_base = crate::browserless_api_base();
         let response = client
@@ -116,7 +115,7 @@ impl ConnectionProvider for BrowserlessConnectionProvider {
             }
         }
 
-        Ok(ConnectionValidation {
+        Ok(ConnectorValidation {
             provider_username: None,
             provider_metadata: None,
         })
@@ -129,16 +128,16 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let p = BrowserlessConnectionProvider;
+        let p = BrowserlessConnector;
         assert_eq!(p.provider_id(), "browserless");
         assert_eq!(p.display_name(), "Browserless");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "browserless");
     }
 
     #[test]
     fn test_form_schema() {
-        let p = BrowserlessConnectionProvider;
+        let p = BrowserlessConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

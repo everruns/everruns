@@ -6,7 +6,7 @@
 //! can start from the OSS preset or construct a `PlatformDefinition` manually
 //! without depending on inventory registration.
 
-use everruns_core::connection_provider::{ConnectionProviderPlugin, ConnectionProviderRegistry};
+use everruns_core::connector::{ConnectorPlugin, ConnectorRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
     BuiltInHarnessDefinition, CapabilityRegistry, DirectEgressService, PlatformDefinition,
@@ -23,7 +23,7 @@ pub fn oss_platform_definition() -> PlatformDefinition {
 pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefinition {
     let capability_registry = CapabilityRegistry::with_builtins_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
-    let connection_providers = oss_connection_provider_registry_for_grade(grade);
+    let connectors = oss_connector_registry_for_grade(grade);
     // Resolve the optional host-wide system allowlist from the environment
     // (EVERRUNS_SYSTEM_ALLOWLIST_ENABLED). Disabled by default.
     let egress_service = Arc::new(DirectEgressService::from_env());
@@ -35,7 +35,7 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     PlatformDefinition::builder()
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
-        .connection_providers(connection_providers)
+        .connectors(connectors)
         .built_in_harnesses(oss_built_in_harnesses())
         .egress_service(egress_service)
         .email_sender(email_sender)
@@ -47,17 +47,15 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
 }
 
 /// Build the default OSS connection-provider registry.
-pub fn oss_connection_provider_registry() -> ConnectionProviderRegistry {
-    oss_connection_provider_registry_for_grade(DeploymentGrade::from_env())
+pub fn oss_connector_registry() -> ConnectorRegistry {
+    oss_connector_registry_for_grade(DeploymentGrade::from_env())
 }
 
 /// Build the default OSS connection-provider registry for an explicit grade.
-pub fn oss_connection_provider_registry_for_grade(
-    grade: DeploymentGrade,
-) -> ConnectionProviderRegistry {
-    let mut registry = ConnectionProviderRegistry::new();
+pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegistry {
+    let mut registry = ConnectorRegistry::new();
 
-    for plugin in inventory::iter::<ConnectionProviderPlugin> {
+    for plugin in inventory::iter::<ConnectorPlugin> {
         if plugin.experimental_only && !grade.experimental_features_enabled() {
             continue;
         }

@@ -1,7 +1,7 @@
 //! Integration test: verify Cursor plugin and connection provider registration.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin, ToolCallHook};
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::tool_narration::ToolNarrationPhase;
 use everruns_core::tool_types::ToolCall;
@@ -43,8 +43,7 @@ fn cursor_capability_metadata() {
 
 #[test]
 fn cursor_connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

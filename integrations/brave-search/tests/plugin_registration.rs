@@ -1,7 +1,7 @@
 //! Integration test: verify Brave Search plugin registers via inventory.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 
 // Force linker to include the integration crate's inventory submissions.
@@ -71,21 +71,19 @@ fn test_brave_search_capability_metadata() {
 
 #[test]
 fn test_brave_search_connection_provider_is_submitted() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     assert!(
         plugins.iter().any(|p| {
             let provider = (p.factory)();
             provider.provider_id() == "brave_search"
         }),
-        "Brave Search ConnectionProviderPlugin should be submitted via inventory"
+        "Brave Search ConnectorPlugin should be submitted via inventory"
     );
 }
 
 #[test]
 fn test_brave_search_connection_provider_is_experimental() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     let brave_search = plugins
         .iter()
         .find(|p| {
@@ -102,8 +100,7 @@ fn test_brave_search_connection_provider_is_experimental() {
 
 #[test]
 fn test_brave_search_connection_provider_has_form_schema() {
-    let plugins: Vec<&ConnectionProviderPlugin> =
-        inventory::iter::<ConnectionProviderPlugin>().collect();
+    let plugins: Vec<&ConnectorPlugin> = inventory::iter::<ConnectorPlugin>().collect();
     let plugin = plugins
         .iter()
         .find(|p| {

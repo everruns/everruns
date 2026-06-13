@@ -33,12 +33,12 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 
 use std::sync::LazyLock;
 
-use connection::E2BConnectionProvider;
+use connection::E2BConnector;
 use tools::{
     E2BCreateSandboxTool, E2BExecTool, E2BListSandboxesTool, E2BManageSandboxTool, E2BReadFileTool,
     E2BWriteFileTool,
@@ -53,9 +53,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: false,
-        factory: || Box::new(E2BConnectionProvider),
+        factory: || Box::new(E2BConnector),
     }
 }
 

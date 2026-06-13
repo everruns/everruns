@@ -11,8 +11,8 @@
 //! server-owned concrete dependencies.
 
 use crate::{
-    Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
-    EgressService, EmailSender, UtilityLlmService,
+    Capability, CapabilityRegistry, Connector, ConnectorRegistry, DriverRegistry, EgressService,
+    EmailSender, UtilityLlmService,
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
 };
 use serde_json::Value;
@@ -183,7 +183,7 @@ impl BuiltInHarnessDefinition {
 pub struct PlatformDefinition {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
-    connection_providers: ConnectionProviderRegistry,
+    connectors: ConnectorRegistry,
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     egress_service: Arc<dyn EgressService>,
     email_sender: Arc<dyn EmailSender>,
@@ -197,7 +197,7 @@ impl PlatformDefinition {
         Self {
             capability_registry,
             driver_registry,
-            connection_providers: ConnectionProviderRegistry::new(),
+            connectors: ConnectorRegistry::new(),
             built_in_harnesses: Vec::new(),
             egress_service: Arc::new(crate::DirectEgressService::default()),
             email_sender: Arc::new(crate::DisabledEmailSender),
@@ -232,13 +232,13 @@ impl PlatformDefinition {
     }
 
     /// Immutable access to the connection-provider registry.
-    pub fn connection_providers(&self) -> &ConnectionProviderRegistry {
-        &self.connection_providers
+    pub fn connectors(&self) -> &ConnectorRegistry {
+        &self.connectors
     }
 
     /// Mutable access to the connection-provider registry.
-    pub fn connection_providers_mut(&mut self) -> &mut ConnectionProviderRegistry {
-        &mut self.connection_providers
+    pub fn connectors_mut(&mut self) -> &mut ConnectorRegistry {
+        &mut self.connectors
     }
 
     /// Built-in harness templates provisioned by this platform.
@@ -294,7 +294,7 @@ impl std::fmt::Debug for PlatformDefinition {
         f.debug_struct("PlatformDefinition")
             .field("capabilities", &self.capability_registry)
             .field("drivers", &self.driver_registry.registered_providers())
-            .field("connection_providers", &self.connection_providers)
+            .field("connectors", &self.connectors)
             .field("built_in_harnesses", &harness_keys)
             .field("egress_service", &self.egress_service.name())
             .field("email_sender", &self.email_sender.name())
@@ -339,14 +339,14 @@ impl PlatformDefinitionBuilder {
     }
 
     /// Replace the connection-provider registry.
-    pub fn connection_providers(mut self, registry: ConnectionProviderRegistry) -> Self {
-        self.platform.connection_providers = registry;
+    pub fn connectors(mut self, registry: ConnectorRegistry) -> Self {
+        self.platform.connectors = registry;
         self
     }
 
-    /// Register a connection provider on the platform.
-    pub fn connection_provider(mut self, provider: impl ConnectionProvider + 'static) -> Self {
-        self.platform.connection_providers.register(provider);
+    /// Register a connector on the platform.
+    pub fn connector(mut self, provider: impl Connector + 'static) -> Self {
+        self.platform.connectors.register(provider);
         self
     }
 
@@ -407,8 +407,8 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connection_provider::{
-        ConnectionFormSchema, ConnectionType, ConnectionValidation, FieldType, FormField,
+    use crate::connector::{
+        ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
     };
     use crate::{CapabilityStatus, CurrentTimeCapability};
     use async_trait::async_trait;
@@ -416,7 +416,7 @@ mod tests {
     struct TestProvider;
 
     #[async_trait]
-    impl ConnectionProvider for TestProvider {
+    impl Connector for TestProvider {
         fn provider_id(&self) -> &str {
             "test_provider"
         }
@@ -433,12 +433,12 @@ mod tests {
             "plug"
         }
 
-        fn connection_type(&self) -> ConnectionType {
-            ConnectionType::ApiKey
+        fn connection_type(&self) -> ConnectorType {
+            ConnectorType::ApiKey
         }
 
-        fn form_schema(&self) -> Option<ConnectionFormSchema> {
-            Some(ConnectionFormSchema {
+        fn form_schema(&self) -> Option<ConnectorFormSchema> {
+            Some(ConnectorFormSchema {
                 fields: vec![FormField {
                     name: "api_key".to_string(),
                     label: "API Key".to_string(),
@@ -451,8 +451,8 @@ mod tests {
             })
         }
 
-        async fn validate(&self, _credential: &str) -> Result<ConnectionValidation, String> {
-            Ok(ConnectionValidation {
+        async fn validate(&self, _credential: &str) -> Result<ConnectorValidation, String> {
+            Ok(ConnectorValidation {
                 provider_username: Some("test-user".to_string()),
                 provider_metadata: None,
             })
@@ -467,7 +467,7 @@ mod tests {
         let platform = PlatformDefinition::builder()
             .driver_registry(drivers.clone())
             .capability(CurrentTimeCapability)
-            .connection_provider(TestProvider)
+            .connector(TestProvider)
             .add_built_in_harness(
                 BuiltInHarnessDefinition::new(
                     "minimal",
@@ -480,7 +480,7 @@ mod tests {
             .build();
 
         assert!(platform.capability_registry().has("current_time"));
-        assert!(platform.connection_providers().has("test_provider"));
+        assert!(platform.connectors().has("test_provider"));
         assert_eq!(
             platform
                 .harness_for_role(BuiltInHarnessRole::Base)
@@ -501,7 +501,7 @@ mod tests {
         platform
             .capability_registry_mut()
             .register(CurrentTimeCapability);
-        platform.connection_providers_mut().register(TestProvider);
+        platform.connectors_mut().register(TestProvider);
         platform.add_built_in_harness(
             BuiltInHarnessDefinition::new("chat", "Chat", "Chat harness", "You are helpful.")
                 .with_roles([BuiltInHarnessRole::Chat]),
@@ -515,7 +515,7 @@ mod tests {
                 .as_ref(),
         );
         assert_eq!(info.status, CapabilityStatus::Available);
-        assert!(platform.connection_providers().has("test_provider"));
+        assert!(platform.connectors().has("test_provider"));
         assert_eq!(
             platform
                 .harness_for_role(BuiltInHarnessRole::Chat)
