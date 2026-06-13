@@ -214,7 +214,7 @@ fn file_error(error: CommandError) -> (StatusCode, String) {
     }
 }
 
-fn wants_raw_file(headers: &HeaderMap) -> bool {
+pub(crate) fn wants_raw_file(headers: &HeaderMap) -> bool {
     headers
         .get(header::ACCEPT)
         .and_then(|value| value.to_str().ok())
@@ -290,7 +290,7 @@ fn content_disposition_value(filename: &str, attachment: bool) -> String {
     format!("{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
 }
 
-fn raw_file_response(
+pub(crate) fn raw_file_response(
     file: SessionFile,
     attachment: bool,
 ) -> Result<Response, (StatusCode, String)> {

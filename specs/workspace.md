@@ -111,10 +111,13 @@ REST endpoints:
 * `POST   /v1/workspaces/{workspace_id}/fs/...`
 * `PUT    /v1/workspaces/{workspace_id}/fs/...`
 * `DELETE /v1/workspaces/{workspace_id}/fs/...`
-* `POST   /v1/workspaces/{workspace_id}/fs/_/{stat,grep}`
+* `POST   /v1/workspaces/{workspace_id}/fs/_/{move,copy,stat,grep}`
+* `GET    /v1/workspaces/{workspace_id}/fs/_/download/...` — raw bytes
 
-`move`, `copy`, and raw `download` are deferred — for now they live only on
-the legacy `/v1/sessions/{session_id}/fs/_/*` aliases.
+A `GET` on a file path also returns raw bytes when the request carries
+`Accept: application/octet-stream`; otherwise it returns the JSON envelope.
+The same surface is mirrored on the legacy `/v1/sessions/{session_id}/fs/_/*`
+aliases for backwards compatibility.
 
 ### Session-scoped aliases
 
