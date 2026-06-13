@@ -8,7 +8,12 @@ import { File, Upload, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { useFileDropUpload } from "@/hooks/use-file-drop-upload";
 
 export default function FilesPage() {
-  const { sessionId } = useSessionContext();
+  // Address files by the session's attached workspace (the canonical fs
+  // surface), not the session id — they differ when the session is attached to
+  // a shared workspace. `workspace_id` is undefined only while the session is
+  // still loading.
+  const { session } = useSessionContext();
+  const workspaceId = session?.workspace_id;
   const [selectedFile, setSelectedFile] = useState<FileInfo | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
 
@@ -17,7 +22,7 @@ export default function FilesPage() {
   }, []);
 
   const { isDragging, uploads, isUploading, dragHandlers } = useFileDropUpload(
-    sessionId,
+    workspaceId,
     "/workspace",
     handleUploadComplete,
   );
@@ -27,7 +32,7 @@ export default function FilesPage() {
       {/* File browser sidebar */}
       <div className="w-72 border-r flex-shrink-0 overflow-hidden bg-card/50">
         <FileBrowser
-          sessionId={sessionId}
+          workspaceId={workspaceId}
           onFileSelect={setSelectedFile}
           selectedPath={selectedFile?.path}
           refreshToken={refreshToken}
@@ -38,7 +43,7 @@ export default function FilesPage() {
       <div className="flex-1 overflow-hidden">
         {selectedFile && !selectedFile.is_directory ? (
           <FileViewer
-            sessionId={sessionId}
+            workspaceId={workspaceId}
             file={selectedFile}
             onClose={() => setSelectedFile(null)}
           />

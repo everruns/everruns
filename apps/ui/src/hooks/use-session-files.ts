@@ -25,13 +25,13 @@ import { useOrg } from "@/providers/org-provider";
 
 // Query key factory
 const fileKeys = {
-  all: (org: string, sessionId: string) => ["files", org, sessionId] as const,
-  list: (org: string, sessionId: string, path: string, recursive: boolean) =>
-    [...fileKeys.all(org, sessionId), "list", path, recursive] as const,
-  file: (org: string, sessionId: string, path: string) =>
-    [...fileKeys.all(org, sessionId), "file", path] as const,
-  stat: (org: string, sessionId: string, path: string) =>
-    [...fileKeys.all(org, sessionId), "stat", path] as const,
+  all: (org: string, workspaceId: string) => ["files", org, workspaceId] as const,
+  list: (org: string, workspaceId: string, path: string, recursive: boolean) =>
+    [...fileKeys.all(org, workspaceId), "list", path, recursive] as const,
+  file: (org: string, workspaceId: string, path: string) =>
+    [...fileKeys.all(org, workspaceId), "file", path] as const,
+  stat: (org: string, workspaceId: string, path: string) =>
+    [...fileKeys.all(org, workspaceId), "stat", path] as const,
 };
 
 // ============================================
@@ -40,7 +40,7 @@ const fileKeys = {
 
 /** List files in a directory */
 export function useFiles(
-  sessionId: string | undefined,
+  workspaceId: string | undefined,
   path: string = "/",
   recursive: boolean = false,
 ) {
@@ -48,9 +48,9 @@ export function useFiles(
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: fileKeys.list(org!, sessionId!, path, recursive),
-    queryFn: () => listFiles(sessionId!, path, recursive),
-    enabled: !!org && !!sessionId,
+    queryKey: fileKeys.list(org!, workspaceId!, path, recursive),
+    queryFn: () => listFiles(workspaceId!, path, recursive),
+    enabled: !!org && !!workspaceId,
   });
 
   // Include org loading state so pages show skeleton while org initializes
@@ -61,14 +61,14 @@ export function useFiles(
 }
 
 /** Read a file */
-export function useFile(sessionId: string | undefined, path: string | undefined) {
+export function useFile(workspaceId: string | undefined, path: string | undefined) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: fileKeys.file(org!, sessionId!, path!),
-    queryFn: () => readFile(sessionId!, path!),
-    enabled: !!org && !!sessionId && !!path,
+    queryKey: fileKeys.file(org!, workspaceId!, path!),
+    queryFn: () => readFile(workspaceId!, path!),
+    enabled: !!org && !!workspaceId && !!path,
   });
 
   // Include org loading state so pages show skeleton while org initializes
@@ -79,14 +79,14 @@ export function useFile(sessionId: string | undefined, path: string | undefined)
 }
 
 /** Get file stat */
-export function useFileStat(sessionId: string | undefined, path: string | undefined) {
+export function useFileStat(workspaceId: string | undefined, path: string | undefined) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: fileKeys.stat(org!, sessionId!, path!),
-    queryFn: () => statFile(sessionId!, path!),
-    enabled: !!org && !!sessionId && !!path,
+    queryKey: fileKeys.stat(org!, workspaceId!, path!),
+    queryFn: () => statFile(workspaceId!, path!),
+    enabled: !!org && !!workspaceId && !!path,
   });
 
   // Include org loading state so pages show skeleton while org initializes
@@ -107,11 +107,11 @@ export function useCreateFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({ sessionId, request }: { sessionId: string; request: CreateFileRequest }) =>
-      createFile(sessionId, request),
-    onSuccess: (_, { sessionId }) => {
+    mutationFn: ({ workspaceId, request }: { workspaceId: string; request: CreateFileRequest }) =>
+      createFile(workspaceId, request),
+    onSuccess: (_, { workspaceId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
     },
   });
@@ -124,11 +124,11 @@ export function useCreateDirectory() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({ sessionId, path }: { sessionId: string; path: string }) =>
-      mkdir(sessionId, path),
-    onSuccess: (_, { sessionId }) => {
+    mutationFn: ({ workspaceId, path }: { workspaceId: string; path: string }) =>
+      mkdir(workspaceId, path),
+    onSuccess: (_, { workspaceId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
     },
   });
@@ -142,20 +142,20 @@ export function useUpdateFile() {
 
   return useMutation({
     mutationFn: ({
-      sessionId,
+      workspaceId,
       path,
       request,
     }: {
-      sessionId: string;
+      workspaceId: string;
       path: string;
       request: UpdateFileRequest;
-    }) => updateFile(sessionId, path, request),
-    onSuccess: (_, { sessionId, path }) => {
+    }) => updateFile(workspaceId, path, request),
+    onSuccess: (_, { workspaceId, path }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
       queryClient.invalidateQueries({
-        queryKey: fileKeys.file(org!, sessionId, path),
+        queryKey: fileKeys.file(org!, workspaceId, path),
       });
     },
   });
@@ -169,17 +169,17 @@ export function useDeleteFile() {
 
   return useMutation({
     mutationFn: ({
-      sessionId,
+      workspaceId,
       path,
       recursive = false,
     }: {
-      sessionId: string;
+      workspaceId: string;
       path: string;
       recursive?: boolean;
-    }) => deleteFile(sessionId, path, recursive),
-    onSuccess: (_, { sessionId }) => {
+    }) => deleteFile(workspaceId, path, recursive),
+    onSuccess: (_, { workspaceId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
     },
   });
@@ -192,11 +192,11 @@ export function useMoveFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({ sessionId, request }: { sessionId: string; request: MoveFileRequest }) =>
-      moveFile(sessionId, request),
-    onSuccess: (_, { sessionId }) => {
+    mutationFn: ({ workspaceId, request }: { workspaceId: string; request: MoveFileRequest }) =>
+      moveFile(workspaceId, request),
+    onSuccess: (_, { workspaceId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
     },
   });
@@ -209,11 +209,11 @@ export function useCopyFile() {
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: ({ sessionId, request }: { sessionId: string; request: CopyFileRequest }) =>
-      copyFile(sessionId, request),
-    onSuccess: (_, { sessionId }) => {
+    mutationFn: ({ workspaceId, request }: { workspaceId: string; request: CopyFileRequest }) =>
+      copyFile(workspaceId, request),
+    onSuccess: (_, { workspaceId }) => {
       queryClient.invalidateQueries({
-        queryKey: fileKeys.all(org!, sessionId),
+        queryKey: fileKeys.all(org!, workspaceId),
       });
     },
   });
@@ -222,7 +222,7 @@ export function useCopyFile() {
 /** Search files using grep */
 export function useGrepFiles() {
   return useMutation({
-    mutationFn: ({ sessionId, request }: { sessionId: string; request: GrepRequest }) =>
-      grepFiles(sessionId, request),
+    mutationFn: ({ workspaceId, request }: { workspaceId: string; request: GrepRequest }) =>
+      grepFiles(workspaceId, request),
   });
 }

@@ -90,7 +90,7 @@ describe("FileBrowser States", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTestId("loader-icon")).toBeInTheDocument();
     expect(screen.getByText("Loading files...")).toBeInTheDocument();
@@ -103,7 +103,7 @@ describe("FileBrowser States", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByText("Empty workspace")).toBeInTheDocument();
     expect(screen.getByText("Create a file or folder to get started")).toBeInTheDocument();
@@ -125,28 +125,28 @@ describe("FileBrowser Toolbar", () => {
   });
 
   it("renders refresh button", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTitle("Refresh")).toBeInTheDocument();
     expect(screen.getByText("Refresh")).toBeInTheDocument();
   });
 
   it("renders new folder button", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTitle("New folder")).toBeInTheDocument();
     expect(screen.getByText("Folder")).toBeInTheDocument();
   });
 
   it("renders new file button", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTitle("New file")).toBeInTheDocument();
     expect(screen.getByText("File")).toBeInTheDocument();
   });
 
   it("calls refetch when refresh button is clicked", async () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     fireEvent.click(screen.getByTitle("Refresh"));
     await waitFor(() => {
@@ -195,7 +195,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByText("test.ts")).toBeInTheDocument();
     expect(screen.getByText("1024 B")).toBeInTheDocument();
@@ -208,7 +208,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByText("src")).toBeInTheDocument();
   });
@@ -220,7 +220,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     const items = screen.getAllByRole("treeitem");
     // Directory should come first
@@ -235,7 +235,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" onFileSelect={onFileSelect} />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" onFileSelect={onFileSelect} />);
 
     fireEvent.click(screen.getByText("test.ts"));
     expect(onFileSelect).toHaveBeenCalledWith(mockFile);
@@ -249,7 +249,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" onFileSelect={onFileSelect} />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" onFileSelect={onFileSelect} />);
 
     fireEvent.click(screen.getByText("src"));
     expect(onFileSelect).not.toHaveBeenCalled();
@@ -263,7 +263,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTestId("lock-icon")).toBeInTheDocument();
   });
@@ -276,7 +276,7 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     // Hover over the file to reveal actions
     const fileItem = screen.getByText("test.ts").closest("[role='treeitem']");
@@ -293,7 +293,9 @@ describe("FileBrowser FileTree", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" selectedPath="/workspace/test.ts" />);
+    renderWithProviders(
+      <FileBrowser workspaceId="test-session" selectedPath="/workspace/test.ts" />,
+    );
 
     const selectedItem = screen.getByText("test.ts").closest("[role='treeitem']");
     expect(selectedItem).toHaveClass("bg-accent/20");
@@ -328,7 +330,7 @@ describe("FileBrowser File Icons", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTestId(expectedIconTestId)).toBeInTheDocument();
   };
@@ -372,7 +374,7 @@ describe("FileBrowser Create File Dialog", () => {
   });
 
   it("renders new file button in toolbar", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTitle("New file")).toBeInTheDocument();
   });
@@ -395,7 +397,7 @@ describe("FileBrowser Create Folder Dialog", () => {
   });
 
   it("renders new folder button in toolbar", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByTitle("New folder")).toBeInTheDocument();
   });
@@ -430,7 +432,7 @@ describe("FileBrowser Delete", () => {
   });
 
   it("shows delete button on hover", () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     // The delete button should exist but be hidden until hover
     const deleteButton = screen.getByTitle("Delete");
@@ -438,7 +440,7 @@ describe("FileBrowser Delete", () => {
   });
 
   it("confirms before deleting", async () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     fireEvent.click(screen.getByTitle("Delete"));
 
@@ -446,13 +448,13 @@ describe("FileBrowser Delete", () => {
   });
 
   it("deletes file when confirmed", async () => {
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     fireEvent.click(screen.getByTitle("Delete"));
 
     await waitFor(() => {
       expect(mockDeleteFile).toHaveBeenCalledWith({
-        sessionId: "test-session",
+        workspaceId: "test-session",
         path: "/workspace/test.ts",
         recursive: false,
       });
@@ -462,7 +464,7 @@ describe("FileBrowser Delete", () => {
   it("does not delete when cancelled", async () => {
     (window.confirm as jest.Mock).mockReturnValue(false);
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     fireEvent.click(screen.getByTitle("Delete"));
 
@@ -516,7 +518,7 @@ describe("FileBrowser Directory Expansion", () => {
 
     mockListFiles.mockResolvedValue([mockSubFile]);
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     // Click to expand directory
     fireEvent.click(screen.getByText("src"));
@@ -535,7 +537,7 @@ describe("FileBrowser Directory Expansion", () => {
 
     mockListFiles.mockResolvedValue([mockSubFile]);
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     fireEvent.click(screen.getByText("src"));
 
@@ -555,7 +557,7 @@ describe("FileBrowser Directory Expansion", () => {
 
     mockListFiles.mockResolvedValue([mockSubFile]);
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     // Expand directory first
     fireEvent.click(screen.getByText("src"));
@@ -628,7 +630,7 @@ describe("FileBrowser recursion guard", () => {
 
     // Before the fix this would throw RangeError: Maximum call stack size exceeded
     expect(() => {
-      renderWithProviders(<FileBrowser sessionId="test-session" />);
+      renderWithProviders(<FileBrowser workspaceId="test-session" />);
     }).not.toThrow();
 
     // The normal file should still render
@@ -663,7 +665,7 @@ describe("FileBrowser recursion guard", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     expect(screen.getByText("src")).toBeInTheDocument();
     expect(screen.getByText("README.md")).toBeInTheDocument();
@@ -704,7 +706,7 @@ describe("FileBrowser recursion guard", () => {
     });
 
     expect(() => {
-      renderWithProviders(<FileBrowser sessionId="test-session" />);
+      renderWithProviders(<FileBrowser workspaceId="test-session" />);
     }).not.toThrow();
 
     // Expand dir A
@@ -743,7 +745,7 @@ describe("FileBrowser recursion guard", () => {
     });
 
     expect(() => {
-      renderWithProviders(<FileBrowser sessionId="test-session" />);
+      renderWithProviders(<FileBrowser workspaceId="test-session" />);
     }).not.toThrow();
 
     expect(screen.getByText("empty")).toBeInTheDocument();
@@ -772,7 +774,7 @@ describe("FileBrowser recursion guard", () => {
 
     // All entries filtered → falls through to empty workspace
     expect(() => {
-      renderWithProviders(<FileBrowser sessionId="test-session" />);
+      renderWithProviders(<FileBrowser workspaceId="test-session" />);
     }).not.toThrow();
   });
 
@@ -795,7 +797,7 @@ describe("FileBrowser recursion guard", () => {
     });
 
     expect(() => {
-      renderWithProviders(<FileBrowser sessionId="test-session" />);
+      renderWithProviders(<FileBrowser workspaceId="test-session" />);
     }).not.toThrow();
 
     // Both render (keyed by unique id)
@@ -827,7 +829,7 @@ describe("FileBrowser recursion guard", () => {
       refetch: mockRefetch,
     });
 
-    renderWithProviders(<FileBrowser sessionId="test-session" />);
+    renderWithProviders(<FileBrowser workspaceId="test-session" />);
 
     const items = screen.getAllByRole("treeitem");
     // Directory "z-dir" should come before file "a-file.ts" despite alphabetical order
