@@ -81,6 +81,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
   const stats = useMemo(() => (app ? buildStats(app) : null), [app]);
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canManage = can("app.manage") && !isReadOnly;
+  const canDangerous = can("app.dangerous") && !isReadOnly;
   const runnableChannel = findFirstRunnableChannel(app);
 
   if (isLoading) {
@@ -157,7 +158,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
           <Button
             variant="outline"
             onClick={() => runnableChannel && triggerMutation.mutate(runnableChannel.id)}
-            disabled={!runnableChannel || triggerMutation.isPending}
+            disabled={!runnableChannel || triggerMutation.isPending || !canManage}
           >
             <Play className="size-4" />
             Test run
@@ -166,7 +167,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
             <Button
               variant="outline"
               onClick={() => unpublishApp.mutate(app.id)}
-              disabled={unpublishApp.isPending || !canManage}
+              disabled={unpublishApp.isPending || !canDangerous}
             >
               <GlobeLock className="size-4" />
               Unpublish
@@ -174,7 +175,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
           ) : (
             <Button
               onClick={() => publishApp.mutate(app.id)}
-              disabled={publishApp.isPending || !canManage}
+              disabled={publishApp.isPending || !canDangerous}
             >
               Publish
             </Button>
@@ -182,7 +183,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
           <Button
             variant="outline"
             onClick={() => deleteAppMutation.mutate(app.id)}
-            disabled={deleteAppMutation.isPending || !canManage}
+            disabled={deleteAppMutation.isPending || !canDangerous}
           >
             <Archive className="size-4" />
             Archive
@@ -239,7 +240,7 @@ export function AppDetailV2({ appId }: { appId: string }) {
                   onToggle={() =>
                     setExpandedChannelId((current) => (current === channel.id ? null : channel.id))
                   }
-                  onRunNow={() => triggerMutation.mutate(channel.id)}
+                  onRunNow={canManage ? () => triggerMutation.mutate(channel.id) : undefined}
                   configureHref={`/apps/${app.id}/channels/${channel.id}`}
                 />
               ))}
