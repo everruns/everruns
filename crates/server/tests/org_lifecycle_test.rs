@@ -536,3 +536,87 @@ async fn test_api_key_creation_enforces_per_user_limit() {
         "expected personal access token limit error, got: {over_limit:?}"
     );
 }
+
+#[tokio::test]
+async fn test_api_key_expiry_validation() {
+    let server = TestServer::in_memory().await;
+
+    // Valid expiry creates the token and echoes the expiration timestamp.
+    let resp: Value = server
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "expires-soon", "expires_in_days": 30}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert!(
+        resp["expires_at"].as_str().is_some(),
+        "token created with expires_in_days=30 should have expires_at set"
+    );
+
+    // Zero days is rejected.
+    let err: Value = server
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "bad-zero", "expires_in_days": 0}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert!(
+        err["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("expires_in_days must be between 1 and 3650"),
+        "zero days should be rejected: {err:?}"
+    );
+
+    // Negative days are rejected (previously could panic via Duration::days).
+    let err: Value = server
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "bad-negative", "expires_in_days": -1}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert!(
+        err["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("expires_in_days must be between 1 and 3650"),
+        "negative days should be rejected: {err:?}"
+    );
+
+    // Exceeding 3650 days is rejected.
+    let err: Value = server
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "bad-huge", "expires_in_days": 3651}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert!(
+        err["detail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("expires_in_days must be between 1 and 3650"),
+        "3651 days should be rejected: {err:?}"
+    );
+
+    // No expiry is fine — token is created without expires_at.
+    let resp: Value = server
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "no-expiry"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert!(
+        resp["expires_at"].is_null(),
+        "token without expires_in_days should have null expires_at"
+    );
+}

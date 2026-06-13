@@ -180,7 +180,23 @@ async fn create_personal_access_token(
 
     let expires_at = req
         .expires_in_days
-        .map(|days| Utc::now() + Duration::days(days));
+        .map(|days| -> Result<_, AuthError> {
+            if days <= 0 || days > 3650 {
+                return Err(AuthError {
+                    error: "expires_in_days must be between 1 and 3650".to_string(),
+                    status: StatusCode::BAD_REQUEST,
+                    code: Some("invalid_expires_in_days"),
+                });
+            }
+            Duration::try_days(days)
+                .and_then(|d| Utc::now().checked_add_signed(d))
+                .ok_or_else(|| AuthError {
+                    error: "expires_in_days out of range".to_string(),
+                    status: StatusCode::BAD_REQUEST,
+                    code: Some("invalid_expires_in_days"),
+                })
+        })
+        .transpose()?;
 
     let token_row = state
         .db
