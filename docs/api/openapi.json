@@ -13096,13 +13096,15 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Shared secret the trusted proxy includes in `proxy_secret_header`.\nWrite-only: redacted in GET responses. See TM-AUTH-021."
               },
               "proxy_secret_header": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Header the trusted reverse proxy uses to prove its identity.\nRequired. Configs without this field fail closed at verification time."
               },
               "type": {
                 "type": "string",
