@@ -122,7 +122,7 @@ impl OpenRouterKeyInfo {
             .unwrap_or(false);
 
         let rate_limit = data.get("rate_limit").and_then(|rl| {
-            let requests = rl.get("requests")?.as_u64()? as u32;
+            let requests = rl.get("requests")?.as_u64()?.try_into().ok()?;
             let interval = rl.get("interval")?.as_str()?.to_string();
             Some(OpenRouterRateLimit { requests, interval })
         });
@@ -248,7 +248,8 @@ impl Tool for InspectOpenRouterWorkspaceTool {
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
-            "properties": {}
+            "properties": {},
+            "additionalProperties": false
         })
     }
 
@@ -263,18 +264,32 @@ impl Tool for InspectOpenRouterWorkspaceTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
+        const URL: &str = "https://openrouter.ai/api/v1/auth/key";
+        if let Some(acl) = context.network_access.as_ref()
+            && !acl.is_url_allowed(URL)
+        {
+            return ToolExecutionResult::tool_error(
+                "OpenRouter workspace API is blocked by session network access policy",
+            );
+        }
+
         let api_key = match resolve_openrouter_key(context).await {
             Ok(k) => k,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
 
-        let client = reqwest::Client::new();
-        let response = match client
-            .get("https://openrouter.ai/api/v1/auth/key")
-            .bearer_auth(&api_key)
-            .send()
-            .await
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
         {
+            Ok(c) => c,
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to build HTTP client: {e}"
+                ));
+            }
+        };
+        let response = match client.get(URL).bearer_auth(&api_key).send().await {
             Ok(r) => r,
             Err(e) => {
                 return ToolExecutionResult::tool_error(format!(
@@ -343,6 +358,7 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
             "properties": {
                 "min_remaining_budget_usd": {
                     "type": "number",
+                    "minimum": 0,
                     "description": "Minimum remaining workspace budget (USD) required by your \
                                     routing plan. A drift is reported if the workspace has less \
                                     than this amount remaining. Omit to skip budget-threshold check."
@@ -354,7 +370,8 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
                                     A drift is reported when the workspace is on the free tier.",
                     "default": false
                 }
-            }
+            },
+            "additionalProperties": false
         })
     }
 
@@ -371,24 +388,39 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
     ) -> ToolExecutionResult {
         let min_remaining_budget_usd = arguments
             .get("min_remaining_budget_usd")
-            .and_then(|v| v.as_f64());
+            .and_then(|v| v.as_f64())
+            .filter(|&v| v >= 0.0);
         let requires_paid_features = arguments
             .get("requires_paid_features")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
+
+        const URL: &str = "https://openrouter.ai/api/v1/auth/key";
+        if let Some(acl) = context.network_access.as_ref()
+            && !acl.is_url_allowed(URL)
+        {
+            return ToolExecutionResult::tool_error(
+                "OpenRouter workspace API is blocked by session network access policy",
+            );
+        }
 
         let api_key = match resolve_openrouter_key(context).await {
             Ok(k) => k,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
 
-        let client = reqwest::Client::new();
-        let response = match client
-            .get("https://openrouter.ai/api/v1/auth/key")
-            .bearer_auth(&api_key)
-            .send()
-            .await
+        let client = match reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
         {
+            Ok(c) => c,
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to build HTTP client: {e}"
+                ));
+            }
+        };
+        let response = match client.get(URL).bearer_auth(&api_key).send().await {
             Ok(r) => r,
             Err(e) => {
                 return ToolExecutionResult::tool_error(format!(
