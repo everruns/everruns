@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft } from "lucide-react";
 import { SessionCard } from "@/components/session/session-card";
-import type { Session, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, ModelWithProvider } from "@/lib/api/types";
 import { usePageTitle } from "@/hooks";
 
 // Check if we're in development mode
@@ -183,7 +183,7 @@ const sampleModels = {
     updated_at: new Date().toISOString(),
     provider_name: "Anthropic",
     provider_type: "anthropic" as const,
-  } satisfies LlmModelWithProvider,
+  } satisfies ModelWithProvider,
   openai: {
     id: "model-uuid-openai",
     provider_id: "provider-openai",
@@ -197,7 +197,7 @@ const sampleModels = {
     updated_at: new Date().toISOString(),
     provider_name: "OpenAI",
     provider_type: "openai" as const,
-  } satisfies LlmModelWithProvider,
+  } satisfies ModelWithProvider,
 };
 
 // ============================================

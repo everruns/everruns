@@ -4,7 +4,7 @@
 // LLM Provider types
 // ============================================
 
-export type LlmProviderType =
+export type DriverId =
   | "openai"
   | "openrouter"
   | "azure_openai"
@@ -13,7 +13,7 @@ export type LlmProviderType =
   | "gemini"
   | "bedrock";
 
-export type LlmProviderStatus = "active" | "disabled";
+export type ProviderStatus = "active" | "disabled";
 
 /** Vendor/brand of a model, derived from the backend model registry. */
 export type ModelVendor =
@@ -28,18 +28,18 @@ export type ModelVendor =
   | "xai"
   | "llmsim";
 
-export interface LlmProvider {
+export interface Provider {
   id: string;
   name: string;
-  provider_type: LlmProviderType;
+  provider_type: DriverId;
   base_url?: string;
   api_key_set: boolean;
-  status: LlmProviderStatus;
+  status: ProviderStatus;
   created_at: string;
   updated_at: string;
 }
 
-export interface LlmModel {
+export interface Model {
   id: string;
   provider_id: string;
   model_id: string;
@@ -51,16 +51,16 @@ export interface LlmModel {
   updated_at: string;
 }
 
-export interface LlmModelWithProvider extends LlmModel {
+export interface ModelWithProvider extends Model {
   provider_name: string;
-  provider_type: LlmProviderType;
+  provider_type: DriverId;
   /**
    * Derived: model is configured and ready for use. Currently mirrors the
    * joined provider's `api_key_set && status === "active"`; not persisted.
    */
   healthy: boolean;
   /** Readonly profile with model capabilities (not persisted to database) */
-  profile?: LlmModelProfile;
+  profile?: ModelProfile;
   /** Vendor/brand from the model registry; drives branding. Not persisted. */
   model_vendor?: ModelVendor;
 }
@@ -71,7 +71,7 @@ export interface LlmModelWithProvider extends LlmModel {
 // ============================================
 
 /** Cost information for the model (per million tokens in USD) */
-export interface LlmModelCost {
+export interface ModelCost {
   /** Input cost per million tokens */
   input: number;
   /** Output cost per million tokens */
@@ -95,7 +95,7 @@ export interface CostTier {
 }
 
 /** Token limits for the model */
-export interface LlmModelLimits {
+export interface ModelLimits {
   /** Maximum context window size in tokens */
   context: number;
   /** Maximum input tokens (if different from context - output) */
@@ -110,7 +110,7 @@ export interface LlmModelLimits {
 export type Modality = "text" | "image" | "audio" | "video" | "pdf";
 
 /** Model modalities for input and output */
-export interface LlmModelModalities {
+export interface ModelModalities {
   /** Supported input modalities */
   input: Modality[];
   /** Supported output modalities */
@@ -140,7 +140,7 @@ export interface ReasoningEffortConfig {
  * LLM Model Profile describing model capabilities
  * Based on models.dev structure (https://models.dev/api.json)
  */
-export interface LlmModelProfile {
+export interface ModelProfile {
   /** Display name of the model */
   name: string;
   /** Model family (e.g., "gpt-4o", "claude-3-5-sonnet") */
@@ -166,11 +166,11 @@ export interface LlmModelProfile {
   /** Whether the model has open weights */
   open_weights: boolean;
   /** Cost per million tokens */
-  cost?: LlmModelCost;
+  cost?: ModelCost;
   /** Token limits */
-  limits?: LlmModelLimits;
+  limits?: ModelLimits;
   /** Supported modalities */
-  modalities?: LlmModelModalities;
+  modalities?: ModelModalities;
   /** Reasoning effort configuration (for reasoning models) */
   reasoning_effort?: ReasoningEffortConfig;
   /** Provider-advertised request parameters supported by this model */
@@ -181,22 +181,22 @@ export interface LlmModelProfile {
   supports_phases?: boolean;
 }
 
-export interface CreateLlmProviderRequest {
+export interface CreateProviderRequest {
   name: string;
-  provider_type: LlmProviderType;
+  provider_type: DriverId;
   base_url?: string;
   api_key?: string;
 }
 
-export interface UpdateLlmProviderRequest {
+export interface UpdateProviderRequest {
   name?: string;
-  provider_type?: LlmProviderType;
+  provider_type?: DriverId;
   base_url?: string;
   api_key?: string;
-  status?: LlmProviderStatus;
+  status?: ProviderStatus;
 }
 
-export interface CreateLlmModelRequest {
+export interface CreateModelRequest {
   model_id: string;
   display_name: string;
   capabilities?: string[];
@@ -204,7 +204,7 @@ export interface CreateLlmModelRequest {
   is_favorite?: boolean;
 }
 
-export interface UpdateLlmModelRequest {
+export interface UpdateModelRequest {
   provider_id?: string;
   model_id?: string;
   display_name?: string;

@@ -1060,8 +1060,8 @@ fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRo
         "identity" => ("v1/agent-identities", format!("agent-identities/{id}")),
         "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
         "skill" => ("v1/skills", "skills".to_string()),
-        "provider" => ("v1/llm-providers", "settings/providers".to_string()),
-        "model" => ("v1/llm-models", "models".to_string()),
+        "provider" => ("v1/providers", "settings/providers".to_string()),
+        "model" => ("v1/models", "models".to_string()),
         "eval" => ("v1/evals", format!("evals/{id}")),
         "bdgt" => ("v1/budgets", "budgets".to_string()),
         "sched" => {
@@ -1612,7 +1612,7 @@ impl ResourceUrlable for everruns_core::Skill {
 
 impl ResourceUrlable for everruns_core::provider::Provider {
     fn api_path() -> &'static str {
-        "v1/llm-providers"
+        "v1/providers"
     }
     fn ui_path() -> &'static str {
         "settings/providers"
@@ -1627,7 +1627,7 @@ impl ResourceUrlable for everruns_core::provider::Provider {
 
 impl ResourceUrlable for everruns_core::model::Model {
     fn api_path() -> &'static str {
-        "v1/llm-models"
+        "v1/models"
     }
     fn ui_path() -> &'static str {
         "models"
@@ -1642,7 +1642,7 @@ impl ResourceUrlable for everruns_core::model::Model {
 
 impl ResourceUrlable for everruns_core::ModelWithProvider {
     fn api_path() -> &'static str {
-        "v1/llm-models"
+        "v1/models"
     }
     fn ui_path() -> &'static str {
         "models"

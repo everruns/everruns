@@ -7,7 +7,7 @@ import {
   useCapabilities,
   useSessions,
   useSessionStats,
-  useLlmModels,
+  useModels,
   useCreateSession,
   usePageTitle,
 } from "@/hooks";
@@ -41,7 +41,7 @@ export default function DashboardPage() {
     limit: 5,
   });
   const { data: sessionStats } = useSessionStats();
-  const { data: llmModels } = useLlmModels();
+  const { data: models } = useModels();
   const createSession = useCreateSession();
   const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
@@ -130,7 +130,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="mt-6">
-          <RecentSessions sessions={sessions} agents={agentsForReferences} models={llmModels} />
+          <RecentSessions sessions={sessions} agents={agentsForReferences} models={models} />
         </div>
       </div>
 

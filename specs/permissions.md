@@ -128,8 +128,8 @@ GET /v1/agents/config
 GET /v1/apps/config
 GET /v1/sessions/config
 GET /v1/mcp-servers/config
-GET /v1/llm-providers/config
-GET /v1/llm-models/config
+GET /v1/providers/config
+GET /v1/models/config
 GET /v1/skills/config
 ```
 

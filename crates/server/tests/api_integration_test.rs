@@ -1324,7 +1324,7 @@ async fn test_provider_crud() {
     // Create a provider
     let provider: Provider = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": "Test OpenAI Provider",
                 "provider_type": "openai",
@@ -1340,13 +1340,13 @@ async fn test_provider_crud() {
 
     // List providers
     server
-        .get("/v1/llm-providers")
+        .get("/v1/providers")
         .await
         .assert_status(StatusCode::OK);
 
     // Delete provider
     server
-        .delete(&format!("/v1/llm-providers/{}", provider.id))
+        .delete(&format!("/v1/providers/{}", provider.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 }
@@ -1358,7 +1358,7 @@ async fn test_model_crud() {
     // Create a provider first
     let provider: Provider = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": "Model Test Provider",
                 "provider_type": "openai"
@@ -1371,7 +1371,7 @@ async fn test_model_crud() {
     // Create a model
     let model: Model = server
         .post(
-            &format!("/v1/llm-providers/{}/models", provider.id),
+            &format!("/v1/providers/{}/models", provider.id),
             json!({
                 "model_id": "gpt-4-test",
                 "display_name": "GPT-4 Test",
@@ -1386,18 +1386,15 @@ async fn test_model_crud() {
     assert_eq!(model.model_id, "gpt-4-test");
 
     // List all models
-    server
-        .get("/v1/llm-models")
-        .await
-        .assert_status(StatusCode::OK);
+    server.get("/v1/models").await.assert_status(StatusCode::OK);
 
     // Cleanup
     server
-        .delete(&format!("/v1/llm-models/{}", model.id))
+        .delete(&format!("/v1/models/{}", model.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server
-        .delete(&format!("/v1/llm-providers/{}", provider.id))
+        .delete(&format!("/v1/providers/{}", provider.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 }
@@ -1408,7 +1405,7 @@ async fn test_create_model_missing_provider_returns_not_found() {
 
     server
         .post(
-            "/v1/llm-providers/provider_019563a3000070008000000000000001/models",
+            "/v1/providers/provider_019563a3000070008000000000000001/models",
             json!({
                 "model_id": "missing-provider-model",
                 "display_name": "Missing Provider Model",
@@ -1431,7 +1428,7 @@ async fn test_session_inherits_agent_default_model() {
     // Create provider and model
     let provider: Provider = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": "Inheritance Test Provider",
                 "provider_type": "openai"
@@ -1443,7 +1440,7 @@ async fn test_session_inherits_agent_default_model() {
 
     let model: Model = server
         .post(
-            &format!("/v1/llm-providers/{}/models", provider.id),
+            &format!("/v1/providers/{}/models", provider.id),
             json!({
                 "model_id": "inherit-test-model",
                 "display_name": "Inherit Test Model",
@@ -1497,9 +1494,9 @@ async fn test_session_inherits_agent_default_model() {
     server
         .delete(&format!("/v1/agents/{}", agent.public_id))
         .await;
-    server.delete(&format!("/v1/llm-models/{}", model.id)).await;
+    server.delete(&format!("/v1/models/{}", model.id)).await;
     server
-        .delete(&format!("/v1/llm-providers/{}", provider.id))
+        .delete(&format!("/v1/providers/{}", provider.id))
         .await;
 }
 
@@ -2060,7 +2057,7 @@ async fn test_create_session_with_generic_harness() {
 async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
     let provider: Value = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": format!("{name}-provider"),
                 "provider_type": "llmsim"
@@ -2073,7 +2070,7 @@ async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
     let model: Value = server
         .post(
             &format!(
-                "/v1/llm-providers/{}/models",
+                "/v1/providers/{}/models",
                 provider["id"].as_str().expect("provider id")
             ),
             json!({

@@ -2,36 +2,36 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  getLlmProviders,
-  getLlmProvider,
-  createLlmProvider,
-  updateLlmProvider,
-  deleteLlmProvider,
+  getProviders,
+  getProvider,
+  createProvider,
+  updateProvider,
+  deleteProvider,
   syncProviderModels,
-  getLlmModels,
-  getLlmProviderModels,
-  getLlmModel,
-  createLlmModel,
-  updateLlmModel,
-  deleteLlmModel,
-} from "@/lib/api/llm-providers";
+  getModels,
+  getProviderModels,
+  getModel,
+  createModel,
+  updateModel,
+  deleteModel,
+} from "@/lib/api/providers";
 import { queryKeys } from "@/lib/query-keys";
 import type {
-  CreateLlmProviderRequest,
-  UpdateLlmProviderRequest,
-  CreateLlmModelRequest,
-  UpdateLlmModelRequest,
+  CreateProviderRequest,
+  UpdateProviderRequest,
+  CreateModelRequest,
+  UpdateModelRequest,
 } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
 
 // Provider hooks
-export function useLlmProviders() {
+export function useProviders() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.llmProviders.list(), org],
-    queryFn: () => getLlmProviders(),
+    queryKey: [...queryKeys.providers.list(), org],
+    queryFn: () => getProviders(),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -43,13 +43,13 @@ export function useLlmProviders() {
   };
 }
 
-export function useLlmProvider(providerId: string) {
+export function useProvider(providerId: string) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.llmProviders.detail(providerId), org],
-    queryFn: () => getLlmProvider(providerId),
+    queryKey: [...queryKeys.providers.detail(providerId), org],
+    queryFn: () => getProvider(providerId),
     enabled: !!org && !!providerId,
   });
 
@@ -60,39 +60,39 @@ export function useLlmProvider(providerId: string) {
   };
 }
 
-export function useCreateLlmProvider() {
+export function useCreateProvider() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateLlmProviderRequest) => createLlmProvider(data),
+    mutationFn: (data: CreateProviderRequest) => createProvider(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
     },
   });
 }
 
-export function useUpdateLlmProvider(providerId: string) {
+export function useUpdateProvider(providerId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateLlmProviderRequest) => updateLlmProvider(providerId, data),
+    mutationFn: (data: UpdateProviderRequest) => updateProvider(providerId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.llmProviders.detail(providerId),
+        queryKey: queryKeys.providers.detail(providerId),
       });
     },
   });
 }
 
-export function useDeleteLlmProvider() {
+export function useDeleteProvider() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (providerId: string) => deleteLlmProvider(providerId),
+    mutationFn: (providerId: string) => deleteProvider(providerId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
     },
   });
 }
@@ -104,20 +104,20 @@ export function useSyncProviderModels() {
     mutationFn: (providerId: string) => syncProviderModels(providerId),
     onSuccess: () => {
       // Refresh models list after sync
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
     },
   });
 }
 
 // Model hooks
-export function useLlmModels() {
+export function useModels() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.llmModels.list(), org],
-    queryFn: () => getLlmModels(),
+    queryKey: [...queryKeys.models.list(), org],
+    queryFn: () => getModels(),
     enabled: !!org,
     staleTime: 30000,
   });
@@ -129,13 +129,13 @@ export function useLlmModels() {
   };
 }
 
-export function useLlmProviderModels(providerId: string) {
+export function useProviderModels(providerId: string) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.llmProviders.models(providerId), org],
-    queryFn: () => getLlmProviderModels(providerId),
+    queryKey: [...queryKeys.providers.models(providerId), org],
+    queryFn: () => getProviderModels(providerId),
     enabled: !!org && !!providerId,
   });
 
@@ -146,13 +146,13 @@ export function useLlmProviderModels(providerId: string) {
   };
 }
 
-export function useLlmModel(modelId: string) {
+export function useModel(modelId: string) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: [...queryKeys.llmModels.detail(modelId), org],
-    queryFn: () => getLlmModel(modelId),
+    queryKey: [...queryKeys.models.detail(modelId), org],
+    queryFn: () => getModel(modelId),
     enabled: !!org && !!modelId,
   });
 
@@ -163,39 +163,39 @@ export function useLlmModel(modelId: string) {
   };
 }
 
-export function useCreateLlmModel(providerId: string) {
+export function useCreateModel(providerId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: CreateLlmModelRequest) => createLlmModel(providerId, data),
+    mutationFn: (data: CreateModelRequest) => createModel(providerId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
       queryClient.invalidateQueries({
-        queryKey: queryKeys.llmProviders.models(providerId),
+        queryKey: queryKeys.providers.models(providerId),
       });
     },
   });
 }
 
-export function useUpdateLlmModel(modelId: string) {
+export function useUpdateModel(modelId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: UpdateLlmModelRequest) => updateLlmModel(modelId, data),
+    mutationFn: (data: UpdateModelRequest) => updateModel(modelId, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
     },
   });
 }
 
-export function useDeleteLlmModel() {
+export function useDeleteModel() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (modelId: string) => deleteLlmModel(modelId),
+    mutationFn: (modelId: string) => deleteModel(modelId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
     },
   });
 }

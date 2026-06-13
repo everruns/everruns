@@ -4,14 +4,14 @@ import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
-  useLlmModels,
-  useLlmProviders,
-  useDeleteLlmProvider,
+  useModels,
+  useProviders,
+  useDeleteProvider,
   useSyncProviderModels,
-} from "@/hooks/use-llm-providers";
+} from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { Plus, Server } from "lucide-react";
-import type { LlmProvider } from "@/lib/api/types";
+import type { Provider } from "@/lib/api/types";
 
 import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { AddProviderDialog, SetApiKeyDialog } from "./provider-dialogs";
@@ -22,13 +22,13 @@ export default function ProvidersPage() {
     data: providers = [],
     isLoading: providersLoading,
     error: providersError,
-  } = useLlmProviders();
-  const { data: models = [], isLoading: modelsLoading } = useLlmModels();
-  const deleteProvider = useDeleteLlmProvider();
+  } = useProviders();
+  const { data: models = [], isLoading: modelsLoading } = useModels();
+  const deleteProvider = useDeleteProvider();
   const syncModels = useSyncProviderModels();
 
   const [addProviderOpen, setAddProviderOpen] = useState(false);
-  const [apiKeyProvider, setApiKeyProvider] = useState<LlmProvider | null>(null);
+  const [apiKeyProvider, setApiKeyProvider] = useState<Provider | null>(null);
   const [syncingProviderId, setSyncingProviderId] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<{
     type: "success" | "error";

@@ -41,7 +41,7 @@ fn raw_uuid() -> String {
 async fn create_llmsim_agent(server: &TestServer) -> String {
     let provider: Value = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": unique_id("AG-UI Test Provider"),
                 "provider_type": "llmsim"
@@ -53,10 +53,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let model: Value = server
         .post(
-            &format!(
-                "/v1/llm-providers/{}/models",
-                provider["id"].as_str().unwrap()
-            ),
+            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
             json!({
                 "model_id": unique_id("llmsim-streaming"),
                 "display_name": unique_id("AG-UI Streaming Model"),

@@ -1,9 +1,9 @@
 import { render, screen } from "@testing-library/react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import type { LlmProviderType } from "@/lib/api/types";
+import type { DriverId } from "@/lib/api/types";
 
 describe("ProviderIcon", () => {
-  const providerTypes: LlmProviderType[] = [
+  const providerTypes: DriverId[] = [
     "openai",
     "azure_openai",
     "openai_completions",
@@ -11,7 +11,7 @@ describe("ProviderIcon", () => {
     "gemini",
     "openrouter",
   ];
-  const filledProviderTypes: LlmProviderType[] = [
+  const filledProviderTypes: DriverId[] = [
     "openai",
     "azure_openai",
     "openai_completions",
@@ -47,7 +47,7 @@ describe("ProviderIcon", () => {
 
   it("renders fallback Server icon for unknown provider type", () => {
     // Cast to simulate an unknown provider type
-    const { container } = render(<ProviderIcon providerType={"unknown" as LlmProviderType} />);
+    const { container } = render(<ProviderIcon providerType={"unknown" as DriverId} />);
     // Should not render an SVG from our icon set
     const svg = container.querySelector("svg");
     // lucide-react Server icon renders as SVG too, so just confirm no <img>
@@ -117,6 +117,6 @@ describe("getProviderLabel", () => {
   });
 
   it("returns type string for unknown provider", () => {
-    expect(getProviderLabel("unknown" as LlmProviderType)).toBe("unknown");
+    expect(getProviderLabel("unknown" as DriverId)).toBe("unknown");
   });
 });

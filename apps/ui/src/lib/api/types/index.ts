@@ -9,7 +9,7 @@ export * from "./session-types";
 export * from "./message-types";
 export * from "./event-types";
 export * from "./auth-types";
-export * from "./llm-types";
+export * from "./provider-types";
 export * from "./capability-types";
 export * from "./durable-types";
 export * from "./mcp-types";

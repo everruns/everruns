@@ -6,7 +6,7 @@ import {
   useHarnesses,
   useSessions,
   useCreateSession,
-  useLlmModels,
+  useModels,
   usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
@@ -17,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionCard } from "@/components/session/session-card";
 import { ArrowLeft, Plus, ChevronLeft, ChevronRight } from "lucide-react";
-import type { LlmModelWithProvider } from "@/lib/api/types";
+import type { ModelWithProvider } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 
@@ -35,7 +35,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
     offset,
     limit: PAGE_SIZE,
   });
-  const { data: llmModels } = useLlmModels();
+  const { data: models } = useModels();
   const createSession = useCreateSession();
   const { data: organization } = useOrganization();
   const { data: harnesses } = useHarnesses();
@@ -46,9 +46,9 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, LlmModelWithProvider>();
-    return new Map(llmModels.map((m) => [m.id, m]));
-  }, [llmModels]);
+    if (!models) return new Map<string, ModelWithProvider>();
+    return new Map(models.map((m) => [m.id, m]));
+  }, [models]);
 
   const handleNewSession = async () => {
     const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;

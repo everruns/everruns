@@ -55,16 +55,16 @@ const mockModels = [
   },
 ];
 
-const mockUseLlmProviders = jest.fn();
-const mockUseLlmModels = jest.fn();
-const mockUseCreateLlmModel = jest.fn();
-const mockUseDeleteLlmModel = jest.fn();
+const mockUseProviders = jest.fn();
+const mockUseModels = jest.fn();
+const mockUseCreateModel = jest.fn();
+const mockUseDeleteModel = jest.fn();
 
-jest.mock("@/hooks/use-llm-providers", () => ({
-  useLlmProviders: () => mockUseLlmProviders(),
-  useLlmModels: () => mockUseLlmModels(),
-  useCreateLlmModel: () => mockUseCreateLlmModel(),
-  useDeleteLlmModel: () => mockUseDeleteLlmModel(),
+jest.mock("@/hooks/use-providers", () => ({
+  useProviders: () => mockUseProviders(),
+  useModels: () => mockUseModels(),
+  useCreateModel: () => mockUseCreateModel(),
+  useDeleteModel: () => mockUseDeleteModel(),
 }));
 
 jest.mock("@/hooks/use-organizations", () => ({
@@ -87,16 +87,16 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
-jest.mock("@/lib/api/llm-providers", () => ({
-  updateLlmModel: jest.fn(),
+jest.mock("@/lib/api/providers", () => ({
+  updateModel: jest.fn(),
 }));
 
 jest.mock("@/lib/query-keys", () => ({
   queryKeys: {
-    llmModels: {
-      all: ["llm-models"],
-      list: () => ["llm-models"],
-      detail: (id: string) => ["llm-models", id],
+    models: {
+      all: ["models"],
+      list: () => ["models"],
+      detail: (id: string) => ["models", id],
     },
     organizations: { all: ["organizations"], detail: (id: string) => ["organization", id] },
   },
@@ -117,21 +117,21 @@ describe("ModelsPage", () => {
       },
     });
 
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: mockProviders,
       isLoading: false,
       error: null,
     });
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: mockModels,
       isLoading: false,
       error: null,
     });
-    mockUseCreateLlmModel.mockReturnValue({
+    mockUseCreateModel.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
-    mockUseDeleteLlmModel.mockReturnValue({
+    mockUseDeleteModel.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
@@ -155,7 +155,7 @@ describe("ModelsPage", () => {
   });
 
   it("groups models into Enabled and Available sections", () => {
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [
         ...mockModels,
         {
@@ -184,7 +184,7 @@ describe("ModelsPage", () => {
 
   it("filters models by provider query parameter", () => {
     mockUseSearchParams.mockReturnValue(new URLSearchParams("provider=provider-2"));
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [
         ...mockModels,
         {
@@ -214,7 +214,7 @@ describe("ModelsPage", () => {
   });
 
   it("sorts models within a section by release date descending", () => {
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [
         {
           id: "older",
@@ -296,7 +296,7 @@ describe("ModelsPage", () => {
       structured_output: true,
       open_weights: false,
     };
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [
         {
           ...baseModel,
@@ -344,7 +344,7 @@ describe("ModelsPage", () => {
       open_weights: false,
       release_date: "2025-04-14",
     };
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [
         {
           ...baseModel,
@@ -375,7 +375,7 @@ describe("ModelsPage", () => {
   });
 
   it("shows empty state when no models exist", () => {
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -387,7 +387,7 @@ describe("ModelsPage", () => {
   });
 
   it("shows error message when models fail to load", () => {
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: [],
       isLoading: false,
       error: new Error("Network error"),
@@ -399,7 +399,7 @@ describe("ModelsPage", () => {
   });
 
   it("disables Add Model button when no providers exist", () => {
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,

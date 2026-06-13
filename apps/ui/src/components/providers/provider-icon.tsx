@@ -1,5 +1,5 @@
 import { Server } from "lucide-react";
-import type { LlmProviderType } from "@/lib/api/types";
+import type { DriverId } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
 function OpenAiIcon({ size }: { size: number }) {
@@ -87,7 +87,7 @@ function AwsBedrockIcon({ size }: { size: number }) {
   );
 }
 
-const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ size: number }>> = {
+const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
   openrouter: Server,
   azure_openai: AzureOpenAiIcon,
@@ -97,7 +97,7 @@ const PROVIDER_ICON_COMPONENTS: Record<LlmProviderType, React.ComponentType<{ si
   bedrock: AwsBedrockIcon,
 };
 
-const PROVIDER_LABELS: Record<LlmProviderType, string> = {
+const PROVIDER_LABELS: Record<DriverId, string> = {
   openai: "OpenAI (Responses)",
   openrouter: "OpenRouter",
   azure_openai: "Azure OpenAI",
@@ -108,7 +108,7 @@ const PROVIDER_LABELS: Record<LlmProviderType, string> = {
 };
 
 interface ProviderIconProps {
-  providerType: LlmProviderType;
+  providerType: DriverId;
   size?: "sm" | "md" | "lg";
   className?: string;
   showBackground?: boolean;
@@ -145,6 +145,6 @@ export function ProviderIcon({
   );
 }
 
-export function getProviderLabel(providerType: LlmProviderType): string {
+export function getProviderLabel(providerType: DriverId): string {
   return PROVIDER_LABELS[providerType] || providerType;
 }

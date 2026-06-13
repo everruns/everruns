@@ -1,7 +1,7 @@
 import { render, screen, act } from "@testing-library/react";
 import { Suspense } from "react";
 import AgentDetailPage from "@/app/(main)/agents/[agentId]/page";
-import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, Agent, ModelWithProvider } from "@/lib/api/types";
 
 // Mock next/navigation
 jest.mock("next/navigation", () => ({
@@ -122,7 +122,7 @@ const mockSessions: Session[] = [
   },
 ];
 
-const mockLlmModels: LlmModelWithProvider[] = [
+const mockModels: ModelWithProvider[] = [
   {
     id: "model-1",
     provider_id: "provider-1",
@@ -158,7 +158,7 @@ const mockUseAgent = jest.fn();
 const mockUseSessions = jest.fn();
 const mockUseCreateSession = jest.fn();
 const mockUseCapabilities = jest.fn();
-const mockUseLlmModels = jest.fn();
+const mockUseModels = jest.fn();
 const mockUseExportAgent = jest.fn();
 const mockUseCopyAgent = jest.fn();
 const mockUseHarnesses = jest.fn();
@@ -170,7 +170,7 @@ jest.mock("@/hooks", () => ({
   useSessions: (...args: unknown[]) => mockUseSessions(...args),
   useCreateSession: () => mockUseCreateSession(),
   useCapabilities: () => mockUseCapabilities(),
-  useLlmModels: () => mockUseLlmModels(),
+  useModels: () => mockUseModels(),
   useExportAgent: () => mockUseExportAgent(),
   useCopyAgent: () => mockUseCopyAgent(),
   useHarnesses: () => mockUseHarnesses(),
@@ -210,7 +210,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseSessions.mockReturnValue({ data: mockSessions, isLoading: false });
     mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCapabilities.mockReturnValue({ data: [] });
-    mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
+    mockUseModels.mockReturnValue({ data: mockModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
@@ -249,7 +249,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
   });
 
   it("does not display model badge when model data is not loaded", async () => {
-    mockUseLlmModels.mockReturnValue({ data: undefined });
+    mockUseModels.mockReturnValue({ data: undefined });
 
     await renderWithSuspense({ agentId: "agent-1" });
 
@@ -280,13 +280,13 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     expect(mockUseSessions).toHaveBeenCalled();
   });
 
-  it("calls useLlmModels hook", async () => {
+  it("calls useModels hook", async () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
-    expect(mockUseLlmModels).toHaveBeenCalled();
+    expect(mockUseModels).toHaveBeenCalled();
   });
 
-  it("renders useLlmModels data for default model display", async () => {
+  it("renders useModels data for default model display", async () => {
     const agentWithDefaultModel = { ...mockAgent, default_model_id: "model-1" };
     mockUseAgent.mockReturnValue({ data: agentWithDefaultModel, isLoading: false });
     await renderWithSuspense({ agentId: "agent-1" });
@@ -321,7 +321,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
     mockUseSessions.mockReturnValue({ data: [], isLoading: false });
     mockUseCreateSession.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCapabilities.mockReturnValue({ data: [] });
-    mockUseLlmModels.mockReturnValue({ data: mockLlmModels });
+    mockUseModels.mockReturnValue({ data: mockModels });
     mockUseExportAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
@@ -375,7 +375,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
       default_model_id: "model-1",
     };
     mockUseAgent.mockReturnValue({ data: agentWithDefaultModel, isLoading: false });
-    mockUseLlmModels.mockReturnValue({ data: undefined });
+    mockUseModels.mockReturnValue({ data: undefined });
 
     await renderWithSuspense({ agentId: "agent-1" });
 

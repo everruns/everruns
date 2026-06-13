@@ -1,5 +1,5 @@
 // LLM Provider API endpoints
-// Routes: /v1/llm-providers/...
+// Routes: /v1/providers/...
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
@@ -135,14 +135,14 @@ pub struct UpdateProviderRequest {
 /// Create a new LLM provider
 #[utoipa::path(
     post,
-    path = "/v1/llm-providers",
+    path = "/v1/providers",
     request_body = CreateProviderRequest,
     responses(
         (status = 201, description = "Provider created", body = WithUrls<Provider>),
         (status = 400, description = "Invalid request"),
         (status = 500, description = "Internal error")
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn create_provider(
     org: ResolvedOrg,
@@ -163,11 +163,11 @@ pub async fn create_provider(
 /// List all LLM providers
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers",
+    path = "/v1/providers",
     responses(
         (status = 200, description = "List of providers", body = ListResponse<WithUrls<Provider>>)
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn list_providers(
     org: ResolvedOrg,
@@ -182,7 +182,7 @@ pub async fn list_providers(
 /// Get a specific LLM provider
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -191,7 +191,7 @@ pub async fn list_providers(
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn get_provider(
     org: ResolvedOrg,
@@ -207,7 +207,7 @@ pub async fn get_provider(
 /// Update an LLM provider
 #[utoipa::path(
     patch,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -217,7 +217,7 @@ pub async fn get_provider(
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn update_provider(
     org: ResolvedOrg,
@@ -241,7 +241,7 @@ pub async fn update_provider(
 /// Delete an LLM provider
 #[utoipa::path(
     delete,
-    path = "/v1/llm-providers/{id}",
+    path = "/v1/providers/{id}",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -250,7 +250,7 @@ pub async fn update_provider(
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn delete_provider(
     org: ResolvedOrg,
@@ -269,7 +269,7 @@ pub async fn delete_provider(
 /// the database. Only works for providers with standard base URLs (not custom).
 #[utoipa::path(
     post,
-    path = "/v1/llm-providers/{id}/sync-models",
+    path = "/v1/providers/{id}/sync-models",
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -279,7 +279,7 @@ pub async fn delete_provider(
         (status = 404, description = "Provider not found"),
         (status = 500, description = "Sync failed")
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn sync_models(
     org: ResolvedOrg,
@@ -289,14 +289,14 @@ pub async fn sync_models(
     Ok(Json(SyncProviderModels { id }.run(&state.ctx(&org)).await?))
 }
 
-/// GET /v1/llm-providers/config
+/// GET /v1/providers/config
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers/config",
+    path = "/v1/providers/config",
     responses(
         (status = 200, description = "Resource config for LLM providers", body = ResourceConfigResponse),
     ),
-    tag = "llm-providers"
+    tag = "providers"
 )]
 pub async fn provider_config(
     State(auth): State<AuthState>,
@@ -313,18 +313,15 @@ pub async fn provider_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-providers/config", get(provider_config))
+        .route("/v1/providers/config", get(provider_config))
+        .route("/v1/providers", post(create_provider).get(list_providers))
         .route(
-            "/v1/llm-providers",
-            post(create_provider).get(list_providers),
-        )
-        .route(
-            "/v1/llm-providers/{id}",
+            "/v1/providers/{id}",
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),
         )
-        .route("/v1/llm-providers/{id}/sync-models", post(sync_models))
+        .route("/v1/providers/{id}/sync-models", post(sync_models))
         .with_state(state)
 }
 

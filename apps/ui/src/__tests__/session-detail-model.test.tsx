@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { SessionCard } from "@/components/session/session-card";
-import type { Session, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, ModelWithProvider } from "@/lib/api/types";
 
 // Mock next/link - using span with data-href to avoid linting issues
 jest.mock("next/link", () => ({
@@ -29,7 +29,7 @@ const mockSession: Session = {
   finished_at: null,
 };
 
-const mockLlmModel: LlmModelWithProvider = {
+const mockModel: ModelWithProvider = {
   id: "model-1",
   provider_id: "provider-1",
   model_id: "gpt-4o",
@@ -46,7 +46,7 @@ const mockLlmModel: LlmModelWithProvider = {
 
 describe("SessionCard - LLM Model Display", () => {
   it("displays LLM model badge when session has model", async () => {
-    render(<SessionCard session={mockSession} model={mockLlmModel} />);
+    render(<SessionCard session={mockSession} model={mockModel} />);
 
     expect(screen.getByText("GPT-4o")).toBeInTheDocument();
   });
@@ -58,7 +58,7 @@ describe("SessionCard - LLM Model Display", () => {
   });
 
   it("displays model badge alongside status badge", async () => {
-    render(<SessionCard session={mockSession} model={mockLlmModel} />);
+    render(<SessionCard session={mockSession} model={mockModel} />);
 
     // Both model and status should be visible
     expect(screen.getByText("GPT-4o")).toBeInTheDocument();
@@ -66,8 +66,8 @@ describe("SessionCard - LLM Model Display", () => {
   });
 
   it("displays different model names correctly", async () => {
-    const claudeModel: LlmModelWithProvider = {
-      ...mockLlmModel,
+    const claudeModel: ModelWithProvider = {
+      ...mockModel,
       id: "model-2",
       display_name: "Claude 3.5 Sonnet",
       provider_name: "Anthropic",
@@ -80,7 +80,7 @@ describe("SessionCard - LLM Model Display", () => {
   });
 
   it("links to org-level session URL", async () => {
-    render(<SessionCard session={mockSession} model={mockLlmModel} />);
+    render(<SessionCard session={mockSession} model={mockModel} />);
 
     // Check that the link points to the org-level session path
     const link = screen.getByTestId("session-link");
@@ -88,7 +88,7 @@ describe("SessionCard - LLM Model Display", () => {
   });
 
   it("displays agent name when provided", async () => {
-    render(<SessionCard session={mockSession} agentName="Test Agent" model={mockLlmModel} />);
+    render(<SessionCard session={mockSession} agentName="Test Agent" model={mockModel} />);
 
     expect(screen.getByText("Test Agent")).toBeInTheDocument();
   });

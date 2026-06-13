@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import type { LlmModelWithProvider, LlmProvider, UpdateLlmModelRequest } from "@/lib/api/types";
+import type { ModelWithProvider, Provider, UpdateModelRequest } from "@/lib/api/types";
 
 export function EditModelDialog({
   model,
@@ -30,11 +30,11 @@ export function EditModelDialog({
   onOpenChange,
   onSubmit,
 }: {
-  model: LlmModelWithProvider;
-  providers: LlmProvider[];
+  model: ModelWithProvider;
+  providers: Provider[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (modelId: string, data: UpdateLlmModelRequest) => Promise<void>;
+  onSubmit: (modelId: string, data: UpdateModelRequest) => Promise<void>;
 }) {
   const [providerId, setProviderId] = useState(model.provider_id);
   const [modelId, setModelId] = useState(model.model_id);

@@ -15,7 +15,7 @@ import {
   serverGetList,
   serverGetPaginated,
 } from "@/lib/server-query";
-import type { Agent, Harness, LlmModelWithProvider, Organization, Session } from "@/lib/api/types";
+import type { Agent, Harness, ModelWithProvider, Organization, Session } from "@/lib/api/types";
 import SessionsPageClient from "./sessions-page-client";
 
 const PAGE_SIZE = 20;
@@ -42,8 +42,8 @@ export default async function SessionsPage() {
         () =>
           serverGetPaginated<Session>(requestContext, `/v1/sessions?offset=0&limit=${PAGE_SIZE}`),
       ),
-      seedQueryData(queryClient, [...queryKeys.llmModels.list(), currentOrgId], () =>
-        serverGetList<LlmModelWithProvider>(requestContext, "/v1/llm-models"),
+      seedQueryData(queryClient, [...queryKeys.models.list(), currentOrgId], () =>
+        serverGetList<ModelWithProvider>(requestContext, "/v1/models"),
       ),
     ]);
   }

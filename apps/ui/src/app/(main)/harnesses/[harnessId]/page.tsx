@@ -4,7 +4,7 @@ import { use, useMemo, useCallback, useState } from "react";
 import {
   useHarness,
   useCapabilities,
-  useLlmModels,
+  useModels,
   useDeleteHarness,
   useCopyHarness,
   useHarnesses,
@@ -27,7 +27,7 @@ import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice
 import { ArrowLeft, Pencil, Copy, Trash2, Eye, LayoutDashboard, BarChart3 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
-import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
+import type { Capability, ModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
@@ -51,15 +51,15 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
   const { data: allCapabilities } = useCapabilities();
-  const { data: llmModels } = useLlmModels();
+  const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useHarnessStats(harnessId);
   const deleteHarness = useDeleteHarness();
   const copyHarness = useCopyHarness();
 
   const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, LlmModelWithProvider>();
-    return new Map(llmModels.map((m) => [m.id, m]));
-  }, [llmModels]);
+    if (!models) return new Map<string, ModelWithProvider>();
+    return new Map(models.map((m) => [m.id, m]));
+  }, [models]);
 
   const defaultModel = harness?.default_model_id
     ? modelMap.get(harness.default_model_id)

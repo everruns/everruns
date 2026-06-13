@@ -371,18 +371,18 @@ When `limit` is provided:
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/llm-providers` | List providers |
-| POST | `/v1/llm-providers` | Create provider |
-| GET | `/v1/llm-providers/{id}` | Get provider |
-| PATCH | `/v1/llm-providers/{id}` | Update provider (API key, base URL) |
-| DELETE | `/v1/llm-providers/{id}` | Delete provider |
-| POST | `/v1/llm-providers/{id}/sync-models` | Sync models from provider API |
-| GET | `/v1/llm-providers/{id}/models` | List models for provider |
-| POST | `/v1/llm-providers/{id}/models` | Create model for provider |
-| GET | `/v1/llm-models` | List all models |
-| GET | `/v1/llm-models/{id}` | Get model |
-| PATCH | `/v1/llm-models/{id}` | Update model, including provider assignment |
-| DELETE | `/v1/llm-models/{id}` | Delete model |
+| GET | `/v1/providers` | List providers |
+| POST | `/v1/providers` | Create provider |
+| GET | `/v1/providers/{id}` | Get provider |
+| PATCH | `/v1/providers/{id}` | Update provider (API key, base URL) |
+| DELETE | `/v1/providers/{id}` | Delete provider |
+| POST | `/v1/providers/{id}/sync-models` | Sync models from provider API |
+| GET | `/v1/providers/{id}/models` | List models for provider |
+| POST | `/v1/providers/{id}/models` | Create model for provider |
+| GET | `/v1/models` | List all models |
+| GET | `/v1/models/{id}` | Get model |
+| PATCH | `/v1/models/{id}` | Update model, including provider assignment |
+| DELETE | `/v1/models/{id}` | Delete model |
 
 #### Model Sync
 
@@ -390,7 +390,7 @@ The sync endpoint discovers available models from a provider's API. Returns `"st
 
 #### List Models Query Parameters
 
-`GET /v1/llm-models` supports:
+`GET /v1/models` supports:
 - `source` - Filter by source: `manual`, `discovered`, `predefined`
 - `include_stale` - Include stale models (default: `true`)
 - `favorites_only` - Only return favorites (default: `false`)
@@ -521,8 +521,8 @@ These endpoints return all items wrapped in `{"data": [...], "total": N}`:
 - `GET /v1/agents` - Returns all agents
 - `GET /v1/sessions/{session_id}/messages` - Returns all messages
 - `GET /v1/sessions/{session_id}/events` - Returns all events (supports optional `limit`/`before_sequence` pagination)
-- `GET /v1/llm-providers` - Returns all providers
-- `GET /v1/llm-models` - Returns all models
+- `GET /v1/providers` - Returns all providers
+- `GET /v1/models` - Returns all models
 - `GET /v1/durable/workers` - Returns all workers
 - `GET /v1/durable/workflows` - Returns all workflows
 - `GET /v1/durable/workflows/{id}/events` - Returns workflow events
@@ -574,8 +574,8 @@ GET /v1/{resource}/config → ResourceConfigResponse
 | `GET /v1/apps/config` | App policies |
 | `GET /v1/sessions/config` | Session policies |
 | `GET /v1/mcp-servers/config` | MCP server policies |
-| `GET /v1/llm-providers/config` | LLM provider policies |
-| `GET /v1/llm-models/config` | LLM model policies |
+| `GET /v1/providers/config` | LLM provider policies |
+| `GET /v1/models/config` | LLM model policies |
 | `GET /v1/skills/config` | Skill policies |
 
 See `specs/permissions.md` for the full policy model, `ResourceConfigResponse` details, and response format.

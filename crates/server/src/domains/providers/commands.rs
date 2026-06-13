@@ -38,7 +38,7 @@ impl Command for CreateProvider {
             category: "providers",
             description: "Create a new LLM provider.",
             method: "POST",
-            path: "/v1/llm-providers",
+            path: "/v1/providers",
         }
     }
 
@@ -76,7 +76,7 @@ impl Command for ListProviders {
             category: "providers",
             description: "List all LLM providers.",
             method: "GET",
-            path: "/v1/llm-providers",
+            path: "/v1/providers",
         }
     }
 
@@ -109,7 +109,7 @@ impl Command for GetProvider {
             category: "providers",
             description: "Get a specific LLM provider.",
             method: "GET",
-            path: "/v1/llm-providers/{id}",
+            path: "/v1/providers/{id}",
         }
     }
 
@@ -155,7 +155,7 @@ impl Command for UpdateProvider {
             category: "providers",
             description: "Update an LLM provider.",
             method: "PATCH",
-            path: "/v1/llm-providers/{id}",
+            path: "/v1/providers/{id}",
         }
     }
 
@@ -200,7 +200,7 @@ impl Command for DeleteProvider {
             category: "providers",
             description: "Delete an LLM provider.",
             method: "DELETE",
-            path: "/v1/llm-providers/{id}",
+            path: "/v1/providers/{id}",
         }
     }
 
@@ -242,7 +242,7 @@ impl Command for SyncProviderModels {
             category: "providers",
             description: "Discover and sync models from a provider.",
             method: "POST",
-            path: "/v1/llm-providers/{id}/sync-models",
+            path: "/v1/providers/{id}/sync-models",
         }
     }
 

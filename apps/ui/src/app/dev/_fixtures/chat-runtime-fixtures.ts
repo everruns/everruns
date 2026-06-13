@@ -4,7 +4,7 @@ import type { PendingImage } from "@/lib/api/images";
 import type {
   CommandDescriptor,
   Event,
-  LlmModel,
+  Model,
   ToolCompletedData,
   ToolProgressData,
 } from "@/lib/api/types";
@@ -18,7 +18,7 @@ export interface DevChatFixture {
   toolOutputMap: Map<string, ToolOutputStreams>;
   pendingImages: PendingImage[];
   commands: CommandDescriptor[];
-  llmModels: LlmModel[];
+  models: Model[];
   initialInputValue: string;
   initialModelId: string;
   initialReasoningEffort: string;
@@ -153,7 +153,7 @@ export const devCommands: CommandDescriptor[] = [
   },
 ];
 
-export const devModels: LlmModel[] = [
+export const devModels: Model[] = [
   {
     id: "model-kimi-k2.5",
     provider_id: "provider-openrouter",
@@ -486,7 +486,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       toolOutputMap: new Map([["ta-bash", { stdout: "/home/daytona\nLinux\n", stderr: "" }]]),
       pendingImages: makePendingImages(),
       commands: devCommands,
-      llmModels: devModels,
+      models: devModels,
       initialInputValue: "/ship",
       initialModelId: "model-kimi-k2.5",
       initialReasoningEffort: "medium",
@@ -736,7 +736,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
     toolOutputMap: new Map(),
     pendingImages: makePendingImages(),
     commands: devCommands,
-    llmModels: devModels,
+    models: devModels,
     initialInputValue: "/process-issues",
     initialModelId: "model-kimi-k2.5",
     initialReasoningEffort: "medium",

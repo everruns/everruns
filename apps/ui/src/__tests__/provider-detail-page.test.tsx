@@ -60,14 +60,14 @@ const mockModels = [
   },
 ];
 
-const mockUseLlmProvider = jest.fn();
-const mockUseLlmModels = jest.fn();
-const mockUseUpdateLlmProvider = jest.fn();
+const mockUseProvider = jest.fn();
+const mockUseModels = jest.fn();
+const mockUseUpdateProvider = jest.fn();
 
-jest.mock("@/hooks/use-llm-providers", () => ({
-  useLlmProvider: () => mockUseLlmProvider(),
-  useLlmModels: () => mockUseLlmModels(),
-  useUpdateLlmProvider: () => mockUseUpdateLlmProvider(),
+jest.mock("@/hooks/use-providers", () => ({
+  useProvider: () => mockUseProvider(),
+  useModels: () => mockUseModels(),
+  useUpdateProvider: () => mockUseUpdateProvider(),
 }));
 
 describe("ProviderDetailPage", () => {
@@ -86,9 +86,9 @@ describe("ProviderDetailPage", () => {
       },
     });
     updateProvider = jest.fn().mockResolvedValue(mockProvider);
-    mockUseLlmProvider.mockReturnValue({ data: mockProvider, isLoading: false, error: null });
-    mockUseLlmModels.mockReturnValue({ data: mockModels, isLoading: false, error: null });
-    mockUseUpdateLlmProvider.mockReturnValue({ mutateAsync: updateProvider, isPending: false });
+    mockUseProvider.mockReturnValue({ data: mockProvider, isLoading: false, error: null });
+    mockUseModels.mockReturnValue({ data: mockModels, isLoading: false, error: null });
+    mockUseUpdateProvider.mockReturnValue({ mutateAsync: updateProvider, isPending: false });
   });
 
   it("renders provider details with model counts", async () => {
@@ -129,7 +129,7 @@ describe("ProviderDetailPage", () => {
 
   it("does not reset an in-progress name edit after provider refetch", async () => {
     let provider = mockProvider;
-    mockUseLlmProvider.mockImplementation(() => ({
+    mockUseProvider.mockImplementation(() => ({
       data: provider,
       isLoading: false,
       error: null,

@@ -5605,513 +5605,6 @@
         }
       }
     },
-    "/v1/llm-models": {
-      "get": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "List all models across all providers",
-        "operationId": "list_all_models",
-        "parameters": [
-          {
-            "name": "source",
-            "in": "query",
-            "description": "Filter by model source (manual, discovered, predefined)",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/ModelSource"
-                }
-              ]
-            }
-          },
-          {
-            "name": "include_stale",
-            "in": "query",
-            "description": "Include models that are stale (not seen in recent sync). Default: true",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          },
-          {
-            "name": "favorites_only",
-            "in": "query",
-            "description": "Only return favorite models. Default: false",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of all models",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_ModelWithProvider"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/llm-models/config": {
-      "get": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "GET /v1/llm-models/config",
-        "operationId": "model_config",
-        "responses": {
-          "200": {
-            "description": "Resource config for LLM models",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResourceConfigResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/llm-models/{id}": {
-      "get": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "Get a specific model with provider info and profile",
-        "operationId": "get_model",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Model ID (prefixed, e.g., mod_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Model found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_ModelWithProvider"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid model ID"
-          },
-          "404": {
-            "description": "Model not found"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "Delete a model",
-        "operationId": "delete_model",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Model ID (prefixed, e.g., mod_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Model deleted"
-          },
-          "400": {
-            "description": "Invalid model ID"
-          },
-          "404": {
-            "description": "Model not found"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "Update a model",
-        "operationId": "update_model",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Model ID (prefixed, e.g., mod_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateModelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Model updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Model"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid model ID"
-          },
-          "404": {
-            "description": "Model not found"
-          }
-        }
-      }
-    },
-    "/v1/llm-providers": {
-      "get": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "List all LLM providers",
-        "operationId": "list_providers",
-        "responses": {
-          "200": {
-            "description": "List of providers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_Provider"
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "Create a new LLM provider",
-        "operationId": "create_provider",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProviderRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Provider created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Provider"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        }
-      }
-    },
-    "/v1/llm-providers/config": {
-      "get": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "GET /v1/llm-providers/config",
-        "operationId": "provider_config",
-        "responses": {
-          "200": {
-            "description": "Resource config for LLM providers",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ResourceConfigResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/v1/llm-providers/{id}": {
-      "get": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "Get a specific LLM provider",
-        "operationId": "get_provider",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Provider found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Provider"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          },
-          "404": {
-            "description": "Provider not found"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "Delete an LLM provider",
-        "operationId": "delete_provider",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Provider deleted"
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          },
-          "404": {
-            "description": "Provider not found"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "Update an LLM provider",
-        "operationId": "update_provider",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateProviderRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Provider updated",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Provider"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          },
-          "404": {
-            "description": "Provider not found"
-          }
-        }
-      }
-    },
-    "/v1/llm-providers/{id}/sync-models": {
-      "post": {
-        "tags": [
-          "llm-providers"
-        ],
-        "summary": "Sync models from an LLM provider",
-        "description": "Fetches the list of available models from the provider's API and updates\nthe database. Only works for providers with standard base URLs (not custom).",
-        "operationId": "sync_models",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Models synced",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SyncModelsResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          },
-          "404": {
-            "description": "Provider not found"
-          },
-          "500": {
-            "description": "Sync failed"
-          }
-        }
-      }
-    },
-    "/v1/llm-providers/{provider_id}/models": {
-      "get": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "List models for a specific provider",
-        "operationId": "list_provider_models",
-        "parameters": [
-          {
-            "name": "provider_id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of models",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_Model"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          }
-        }
-      },
-      "post": {
-        "tags": [
-          "llm-models"
-        ],
-        "summary": "Create a new model for a provider",
-        "operationId": "create_model",
-        "parameters": [
-          {
-            "name": "provider_id",
-            "in": "path",
-            "description": "Provider ID (prefixed, e.g., prov_...)",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateModelRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "description": "Model created",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WithUrls_Model"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid provider ID"
-          },
-          "404": {
-            "description": "Provider not found"
-          },
-          "500": {
-            "description": "Internal error"
-          }
-        }
-      }
-    },
     "/v1/mcp-servers": {
       "get": {
         "tags": [
@@ -7141,6 +6634,197 @@
         }
       }
     },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "List all models across all providers",
+        "operationId": "list_all_models",
+        "parameters": [
+          {
+            "name": "source",
+            "in": "query",
+            "description": "Filter by model source (manual, discovered, predefined)",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/ModelSource"
+                }
+              ]
+            }
+          },
+          {
+            "name": "include_stale",
+            "in": "query",
+            "description": "Include models that are stale (not seen in recent sync). Default: true",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "favorites_only",
+            "in": "query",
+            "description": "Only return favorite models. Default: false",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of all models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_ModelWithProvider"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models/config": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "GET /v1/models/config",
+        "operationId": "model_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for LLM models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models/{id}": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Get a specific model with provider info and profile",
+        "operationId": "get_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID (prefixed, e.g., mod_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Model found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_ModelWithProvider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid model ID"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Delete a model",
+        "operationId": "delete_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID (prefixed, e.g., mod_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Model deleted"
+          },
+          "400": {
+            "description": "Invalid model ID"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Update a model",
+        "operationId": "update_model",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Model ID (prefixed, e.g., mod_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Model updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Model"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid model ID"
+          },
+          "404": {
+            "description": "Model not found"
+          }
+        }
+      }
+    },
     "/v1/orgs": {
       "get": {
         "tags": [
@@ -8007,6 +7691,322 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/v1/providers": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "List all LLM providers",
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "description": "List of providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_Provider"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Create a new LLM provider",
+        "operationId": "create_provider",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Provider created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "500": {
+            "description": "Internal error"
+          }
+        }
+      }
+    },
+    "/v1/providers/config": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "GET /v1/providers/config",
+        "operationId": "provider_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for LLM providers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/providers/{id}": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Get a specific LLM provider",
+        "operationId": "get_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Delete an LLM provider",
+        "operationId": "delete_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Provider deleted"
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Update an LLM provider",
+        "operationId": "update_provider",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateProviderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Provider updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Provider"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          }
+        }
+      }
+    },
+    "/v1/providers/{id}/sync-models": {
+      "post": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "Sync models from an LLM provider",
+        "description": "Fetches the list of available models from the provider's API and updates\nthe database. Only works for providers with standard base URLs (not custom).",
+        "operationId": "sync_models",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Models synced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncModelsResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          },
+          "500": {
+            "description": "Sync failed"
+          }
+        }
+      }
+    },
+    "/v1/providers/{provider_id}/models": {
+      "get": {
+        "tags": [
+          "models"
+        ],
+        "summary": "List models for a specific provider",
+        "operationId": "list_provider_models",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_Model"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "models"
+        ],
+        "summary": "Create a new model for a provider",
+        "operationId": "create_model",
+        "parameters": [
+          {
+            "name": "provider_id",
+            "in": "path",
+            "description": "Provider ID (prefixed, e.g., prov_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateModelRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Model created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Model"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid provider ID"
+          },
+          "404": {
+            "description": "Provider not found"
+          },
+          "500": {
+            "description": "Internal error"
           }
         }
       }
@@ -34209,11 +34209,11 @@
       "description": "Event streaming endpoints (SSE)"
     },
     {
-      "name": "llm-providers",
+      "name": "providers",
       "description": "LLM Provider management endpoints"
     },
     {
-      "name": "llm-models",
+      "name": "models",
       "description": "LLM Model management endpoints"
     },
     {

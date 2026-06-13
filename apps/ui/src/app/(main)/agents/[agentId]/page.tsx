@@ -7,7 +7,7 @@ import {
   useSessions,
   useCreateSession,
   useCapabilities,
-  useLlmModels,
+  useModels,
   useExportAgent,
   useCopyAgent,
   useAgentStats,
@@ -41,7 +41,7 @@ import {
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
-import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
@@ -79,7 +79,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const totalSessions = sessionsResponse?.total ?? 0;
   const hasMoreSessions = totalSessions > 10;
   const { data: allCapabilities } = useCapabilities();
-  const { data: llmModels } = useLlmModels();
+  const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const createSession = useCreateSession();
   const { data: organization } = useOrganization();
@@ -89,9 +89,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, LlmModelWithProvider>();
-    return new Map(llmModels.map((m) => [m.id, m]));
-  }, [llmModels]);
+    if (!models) return new Map<string, ModelWithProvider>();
+    return new Map(models.map((m) => [m.id, m]));
+  }, [models]);
 
   // Get the agent's default model
   const defaultModel = agent?.default_model_id ? modelMap.get(agent.default_model_id) : undefined;

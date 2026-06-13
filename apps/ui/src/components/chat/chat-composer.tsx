@@ -24,14 +24,14 @@ import {
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { cn } from "@/lib/utils";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
-import type { CommandDescriptor, Controls, LlmModel, ReasoningEffortConfig } from "@/lib/api/types";
+import type { CommandDescriptor, Controls, Model, ReasoningEffortConfig } from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/providers/locale-provider";
 
 export function ChatComposer({
   commands,
-  llmModels,
+  models,
   inputValue,
   onInputChange,
   onSubmit,
@@ -65,7 +65,7 @@ export function ChatComposer({
   onToggleVoice,
 }: {
   commands: CommandDescriptor[];
-  llmModels: LlmModel[];
+  models: Model[];
   inputValue: string;
   onInputChange: (value: string) => void;
   onSubmit: (controls?: Controls) => Promise<void>;
@@ -218,7 +218,7 @@ export function ChatComposer({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
-                  {llmModels
+                  {models
                     .filter((m) => m.enabled)
                     .map((model) => (
                       <SelectItem key={model.id} value={model.id}>

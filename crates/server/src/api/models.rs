@@ -1,5 +1,5 @@
 // LLM Model API endpoints
-// Routes: /v1/llm-providers/:provider_id/models/... and /v1/llm-models/...
+// Routes: /v1/providers/:provider_id/models/... and /v1/models/...
 
 use crate::api::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
@@ -138,7 +138,7 @@ pub struct UpdateModelRequest {
 /// Create a new model for a provider
 #[utoipa::path(
     post,
-    path = "/v1/llm-providers/{provider_id}/models",
+    path = "/v1/providers/{provider_id}/models",
     params(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -149,7 +149,7 @@ pub struct UpdateModelRequest {
         (status = 404, description = "Provider not found"),
         (status = 500, description = "Internal error")
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn create_model(
     org: ResolvedOrg,
@@ -173,7 +173,7 @@ pub async fn create_model(
 /// List models for a specific provider
 #[utoipa::path(
     get,
-    path = "/v1/llm-providers/{provider_id}/models",
+    path = "/v1/providers/{provider_id}/models",
     params(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
@@ -181,7 +181,7 @@ pub async fn create_model(
         (status = 200, description = "List of models", body = ListResponse<WithUrls<Model>>),
         (status = 400, description = "Invalid provider ID")
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn list_provider_models(
     org: ResolvedOrg,
@@ -199,14 +199,14 @@ pub async fn list_provider_models(
 /// List all models across all providers
 #[utoipa::path(
     get,
-    path = "/v1/llm-models",
+    path = "/v1/models",
     params(
         ListModelsQuery
     ),
     responses(
         (status = 200, description = "List of all models", body = ListResponse<WithUrls<ModelWithProvider>>)
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn list_all_models(
     org: ResolvedOrg,
@@ -228,7 +228,7 @@ pub async fn list_all_models(
 /// Get a specific model with provider info and profile
 #[utoipa::path(
     get,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -237,7 +237,7 @@ pub async fn list_all_models(
         (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn get_model(
     org: ResolvedOrg,
@@ -250,7 +250,7 @@ pub async fn get_model(
 /// Update a model
 #[utoipa::path(
     patch,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -260,7 +260,7 @@ pub async fn get_model(
         (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn update_model(
     org: ResolvedOrg,
@@ -285,7 +285,7 @@ pub async fn update_model(
 /// Delete a model
 #[utoipa::path(
     delete,
-    path = "/v1/llm-models/{id}",
+    path = "/v1/models/{id}",
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
@@ -294,7 +294,7 @@ pub async fn update_model(
         (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn delete_model(
     org: ResolvedOrg,
@@ -307,14 +307,14 @@ pub async fn delete_model(
         .await
 }
 
-/// GET /v1/llm-models/config
+/// GET /v1/models/config
 #[utoipa::path(
     get,
-    path = "/v1/llm-models/config",
+    path = "/v1/models/config",
     responses(
         (status = 200, description = "Resource config for LLM models", body = ResourceConfigResponse),
     ),
-    tag = "llm-models"
+    tag = "models"
 )]
 pub async fn model_config(
     State(auth): State<AuthState>,
@@ -331,14 +331,14 @@ pub async fn model_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-models/config", get(model_config))
+        .route("/v1/models/config", get(model_config))
         .route(
-            "/v1/llm-providers/{provider_id}/models",
+            "/v1/providers/{provider_id}/models",
             post(create_model).get(list_provider_models),
         )
-        .route("/v1/llm-models", get(list_all_models))
+        .route("/v1/models", get(list_all_models))
         .route(
-            "/v1/llm-models/{id}",
+            "/v1/models/{id}",
             get(get_model).patch(update_model).delete(delete_model),
         )
         .with_state(state)

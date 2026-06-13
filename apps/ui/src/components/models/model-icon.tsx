@@ -1,4 +1,4 @@
-import type { LlmModelWithProvider, ModelVendor } from "@/lib/api/types";
+import type { ModelWithProvider, ModelVendor } from "@/lib/api/types";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { cn } from "@/lib/utils";
 
@@ -122,7 +122,7 @@ const sizeMap = {
   lg: { icon: 24, container: "p-2.5" },
 };
 
-type ModelLike = Pick<LlmModelWithProvider, "provider_type"> & {
+type ModelLike = Pick<ModelWithProvider, "provider_type"> & {
   model_vendor?: ModelVendor | null;
 };
 

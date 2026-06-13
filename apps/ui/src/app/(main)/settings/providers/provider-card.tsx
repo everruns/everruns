@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Key, Trash2, RefreshCw, Boxes, ExternalLink } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { formatCountLabel } from "@/lib/formatting";
-import type { LlmProvider } from "@/lib/api/types";
+import type { Provider } from "@/lib/api/types";
 
 type ProviderModelCounts = {
   total: number;
@@ -24,9 +24,9 @@ export function ProviderCard({
   modelCounts,
   modelsLoading,
 }: {
-  provider: LlmProvider;
+  provider: Provider;
   onDelete: (id: string) => void;
-  onSetApiKey: (provider: LlmProvider) => void;
+  onSetApiKey: (provider: Provider) => void;
   onSyncModels: (id: string) => void;
   isSyncing: boolean;
   modelCounts: ProviderModelCounts;

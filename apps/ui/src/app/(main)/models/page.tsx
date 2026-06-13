@@ -20,18 +20,18 @@ import { PageShell, PageHeader, PageBody } from "@/components/layout";
 import { AddModelDialog } from "@/components/models/add-model-dialog";
 import { ModelRow } from "@/components/models/model-row";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { useLlmModels, useLlmProviders, useDeleteLlmModel } from "@/hooks/use-llm-providers";
+import { useModels, useProviders, useDeleteModel } from "@/hooks/use-providers";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
 import { usePageTitle } from "@/hooks";
-import { updateLlmModel } from "@/lib/api/llm-providers";
+import { updateModel } from "@/lib/api/providers";
 import { queryKeys } from "@/lib/query-keys";
-import type { LlmModelWithProvider } from "@/lib/api/types";
+import type { ModelWithProvider } from "@/lib/api/types";
 
 // Order models by release date desc (newest first), then by created_at desc.
 // Models without a release_date in their profile fall to the bottom; this works
 // uniformly across providers because release_date comes from the shared
 // models.dev profile.
-function compareByRecency(a: LlmModelWithProvider, b: LlmModelWithProvider): number {
+function compareByRecency(a: ModelWithProvider, b: ModelWithProvider): number {
   const aDate = a.profile?.release_date ?? "";
   const bDate = b.profile?.release_date ?? "";
   if (aDate !== bDate) return bDate.localeCompare(aDate);
@@ -42,11 +42,11 @@ export default function ModelsPage() {
   usePageTitle("Models");
   const queryClient = useQueryClient();
   const searchParams = useSearchParams();
-  const { data: providers = [] } = useLlmProviders();
-  const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();
+  const { data: providers = [] } = useProviders();
+  const { data: models = [], isLoading: modelsLoading, error: modelsError } = useModels();
   const { data: org } = useOrganization();
   const updateOrg = useUpdateOrganization();
-  const deleteModel = useDeleteLlmModel();
+  const deleteModel = useDeleteModel();
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
   const selectedProviderId = searchParams.get("provider");
@@ -88,8 +88,8 @@ export default function ModelsPage() {
   const handleToggleEnabled = async (modelId: string, enabled: boolean) => {
     setTogglingModelId(modelId);
     try {
-      await updateLlmModel(modelId, { enabled });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+      await updateModel(modelId, { enabled });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
       if (!enabled) {
         await queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       }
@@ -98,10 +98,10 @@ export default function ModelsPage() {
     }
   };
 
-  const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateLlmModel>[1]) => {
-    await updateLlmModel(modelId, data);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+  const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateModel>[1]) => {
+    await updateModel(modelId, data);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.models.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.providers.all });
   };
 
   const handleSetDefaultModel = async (modelId: string) => {

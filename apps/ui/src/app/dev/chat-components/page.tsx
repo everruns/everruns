@@ -94,7 +94,7 @@ export default function DevChatComponentsPage() {
               <div className={chatSurfaceStyles.composerSection}>
                 <ChatComposer
                   commands={devCommands}
-                  llmModels={devModels}
+                  models={devModels}
                   inputValue={inputValue}
                   onInputChange={setInputValue}
                   onSubmit={async () => undefined}

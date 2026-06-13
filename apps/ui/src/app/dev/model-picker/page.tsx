@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft, Star } from "lucide-react";
 import { ModelPicker, FavoriteToggle } from "@/components/models/model-picker";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { useLlmModels } from "@/hooks/use-llm-providers";
+import { useModels } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -53,7 +53,7 @@ function ShowcaseItem({ label, children }: { label: string; children: React.Reac
 // ============================================
 
 function ModelList() {
-  const { data: models = [], isLoading } = useLlmModels();
+  const { data: models = [], isLoading } = useModels();
 
   if (isLoading) {
     return (

@@ -43,7 +43,7 @@ import {
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { useCommandPalette } from "@/hooks/use-command-palette";
-import { useLlmProviders } from "@/hooks/use-llm-providers";
+import { useProviders } from "@/hooks/use-providers";
 import { usePolicies } from "@/hooks/use-policies";
 import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
@@ -144,16 +144,12 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
     createOrganization: createOrgOverride,
   } = useAuth();
   const featureFlags = useFeatureFlags();
-  const {
-    data: llmProviders,
-    isLoading: llmProvidersLoading,
-    isError: llmProvidersError,
-  } = useLlmProviders();
+  const { data: providers, isLoading: providersLoading, isError: providersError } = useProviders();
   const durablePolicies = usePolicies("durable");
   const { setOpen: openCommandPalette } = useCommandPalette();
 
-  const llmProvidersReady = !llmProvidersLoading && !llmProvidersError;
-  const shouldShowChatWarning = llmProvidersReady && (!llmProviders || llmProviders.length === 0);
+  const providersReady = !providersLoading && !providersError;
+  const shouldShowChatWarning = providersReady && (!providers || providers.length === 0);
 
   const durableAllowed = durablePolicies.data ? durablePolicies.can("durable.view") : false;
   const baseSections = config?.navigation

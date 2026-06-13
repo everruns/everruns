@@ -20,15 +20,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCreateLlmModel } from "@/hooks/use-llm-providers";
-import type { CreateLlmModelRequest, LlmProvider } from "@/lib/api/types";
+import { useCreateModel } from "@/hooks/use-providers";
+import type { CreateModelRequest, Provider } from "@/lib/api/types";
 
 export function AddModelDialog({
   providers,
   open,
   onOpenChange,
 }: {
-  providers: LlmProvider[];
+  providers: Provider[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -37,12 +37,12 @@ export function AddModelDialog({
   const [displayName, setDisplayName] = useState("");
   const [enabled, setEnabled] = useState(true);
 
-  const createModel = useCreateLlmModel(providerId);
+  const createModel = useCreateModel(providerId);
   const selectedProviderName = providers.find((provider) => provider.id === providerId)?.name;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data: CreateLlmModelRequest = {
+    const data: CreateModelRequest = {
       model_id: modelId,
       display_name: displayName,
       enabled,

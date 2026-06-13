@@ -13,11 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCreateLlmProvider, useUpdateLlmProvider } from "@/hooks/use-llm-providers";
+import { useCreateProvider, useUpdateProvider } from "@/hooks/use-providers";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import type { LlmProvider, LlmProviderType, CreateLlmProviderRequest } from "@/lib/api/types";
+import type { Provider, DriverId, CreateProviderRequest } from "@/lib/api/types";
 
-const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
+const PROVIDER_TYPES: { value: DriverId; label: string }[] = [
   { value: "openai", label: "OpenAI (Responses API)" },
   { value: "openrouter", label: "OpenRouter" },
   { value: "azure_openai", label: "Azure OpenAI" },
@@ -28,7 +28,7 @@ const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
 ];
 
 // Get API key placeholder based on provider type
-function getApiKeyPlaceholder(providerType: LlmProviderType): string {
+function getApiKeyPlaceholder(providerType: DriverId): string {
   switch (providerType) {
     case "openai":
     case "openai_completions":
@@ -46,7 +46,7 @@ function getApiKeyPlaceholder(providerType: LlmProviderType): string {
   }
 }
 
-function getBaseUrlPlaceholder(providerType: LlmProviderType): string {
+function getBaseUrlPlaceholder(providerType: DriverId): string {
   switch (providerType) {
     case "azure_openai":
       return "https://your-resource.openai.azure.com/openai/v1";
@@ -73,15 +73,15 @@ export function AddProviderDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const [name, setName] = useState("");
-  const [providerType, setProviderType] = useState<LlmProviderType>("openai");
+  const [providerType, setProviderType] = useState<DriverId>("openai");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
 
-  const createProvider = useCreateLlmProvider();
+  const createProvider = useCreateProvider();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data: CreateLlmProviderRequest = {
+    const data: CreateProviderRequest = {
       name,
       provider_type: providerType,
       base_url: baseUrl || undefined,
@@ -117,10 +117,7 @@ export function AddProviderDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="provider-type">Provider Type</Label>
-            <Select
-              value={providerType}
-              onValueChange={(v) => setProviderType(v as LlmProviderType)}
-            >
+            <Select value={providerType} onValueChange={(v) => setProviderType(v as DriverId)}>
               <SelectTrigger className="w-full">
                 <div className="flex items-center gap-2">
                   <ProviderIcon providerType={providerType} size="sm" showBackground={false} />
@@ -191,12 +188,12 @@ export function SetApiKeyDialog({
   open,
   onOpenChange,
 }: {
-  provider: LlmProvider | null;
+  provider: Provider | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const [apiKey, setApiKey] = useState("");
-  const updateProvider = useUpdateLlmProvider(provider?.id || "");
+  const updateProvider = useUpdateProvider(provider?.id || "");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
