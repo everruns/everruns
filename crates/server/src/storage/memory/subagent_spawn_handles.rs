@@ -54,8 +54,6 @@ impl SubagentSpawnStore for InMemorySubagentSpawnStore {
         &self,
         parent_session_id: SessionId,
         tool_call_id: &str,
-        _subagent_name: &str,
-        _subagent_task: &str,
         claim_token: Uuid,
     ) -> Result<SpawnClaimResult, AgentLoopError> {
         let key = (parent_session_id, tool_call_id.to_string());

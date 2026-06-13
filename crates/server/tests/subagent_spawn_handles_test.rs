@@ -19,7 +19,7 @@ async fn test_spawn_handle_claimed_on_first_call() {
     let token = Uuid::new_v4();
 
     let result = store
-        .try_claim_spawn(parent, "call-1", "Worker", "do work", token)
+        .try_claim_spawn(parent, "call-1", token)
         .await
         .expect("claim should not error");
 
@@ -44,13 +44,13 @@ async fn test_spawn_handle_reattach_pending() {
 
     // First call: claim (no register_child_session — simulates crash before register)
     store
-        .try_claim_spawn(parent, "call-pending", "Worker", "task", token)
+        .try_claim_spawn(parent, "call-pending", token)
         .await
         .expect("first claim");
 
     // Replay: row exists but child not registered → ClaimedPendingChild
     let result = store
-        .try_claim_spawn(parent, "call-pending", "Worker", "task", Uuid::new_v4())
+        .try_claim_spawn(parent, "call-pending", Uuid::new_v4())
         .await
         .expect("replay should not error");
 
@@ -76,7 +76,7 @@ async fn test_spawn_handle_reattach_running() {
 
     // Claim
     let claim = store
-        .try_claim_spawn(parent, "call-2", "Worker", "task", token)
+        .try_claim_spawn(parent, "call-2", token)
         .await
         .expect("first claim");
 
@@ -96,7 +96,7 @@ async fn test_spawn_handle_reattach_running() {
 
     // Replay: should return AlreadyRunning with the stored (not fresh) token
     let result = store
-        .try_claim_spawn(parent, "call-2", "Worker", "task", Uuid::new_v4())
+        .try_claim_spawn(parent, "call-2", Uuid::new_v4())
         .await
         .expect("second call should not error");
 
@@ -128,7 +128,7 @@ async fn test_spawn_handle_reattach_settled() {
 
     // Claim + register
     let claim = store
-        .try_claim_spawn(parent, "call-3", "Worker", "task", token)
+        .try_claim_spawn(parent, "call-3", token)
         .await
         .expect("claim");
     let (handle_id, _) = match claim {
@@ -151,7 +151,7 @@ async fn test_spawn_handle_reattach_settled() {
 
     // Replay — should return AlreadySettled with correct status and result
     let result = store
-        .try_claim_spawn(parent, "call-3", "Worker", "task", Uuid::new_v4())
+        .try_claim_spawn(parent, "call-3", Uuid::new_v4())
         .await
         .expect("replay");
 
@@ -179,7 +179,7 @@ async fn test_settle_wrong_token_is_ignored() {
     let wrong_token = Uuid::new_v4();
 
     let claim = store
-        .try_claim_spawn(parent, "call-4", "Worker", "task", token)
+        .try_claim_spawn(parent, "call-4", token)
         .await
         .expect("claim");
     let (handle_id, _) = match claim {
@@ -202,7 +202,7 @@ async fn test_settle_wrong_token_is_ignored() {
 
     // State should still be running
     let result = store
-        .try_claim_spawn(parent, "call-4", "Worker", "task", Uuid::new_v4())
+        .try_claim_spawn(parent, "call-4", Uuid::new_v4())
         .await
         .expect("replay after bad settle");
 
@@ -225,7 +225,7 @@ async fn test_different_tool_call_ids_are_independent() {
     let token_b = Uuid::new_v4();
 
     let claim_a = store
-        .try_claim_spawn(parent, "call-a", "WorkerA", "task a", token_a)
+        .try_claim_spawn(parent, "call-a", token_a)
         .await
         .expect("claim a");
     let (handle_a, _) = match claim_a {
@@ -237,7 +237,7 @@ async fn test_different_tool_call_ids_are_independent() {
     };
 
     let claim_b = store
-        .try_claim_spawn(parent, "call-b", "WorkerB", "task b", token_b)
+        .try_claim_spawn(parent, "call-b", token_b)
         .await
         .expect("claim b");
     let (handle_b, _) = match claim_b {
@@ -264,7 +264,7 @@ async fn test_different_tool_call_ids_are_independent() {
 
     // call-b should still be running
     let result_b = store
-        .try_claim_spawn(parent, "call-b", "WorkerB", "task b", Uuid::new_v4())
+        .try_claim_spawn(parent, "call-b", Uuid::new_v4())
         .await
         .expect("replay b");
 
