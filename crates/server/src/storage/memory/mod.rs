@@ -196,7 +196,7 @@ impl Default for InMemoryDatabase {
         );
 
         // Pre-seed default plugin marketplace for the default org.
-        // Mirrors the 057_backfill_default_marketplace.sql migration and
+        // Mirrors the 058_backfill_default_marketplace.sql migration and
         // org-creation seeding so in-memory dev mode starts in the same
         // state as a freshly migrated Postgres instance.
         let default_marketplace_id = Uuid::now_v7();

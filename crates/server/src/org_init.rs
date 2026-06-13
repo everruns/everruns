@@ -10,7 +10,7 @@
 //
 // Default marketplace seeding (see specs/plugins.md):
 // Decision: The default marketplace ("everruns", github source everruns/everruns) is seeded
-//   once at org creation and in the 057_backfill_default_marketplace.sql backfill migration.
+//   once at org creation and in the 058_backfill_default_marketplace.sql backfill migration.
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
 //   This ensures "default" means seeded, not privileged.
 
