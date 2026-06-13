@@ -1,14 +1,11 @@
 // Session Files (Virtual Filesystem) API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 //
-// Target endpoints are the canonical Workspace filesystem surface
-// (/v1/workspaces/{workspace_id}/fs/*). The hooks/components keep passing a
-// `sessionId` because every UI flow today operates on the default per-session
-// Workspace; the API client derives the workspace public ID from it via
-// `workspaceIdFromSessionId` (the migration backs each session with a default
-// Workspace whose UUID equals the session's UUID, so the hex portion of the
-// public IDs is identical). Move/copy and download still live on the legacy
-// session routes — those are not exposed through the workspace surface yet.
+// All file operations target the canonical Workspace filesystem surface
+// (/v1/workspaces/{workspace_id}/fs/*). Callers pass the session's attached
+// `workspace_id` (from the session response) rather than deriving it from the
+// session id — the derivation only holds under the default 1:1 invariant and
+// breaks for a session attached to a shared Workspace.
 
 import { api } from "./client";
 import type {
@@ -25,20 +22,12 @@ import type {
   ListResponse,
 } from "./types";
 
-// Derive the default Workspace public ID for a Session. The server creates a
-// 1:1 default Workspace with the same UUID per session, so the public IDs
-// share the same 32-hex suffix and only differ by prefix.
-function workspaceIdFromSessionId(sessionId: string): string {
-  return sessionId.startsWith("session_") ? `wsp_${sessionId.slice("session_".length)}` : sessionId;
-}
-
-// Base path for the workspace filesystem.
+// Base path for the session's virtual filesystem.
 // Each path segment is percent-encoded so that URL delimiter characters
-// (?, #, %) in workspace filenames are treated as literal bytes, not as
-// query-string or fragment delimiters. E.g. a file named "foo?x=1" becomes
-// "foo%3Fx%3D1" in the URL and reaches the server as a literal path.
-function fsPath(sessionId: string, path?: string): string {
-  const workspaceId = workspaceIdFromSessionId(sessionId);
+// (?, #, %) in filenames are treated as literal bytes, not as query-string or
+// fragment delimiters. E.g. a file named "foo?x=1" becomes "foo%3Fx%3D1" in the
+// URL and reaches the server as a literal path.
+function fsPath(workspaceId: string, path?: string): string {
   const base = `/v1/workspaces/${workspaceId}/fs`;
   if (!path || path === "/") return base;
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
@@ -46,15 +35,8 @@ function fsPath(sessionId: string, path?: string): string {
   return `${base}/${encodedPath}`;
 }
 
-function actionPath(sessionId: string, action: string): string {
-  const workspaceId = workspaceIdFromSessionId(sessionId);
+function actionPath(workspaceId: string, action: string): string {
   return `/v1/workspaces/${workspaceId}/fs/_/${action}`;
-}
-
-// Legacy session-scoped path: used only for move/copy which the workspace
-// surface does not yet expose.
-function legacySessionActionPath(sessionId: string, action: string): string {
-  return `/v1/sessions/${sessionId}/fs/_/${action}`;
 }
 
 // ============================================
@@ -63,11 +45,11 @@ function legacySessionActionPath(sessionId: string, action: string): string {
 
 /** List files in a directory */
 export async function listFiles(
-  sessionId: string,
+  workspaceId: string,
   path: string = "/",
   recursive: boolean = false,
 ): Promise<FileInfo[]> {
-  const base = fsPath(sessionId, path);
+  const base = fsPath(workspaceId, path);
   const url = recursive ? `${base}?${new URLSearchParams({ recursive: "true" })}` : base;
   const response = await api.get<ListResponse<FileInfo>>(url);
   return response.data.data;
@@ -75,43 +57,43 @@ export async function listFiles(
 
 /** Create a new file */
 export async function createFile(
-  sessionId: string,
+  workspaceId: string,
   request: CreateFileRequest,
 ): Promise<SessionFile> {
   const { path, ...body } = request;
-  const response = await api.post<SessionFile>(fsPath(sessionId, path), body);
+  const response = await api.post<SessionFile>(fsPath(workspaceId, path), body);
   return response.data;
 }
 
 /** Read a file */
-export async function readFile(sessionId: string, path: string): Promise<SessionFile> {
-  const response = await api.get<SessionFile>(fsPath(sessionId, path));
+export async function readFile(workspaceId: string, path: string): Promise<SessionFile> {
+  const response = await api.get<SessionFile>(fsPath(workspaceId, path));
   return response.data;
 }
 
 /** Update a file */
 export async function updateFile(
-  sessionId: string,
+  workspaceId: string,
   path: string,
   request: UpdateFileRequest,
 ): Promise<SessionFile> {
-  const response = await api.put<SessionFile>(fsPath(sessionId, path), request);
+  const response = await api.put<SessionFile>(fsPath(workspaceId, path), request);
   return response.data;
 }
 
 /** Get file stat (metadata) */
-export async function statFile(sessionId: string, path: string): Promise<FileStat> {
-  const response = await api.post<FileStat>(actionPath(sessionId, "stat"), { path });
+export async function statFile(workspaceId: string, path: string): Promise<FileStat> {
+  const response = await api.post<FileStat>(actionPath(workspaceId, "stat"), { path });
   return response.data;
 }
 
 /** Delete a file or directory */
 export async function deleteFile(
-  sessionId: string,
+  workspaceId: string,
   path: string,
   recursive: boolean = false,
 ): Promise<boolean> {
-  const base = fsPath(sessionId, path);
+  const base = fsPath(workspaceId, path);
   const url = recursive ? `${base}?${new URLSearchParams({ recursive: "true" })}` : base;
   const response = await api.delete<DeleteFileResponse>(url);
   return response.data.deleted;
@@ -122,8 +104,8 @@ export async function deleteFile(
 // ============================================
 
 /** Create a directory */
-export async function mkdir(sessionId: string, path: string): Promise<SessionFile> {
-  const response = await api.post<SessionFile>(fsPath(sessionId, path), { is_directory: true });
+export async function mkdir(workspaceId: string, path: string): Promise<SessionFile> {
+  const response = await api.post<SessionFile>(fsPath(workspaceId, path), { is_directory: true });
   return response.data;
 }
 
@@ -132,14 +114,20 @@ export async function mkdir(sessionId: string, path: string): Promise<SessionFil
 // ============================================
 
 /** Move/rename a file or directory */
-export async function moveFile(sessionId: string, request: MoveFileRequest): Promise<SessionFile> {
-  const response = await api.post<SessionFile>(legacySessionActionPath(sessionId, "move"), request);
+export async function moveFile(
+  workspaceId: string,
+  request: MoveFileRequest,
+): Promise<SessionFile> {
+  const response = await api.post<SessionFile>(actionPath(workspaceId, "move"), request);
   return response.data;
 }
 
 /** Copy a file */
-export async function copyFile(sessionId: string, request: CopyFileRequest): Promise<SessionFile> {
-  const response = await api.post<SessionFile>(legacySessionActionPath(sessionId, "copy"), request);
+export async function copyFile(
+  workspaceId: string,
+  request: CopyFileRequest,
+): Promise<SessionFile> {
+  const response = await api.post<SessionFile>(actionPath(workspaceId, "copy"), request);
   return response.data;
 }
 
@@ -148,8 +136,11 @@ export async function copyFile(sessionId: string, request: CopyFileRequest): Pro
 // ============================================
 
 /** Search files using grep-like pattern matching */
-export async function grepFiles(sessionId: string, request: GrepRequest): Promise<GrepResult[]> {
-  const response = await api.post<ListResponse<GrepResult>>(actionPath(sessionId, "grep"), request);
+export async function grepFiles(workspaceId: string, request: GrepRequest): Promise<GrepResult[]> {
+  const response = await api.post<ListResponse<GrepResult>>(
+    actionPath(workspaceId, "grep"),
+    request,
+  );
   return response.data.data;
 }
 

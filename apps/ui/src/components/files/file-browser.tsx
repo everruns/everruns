@@ -42,7 +42,8 @@ import { formatFileSize, joinPath, listFiles } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileBrowserProps {
-  sessionId: string;
+  /** The session's attached workspace id; undefined while the session loads. */
+  workspaceId: string | undefined;
   onFileSelect?: (file: FileInfo) => void;
   selectedPath?: string;
   /** Increment to trigger a full refresh (e.g. after file upload) */
@@ -105,7 +106,7 @@ function getFileIcon(filename: string) {
 }
 
 export function FileBrowser({
-  sessionId,
+  workspaceId,
   onFileSelect,
   selectedPath,
   refreshToken,
@@ -124,7 +125,7 @@ export function FileBrowser({
     data: rootFiles,
     isLoading,
     refetch: refetchRoot,
-  } = useFiles(sessionId, "/workspace", false);
+  } = useFiles(workspaceId, "/workspace", false);
   const createFile = useCreateFile();
   const createDir = useCreateDirectory();
   const deleteFile = useDeleteFile();
@@ -162,14 +163,15 @@ export function FileBrowser({
   // Function to load a directory's contents
   const loadDirectory = useCallback(
     async (path: string) => {
+      if (!workspaceId) return;
       try {
-        const files = await listFiles(sessionId, path);
+        const files = await listFiles(workspaceId, path);
         setLoadedDirs((prev) => new Map(prev).set(path, files));
       } catch {
         // Error loading directory
       }
     },
-    [sessionId],
+    [workspaceId],
   );
 
   const handleExpandedChange = useCallback(
@@ -212,11 +214,11 @@ export function FileBrowser({
   }, [refreshToken, handleRefresh]);
 
   const handleCreateFile = async () => {
-    if (!newFileName.trim()) return;
+    if (!newFileName.trim() || !workspaceId) return;
 
     try {
       await createFile.mutateAsync({
-        sessionId,
+        workspaceId,
         request: {
           path: joinPath(createPath, newFileName),
           content: newFileContent,
@@ -233,11 +235,11 @@ export function FileBrowser({
   };
 
   const handleCreateDir = async () => {
-    if (!newDirName.trim()) return;
+    if (!newDirName.trim() || !workspaceId) return;
 
     try {
       await createDir.mutateAsync({
-        sessionId,
+        workspaceId,
         path: joinPath(createPath, newDirName),
       });
       setIsCreateDirOpen(false);
@@ -250,13 +252,14 @@ export function FileBrowser({
 
   const handleDelete = async (file: FileInfo, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!workspaceId) return;
     if (!confirm(`Delete ${file.is_directory ? "directory" : "file"} "${file.name}"?`)) {
       return;
     }
 
     try {
       await deleteFile.mutateAsync({
-        sessionId,
+        workspaceId,
         path: file.path,
         recursive: file.is_directory,
       });

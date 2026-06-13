@@ -118,7 +118,7 @@ function readAsBase64(file: File): Promise<string> {
 }
 
 export function useFileDropUpload(
-  sessionId: string,
+  workspaceId: string | undefined,
   targetDir: string = "/workspace",
   onComplete?: () => void,
 ) {
@@ -128,7 +128,10 @@ export function useFileDropUpload(
 
   const uploadFiles = useCallback(
     async (files: File[]) => {
-      if (files.length === 0) return;
+      if (files.length === 0 || !workspaceId) return;
+      // Bind the narrowed (non-undefined) id so it stays `string` inside the
+      // nested map closure below.
+      const wsId = workspaceId;
 
       const items: FileUploadItem[] = files.map((f) => ({
         name: f.name,
@@ -147,7 +150,7 @@ export function useFileDropUpload(
               prev.map((item, j) => (j === i ? { ...item, status: "uploading" as const } : item)),
             );
 
-            await createFile(sessionId, {
+            await createFile(wsId, {
               path: joinPath(targetDir, file.name),
               content,
               encoding,
@@ -175,7 +178,7 @@ export function useFileDropUpload(
       onComplete?.();
       setTimeout(() => setUploads([]), 3000);
     },
-    [sessionId, targetDir, onComplete],
+    [workspaceId, targetDir, onComplete],
   );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {

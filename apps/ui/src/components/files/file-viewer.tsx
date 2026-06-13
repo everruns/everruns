@@ -13,19 +13,20 @@ import { formatFileSize, getFileExtension } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileViewerProps {
-  sessionId: string;
+  /** The session's attached workspace id; undefined while the session loads. */
+  workspaceId: string | undefined;
   file: FileInfo;
   onClose: () => void;
 }
 
 type ViewMode = "preview" | "source";
 
-export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
+export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState("");
   const [viewMode, setViewMode] = useState<ViewMode>("preview");
 
-  const { data: fileData, isLoading, refetch } = useFile(sessionId, file.path);
+  const { data: fileData, isLoading, refetch } = useFile(workspaceId, file.path);
   const updateFile = useUpdateFile();
 
   const handleEdit = () => {
@@ -36,9 +37,10 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
   };
 
   const handleSave = async () => {
+    if (!workspaceId) return;
     try {
       await updateFile.mutateAsync({
-        sessionId,
+        workspaceId,
         path: file.path,
         request: {
           content: editContent,
