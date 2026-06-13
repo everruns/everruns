@@ -36,7 +36,7 @@ export function ToolActivityRow({
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
-  const mcpAppResources = extractMcpAppResources(toolResult?.result);
+  const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
   const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);

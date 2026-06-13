@@ -40,7 +40,7 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
         getFullText(row.result.result),
       )
     : "";
-  const mcpAppResources = extractMcpAppResources(row.result?.result);
+  const mcpAppResources = extractMcpAppResources(row.result?.result, row.result?.tool_name);
   const preview = resultPreview(row.result);
   const hasDetails = fullText.length > 0;
 

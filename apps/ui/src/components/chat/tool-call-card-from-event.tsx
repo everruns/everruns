@@ -86,7 +86,7 @@ export function ToolCallCardFromEvent({
 
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
   const hasOutput = fullText.length > 0;
-  const mcpAppResources = extractMcpAppResources(toolResult?.result);
+  const mcpAppResources = extractMcpAppResources(toolResult?.result, toolCall.name);
 
   return (
     <div className="text-xs text-muted-foreground/70">

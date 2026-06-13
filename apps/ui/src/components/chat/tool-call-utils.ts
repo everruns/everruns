@@ -32,6 +32,10 @@ export interface McpAppResource {
 }
 
 const MCP_CONTENT_WRAPPER_PARSE_LIMIT = 512 * 1024;
+const MCP_CARD_HTML_MAX_BYTES = 64 * 1024;
+// Validates ui://everruns/{entity}/{id}/card — entity is kebab-case, id is
+// prefixed alphanumeric. Rejects bare prefix matches and forged authorities.
+const MCP_CARD_URI_RE = /^ui:\/\/everruns\/[a-z][a-z-]*\/[A-Za-z0-9_-]{2,}\/card$/;
 
 /**
  * Extract tool call content from ContentPart array
@@ -125,8 +129,16 @@ export function formatResult(result: unknown): string {
   return typeof result === "string" ? result : JSON.stringify(result, null, 2);
 }
 
-export function extractMcpAppResources(result: ContentPart[] | undefined): McpAppResource[] {
+/**
+ * toolName must end with `_get_card` to accept any ui://everruns card resources.
+ * Callers that cannot supply a tool name pass undefined, which rejects all cards.
+ */
+export function extractMcpAppResources(
+  result: ContentPart[] | undefined,
+  toolName?: string,
+): McpAppResource[] {
   if (!result || result.length === 0) return [];
+  if (!toolName?.endsWith("_get_card")) return [];
 
   return result.flatMap((part) => {
     if (part.type === "text") {
@@ -189,9 +201,9 @@ function normalizeMcpAppResource(value: unknown): McpAppResource[] {
         ? value.text
         : undefined;
 
-  if (!uri?.startsWith("ui://everruns/")) return [];
+  if (!uri || !MCP_CARD_URI_RE.test(uri)) return [];
   if (mimeType?.toLowerCase() !== "text/html") return [];
-  if (!html) return [];
+  if (!html || html.length > MCP_CARD_HTML_MAX_BYTES) return [];
 
   return [{ uri, mimeType, html }];
 }
