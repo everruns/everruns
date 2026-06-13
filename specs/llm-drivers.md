@@ -358,6 +358,25 @@ Plugins serialize as a `plugins` array on the wire, each entry carrying an `"id"
 (`"web"` or `"file"`) plus any plugin-specific options. The field is omitted entirely for
 non-OpenRouter providers and when no plugins are configured.
 
+### OpenRouter Capacity Strategy
+
+`OpenRouterRoutingConfig.capacity_strategy` lets callers express an organization-level
+allocation intent without encoding raw OpenRouter provider flags directly:
+
+| Variant | Behaviour |
+|---------|-----------|
+| `SharedCapacity` (default / `None`) | No changes — uses OpenRouter's shared capacity pool as-is. |
+| `ByokFirst` | Sets `provider.allow_fallbacks = true` (if not already set) so OpenRouter tries BYOK providers first and falls back to shared capacity when exhausted. |
+| `ByokOnly` | Requires `provider.only` to list at least one BYOK provider slug; sets `provider.allow_fallbacks = false` so no fallback to shared capacity occurs. Returns an error at request time if `provider.only` is empty. |
+
+The strategy is compiled into the low-level `OpenRouterProviderRouting` by
+`apply_capacity_strategy()` before the request is serialized. The
+`capacity_strategy` field itself is never sent to the API.
+
+`is_empty()` treats `SharedCapacity` and `None` as equivalent (both represent the
+default, no-op state) and returns `false` for `ByokFirst`/`ByokOnly` so those
+configs are not silently discarded.
+
 ### Stateful Continuation Invariant
 
 When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input` — that double-counts context and inflates prompt-cache keys.

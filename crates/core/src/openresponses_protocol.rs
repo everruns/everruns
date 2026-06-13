@@ -793,14 +793,32 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .validate_for_primary_model(&config.model)
                 .map_err(AgentLoopError::llm)?;
         }
-        let openrouter_provider = openrouter_routing.and_then(|routing| {
+        // Apply capacity strategy without cloning when the strategy is a no-op.
+        let effective_routing_cow: Option<
+            std::borrow::Cow<'_, crate::llm_driver_registry::OpenRouterRoutingConfig>,
+        > = match openrouter_routing {
+            None => None,
+            Some(routing) => match routing.capacity_strategy {
+                None
+                | Some(crate::llm_driver_registry::OpenRouterCapacityStrategy::SharedCapacity) => {
+                    Some(std::borrow::Cow::Borrowed(routing))
+                }
+                _ => Some(std::borrow::Cow::Owned(
+                    routing
+                        .apply_capacity_strategy()
+                        .map_err(AgentLoopError::llm)?,
+                )),
+            },
+        };
+        let effective_routing = effective_routing_cow.as_deref();
+        let openrouter_provider = effective_routing.and_then(|routing| {
             routing
                 .provider
                 .as_ref()
                 .filter(|provider| !provider.is_empty())
                 .cloned()
         });
-        let openrouter_plugins = openrouter_routing.and_then(|routing| {
+        let openrouter_plugins = effective_routing.and_then(|routing| {
             routing
                 .plugins
                 .as_ref()
@@ -810,9 +828,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         let request = ResponsesRequest {
             model: config.model.clone(),
-            models: openrouter_routing
+            models: effective_routing
                 .and_then(|routing| (!routing.models.is_empty()).then_some(routing.models.clone())),
-            route: openrouter_routing.and_then(|routing| routing.route),
+            route: effective_routing.and_then(|routing| routing.route),
             provider: openrouter_provider,
             input: input_items,
             instructions,
