@@ -15279,6 +15279,16 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Deep Research"
           },
+          "embedder_metadata": {
+            "type": "object",
+            "description": "Arbitrary key-value metadata injected into LLM requests for observability.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "initial_files": {
             "type": "array",
             "items": {
@@ -18496,6 +18506,20 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Generic Harness"
           },
+          "embedder_metadata": {
+            "type": "object",
+            "description": "Arbitrary key-value metadata injected into LLM requests for observability.\nKeys from system context (session_id, org_id, etc.) always take precedence.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            },
+            "example": {
+              "env": "production",
+              "team": "platform"
+            }
+          },
           "id": {
             "type": "string",
             "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -20173,6 +20197,20 @@
                   ],
                   "description": "Human-readable display name shown in UI.",
                   "example": "Generic Harness"
+                },
+                "embedder_metadata": {
+                  "type": "object",
+                  "description": "Arbitrary key-value metadata injected into LLM requests for observability.\nKeys from system context (session_id, org_id, etc.) always take precedence.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "example": {
+                    "env": "production",
+                    "team": "platform"
+                  }
                 },
                 "id": {
                   "type": "string",
@@ -22128,6 +22166,20 @@
                           "description": "Human-readable display name shown in UI.",
                           "example": "Generic Harness"
                         },
+                        "embedder_metadata": {
+                          "type": "object",
+                          "description": "Arbitrary key-value metadata injected into LLM requests for observability.\nKeys from system context (session_id, org_id, etc.) always take precedence.",
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "example": {
+                            "env": "production",
+                            "team": "platform"
+                          }
+                        },
                         "id": {
                           "type": "string",
                           "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -22792,6 +22844,16 @@
         "type": "object",
         "description": "Request options applied to an LLM generation.\n\nThese fields capture request-side intent such as prompt caching or deferred\ntool loading. They complement `usage`, which captures what actually happened.",
         "properties": {
+          "metadata": {
+            "type": "object",
+            "description": "General request metadata passed to the LLM provider for tracking and observability.\nIncludes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "prompt_cache": {
             "oneOf": [
               {
@@ -30643,6 +30705,19 @@
             "description": "Human-readable display name.",
             "example": "Updated Research Harness"
           },
+          "embedder_metadata": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Replace the embedder metadata map entirely; omit to leave unchanged.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
           "initial_files": {
             "type": [
               "array",
@@ -32802,6 +32877,20 @@
                 "description": "Human-readable display name shown in UI.",
                 "example": "Generic Harness"
               },
+              "embedder_metadata": {
+                "type": "object",
+                "description": "Arbitrary key-value metadata injected into LLM requests for observability.\nKeys from system context (session_id, org_id, etc.) always take precedence.",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "example": {
+                  "env": "production",
+                  "team": "platform"
+                }
+              },
               "id": {
                 "type": "string",
                 "description": "Unique identifier for the harness (format: harness_{32-hex}).",
@@ -33699,6 +33788,20 @@
                     ],
                     "description": "Human-readable display name shown in UI.",
                     "example": "Generic Harness"
+                  },
+                  "embedder_metadata": {
+                    "type": "object",
+                    "description": "Arbitrary key-value metadata injected into LLM requests for observability.\nKeys from system context (session_id, org_id, etc.) always take precedence.",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "example": {
+                      "env": "production",
+                      "team": "platform"
+                    }
                   },
                   "id": {
                     "type": "string",
