@@ -98,7 +98,7 @@ enforced at the boundary for every hop like any other egress traffic.
 
 On both paths the tool pre-checks the initial URL and returns the distinct
 "Endpoint blocked by system policy: …" error before any request is made
-(`crates/core/src/capabilities/web_fetch.rs`). A denial raised at the egress
+(`crates/core/src/capabilities/web_fetch/mod.rs`). A denial raised at the egress
 boundary itself (e.g. a redirect hop) surfaces as "Outbound request blocked by
 network policy: …". On the direct path (contexts without an egress service,
 e.g. embedded hosts) the pre-flight check is the only enforcement.
