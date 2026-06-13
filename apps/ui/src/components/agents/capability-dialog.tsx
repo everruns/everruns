@@ -14,7 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Search, ChevronRight, Plug, Link, Lock } from "lucide-react";
+import { Plus, Search, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -200,6 +200,15 @@ export function CapabilityDialog({
                                     >
                                       <Plug className="w-3 h-3" />
                                       MCP
+                                    </Badge>
+                                  )}
+                                  {cap.is_guardrail && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs px-1.5 py-0 h-5 gap-1"
+                                    >
+                                      <Shield className="w-3 h-3" />
+                                      Guardrail
                                     </Badge>
                                   )}
                                   {hasDependencies && (

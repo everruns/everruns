@@ -69,6 +69,10 @@ impl Capability for PromptCanaryGuardrailCapability {
         Some("Safety")
     }
 
+    fn is_guardrail(&self) -> bool {
+        true
+    }
+
     fn icon(&self) -> Option<&str> {
         Some("shield")
     }

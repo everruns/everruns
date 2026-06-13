@@ -1821,6 +1821,7 @@ message PlatformCapabilityInfo {
     uint32 tool_count = 9;
     repeated string tool_names = 10;
     repeated string dependencies = 11;
+    bool is_guardrail = 12;
 }
 
 message PlatformListCapabilitiesResponse {

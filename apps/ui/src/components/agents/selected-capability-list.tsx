@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronUp, ChevronDown, X, Plug, Lock, Settings } from "lucide-react";
+import { ChevronUp, ChevronDown, X, Plug, Lock, Settings, Shield } from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
@@ -120,6 +120,12 @@ export function SelectedCapabilityList({
                     <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
                       <Plug className="w-2.5 h-2.5" />
                       MCP
+                    </Badge>
+                  )}
+                  {cap.is_guardrail && (
+                    <Badge variant="outline" className="text-xs px-1 py-0 h-4 gap-0.5 shrink-0">
+                      <Shield className="w-2.5 h-2.5" />
+                      Guardrail
                     </Badge>
                   )}
                   {isRequired && (

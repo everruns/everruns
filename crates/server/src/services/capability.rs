@@ -152,6 +152,7 @@ impl CapabilityService {
                 tool_definitions: mcp_cap.tool_definitions(),
                 is_mcp: true,
                 is_skill: false,
+                is_guardrail: false,
                 dependencies: vec![], // MCP capabilities have no dependencies
                 features: vec![],
                 config_schema: None,
@@ -182,6 +183,7 @@ impl CapabilityService {
                 tool_definitions: vec![], // SkillsCapability handles tools
                 is_mcp: false,
                 is_skill: true,
+                is_guardrail: false,
                 dependencies: vec!["session_file_system".to_string()],
                 features: vec![],
                 config_schema: None,
@@ -311,6 +313,7 @@ impl CapabilityService {
                     tool_definitions: mcp_cap.tool_definitions(),
                     is_mcp: true,
                     is_skill: false,
+                    is_guardrail: false,
                     dependencies: vec![], // MCP capabilities have no dependencies
                     features: vec![],
                     config_schema: None,
@@ -340,6 +343,7 @@ impl CapabilityService {
                     tool_definitions: vec![], // SkillsCapability handles tools
                     is_mcp: false,
                     is_skill: true,
+                    is_guardrail: false,
                     dependencies: vec!["session_file_system".to_string()],
                     features: vec![],
                     config_schema: None,

@@ -79,6 +79,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/capabilities/declarative/{capability_id}/delete",
             post(destroy_declarative_capability),
         )
+        .route(
+            "/v1/capabilities/guardrails/dry-run",
+            post(dry_run_guardrails),
+        )
         .route("/v1/capabilities/{capability_id}", get(get_capability))
         .with_state(state)
 }
@@ -323,6 +327,28 @@ pub async fn destroy_declarative_capability(
     state
         .dispatcher(&org)
         .run(crate::domains::capabilities::DestroyDeclarativeCapability { id: capability_id })
+        .await
+}
+
+/// POST /v1/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text.
+#[utoipa::path(
+    post,
+    path = "/v1/capabilities/guardrails/dry-run",
+    request_body = crate::domains::capabilities::types::GuardrailsDryRunRequest,
+    responses(
+        (status = 200, description = "Triggered checks for the sample content", body = crate::domains::capabilities::types::GuardrailsDryRunResponse),
+        (status = 400, description = "Invalid guardrails config, stage, or oversized text", body = ErrorResponse),
+    ),
+    tag = "capabilities"
+)]
+pub async fn dry_run_guardrails(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<crate::domains::capabilities::types::GuardrailsDryRunRequest>,
+) -> ApiResult<crate::domains::capabilities::types::GuardrailsDryRunResponse> {
+    state
+        .dispatcher(&org)
+        .run(crate::domains::capabilities::DryRunGuardrails(req))
         .await
 }
 

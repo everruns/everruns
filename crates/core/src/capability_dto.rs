@@ -73,6 +73,11 @@ pub struct CapabilityInfo {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_skill: bool,
+    /// Whether this capability is a guardrail (constrains agent behavior
+    /// rather than granting abilities). Used for UI grouping and filtering.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "openapi", schema(example = false))]
+    pub is_guardrail: bool,
     /// IDs of capabilities that this capability depends on.
     /// When this capability is selected, its dependencies are automatically included.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
@@ -237,6 +242,7 @@ impl CapabilityInfo {
             tool_definitions: cap.tool_definitions(),
             is_mcp,
             is_skill,
+            is_guardrail: cap.is_guardrail(),
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
             features: cap.features().iter().map(|s| s.to_string()).collect(),
             config_schema: cap.config_schema(),
@@ -292,6 +298,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: false,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec![],
             features: vec![],
             config_schema: None,
@@ -330,6 +337,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: true,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec![],
             features: vec![],
             config_schema: None,
@@ -358,6 +366,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: false,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec!["session_file_system".to_string()],
             features: vec![],
             config_schema: None,
@@ -418,6 +427,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: false,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec![],
             features: vec!["secrets".to_string(), "key_value".to_string()],
             config_schema: None,
@@ -466,6 +476,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: false,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec![],
             features: vec![],
             config_schema: None,
@@ -524,6 +535,7 @@ mod tests {
             tool_definitions: vec![],
             is_mcp: false,
             is_skill: false,
+            is_guardrail: false,
             dependencies: vec![],
             features: vec![],
             config_schema: None,

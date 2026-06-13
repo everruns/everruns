@@ -94,6 +94,17 @@ When the flag is off, neither capability is registered and neither appears in th
 capability picker. Enable via `FEATURE_AGENT_DELEGATION=true` or use a
 `DeploymentGrade::Dev` environment. See `specs/feature-flags.md` and EVE-506.
 
+### Guardrail Capabilities
+
+Some capabilities *constrain* agent behavior rather than grant abilities. These
+mark themselves with `is_guardrail()` (surfaced as `is_guardrail` on
+`CapabilityInfo`) for UI grouping and catalog filtering; the marker has no
+runtime semantics. The `guardrails` capability is config-driven: its per-agent
+config declares deterministic checks over model output and tool calls that
+compile onto the streaming-output and pre/post-tool-hook seams. Guardrails are
+opt-in and removable like any capability — there is no org-mandated enforcement
+layer. See [guardrails.md](guardrails.md).
+
 ### Architecture
 
 Capabilities are defined in **everruns-core** and resolved at the **API layer**:

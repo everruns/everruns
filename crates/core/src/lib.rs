@@ -135,6 +135,7 @@ pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
 pub mod error;
+pub mod guardrail_checks;
 pub mod llm_driver_helpers;
 pub mod llm_driver_registry;
 pub mod llm_retry;
@@ -406,6 +407,9 @@ pub use events::{
     TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
     ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
     TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
+};
+pub use guardrail_checks::{
+    GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail, GuardrailStage, GuardrailsConfig,
 };
 pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{

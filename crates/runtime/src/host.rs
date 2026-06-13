@@ -408,7 +408,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             capability_registry
                 .get(config.capability_id())
                 .filter(|capability| capability.status() == CapabilityStatus::Available)
-                .map(|capability| capability.post_tool_exec_hooks())
+                .map(|capability| capability.post_tool_exec_hooks_with_config(&config.config))
                 .unwrap_or_default()
         })
         .collect();
@@ -430,7 +430,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             capability_registry
                 .get(config.capability_id())
                 .filter(|capability| capability.status() == CapabilityStatus::Available)
-                .map(|capability| capability.pre_tool_use_hooks())
+                .map(|capability| capability.pre_tool_use_hooks_with_config(&config.config))
                 .unwrap_or_default()
         })
         .collect();

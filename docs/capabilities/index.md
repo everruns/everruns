@@ -106,6 +106,13 @@ Streaming-output guardrails and runtime safety nets.
 | Capability | ID | Tools |
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
+| Guardrails | `guardrails` | 0 |
+
+The `guardrails` capability runs config-driven deterministic checks (regex,
+blocklist, tool-call patterns) over model output and tool activity, blocking or
+logging per check. Configure it per agent; use advisory mode and the
+`POST /v1/capabilities/guardrails/dry-run` endpoint to tune checks against
+false positives before enforcing.
 
 ### Automation
 
