@@ -112,7 +112,7 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
       )}
       <ul className="space-y-2">
         {(run.results ?? []).map((result, index) => (
-          <CaseRow key={index} result={result} />
+          <CaseRow key={result.session_id ?? `${result.name}-${index}`} result={result} />
         ))}
       </ul>
     </div>

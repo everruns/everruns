@@ -201,6 +201,9 @@ pub struct AppState {
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     /// System utility LLM for sanctioned internal analysis commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
+    /// Agent health check service (specs/agent-checks.md, tier-3), so the
+    /// health-check commands work over MCP, not just HTTP.
+    pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -258,6 +261,7 @@ impl AppState {
                 .map(|h| h.display_name.clone()),
             sqldb_store,
             utility_llm_service: platform_definition.utility_llm_service(),
+            health_check_service: None,
             resource_metadata_url: None,
         }
     }
@@ -278,6 +282,14 @@ impl AppState {
 
     pub fn with_session_sandbox_service(mut self, service: Arc<SessionSandboxService>) -> Self {
         self.session_sandbox_service = Some(service);
+        self
+    }
+
+    pub fn with_health_check_service(
+        mut self,
+        service: Arc<crate::domains::agents::AgentHealthCheckService>,
+    ) -> Self {
+        self.health_check_service = Some(service);
         self
     }
 }
@@ -516,14 +528,18 @@ async fn handle_resources_read(
 }
 
 fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
-    Ctx::new(
+    let mut ctx = Ctx::new(
         Caller::from(org),
         state.db.clone(),
         state.capability_service.clone(),
         state.encryption.clone(),
         state.auth.permission_resolver.clone(),
     )
-    .with_utility_llm_service(state.utility_llm_service.clone())
+    .with_utility_llm_service(state.utility_llm_service.clone());
+    if let Some(service) = &state.health_check_service {
+        ctx = ctx.with_health_check_service(service.clone());
+    }
+    ctx
 }
 
 fn resource_error(resource: &str, e: CommandError) -> String {

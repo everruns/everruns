@@ -46,7 +46,7 @@ The reviewed prompt is treated strictly as data: checker outputs are bounded, se
 A **health check** runs the agent for real. It generates a handful of smoke-test cases from the agent's description, system prompt, and capabilities, runs each as an actual session against the agent's configured model, and scores the result two ways:
 
 - **Deterministic**: the agent produced a non-empty answer and finished within a turn budget.
-- **AI judge**: the platform's utility LLM grades the transcript against a rubric generated for that case.
+- **AI judge**: the platform's utility LLM grades the agent's final response against a rubric generated for that case.
 
 A case passes only when both checks pass. The run surfaces a score card (pass rate, passed count, average score, average turns) and a per-case list — each case links to the real session so you can inspect the full conversation, tool calls, and events.
 

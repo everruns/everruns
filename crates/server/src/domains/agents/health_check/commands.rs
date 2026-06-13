@@ -96,16 +96,30 @@ impl AgentHealthCheckService {
         Ok(HealthCheckRun::from(row))
     }
 
-    pub async fn get(&self, caller: &Caller, run_id: &str) -> Result<HealthCheckRun, CommandError> {
+    pub async fn get(
+        &self,
+        caller: &Caller,
+        agent_id: &str,
+        run_id: &str,
+    ) -> Result<HealthCheckRun, CommandError> {
         let run_id: HealthCheckRunId = run_id
             .parse()
             .map_err(|_| CommandError::bad_request("Invalid health check run id"))?;
+        let agent =
+            crate::domains::agents::queries::resolve(&self.run_ctx.db, caller.org_id, agent_id)
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::not_found("Agent"))?;
         let row = self
             .run_ctx
             .db
             .get_agent_health_check_run(caller.org_id, &run_id.to_string())
             .await
             .map_err(classify_anyhow)?
+            // Scope the run to the agent in the path: a run for a different
+            // agent is treated as not found rather than returned on a
+            // mismatched URL.
+            .filter(|row| row.agent_id == Some(agent.internal_id))
             .ok_or_else(|| CommandError::not_found("Health check run"))?;
         Ok(HealthCheckRun::from(row))
     }
@@ -143,10 +157,10 @@ fn config_hash(resolved_prompt: &str, tool_listing: &str, model_id: Option<&str>
 
 fn service(ctx: &Ctx) -> Result<Arc<AgentHealthCheckService>, CommandError> {
     ctx.health_check_service.clone().ok_or_else(|| {
-        CommandError::bad_request(
-            "Agent health checks are not available on this deployment (the system utility LLM \
-             service is not configured)",
-        )
+        // The service is wired only when the deployment has both the system
+        // utility LLM (generates/judges cases) and a default harness (hosts
+        // the sessions), so keep the message general rather than naming one.
+        CommandError::bad_request("Agent health checks are not available on this deployment")
     })
 }
 
@@ -213,7 +227,9 @@ impl Command for GetAgentHealthCheckRun {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<HealthCheckRun, CommandError> {
-        service(ctx)?.get(&ctx.caller, &self.run_id).await
+        service(ctx)?
+            .get(&ctx.caller, &self.agent_id, &self.run_id)
+            .await
     }
 }
 

@@ -185,7 +185,12 @@ async fn run_case(
                 initial_files: vec![],
                 hints: None,
                 network_access: None,
-                max_iterations: None,
+                parent_session_id: None,
+                workspace_id: None,
+                // Bound per-case work: the wall-clock timeout is a backstop,
+                // but a hard iteration cap prevents expensive tool/LLM loops
+                // (TM-DOS / cost). Matches the deterministic turn budget.
+                max_iterations: Some(MAX_CASE_TURNS as usize),
             },
         )
         .await;
