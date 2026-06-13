@@ -2870,6 +2870,22 @@ mod tests {
     }
 
     #[test]
+    fn test_preset_max_price_both_none_no_provider_field() {
+        let base = OpenRouterRoutingConfig {
+            presets: vec![OpenRouterRoutingPreset::MaxPrice {
+                prompt_usd_per_million: None,
+                completion_usd_per_million: None,
+            }],
+            ..Default::default()
+        };
+        let result = base.apply_presets().unwrap();
+        assert!(
+            result.provider.is_none(),
+            "MaxPrice with no dimensions should not produce a provider field"
+        );
+    }
+
+    #[test]
     fn test_preset_explicit_provider_overrides_preset() {
         let base = OpenRouterRoutingConfig {
             presets: vec![OpenRouterRoutingPreset::CheapestWithTools],

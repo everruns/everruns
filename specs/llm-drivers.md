@@ -402,8 +402,8 @@ Presets are applied before capacity strategy — `apply_presets()` runs first, t
 | `ReasoningRequired` | `require_parameters = true` |
 | `MaxPrice { prompt_usd_per_million, completion_usd_per_million }` | `max_price.prompt`, `max_price.completion` (converted from USD/M to per-token) |
 
-`apply_presets()` returns `Err` for nonsensical inputs (e.g. negative `MaxPrice` values).
-When no presets are present the driver borrows the original config without allocating.
+`apply_presets()` returns `Err` for invalid inputs (e.g. negative `MaxPrice` values).
+When `presets` is empty the driver skips calling `apply_presets()` entirely (clone-free fast path).
 
 ### Stateful Continuation Invariant
 
