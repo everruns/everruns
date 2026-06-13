@@ -793,14 +793,25 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .validate_for_primary_model(&config.model)
                 .map_err(AgentLoopError::llm)?;
         }
-        let openrouter_provider = openrouter_routing.and_then(|routing| {
+        let effective_routing_owned;
+        let effective_routing: Option<&crate::llm_driver_registry::OpenRouterRoutingConfig> =
+            match openrouter_routing {
+                Some(routing) => {
+                    effective_routing_owned = routing
+                        .apply_capacity_strategy()
+                        .map_err(AgentLoopError::llm)?;
+                    Some(&effective_routing_owned)
+                }
+                None => None,
+            };
+        let openrouter_provider = effective_routing.and_then(|routing| {
             routing
                 .provider
                 .as_ref()
                 .filter(|provider| !provider.is_empty())
                 .cloned()
         });
-        let openrouter_plugins = openrouter_routing.and_then(|routing| {
+        let openrouter_plugins = effective_routing.and_then(|routing| {
             routing
                 .plugins
                 .as_ref()
@@ -810,9 +821,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
 
         let request = ResponsesRequest {
             model: config.model.clone(),
-            models: openrouter_routing
+            models: effective_routing
                 .and_then(|routing| (!routing.models.is_empty()).then_some(routing.models.clone())),
-            route: openrouter_routing.and_then(|routing| routing.route),
+            route: effective_routing.and_then(|routing| routing.route),
             provider: openrouter_provider,
             input: input_items,
             instructions,
