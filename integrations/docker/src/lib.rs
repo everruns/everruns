@@ -136,7 +136,7 @@ impl Capability for DockerContainerCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Development")
+        Some("Sandboxes")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -1076,7 +1076,7 @@ mod tests {
         assert_eq!(cap.name(), "[Experimental] Docker Container");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("container"));
-        assert_eq!(cap.category(), Some("Development"));
+        assert_eq!(cap.category(), Some("Sandboxes"));
     }
 
     #[test]

@@ -17,7 +17,7 @@ Agents compose capabilities — enable only what you need.
 
 ### Core
 
-Fundamental capabilities for file operations, command execution, web access, and session management.
+Fundamental capabilities for file operations, command execution, web access, session management, time awareness, task tracking, scheduling, and agent coordination.
 
 | Capability | ID | Tools |
 |---|---|---|
@@ -26,20 +26,40 @@ Fundamental capabilities for file operations, command execution, web access, and
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
-| [Browserless](/capabilities/browserless/) | `browserless` | 7 |
-| [Daytona](/capabilities/daytona/) | `daytona` | 9 |
-
-### Data & Productivity
-
-Structured data, time awareness, task tracking, and scheduling.
-
-| Capability | ID | Tools |
-|---|---|---|
-| [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 | [Current Time](/capabilities/current-time/) | `current_time` | 1 |
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
+| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
+| [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
+| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
+
+### Sandboxes
+
+Cloud and container sandbox environments for isolated code execution.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Daytona](/capabilities/daytona/) | `daytona` | 9 |
+| [Deno Sandboxes](/capabilities/deno/) | `deno` | 6 |
+| [E2B](/capabilities/e2b/) | `e2b` | 6 |
+| [Docker Container](/capabilities/docker/) | `docker_container` | 5 |
+
+### Browser
+
+Browser automation and web interaction capabilities.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Browserless](/capabilities/browserless/) | `browserless` | 7 |
+
+### Data
+
+Structured data and knowledge capabilities.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
 
 ### Media
 
@@ -49,14 +69,6 @@ Image generation and editing workflows.
 |---|---|---|
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
 
-### Orchestration
-
-Delegate and coordinate work across multiple agent sessions.
-
-| Capability | ID | Tools |
-|---|---|---|
-| [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
-
 ### Integrations
 
 External-service capabilities and blueprint-backed workflows.
@@ -65,15 +77,13 @@ External-service capabilities and blueprint-backed workflows.
 |---|---|---|
 | [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
 
-### Platform & Configuration
+### Platform
 
-Agent self-management, dynamic instructions, and skill discovery.
+Agent self-management and platform control.
 
 | Capability | ID | Tools |
 |---|---|---|
 | [Platform Management](/capabilities/platform-management/) | `platform_management` | 14 |
-| [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
-| [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
 
 ### Optimization
 
@@ -189,6 +199,8 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 | [Bashkit Shell](/capabilities/bashkit-shell/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
 | [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
+| [Deno Sandboxes](/capabilities/deno/) | [Storage](/capabilities/session-storage/) |
+| [E2B](/capabilities/e2b/) | [Storage](/capabilities/session-storage/) |
 
 ### Features
 

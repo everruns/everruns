@@ -43,7 +43,7 @@ impl Capability for SessionSandboxCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Execution")
+        Some("Sandboxes")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {

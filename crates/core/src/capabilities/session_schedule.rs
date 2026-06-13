@@ -48,7 +48,7 @@ impl Capability for SessionScheduleCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Session")
+        Some("Core")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {

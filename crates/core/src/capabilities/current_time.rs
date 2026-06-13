@@ -41,7 +41,7 @@ impl Capability for CurrentTimeCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Utilities")
+        Some("Core")
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(cap.id(), "current_time");
         assert_eq!(cap.name(), "Current Time");
         assert_eq!(cap.icon(), Some("clock"));
-        assert_eq!(cap.category(), Some("Utilities"));
+        assert_eq!(cap.category(), Some("Core"));
         assert_eq!(cap.status(), CapabilityStatus::Available);
     }
 

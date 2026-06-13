@@ -101,7 +101,7 @@ impl Capability for DenoCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Execution")
+        Some("Sandboxes")
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
@@ -140,7 +140,7 @@ mod tests {
         assert_eq!(cap.name(), "Deno Sandboxes");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("server"));
-        assert_eq!(cap.category(), Some("Execution"));
+        assert_eq!(cap.category(), Some("Sandboxes"));
     }
 
     #[test]

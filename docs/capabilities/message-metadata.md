@@ -6,7 +6,7 @@ description: Annotate user and agent messages with metadata such as their timest
 | | |
 |---|---|
 | **ID** | `message_metadata` |
-| **Category** | Utilities |
+| **Category** | Core |
 | **Features** | None |
 | **Dependencies** | None |
 

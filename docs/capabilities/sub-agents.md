@@ -6,7 +6,7 @@ description: Spawn and manage subagents for parallel task execution in isolated 
 | | |
 |---|---|
 | **ID** | `subagents` |
-| **Category** | Orchestration |
+| **Category** | Core |
 | **Features** | `subagents` |
 | **Dependencies** | None |
 

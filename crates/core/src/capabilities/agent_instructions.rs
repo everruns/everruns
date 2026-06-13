@@ -113,7 +113,7 @@ impl Capability for AgentInstructionsCapability {
     }
 
     fn category(&self) -> Option<&str> {
-        Some("Configuration")
+        Some("Core")
     }
 
     // No static system_prompt_addition — content is dynamic via system_prompt_contribution
@@ -502,7 +502,7 @@ mod tests {
         assert_eq!(cap.name(), "AGENTS.md");
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("file-text"));
-        assert_eq!(cap.category(), Some("Configuration"));
+        assert_eq!(cap.category(), Some("Core"));
     }
 
     #[test]
