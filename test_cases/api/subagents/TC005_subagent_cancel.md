@@ -88,8 +88,8 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 | Check | Expected |
 |-------|----------|
 | cancel_task called | `tool.called` with `tool_name: "cancel_task"` |
-| Cancel succeeds | `tool.completed` for `cancel_task` without error |
-| Task state reflects cancellation | `task.updated` event with `state: "canceled"` for the Worker task |
+| Cancel intent recorded | `tool.completed` for `cancel_task` whose result has `cancel_requested: true` |
+| Cooperative wind-down | The task reaches a terminal state (`canceled`, or `succeeded`/`failed` if it finished first) — `cancel_task` requests, it does not force |
 
 ## Validation Commands
 
@@ -97,6 +97,9 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 # Assert: cancel_task called
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "cancel_task")] | length > 0'
 
-# Assert: task.updated event shows canceled state
-curl -s ".../events" | jq '[.data[] | select(.type == "task.updated" and .data.task.state == "canceled")] | length > 0'
+# Assert: cancel_task result recorded the cancel intent
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "cancel_task" and (.data.result.cancel_requested == true))] | length > 0'
+
+# Assert: the task reaches some terminal state (cooperative cancel may settle as canceled/succeeded/failed)
+curl -s ".../events" | jq '[.data[] | select(.type == "task.updated" and (.data.task.state | IN("canceled","succeeded","failed")))] | length > 0'
 ```

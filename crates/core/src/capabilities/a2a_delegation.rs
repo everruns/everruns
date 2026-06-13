@@ -2195,6 +2195,58 @@ mod tests {
         }
     }
 
+    /// Parity check for the retired `wait_agent`: a background `spawn_agent`
+    /// run is observable end-to-end through the generic `wait_task` tool.
+    /// The background poll loop mirrors each remote snapshot onto the session
+    /// task via `save_run`, so `wait_task` converges to the terminal state.
+    #[tokio::test]
+    async fn background_spawn_is_waitable_via_generic_wait_task() {
+        use crate::capabilities::session_tasks::WaitTaskTool;
+
+        let base_url = spawn_real_a2a_agent().await;
+        let config = configured_capability(base_url);
+        let spawn = SpawnAgentTool::new(config);
+
+        // A context WITH a task registry so the background run creates and
+        // mirrors a session task (the registry is what wait_task reads).
+        let storage_store = Arc::new(TestStorageStore::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let ctx = ToolContext::with_stores(SessionId::new(), file_store, storage_store)
+            .with_session_task_registry(registry.clone());
+
+        let result = spawn
+            .execute_with_context(
+                json!({
+                    "instructions": "background",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "background",
+                    "wait_timeout_secs": 5,
+                    "wake_on_completion": false
+                }),
+                &ctx,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected spawn success: {result:?}");
+        };
+        let task_id = value["task_id"]
+            .as_str()
+            .expect("background spawn returns a task_id when a registry is present");
+
+        let waited = WaitTaskTool
+            .execute_with_context(json!({"task_id": task_id, "timeout_seconds": 5}), &ctx)
+            .await;
+        let ToolExecutionResult::Success(value) = waited else {
+            panic!("expected wait_task success: {waited:?}");
+        };
+        assert_eq!(
+            value["timed_out"], false,
+            "wait_task should observe a terminal state, got {value:?}"
+        );
+        assert_eq!(value["task"]["state"], "succeeded");
+    }
+
     /// Build a SessionTask snapshot for testing (not persisted in any store).
     fn fake_task_with_spec(
         session_id: crate::typed_id::SessionId,

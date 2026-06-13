@@ -88,7 +88,7 @@ Verify that `message_task` can send a follow-up message to a subagent's task cha
 | Check | Expected |
 |-------|----------|
 | message_task called | `tool.called` event with `tool_name: "message_task"` |
-| Message delivered | `tool.completed` result contains confirmation |
+| Message recorded and delivered | `tool.completed` for `message_task` whose result has `recorded: true` and `delivery: "delivered"` |
 | Two turns completed | Two `turn.completed` events |
 
 ## Validation Commands
@@ -99,6 +99,9 @@ curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.to
 
 # Assert: message_task was called
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "message_task")] | length > 0'
+
+# Assert: message_task recorded and delivered the message
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_task" and (.data.result.recorded == true) and (.data.result.delivery == "delivered"))] | length > 0'
 
 # Assert: two turns completed
 curl -s ".../events" | jq '[.data[] | select(.type == "turn.completed")] | length == 2'
