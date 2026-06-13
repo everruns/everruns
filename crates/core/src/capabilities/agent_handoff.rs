@@ -729,7 +729,11 @@ impl Tool for GetAgentHandoffsTool {
         let handoffs = tasks
             .into_iter()
             .filter_map(|task| {
-                // Only tasks that have a child session id represent agent handoffs.
+                // Subagent-kind tasks cover both spawn_subagent and handoffs;
+                // only handoff tasks carry `target_id`/`external_agent_id` in
+                // their spec (set by start_agent_handoff), so use that to
+                // exclude plain subagents.
+                let target_id = task.spec.get("target_id").and_then(Value::as_str)?;
                 let child_session_id = task.links.child_session_id?;
                 let handoff_id_str = child_session_id.to_string();
                 if handoff_id_filter.is_some_and(|id| id != handoff_id_str) {
@@ -737,6 +741,8 @@ impl Tool for GetAgentHandoffsTool {
                 }
                 Some(json!({
                     "handoff_id": handoff_id_str,
+                    "target_id": target_id,
+                    "target_agent_id": task.spec.get("external_agent_id"),
                     "name": task.display_name,
                     "status": task.state,
                     "created_at": task.created_at,
@@ -1182,7 +1188,10 @@ mod tests {
                 id: None,
                 kind: TASK_KIND_SUBAGENT.to_string(),
                 display_name: "AWS Operator".to_string(),
-                spec: serde_json::Value::Null,
+                // Handoff tasks carry target_id/external_agent_id in spec;
+                // get_agent_handoffs filters on target_id to exclude plain
+                // spawn_subagent tasks.
+                spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
                 state: SessionTaskState::Succeeded,
                 links: TaskLinks {
                     child_session_id: Some(child_id),
@@ -1206,6 +1215,51 @@ mod tests {
         assert_eq!(handoffs[0]["handoff_id"], child_id.to_string());
         assert_eq!(handoffs[0]["name"], "AWS Operator");
         assert_eq!(handoffs[0]["status"], "succeeded");
+        assert_eq!(handoffs[0]["target_id"], "aws");
+        assert_eq!(handoffs[0]["target_agent_id"], "agent_aws");
+    }
+
+    #[tokio::test]
+    async fn get_handoffs_excludes_plain_subagent_tasks() {
+        // A subagent-kind task without target_id in spec is a plain
+        // spawn_subagent, not a handoff — it must not be listed.
+        let parent_id = SessionId::new();
+        let child_id = SessionId::new();
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let get = get_tool(config);
+
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        registry
+            .create(CreateSessionTask {
+                session_id: parent_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Plain Subagent".to_string(),
+                spec: json!({ "instructions": "do a thing" }),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .expect("create task");
+
+        let mut ctx = ToolContext::new(parent_id);
+        ctx.platform_store = Some(store);
+        ctx.session_task_registry = Some(registry);
+
+        let result = get.execute_with_context(json!({}), &ctx).await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(
+            value["handoffs"].as_array().expect("handoffs").len(),
+            0,
+            "plain subagent must not be reported as a handoff"
+        );
     }
 
     #[tokio::test]

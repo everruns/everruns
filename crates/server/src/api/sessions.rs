@@ -471,6 +471,13 @@ pub async fn create_session(
                 .into_response(StatusCode::TOO_MANY_REQUESTS),
         );
     }
+    // `parent_session_id` is internal-only: the subagent/handoff spawn flow
+    // sets it via the platform store (DirectPlatformStore::create_session
+    // dispatches the command directly). External HTTP callers must never set
+    // it — that would let a client forge cross-session/cross-org parent links —
+    // so strip any client-supplied value at the public boundary.
+    let mut req = req;
+    req.parent_session_id = None;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
 

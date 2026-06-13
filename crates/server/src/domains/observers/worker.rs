@@ -215,6 +215,7 @@ mod tests {
             harness_id: Some(harness),
             agent_id: Some(agent),
             agent_identity_id: None,
+            parent_session_id: None,
             owner_principal_id: PrincipalId::from_uuid(Uuid::nil()),
             resolved_owner_user_id: None,
             title: None,
