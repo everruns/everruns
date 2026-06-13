@@ -236,18 +236,35 @@ impl AppEndpointAuthVerifier {
         let Some(AppEndpointAuthProviderConfig::Mtls {
             header_name,
             allowed_values,
+            proxy_secret_header,
+            proxy_secret,
         }) = auth.provider.as_ref()
         else {
             return Err(AppEndpointAuthError::Misconfigured);
         };
-        // THREAT[TM-AUTH-021]: mTLS identity is accepted only from a configured
-        // reverse-proxy header. Deployments must strip this header at the public
-        // edge and set it only after client-cert verification.
-        let value = headers
+        // THREAT[TM-AUTH-021]: mTLS identity requires BOTH the cert identity
+        // header (injected by the reverse proxy after client-cert verification)
+        // AND a shared proxy secret (proxy_secret_header / proxy_secret). The
+        // proxy secret proves the request came through the trusted TLS terminator.
+        // Without it, a caller who knows or guesses an allowed cert value can
+        // spoof the identity header directly (EVE-545).
+        let (proxy_hdr, expected_secret) =
+            match (proxy_secret_header.as_deref(), proxy_secret.as_deref()) {
+                (Some(h), Some(s)) if !h.is_empty() && !s.is_empty() => (h, s),
+                _ => return Err(AppEndpointAuthError::Misconfigured),
+            };
+        let cert_value = headers
             .get(header_name)
-            .and_then(|value| value.to_str().ok())
+            .and_then(|v| v.to_str().ok())
             .ok_or(AppEndpointAuthError::Unauthorized)?;
-        if allowed_values.iter().any(|allowed| allowed == value) {
+        if !allowed_values.iter().any(|a| a == cert_value) {
+            return Err(AppEndpointAuthError::Unauthorized);
+        }
+        let provided_secret = headers
+            .get(proxy_hdr)
+            .and_then(|v| v.to_str().ok())
+            .ok_or(AppEndpointAuthError::Unauthorized)?;
+        if constant_time_eq(provided_secret.as_bytes(), expected_secret.as_bytes()) {
             Ok(())
         } else {
             Err(AppEndpointAuthError::Unauthorized)
@@ -636,6 +653,79 @@ mod tests {
             "tier": "prod"
         });
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
+    }
+
+    fn mtls_auth() -> AppEndpointAuthConfig {
+        AppEndpointAuthConfig {
+            mode: AppEndpointAuthMode::Mtls,
+            provider: Some(AppEndpointAuthProviderConfig::Mtls {
+                header_name: "x-client-cert".to_string(),
+                allowed_values: vec!["CN=trusted".to_string()],
+                proxy_secret_header: Some("x-proxy-secret".to_string()),
+                proxy_secret: Some("supersecret".to_string()),
+            }),
+            requirements: AppEndpointAuthRequirements::default(),
+        }
+    }
+
+    #[test]
+    fn mtls_requires_both_cert_and_proxy_secret() {
+        let auth = mtls_auth();
+        let verifier = AppEndpointAuthVerifier::new();
+
+        // No headers — Unauthorized (cert missing).
+        assert_eq!(
+            verifier.verify_mtls(&auth, &HeaderMap::new()).unwrap_err(),
+            AppEndpointAuthError::Unauthorized
+        );
+
+        // Cert header only — Unauthorized (proxy secret missing). This is the
+        // spoofing case EVE-545 guards against.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
+        assert_eq!(
+            verifier.verify_mtls(&auth, &headers).unwrap_err(),
+            AppEndpointAuthError::Unauthorized,
+            "spoofed cert header alone must not authenticate"
+        );
+
+        // Cert + wrong proxy secret — Unauthorized.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
+        headers.insert("x-proxy-secret", HeaderValue::from_static("wrongsecret"));
+        assert_eq!(
+            verifier.verify_mtls(&auth, &headers).unwrap_err(),
+            AppEndpointAuthError::Unauthorized
+        );
+
+        // Both correct — Ok.
+        let mut headers = HeaderMap::new();
+        headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
+        headers.insert("x-proxy-secret", HeaderValue::from_static("supersecret"));
+        assert!(verifier.verify_mtls(&auth, &headers).is_ok());
+    }
+
+    #[test]
+    fn mtls_without_proxy_secret_config_is_misconfigured() {
+        // Legacy configs that predate EVE-545 (no proxy_secret fields) must fail
+        // closed so they cannot be exploited after an upgrade.
+        let auth = AppEndpointAuthConfig {
+            mode: AppEndpointAuthMode::Mtls,
+            provider: Some(AppEndpointAuthProviderConfig::Mtls {
+                header_name: "x-client-cert".to_string(),
+                allowed_values: vec!["CN=trusted".to_string()],
+                proxy_secret_header: None,
+                proxy_secret: None,
+            }),
+            requirements: AppEndpointAuthRequirements::default(),
+        };
+        let verifier = AppEndpointAuthVerifier::new();
+        let mut headers = HeaderMap::new();
+        headers.insert("x-client-cert", HeaderValue::from_static("CN=trusted"));
+        assert_eq!(
+            verifier.verify_mtls(&auth, &headers).unwrap_err(),
+            AppEndpointAuthError::Misconfigured
+        );
     }
 
     #[tokio::test]

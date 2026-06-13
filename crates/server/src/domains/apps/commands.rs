@@ -588,9 +588,21 @@ fn validate_endpoint_auth_config(
             Some(AppEndpointAuthProviderConfig::Mtls {
                 header_name,
                 allowed_values,
-            }) if !header_name.trim().is_empty() && !allowed_values.is_empty() => Ok(()),
+                proxy_secret_header,
+                proxy_secret,
+            }) if !header_name.trim().is_empty()
+                && !allowed_values.is_empty()
+                && proxy_secret_header
+                    .as_deref()
+                    .is_some_and(|h| !h.trim().is_empty())
+                && proxy_secret
+                    .as_deref()
+                    .is_some_and(|s| !s.trim().is_empty()) =>
+            {
+                Ok(())
+            }
             _ => Err(CommandError::bad_request(
-                "mTLS auth requires provider.type=mtls, header_name, and allowed_values",
+                "mTLS auth requires provider.type=mtls, header_name, allowed_values, proxy_secret_header, and proxy_secret",
             )),
         },
     }
@@ -671,6 +683,9 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
     }
     if provider.remove("client_secret").is_some() {
         provider.insert("client_secret_configured".to_string(), Value::Bool(true));
+    }
+    if provider.remove("proxy_secret").is_some() {
+        provider.insert("proxy_secret_configured".to_string(), Value::Bool(true));
     }
 }
 

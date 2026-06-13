@@ -45,7 +45,15 @@ export type AppEndpointAuthProviderConfig =
       password_hash?: string;
       password_configured?: boolean;
     }
-  | { type: "mtls"; header_name: string; allowed_values: string[] };
+  | {
+      type: "mtls";
+      header_name: string;
+      allowed_values: string[];
+      proxy_secret_header?: string;
+      /** Write-only. Never returned after save; presence indicated by proxy_secret_configured. */
+      proxy_secret?: string;
+      proxy_secret_configured?: boolean;
+    };
 
 export interface AppEndpointAuthConfig {
   mode: AppEndpointAuthMode;

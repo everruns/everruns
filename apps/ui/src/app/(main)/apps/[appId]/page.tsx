@@ -399,6 +399,10 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
   const [editAuthBasicPasswordConfigured, setEditAuthBasicPasswordConfigured] = useState(false);
   const [editAuthMtlsHeader, setEditAuthMtlsHeader] = useState("x-forwarded-client-cert-subject");
   const [editAuthMtlsValues, setEditAuthMtlsValues] = useState("");
+  const [editAuthMtlsProxySecretHeader, setEditAuthMtlsProxySecretHeader] =
+    useState("x-proxy-secret");
+  const [editAuthMtlsProxySecret, setEditAuthMtlsProxySecret] = useState("");
+  const [editAuthMtlsProxySecretConfigured, setEditAuthMtlsProxySecretConfigured] = useState(false);
 
   // A2A: plaintext API key shown exactly once (after create or rotate). Cleared
   // when the operator dismisses the dialog.
@@ -667,6 +671,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     setEditAuthBasicPasswordConfigured(false);
     setEditAuthMtlsHeader("x-forwarded-client-cert-subject");
     setEditAuthMtlsValues("");
+    setEditAuthMtlsProxySecretHeader("x-proxy-secret");
+    setEditAuthMtlsProxySecret("");
+    setEditAuthMtlsProxySecretConfigured(false);
   };
 
   const buildEndpointAuthConfig = (): AppEndpointAuthConfig | undefined => {
@@ -729,6 +736,8 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           type: "mtls",
           header_name: editAuthMtlsHeader.trim(),
           allowed_values: splitList(editAuthMtlsValues),
+          proxy_secret_header: editAuthMtlsProxySecretHeader.trim(),
+          ...(editAuthMtlsProxySecret ? { proxy_secret: editAuthMtlsProxySecret } : {}),
         },
         requirements: {},
       };
@@ -837,7 +846,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         (!!editAuthBasicPassword || editAuthBasicPasswordConfigured)) ||
       (editAuthMode === "mtls" &&
         !!editAuthMtlsHeader.trim() &&
-        splitList(editAuthMtlsValues).length > 0);
+        splitList(editAuthMtlsValues).length > 0 &&
+        !!editAuthMtlsProxySecretHeader.trim() &&
+        (!!editAuthMtlsProxySecret || editAuthMtlsProxySecretConfigured));
     if (!authValid) return false;
     switch (channelType) {
       case "ag_ui": {
@@ -917,6 +928,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     setEditAuthBasicPasswordConfigured(false);
     setEditAuthMtlsHeader("x-forwarded-client-cert-subject");
     setEditAuthMtlsValues("");
+    setEditAuthMtlsProxySecretHeader("x-proxy-secret");
+    setEditAuthMtlsProxySecret("");
+    setEditAuthMtlsProxySecretConfigured(false);
     const provider = auth?.provider;
     if (provider?.type === "google_oidc") {
       setEditAuthGoogleClientId(provider.client_id ?? "");
@@ -934,6 +948,8 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     } else if (provider?.type === "mtls") {
       setEditAuthMtlsHeader(provider.header_name ?? "x-forwarded-client-cert-subject");
       setEditAuthMtlsValues(provider.allowed_values?.join(", ") ?? "");
+      setEditAuthMtlsProxySecretHeader(provider.proxy_secret_header ?? "x-proxy-secret");
+      setEditAuthMtlsProxySecretConfigured(provider.proxy_secret_configured === true);
     }
   };
 
@@ -1259,6 +1275,29 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
                 value={editAuthMtlsValues}
                 onChange={(event) => setEditAuthMtlsValues(event.target.value)}
                 placeholder="CN=client,O=Example"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`mtls_proxy_secret_header_${formId}`}>Proxy secret header</Label>
+              <Input
+                id={`mtls_proxy_secret_header_${formId}`}
+                value={editAuthMtlsProxySecretHeader}
+                onChange={(event) => setEditAuthMtlsProxySecretHeader(event.target.value)}
+                placeholder="x-proxy-secret"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`mtls_proxy_secret_${formId}`}>
+                Proxy secret{editAuthMtlsProxySecretConfigured ? " (configured)" : ""}
+              </Label>
+              <Input
+                id={`mtls_proxy_secret_${formId}`}
+                type="password"
+                value={editAuthMtlsProxySecret}
+                onChange={(event) => setEditAuthMtlsProxySecret(event.target.value)}
+                placeholder={
+                  editAuthMtlsProxySecretConfigured ? "Leave blank to keep existing secret" : ""
+                }
               />
             </div>
           </>

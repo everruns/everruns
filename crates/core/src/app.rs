@@ -516,6 +516,14 @@ pub enum AppEndpointAuthProviderConfig {
         header_name: String,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         allowed_values: Vec<String>,
+        /// Header the trusted reverse proxy uses to prove its identity.
+        /// Required. Configs without this field fail closed at verification time.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proxy_secret_header: Option<String>,
+        /// Shared secret the trusted proxy includes in `proxy_secret_header`.
+        /// Write-only: redacted in GET responses. See TM-AUTH-021.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        proxy_secret: Option<String>,
     },
 }
 

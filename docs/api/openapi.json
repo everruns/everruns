@@ -13092,6 +13092,18 @@
               "header_name": {
                 "type": "string"
               },
+              "proxy_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "proxy_secret_header": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "type": {
                 "type": "string",
                 "enum": [

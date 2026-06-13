@@ -73,7 +73,11 @@ Modes:
 - `http_basic` validates standard HTTP Basic credentials. Passwords are
   write-only and stored as Argon2id hashes in channel config.
 - `mtls` validates a configured identity header set by a trusted reverse proxy
-  after client certificate verification.
+  after client certificate verification. Requires `proxy_secret_header` and
+  `proxy_secret` — a shared secret the trusted proxy injects to prove the
+  request passed through it. Configs without a proxy secret fail closed
+  (misconfigured). The proxy secret is write-only and redacted in GET
+  responses.
 
 `requirements` can constrain audiences, scopes, subjects, groups, domains, and
 exact claim values. Empty requirement lists mean no constraint for that field.
