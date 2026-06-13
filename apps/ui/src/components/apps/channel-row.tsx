@@ -139,7 +139,10 @@ export function ChannelRow({
 }) {
   const Icon = iconFor(channel.channel_type);
   const canRunNow =
-    channel.channel_type === "schedule" && channel.enabled && app.status === "published";
+    !!onRunNow &&
+    channel.channel_type === "schedule" &&
+    channel.enabled &&
+    app.status === "published";
 
   return (
     <div className="border bg-card">

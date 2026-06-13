@@ -134,4 +134,44 @@ describe("app channel redesign", () => {
     expect(screen.getByText(/Active$/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Tell a dad joke/ })).toBeInTheDocument();
   });
+
+  it("disables Run now when onRunNow is not provided (no manage permission)", async () => {
+    const { getByRole } = render(
+      <ChannelRow
+        app={{ ...app, channels: [scheduleChannel] }}
+        channel={scheduleChannel}
+        expanded={false}
+        onToggle={() => {}}
+        configureHref="/apps/app_123/channels/appchan_123"
+        // no onRunNow — simulates caller withholding the action due to !canManage
+      />,
+    );
+
+    const trigger = getByRole("button", { name: "Channel actions" });
+    fireEvent.click(trigger);
+
+    const runNow = await screen.findByText("Run now");
+    expect(
+      runNow.closest("[aria-disabled]") ?? runNow.closest("[disabled]") ?? runNow,
+    ).toHaveAttribute("data-disabled");
+  });
+
+  it("enables Run now when onRunNow is provided and channel is runnable", async () => {
+    const { getByRole } = render(
+      <ChannelRow
+        app={{ ...app, channels: [scheduleChannel] }}
+        channel={scheduleChannel}
+        expanded={false}
+        onToggle={() => {}}
+        onRunNow={() => {}}
+        configureHref="/apps/app_123/channels/appchan_123"
+      />,
+    );
+
+    const trigger = getByRole("button", { name: "Channel actions" });
+    fireEvent.click(trigger);
+
+    const runNow = await screen.findByText("Run now");
+    expect(runNow.closest("[data-disabled]")).toBeNull();
+  });
 });
