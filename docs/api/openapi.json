@@ -11663,6 +11663,106 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/fs/_/copy": {
+      "post": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/copy - Copy a file",
+        "operationId": "copy_file",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopyFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Copied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or cannot copy directories"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/download/{path}": {
+      "get": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "GET /v1/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes",
+        "operationId": "download_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw file bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "400": {
+            "description": "Path points to a directory"
+          },
+          "404": {
+            "description": "File not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/fs/_/grep": {
       "post": {
         "tags": [
@@ -11704,6 +11804,60 @@
           },
           "400": {
             "description": "Invalid regex pattern"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/fs/_/move": {
+      "post": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory",
+        "operationId": "move_file",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveFileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Moved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionFile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "404": {
+            "description": "Source not found"
+          },
+          "409": {
+            "description": "Destination exists"
           },
           "500": {
             "description": "Internal server error"
@@ -14230,6 +14384,26 @@
                 "description": "Reasoning configuration"
               }
             ]
+          }
+        }
+      },
+      "CopyFileRequest": {
+        "type": "object",
+        "description": "Request to copy a file",
+        "required": [
+          "src_path",
+          "dst_path"
+        ],
+        "properties": {
+          "dst_path": {
+            "type": "string",
+            "description": "Destination path (relative to the session workspace root).",
+            "example": "docs/runbooks/refund-30-days.md"
+          },
+          "src_path": {
+            "type": "string",
+            "description": "Source path (relative to the session workspace root).",
+            "example": "templates/runbook.md"
           }
         }
       },
@@ -23279,6 +23453,26 @@
           "llmsim"
         ]
       },
+      "MoveFileRequest": {
+        "type": "object",
+        "description": "Request to move/rename a file",
+        "required": [
+          "src_path",
+          "dst_path"
+        ],
+        "properties": {
+          "dst_path": {
+            "type": "string",
+            "description": "Destination path (relative to the session workspace root).",
+            "example": "docs/migration-plan.md"
+          },
+          "src_path": {
+            "type": "string",
+            "description": "Source path (relative to the session workspace root).",
+            "example": "drafts/migration-plan.md"
+          }
+        }
+      },
       "NetworkAccessList": {
         "type": "object",
         "description": "Network access list controlling which hosts/URLs an agent session can reach.\n\n- `allowed`: if non-empty, only URLs matching these patterns are permitted.\n- `blocked`: URLs matching these patterns are always denied (takes precedence over allowed).\n\nPattern format:\n- `example.com` — exact domain match (any port, any path)\n- `*.example.com` — domain and all subdomains\n- `https://example.com/api/` — exact URL prefix (scheme + host + path)",
@@ -23573,6 +23767,7 @@
               "required": [
                 "id",
                 "organization_id",
+                "workspace_id",
                 "harness_id",
                 "owner_principal_id",
                 "status",
@@ -23892,6 +24087,11 @@
                       "description": "Cumulative token usage for all LLM calls in this session."
                     }
                   ]
+                },
+                "workspace_id": {
+                  "type": "string",
+                  "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
+                  "example": "wsp_01933b5a00007000800000000000001"
                 }
               }
             },
@@ -24480,6 +24680,7 @@
                   "required": [
                     "id",
                     "organization_id",
+                    "workspace_id",
                     "harness_id",
                     "owner_principal_id",
                     "status",
@@ -24799,6 +25000,11 @@
                           "description": "Cumulative token usage for all LLM calls in this session."
                         }
                       ]
+                    },
+                    "workspace_id": {
+                      "type": "string",
+                      "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
+                      "example": "wsp_01933b5a00007000800000000000001"
                     }
                   }
                 },
@@ -26896,6 +27102,7 @@
         "required": [
           "id",
           "organization_id",
+          "workspace_id",
           "harness_id",
           "owner_principal_id",
           "status",
@@ -27215,6 +27422,11 @@
                 "description": "Cumulative token usage for all LLM calls in this session."
               }
             ]
+          },
+          "workspace_id": {
+            "type": "string",
+            "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
+            "example": "wsp_01933b5a00007000800000000000001"
           }
         }
       },
@@ -32852,6 +33064,7 @@
             "required": [
               "id",
               "organization_id",
+              "workspace_id",
               "harness_id",
               "owner_principal_id",
               "status",
@@ -33171,6 +33384,11 @@
                     "description": "Cumulative token usage for all LLM calls in this session."
                   }
                 ]
+              },
+              "workspace_id": {
+                "type": "string",
+                "description": "Workspace this session is attached to (format: wsp_{32-hex}). Owns the\nsession's virtual filesystem. For the default 1:1 case this mirrors the\nsession id, but clients should read it here rather than deriving it.",
+                "example": "wsp_01933b5a00007000800000000000001"
               }
             }
           },
