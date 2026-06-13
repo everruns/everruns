@@ -408,9 +408,9 @@ impl Tool for ListOpenRouterCatalogTool {
 
         if !response.status().is_success() {
             let status = response.status();
-            let _ = response.bytes().await;
+            let body = response.text().await.unwrap_or_default();
             return ToolExecutionResult::tool_error(format!(
-                "OpenRouter /models returned HTTP {status}"
+                "OpenRouter /models returned HTTP {status}: {body}"
             ));
         }
 
@@ -432,7 +432,16 @@ impl Tool for ListOpenRouterCatalogTool {
             }
         };
 
-        let mut entries: Vec<Value> = models
+        // Sort raw models by name first so filter+truncation is deterministic
+        // regardless of the order OpenRouter returns them.
+        let mut sorted_models: Vec<&Value> = models.iter().collect();
+        sorted_models.sort_by(|a, b| {
+            let na = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let nb = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            na.cmp(nb)
+        });
+
+        let entries: Vec<Value> = sorted_models
             .iter()
             .filter(|m| {
                 let params: Vec<String> = m
@@ -452,15 +461,18 @@ impl Tool for ListOpenRouterCatalogTool {
                     return false;
                 }
                 if let Some(max_p) = max_price {
-                    let prompt_price: f64 = m
+                    // Models with missing or unparseable pricing are excluded when a
+                    // price ceiling is active to avoid silently letting expensive or
+                    // unknown-cost models through.
+                    let prompt_price: Option<f64> = m
                         .get("pricing")
                         .and_then(|pr| pr.get("prompt"))
                         .and_then(|v| v.as_str())
-                        .and_then(|s| s.parse().ok())
-                        .unwrap_or(0.0);
-                    // OpenRouter reports price per token; convert to per-million
-                    if prompt_price * 1_000_000.0 > max_p {
-                        return false;
+                        .and_then(|s| s.parse().ok());
+                    match prompt_price {
+                        // OpenRouter reports price per token; convert to per-million
+                        Some(p) if p * 1_000_000.0 <= max_p => {}
+                        _ => return false,
                     }
                 }
                 true
@@ -477,12 +489,6 @@ impl Tool for ListOpenRouterCatalogTool {
                 })
             })
             .collect();
-
-        entries.sort_by(|a, b| {
-            let name_a = a.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let name_b = b.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            name_a.cmp(name_b)
-        });
 
         ToolExecutionResult::success(json!({
             "total_returned": entries.len(),
@@ -587,10 +593,17 @@ impl Tool for ProbeModelTool {
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
 
-        let client = reqwest::Client::builder()
+        let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_millis(timeout_ms))
             .build()
-            .unwrap_or_else(|_| reqwest::Client::new());
+        {
+            Ok(c) => c,
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to build HTTP client: {e}"
+                ));
+            }
+        };
 
         let mut results: Vec<ProbeResult> = Vec::new();
 
@@ -709,6 +722,10 @@ async fn run_probe(
         .get("usage")
         .and_then(|u| u.get("completion_tokens"))
         .and_then(|v| v.as_u64());
+    let cost_usd = body
+        .get("usage")
+        .and_then(|u| u.get("cost"))
+        .and_then(|v| v.as_f64());
 
     // Evaluate checks
     let mut passed = vec![];
@@ -718,7 +735,9 @@ async fn run_probe(
             "not_empty" => !content.trim().is_empty(),
             "max_latency_5s" => latency_ms <= 5_000,
             "max_latency_10s" => latency_ms <= 10_000,
-            _ => true, // unknown checks pass by default
+            // Unknown check IDs fail so typos in task configs surface immediately
+            // rather than silently inflating success rates.
+            _ => false,
         };
         if ok {
             passed.push(check.clone());
@@ -736,7 +755,7 @@ async fn run_probe(
         latency_ms,
         input_tokens,
         output_tokens,
-        cost_usd: None, // reconciled separately; estimated cost added by caller
+        cost_usd,
         error: None,
         passed_checks: passed,
         failed_checks: failed,
@@ -866,13 +885,21 @@ impl Tool for ProposeRouterUpdateTool {
 
         let top_n = arguments.get("top_n").and_then(|v| v.as_u64()).unwrap_or(3) as usize;
 
-        let top_models: Vec<String> = rankings
+        // Sort defensively — callers may provide unsorted input.
+        let mut sorted = rankings;
+        sorted.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let top_models: Vec<String> = sorted
             .iter()
             .take(top_n)
             .map(|r| r.model_id.clone())
             .collect();
 
-        let best = &rankings[0];
+        let best = &sorted[0];
         let rationale = format!(
             "Top model '{}' scored {:.3} (success_rate={:.0}%, avg_latency={:.0}ms, total_cost_usd={:.4}). \
              {} candidates probed total.",
@@ -881,7 +908,7 @@ impl Tool for ProposeRouterUpdateTool {
             best.success_rate * 100.0,
             best.avg_latency_ms,
             best.total_cost_usd,
-            rankings.len(),
+            sorted.len(),
         );
 
         let proposal = RouterUpdateProposal {

@@ -2420,6 +2420,7 @@ mod tests {
             "error_disclosure",
             "prompt_canary_guardrail",
             "user_hooks",
+            "model_scout",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();
