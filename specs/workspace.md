@@ -48,11 +48,25 @@ removed; otherwise `DELETE` archives the row.
 
 ## Default Workspace per Session
 
-For backward compatibility, every newly created session auto-creates a
-**default Workspace** named after the session (`session-<session-id-suffix>`)
-and attaches the session to it. Power users who want to share working
-state across sessions can pre-create a Workspace via the API and pass its
-`workspace_id` to `CreateSession`.
+For backward compatibility, a session created without an explicit
+`workspace_id` auto-creates a **default Workspace** named after the session
+(`session-<session-id-suffix>`) whose primary key equals the session id (the
+equality invariant), and attaches the session to it.
+
+Power users who want to share working state across sessions pre-create a
+Workspace via the API and pass its `workspace_id` (the `wsp_<32-hex>` public id)
+to `CreateSession`. The attach target is validated at create time: it must
+exist in the caller's org (else `404`) and be `active` (an `archived`/`deleted`
+target is rejected `400`). When attached, no default workspace is created and
+the session's `workspace_id` points at the shared workspace.
+
+File access re-keys by the session's `workspace_id`, not its id, so a shared
+workspace is addressed consistently everywhere: the agent's `file_system` /
+`virtual_bash` tools (a [`WorkspaceScopedFileSystem`] decorator pins tool I/O to
+the workspace), system-prompt file reads, initial-file seeding and capability
+mounts, and the legacy `/v1/sessions/{session_id}/fs/*` alias. For the default
+1:1 session these all reduce to the session id, so the re-keying is a
+transparent pass-through.
 
 This preserves the legacy 1:1 session→files invariant for clients that
 don't yet think about Workspaces, while exposing the multi-session-share

@@ -15830,6 +15830,14 @@
                 "type": "client_side"
               }
             ]
+          },
+          "workspace_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Attach this session to an existing Workspace (format: `wsp_<32-hex>`)\ninstead of auto-creating a default per-session workspace. The workspace\nmust exist in the caller's org and be `active`. Lets multiple sessions\nshare one working filesystem. Omit for the default 1:1 behavior.",
+            "example": "wsp_01933b5a00007000800000000000001"
           }
         }
       },
