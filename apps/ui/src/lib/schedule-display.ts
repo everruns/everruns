@@ -105,6 +105,11 @@ export function formatScheduleCadence(input: {
 }
 
 export function formatScheduledDateTime(dateString: string, timezone = "UTC"): string {
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) {
+    return dateString;
+  }
+
   const options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
@@ -115,12 +120,10 @@ export function formatScheduledDateTime(dateString: string, timezone = "UTC"): s
   };
 
   try {
-    return new Intl.DateTimeFormat("en-US", options).format(new Date(dateString));
+    return new Intl.DateTimeFormat("en-US", options).format(date);
   } catch {
-    return new Intl.DateTimeFormat("en-US", {
-      ...options,
-      timeZone: "UTC",
-    }).format(new Date(dateString));
+    // Fall back to UTC when the timezone string is invalid.
+    return new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" }).format(date);
   }
 }
 
