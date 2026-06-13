@@ -15,10 +15,11 @@ use reqwest::Url;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::OpenResponsesProtocolChatDriver;
+use everruns_core::credential_schema::CredentialFormSchema;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmMessage,
-    LlmResponseStream, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
+    LlmMessage, LlmResponseStream, ProviderType, ServiceKind,
 };
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::openai_protocol::is_azure_openai_api_url;
@@ -539,42 +540,65 @@ fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> R
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    // Register OpenAI with Open Responses API (recommended)
-    registry.register(ProviderType::OpenAI, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
-            None => OpenAIChatDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedChatDriver
+    // Register OpenAI with Open Responses API (recommended). OpenAI providers
+    // also power realtime voice sessions (specs/voice.md), so the descriptor
+    // declares the Realtime service alongside Chat.
+    registry.register_descriptor(DriverDescriptor {
+        services: vec![ServiceKind::Chat, ServiceKind::Realtime],
+        credential_schema: CredentialFormSchema::api_key(
+            "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
+        ),
+        ..DriverDescriptor::chat_only(ProviderType::OpenAI, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            let driver = match config.base_url.as_deref() {
+                Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
+                None => OpenAIChatDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedChatDriver
+        })
     });
 
-    registry.register(ProviderType::OpenRouter, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        let driver = match config.base_url.as_deref() {
-            Some(url) => OpenRouterChatDriver::with_base_url(api_key, url),
-            None => OpenRouterChatDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedChatDriver
+    registry.register_descriptor(DriverDescriptor {
+        credential_schema: CredentialFormSchema::api_key(
+            "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).",
+        ),
+        ..DriverDescriptor::chat_only(ProviderType::OpenRouter, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            let driver = match config.base_url.as_deref() {
+                Some(url) => OpenRouterChatDriver::with_base_url(api_key, url),
+                None => OpenRouterChatDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedChatDriver
+        })
     });
 
-    registry.register(ProviderType::AzureOpenAI, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
-            None => OpenAIChatDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedChatDriver
+    registry.register_descriptor(DriverDescriptor {
+        credential_schema: CredentialFormSchema::api_key(
+            "Use an API key for your Azure OpenAI resource and set the resource endpoint as the base URL.",
+        ),
+        ..DriverDescriptor::chat_only(ProviderType::AzureOpenAI, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            let driver = match config.base_url.as_deref() {
+                Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
+                None => OpenAIChatDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedChatDriver
+        })
     });
 
     // Register OpenAI Completions with Chat Completions API
-    registry.register(ProviderType::OpenAICompletions, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        let driver = match config.base_url.as_deref() {
-            Some(url) => OpenAICompletionsChatDriver::with_base_url(api_key, url),
-            None => OpenAICompletionsChatDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedChatDriver
+    registry.register_descriptor(DriverDescriptor {
+        credential_schema: CredentialFormSchema::api_key(
+            "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
+        ),
+        ..DriverDescriptor::chat_only(ProviderType::OpenAICompletions, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            let driver = match config.base_url.as_deref() {
+                Some(url) => OpenAICompletionsChatDriver::with_base_url(api_key, url),
+                None => OpenAICompletionsChatDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedChatDriver
+        })
     });
 }
 

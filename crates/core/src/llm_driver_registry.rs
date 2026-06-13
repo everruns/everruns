@@ -14,6 +14,7 @@
 // depend on core and register their drivers at startup. Core has no knowledge of
 // specific provider implementations.
 
+use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, Result};
 use crate::openresponses_protocol::{CompactRequest, CompactResponse};
 use crate::runtime_agent::RuntimeAgent;
@@ -21,6 +22,7 @@ use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures::Stream;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -1253,11 +1255,120 @@ pub type BoxedChatDriver = Box<dyn ChatDriver>;
 // Driver Registry
 // ============================================================================
 
-/// Factory function type for creating LLM drivers.
+/// Factory function type for creating chat drivers.
 ///
 /// Receives a [`DriverConfig`] (provider type, optional key/base URL, and
 /// provider metadata) and returns a boxed driver.
 pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync>;
+
+/// A typed service a provider driver can offer (see specs/providers.md).
+///
+/// Declared in code by each driver, never stored in the database. Only `Chat`
+/// has a driver trait today; the set is additive and new kinds gain factories
+/// on [`DriverDescriptor`] when their first consumer lands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServiceKind {
+    /// Chat completion ([`ChatDriver`]).
+    Chat,
+    /// Text embeddings (planned: knowledge-base hybrid retrieval).
+    Embeddings,
+    /// Realtime voice sessions (server-side adapter using provider credentials).
+    Realtime,
+    /// Image generation.
+    Images,
+    /// Search-result reranking.
+    Rerank,
+}
+
+impl std::fmt::Display for ServiceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            ServiceKind::Chat => "chat",
+            ServiceKind::Embeddings => "embeddings",
+            ServiceKind::Realtime => "realtime",
+            ServiceKind::Images => "images",
+            ServiceKind::Rerank => "rerank",
+        };
+        f.write_str(s)
+    }
+}
+
+/// A registered provider driver: identity, declared services, the credential
+/// shape its providers must supply, and per-service factories.
+///
+/// The descriptor is the code-side unit of the providers domain model
+/// (specs/providers.md): one descriptor per driver id, instantiated as many
+/// org-scoped providers.
+#[derive(Clone)]
+pub struct DriverDescriptor {
+    /// Driver id (also the registry key).
+    pub id: ProviderType,
+    /// Human-readable driver name (e.g. "OpenAI", "AWS Bedrock").
+    pub display_name: String,
+    /// Services this driver's providers can power. Declared, not stored.
+    pub services: Vec<ServiceKind>,
+    /// Credential fields a provider instance must supply.
+    pub credential_schema: CredentialFormSchema,
+    /// Chat service factory. `None` for drivers that only offer other services.
+    pub chat: Option<DriverFactory>,
+}
+
+impl DriverDescriptor {
+    /// Descriptor for a chat-only driver with the standard API-key credential
+    /// schema and a display name derived from the driver id.
+    pub fn chat_only<F>(id: impl Into<ProviderType>, factory: F) -> Self
+    where
+        F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
+    {
+        let id = id.into();
+        Self {
+            display_name: default_display_name(&id),
+            credential_schema: default_credential_schema(&id),
+            services: vec![ServiceKind::Chat],
+            chat: Some(Arc::new(factory)),
+            id,
+        }
+    }
+
+    /// Whether the driver declares the given service.
+    pub fn supports(&self, service: ServiceKind) -> bool {
+        self.services.contains(&service)
+    }
+}
+
+impl std::fmt::Debug for DriverDescriptor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DriverDescriptor")
+            .field("id", &self.id)
+            .field("display_name", &self.display_name)
+            .field("services", &self.services)
+            .field("chat", &self.chat.is_some())
+            .finish()
+    }
+}
+
+fn default_display_name(id: &ProviderType) -> String {
+    match id {
+        ProviderType::OpenAI => "OpenAI".to_string(),
+        ProviderType::OpenRouter => "OpenRouter".to_string(),
+        ProviderType::AzureOpenAI => "Azure OpenAI".to_string(),
+        ProviderType::OpenAICompletions => "OpenAI (Chat Completions)".to_string(),
+        ProviderType::Anthropic => "Anthropic".to_string(),
+        ProviderType::Gemini => "Google Gemini".to_string(),
+        ProviderType::Bedrock => "AWS Bedrock".to_string(),
+        ProviderType::LlmSim => "LLM Simulator".to_string(),
+        ProviderType::External(id) => id.to_string(),
+    }
+}
+
+fn default_credential_schema(id: &ProviderType) -> CredentialFormSchema {
+    match id {
+        // Keyless: simulator always; external drivers may auth via metadata.
+        ProviderType::LlmSim | ProviderType::External(_) => CredentialFormSchema::empty(),
+        _ => CredentialFormSchema::api_key(String::new()),
+    }
+}
 
 /// Registry for LLM drivers
 ///
@@ -1280,15 +1391,36 @@ pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + S
 /// ```
 #[derive(Clone, Default)]
 pub struct DriverRegistry {
-    factories: HashMap<ProviderType, DriverFactory>,
+    descriptors: HashMap<ProviderType, DriverDescriptor>,
 }
 
 impl DriverRegistry {
     /// Create a new empty registry
     pub fn new() -> Self {
         Self {
-            factories: HashMap::new(),
+            descriptors: HashMap::new(),
         }
+    }
+
+    /// Register a full driver descriptor.
+    ///
+    /// Panics if a descriptor is already registered for the same driver id —
+    /// silent overwrites hide double-registration bugs. Use
+    /// [`Self::register_descriptor_or_replace`] to overwrite intentionally.
+    pub fn register_descriptor(&mut self, descriptor: DriverDescriptor) {
+        if self.descriptors.contains_key(&descriptor.id) {
+            panic!(
+                "driver already registered for provider '{}'; \
+                 use register_descriptor_or_replace to overwrite intentionally",
+                descriptor.id
+            );
+        }
+        self.descriptors.insert(descriptor.id.clone(), descriptor);
+    }
+
+    /// Register a full driver descriptor, replacing any existing one.
+    pub fn register_descriptor_or_replace(&mut self, descriptor: DriverDescriptor) {
+        self.descriptors.insert(descriptor.id.clone(), descriptor);
     }
 
     /// Register a driver factory for a provider type.
@@ -1300,14 +1432,7 @@ impl DriverRegistry {
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
-        let provider_type = provider_type.into();
-        if self.factories.contains_key(&provider_type) {
-            panic!(
-                "driver already registered for provider '{provider_type}'; \
-                 use register_or_replace to overwrite intentionally"
-            );
-        }
-        self.factories.insert(provider_type, Arc::new(factory));
+        self.register_descriptor(DriverDescriptor::chat_only(provider_type, factory));
     }
 
     /// Register a driver factory, replacing any existing one for the provider.
@@ -1318,8 +1443,7 @@ impl DriverRegistry {
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
-        self.factories
-            .insert(provider_type.into(), Arc::new(factory));
+        self.register_descriptor_or_replace(DriverDescriptor::chat_only(provider_type, factory));
     }
 
     /// Register a driver factory for an embedder-defined external provider,
@@ -1354,9 +1478,15 @@ impl DriverRegistry {
             ));
         }
 
-        // Look up the factory for this provider type
-        let factory = self.factories.get(&config.provider_type).ok_or_else(|| {
+        // Look up the descriptor and its chat factory for this provider type
+        let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
             AgentLoopError::driver_not_registered(config.provider_type.to_string())
+        })?;
+        let factory = descriptor.chat.as_ref().ok_or_else(|| {
+            AgentLoopError::llm(format!(
+                "Provider driver '{}' does not implement the chat service.",
+                config.provider_type
+            ))
         })?;
 
         // Create the driver using the factory
@@ -1371,12 +1501,33 @@ impl DriverRegistry {
 
     /// Check if a driver is registered for a provider type
     pub fn has_driver(&self, provider_type: &ProviderType) -> bool {
-        self.factories.contains_key(provider_type)
+        self.descriptors.contains_key(provider_type)
+    }
+
+    /// Get the registered descriptor for a provider type.
+    pub fn descriptor(&self, provider_type: &ProviderType) -> Option<&DriverDescriptor> {
+        self.descriptors.get(provider_type)
+    }
+
+    /// Whether the registered driver declares the given service.
+    pub fn supports(&self, provider_type: &ProviderType, service: ServiceKind) -> bool {
+        self.descriptors
+            .get(provider_type)
+            .is_some_and(|d| d.supports(service))
+    }
+
+    /// Driver ids whose descriptors declare the given service.
+    pub fn providers_for(&self, service: ServiceKind) -> Vec<ProviderType> {
+        self.descriptors
+            .values()
+            .filter(|d| d.supports(service))
+            .map(|d| d.id.clone())
+            .collect()
     }
 
     /// Get the list of registered provider types
     pub fn registered_providers(&self) -> Vec<ProviderType> {
-        self.factories.keys().cloned().collect()
+        self.descriptors.keys().cloned().collect()
     }
 }
 
@@ -1782,6 +1933,94 @@ mod tests {
             },
         );
         assert!(registry.create_chat_driver(&config).is_ok());
+    }
+
+    #[test]
+    fn test_register_defaults_to_chat_only_descriptor() {
+        struct MockDriver;
+        #[async_trait]
+        impl ChatDriver for MockDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unimplemented!()
+            }
+        }
+
+        let mut registry = DriverRegistry::new();
+        registry.register(ProviderType::Anthropic, |_config| Box::new(MockDriver));
+
+        let descriptor = registry.descriptor(&ProviderType::Anthropic).unwrap();
+        assert_eq!(descriptor.display_name, "Anthropic");
+        assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+        assert!(descriptor.chat.is_some());
+        // Default credential shape is a single required api_key field.
+        assert_eq!(descriptor.credential_schema.fields.len(), 1);
+        assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
+        assert!(descriptor.credential_schema.fields[0].required);
+
+        // Keyless drivers default to an empty schema.
+        registry.register(ProviderType::LlmSim, |_config| Box::new(MockDriver));
+        let sim = registry.descriptor(&ProviderType::LlmSim).unwrap();
+        assert!(sim.credential_schema.fields.is_empty());
+    }
+
+    #[test]
+    fn test_descriptor_services_and_lookup() {
+        struct MockDriver;
+        #[async_trait]
+        impl ChatDriver for MockDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unimplemented!()
+            }
+        }
+
+        let mut registry = DriverRegistry::new();
+        registry.register_descriptor(DriverDescriptor {
+            services: vec![ServiceKind::Chat, ServiceKind::Realtime],
+            ..DriverDescriptor::chat_only(ProviderType::OpenAI, |_config| Box::new(MockDriver))
+        });
+        registry.register(ProviderType::Anthropic, |_config| Box::new(MockDriver));
+
+        assert!(registry.supports(&ProviderType::OpenAI, ServiceKind::Chat));
+        assert!(registry.supports(&ProviderType::OpenAI, ServiceKind::Realtime));
+        assert!(!registry.supports(&ProviderType::Anthropic, ServiceKind::Realtime));
+        assert!(!registry.supports(&ProviderType::Gemini, ServiceKind::Chat));
+
+        let realtime = registry.providers_for(ServiceKind::Realtime);
+        assert_eq!(realtime, vec![ProviderType::OpenAI]);
+        let mut chat = registry.providers_for(ServiceKind::Chat);
+        chat.sort_by_key(|p| p.to_string());
+        assert_eq!(chat, vec![ProviderType::Anthropic, ProviderType::OpenAI]);
+    }
+
+    #[test]
+    fn test_create_chat_driver_fails_without_chat_factory() {
+        let mut registry = DriverRegistry::new();
+        registry.register_descriptor(DriverDescriptor {
+            id: ProviderType::external("embeddings-only"),
+            display_name: "Embeddings Only".to_string(),
+            services: vec![ServiceKind::Embeddings],
+            credential_schema: CredentialFormSchema::empty(),
+            chat: None,
+        });
+
+        let config = ProviderConfig::new(ProviderType::external("embeddings-only"));
+        let err = match registry.create_chat_driver(&config) {
+            Ok(_) => panic!("expected error for missing chat factory"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string()
+                .contains("does not implement the chat service"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

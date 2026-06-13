@@ -232,3 +232,33 @@ mod provider_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod descriptor_tests {
+    use crate::register_driver;
+    use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType, ServiceKind};
+
+    #[test]
+    fn registered_descriptors_declare_services_and_credentials() {
+        let mut registry = DriverRegistry::new();
+        register_driver(&mut registry);
+
+        // OpenAI providers also power realtime voice sessions.
+        let openai = registry.descriptor(&ProviderType::OpenAI).unwrap();
+        assert_eq!(openai.display_name, "OpenAI");
+        assert!(openai.supports(ServiceKind::Chat));
+        assert!(openai.supports(ServiceKind::Realtime));
+        assert_eq!(openai.credential_schema.fields[0].name, "api_key");
+
+        // The other OpenAI-protocol drivers are chat-only.
+        for id in [
+            ProviderType::OpenRouter,
+            ProviderType::AzureOpenAI,
+            ProviderType::OpenAICompletions,
+        ] {
+            let descriptor = registry.descriptor(&id).unwrap();
+            assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
+            assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
+        }
+    }
+}
