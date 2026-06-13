@@ -1,8 +1,8 @@
-# TC002: Get Subagents - List After Spawning
+# TC002: List Subagent Tasks After Spawning
 
 ## Description
 
-Verify that after spawning multiple subagents, the `get_subagents` tool (with no arguments) returns all child sessions with correct names, statuses, and count.
+Verify that after spawning multiple subagents, `list_tasks` (from the generic session_tasks capability) returns all subagent tasks with correct names, statuses, and count. This test was previously titled "Get Subagents - List After Spawning" using the retired `get_subagents` tool; it now uses the generic `list_tasks` replacement.
 
 ## Preconditions
 
@@ -14,9 +14,9 @@ Verify that after spawning multiple subagents, the `get_subagents` tool (with no
 | Field | Value |
 |-------|-------|
 | Agent Name | Multi-Spawner |
-| Capabilities | `subagents` |
-| System Prompt | You are an orchestrator. When asked, spawn subagents as instructed, then call get_subagents to list them. |
-| User Message | Spawn two subagents: one named "Alpha" with task "Count to 5", and one named "Beta" with task "List 3 colors". After both complete, call get_subagents to list all subagents. |
+| Capabilities | `subagents`, `session_tasks` |
+| System Prompt | You are an orchestrator. When asked, spawn subagents as instructed, then call list_tasks with kind="subagent" to list them. |
+| User Message | Spawn two subagents: one named "Alpha" with task "Count to 5", and one named "Beta" with task "List 3 colors". After both complete, call list_tasks with kind="subagent" to list all subagent tasks. |
 
 ## Steps
 
@@ -26,8 +26,8 @@ Verify that after spawning multiple subagents, the `get_subagents` tool (with no
      -H "Content-Type: application/json" \
      -d '{
        "name": "Multi-Spawner",
-       "system_prompt": "You are an orchestrator. When asked, spawn subagents as instructed, then call get_subagents to list them.",
-       "capabilities": ["subagents"]
+       "system_prompt": "You are an orchestrator. When asked, spawn subagents as instructed, then call list_tasks with kind=\"subagent\" to list them.",
+       "capabilities": ["subagents", "session_tasks"]
      }'
    ```
    Save `agent_id` from response.
@@ -47,7 +47,7 @@ Verify that after spawning multiple subagents, the `get_subagents` tool (with no
      -d '{
        "message": {
          "role": "user",
-         "content": [{"type": "text", "text": "Spawn two subagents: one named \"Alpha\" with task \"Count to 5\", and one named \"Beta\" with task \"List 3 colors\". After both complete, call get_subagents to list all subagents."}]
+         "content": [{"type": "text", "text": "Spawn two subagents: one named \"Alpha\" with task \"Count to 5\", and one named \"Beta\" with task \"List 3 colors\". After both complete, call list_tasks with kind=\"subagent\" to list all subagent tasks."}]
        }
      }'
    ```
@@ -69,17 +69,17 @@ Verify that after spawning multiple subagents, the `get_subagents` tool (with no
 | Beta spawned | `tool.called` event with `tool_name: "spawn_subagent"` and `arguments.name: "Beta"` |
 | Both completed | Two `tool.completed` events for `spawn_subagent` with `status` in result |
 
-### Get Subagents Assertions
+### List Tasks Assertions
 
 | Check | Expected |
 |-------|----------|
-| get_subagents called | `tool.called` event with `tool_name: "get_subagents"` |
-| Result has subagents array | `tool.completed` result contains `subagents` array |
+| list_tasks called | `tool.called` event with `tool_name: "list_tasks"` |
+| Result has tasks array | `tool.completed` result contains `tasks` array |
 | Count is 2 | Result `count` equals `2` |
-| Alpha in list | `subagents` array contains entry with `name: "Alpha"` |
-| Beta in list | `subagents` array contains entry with `name: "Beta"` |
-| Each has status | Each entry has `status` field (e.g. `"completed"` or `"idle"`) |
-| Each has subagent_id | Each entry has non-empty `subagent_id` |
+| Alpha in list | `tasks` array contains entry with `display_name: "Alpha"` |
+| Beta in list | `tasks` array contains entry with `display_name: "Beta"` |
+| Each has state | Each entry has `state` field (e.g. `"succeeded"`) |
+| Each has task id | Each entry has non-empty `id` field |
 
 ## Validation Commands
 
@@ -87,12 +87,12 @@ Verify that after spawning multiple subagents, the `get_subagents` tool (with no
 # Assert: spawn_subagent called twice
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length == 2'
 
-# Assert: get_subagents called
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "get_subagents")] | length > 0'
+# Assert: list_tasks called
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "list_tasks")] | length > 0'
 
-# Assert: get_subagents result has count 2
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "get_subagents")] | .[0].data.result | fromjson | .count == 2'
+# Assert: list_tasks result has count 2
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "list_tasks")] | .[0].data.result | fromjson | .count == 2'
 
 # Assert: both names present in listing
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "get_subagents")] | .[0].data.result | fromjson | .subagents | map(.name) | sort == ["Alpha", "Beta"]'
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "list_tasks")] | .[0].data.result | fromjson | .tasks | map(.display_name) | sort == ["Alpha", "Beta"]'
 ```

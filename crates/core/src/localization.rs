@@ -265,8 +265,6 @@ pub fn localized_tool_display_name(
         "secret_store" => Some("Сховище секретів"),
         "kv_store" => Some("Сховище значень"),
         "spawn_subagent" => Some("Запуск субагента"),
-        "get_subagents" => Some("Субагенти"),
-        "message_subagent" => Some("Повідомлення субагенту"),
         "write_todos" => Some("Список задач"),
         "setup_connection" => Some("Налаштування підключення"),
         _ => None,

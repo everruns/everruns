@@ -349,10 +349,7 @@ fn is_skill_tool_source(name: &str, category: &str, capability_id: &str) -> bool
 }
 
 fn is_subagent_tool_name(name: &str) -> bool {
-    matches!(
-        name,
-        "spawn_subagent" | "get_subagents" | "message_subagent"
-    )
+    matches!(name, "spawn_subagent")
 }
 
 fn tool_definition_contribution_source(

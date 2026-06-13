@@ -240,13 +240,7 @@ impl Capability for A2aAgentDelegationCapability {
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
         let config = A2aDelegationConfig::from_value(config).unwrap_or_default();
-        vec![
-            Box::new(SpawnAgentTool::new(config.clone())),
-            Box::new(GetAgentRunsTool),
-            Box::new(WaitAgentTool::new(config.clone())),
-            Box::new(MessageAgentTool::new(config.clone())),
-            Box::new(CancelAgentTool::new(config)),
-        ]
+        vec![Box::new(SpawnAgentTool::new(config))]
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -279,8 +273,8 @@ impl Capability for A2aAgentDelegationCapability {
         Some(format!(
             "<capability id=\"{}\">\n\
 Delegate work to configured external A2A agents with spawn_agent.\n\
-Use mode=\"background\" for long-running work; use wait_agent later for results.\n\
-Use message_agent for follow-up input or input_required tasks; use cancel_agent to stop a remote task.\n\
+Use mode=\"background\" for long-running work; use wait_task (from session_tasks) later for results.\n\
+Use message_task for follow-up input or input_required tasks; use cancel_task to stop a remote task.\n\
 Available external agents:\n{}\n\
 </capability>",
             self.id(),
@@ -613,12 +607,12 @@ fn run_key(run_id: &str) -> String {
     format!("agent_run:{run_id}")
 }
 
-/// Prefix shared by all agent run KV keys.
+/// Prefix shared by all agent run KV keys (used in tests to verify prefix-based lookup).
+#[cfg(test)]
 const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 
-/// List run_ids by prefix-filtering the session's KV keys. Derived from
-/// `list_keys` rather than a maintained index key, so concurrent spawns
-/// cannot race a read-modify-write and drop runs.
+/// List run_ids by prefix-filtering the session's KV keys (test helper).
+#[cfg(test)]
 async fn list_run_ids(
     storage: &dyn SessionStorageStore,
     session_id: crate::typed_id::SessionId,
@@ -1364,381 +1358,6 @@ impl Tool for SpawnAgentTool {
     }
 }
 
-#[derive(Clone)]
-pub struct GetAgentRunsTool;
-
-#[async_trait]
-impl Tool for GetAgentRunsTool {
-    fn name(&self) -> &str {
-        "get_agent_runs"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Get Agent Runs")
-    }
-
-    fn description(&self) -> &str {
-        "List external A2A agent runs or fetch one run by id."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_run_id": {"type": "string"},
-                "status_filter": {
-                    "type": "string",
-                    "enum": ["all", "submitted", "working", "input_required", "auth_required", "completed", "failed", "canceled", "rejected"]
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default()
-            .with_readonly(true)
-            .with_idempotent(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("get_agent_runs requires session context")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        if let Some(run_id) = arguments
-            .get("agent_run_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
-            return match load_run(context, run_id).await {
-                Ok(record) => ToolExecutionResult::success(record.public_json()),
-                Err(e) => e,
-            };
-        }
-        let storage = match require_storage(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let run_ids = list_run_ids(storage.as_ref(), context.session_id).await;
-        let status_filter = arguments
-            .get("status_filter")
-            .and_then(Value::as_str)
-            .unwrap_or("all");
-        let mut runs = Vec::new();
-        for run_id in run_ids {
-            if let Ok(Some(serialized)) = storage
-                .get_value(context.session_id, &run_key(&run_id))
-                .await
-                && let Ok(record) = serde_json::from_str::<AgentRunRecord>(&serialized)
-                && (status_filter == "all" || record.status.to_string() == status_filter)
-            {
-                runs.push(record.public_json());
-            }
-        }
-        let count = runs.len();
-        ToolExecutionResult::success(json!({
-            "agent_runs": runs,
-            "count": count
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-#[derive(Clone)]
-pub struct WaitAgentTool {
-    config: A2aDelegationConfig,
-}
-
-impl WaitAgentTool {
-    fn new(config: A2aDelegationConfig) -> Self {
-        Self { config }
-    }
-}
-
-#[async_trait]
-impl Tool for WaitAgentTool {
-    fn name(&self) -> &str {
-        "wait_agent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Wait Agent")
-    }
-
-    fn description(&self) -> &str {
-        "Wait for an external A2A agent run to complete or reach an interrupted state."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_run_id": {"type": "string"},
-                "timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400}
-            },
-            "required": ["agent_run_id"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default()
-            .with_long_running(true)
-            .with_open_world(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("wait_agent requires session context")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let run_id = match require_str(&arguments, "agent_run_id") {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        let record = match load_run(context, run_id).await {
-            Ok(record) => record,
-            Err(e) => return e,
-        };
-        let Some(agent) = self.config.agent(&record.external_agent_id).cloned() else {
-            return ToolExecutionResult::tool_error(format!(
-                "External A2A agent no longer configured: {}",
-                record.external_agent_id
-            ));
-        };
-        let timeout_secs = arguments
-            .get("timeout_secs")
-            .and_then(Value::as_u64)
-            .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
-        // wait_agent is foreground; no separate heartbeat thread needed.
-        match wait_for_run(context, &agent, record, timeout_secs, None).await {
-            Ok(record) => ToolExecutionResult::success(record.public_json()),
-            Err(error) => timeout_or_error_result(context, run_id, error).await,
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-#[derive(Clone)]
-pub struct MessageAgentTool {
-    config: A2aDelegationConfig,
-}
-
-impl MessageAgentTool {
-    fn new(config: A2aDelegationConfig) -> Self {
-        Self { config }
-    }
-}
-
-#[async_trait]
-impl Tool for MessageAgentTool {
-    fn name(&self) -> &str {
-        "message_agent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Message Agent")
-    }
-
-    fn description(&self) -> &str {
-        "Send follow-up input to an existing external A2A agent run."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_run_id": {"type": "string"},
-                "message": {"type": "string"},
-                "wait_timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400}
-            },
-            "required": ["agent_run_id", "message"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default()
-            .with_long_running(true)
-            .with_open_world(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("message_agent requires session context")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let run_id = match require_str(&arguments, "agent_run_id") {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        let message = match require_str(&arguments, "message") {
-            Ok(message) => message.to_string(),
-            Err(e) => return e,
-        };
-        let mut record = match load_run(context, run_id).await {
-            Ok(record) => record,
-            Err(e) => return e,
-        };
-        let Some(agent) = self.config.agent(&record.external_agent_id).cloned() else {
-            return ToolExecutionResult::tool_error(format!(
-                "External A2A agent no longer configured: {}",
-                record.external_agent_id
-            ));
-        };
-        let remote_task_id = record.remote_task_id.clone();
-        let remote_context_id = record.remote_context_id.clone();
-        if let Err(error) = submit_run(
-            context,
-            &agent,
-            &mut record,
-            &message,
-            remote_task_id,
-            remote_context_id,
-        )
-        .await
-        {
-            record.status = AgentRunStatus::Failed;
-            set_error(&mut record, error);
-            let _ = save_run(context, &record).await;
-            return ToolExecutionResult::success(record.public_json());
-        }
-        let timeout_secs = arguments
-            .get("wait_timeout_secs")
-            .and_then(Value::as_u64)
-            .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
-        // message_agent is foreground; no separate heartbeat thread needed.
-        match wait_for_run(context, &agent, record, timeout_secs, None).await {
-            Ok(record) => ToolExecutionResult::success(record.public_json()),
-            Err(error) => timeout_or_error_result(context, run_id, error).await,
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-#[derive(Clone)]
-pub struct CancelAgentTool {
-    config: A2aDelegationConfig,
-}
-
-impl CancelAgentTool {
-    fn new(config: A2aDelegationConfig) -> Self {
-        Self { config }
-    }
-}
-
-#[async_trait]
-impl Tool for CancelAgentTool {
-    fn name(&self) -> &str {
-        "cancel_agent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Cancel Agent")
-    }
-
-    fn description(&self) -> &str {
-        "Cancel an existing external A2A agent run."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "agent_run_id": {"type": "string"}
-            },
-            "required": ["agent_run_id"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default().with_open_world(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("cancel_agent requires session context")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let run_id = match require_str(&arguments, "agent_run_id") {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        let mut record = match load_run(context, run_id).await {
-            Ok(record) => record,
-            Err(e) => return e,
-        };
-        if record.status.is_terminal() {
-            return ToolExecutionResult::success(record.public_json());
-        }
-        let Some(remote_task_id) = record.remote_task_id.clone() else {
-            record.status = AgentRunStatus::Canceled;
-            let _ = save_run(context, &record).await;
-            return ToolExecutionResult::success(record.public_json());
-        };
-        let Some(agent) = self.config.agent(&record.external_agent_id).cloned() else {
-            return ToolExecutionResult::tool_error(format!(
-                "External A2A agent no longer configured: {}",
-                record.external_agent_id
-            ));
-        };
-        match build_client(&agent, context).await {
-            Ok(client) => match client
-                .cancel_task(&CancelTaskRequest {
-                    id: remote_task_id,
-                    metadata: None,
-                    tenant: None,
-                })
-                .await
-            {
-                Ok(task) => apply_task(&mut record, &task),
-                Err(error) => {
-                    record.status = AgentRunStatus::Failed;
-                    set_error(&mut record, format!("A2A cancel_task failed: {error}"));
-                }
-            },
-            Err(error) => {
-                record.status = AgentRunStatus::Failed;
-                set_error(&mut record, error);
-            }
-        }
-        let _ = save_run(context, &record).await;
-        ToolExecutionResult::success(record.public_json())
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
 // ============================================================================
 // Task executor: external_agent
 // ============================================================================
@@ -1769,7 +1388,7 @@ async fn load_run_for_task(
 fn agent_snapshot(record: &AgentRunRecord) -> std::result::Result<ExternalA2aAgentConfig, String> {
     record.agent_config.clone().ok_or_else(|| {
         format!(
-            "Agent run {} has no stored agent config snapshot (created before task support); use message_agent/cancel_agent instead",
+            "Agent run {} has no stored agent config snapshot (created before task support); use message_task/cancel_task instead",
             record.run_id
         )
     })
@@ -1958,8 +1577,6 @@ mod tests {
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Mutex;
     use tokio::net::TcpListener;
-    use tokio::time::timeout;
-
     #[derive(Default)]
     struct TestStorageStore {
         values: Mutex<HashMap<String, String>>,
@@ -2284,46 +1901,6 @@ mod tests {
         assert_eq!(value["status"], "completed");
         assert_eq!(value["result"], "echo: hello");
         assert!(value["result_path"].as_str().is_some());
-    }
-
-    #[tokio::test]
-    async fn spawn_agent_background_can_be_waited() {
-        let base_url = spawn_real_a2a_agent().await;
-        let config = configured_capability(base_url);
-        let spawn = SpawnAgentTool::new(config.clone());
-        let wait = WaitAgentTool::new(config);
-        let storage_store = Arc::new(TestStorageStore::default());
-        let file_store = Arc::new(TestFileStore::default());
-        let ctx = context(storage_store, file_store);
-
-        let result = spawn
-            .execute_with_context(
-                json!({
-                    "instructions": "background",
-                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
-                    "mode": "background",
-                    "wait_timeout_secs": 5,
-                    "wake_on_completion": false
-                }),
-                &ctx,
-            )
-            .await;
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success: {result:?}");
-        };
-        let run_id = value["agent_run_id"].as_str().unwrap();
-
-        let waited = timeout(
-            Duration::from_secs(5),
-            wait.execute_with_context(json!({"agent_run_id": run_id, "timeout_secs": 5}), &ctx),
-        )
-        .await
-        .unwrap();
-        let ToolExecutionResult::Success(value) = waited else {
-            panic!("expected success: {waited:?}");
-        };
-        assert_eq!(value["status"], "completed");
-        assert_eq!(value["result"], "echo: background");
     }
 
     #[test]

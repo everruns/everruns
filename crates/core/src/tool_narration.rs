@@ -54,10 +54,6 @@ fn arg_str<'a>(arguments: &'a Value, keys: &[&str]) -> Option<&'a str> {
         .filter(|value| !value.is_empty())
 }
 
-fn arg_bool(arguments: &Value, key: &str) -> Option<bool> {
-    arguments.get(key).and_then(Value::as_bool)
-}
-
 fn basename(path: &str) -> &str {
     let trimmed = path.trim_end_matches('/');
     trimmed
@@ -420,39 +416,6 @@ fn ukrainian_phrase(
                 ToolNarrationPhase::Failed => format!("Не вдалося запустити {target}"),
             }
         }
-        "get_subagents" => {
-            let target = arg_str(args, &["name_or_id"])
-                .map(|value| format!("субагента {value}"))
-                .unwrap_or_else(|| "субагентів".to_string());
-            match phase {
-                ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                    format!("Перевіряю {target}")
-                }
-                ToolNarrationPhase::Completed => format!("Перевірив {target}"),
-                ToolNarrationPhase::Failed => format!("Не вдалося перевірити {target}"),
-            }
-        }
-        "message_subagent" => {
-            let target = arg_str(args, &["name_or_id"])
-                .map(|value| format!("повідомлення для {value}"))
-                .unwrap_or_else(|| "повідомлення субагенту".to_string());
-            if matches!(phase, ToolNarrationPhase::Completed)
-                && arg_bool(args, "cancel").unwrap_or(false)
-            {
-                format!(
-                    "Поставив у чергу запит на зупинку {}",
-                    target.trim_start_matches("повідомлення для ")
-                )
-            } else {
-                match phase {
-                    ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
-                        format!("Ставлю у чергу {target}")
-                    }
-                    ToolNarrationPhase::Completed => format!("Поставив у чергу {target}"),
-                    ToolNarrationPhase::Failed => format!("Не вдалося поставити у чергу {target}"),
-                }
-            }
-        }
         "write_todos" => match phase {
             ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
                 "Оновлюю список задач".to_string()
@@ -629,33 +592,6 @@ pub fn render_tool_narration_with_locale(
                 .map(|name| format!("{name} subagent"))
                 .or_else(|| Some("subagent".to_string()));
             generic_phrase("Launching", "Launched", "Failed to launch", target, phase)
-        }
-        "get_subagents" => {
-            let target = arg_str(args, &["name_or_id"])
-                .map(|value| format!("subagent {value}"))
-                .unwrap_or_else(|| "subagent status".to_string());
-            generic_phrase(
-                "Checking",
-                "Checked",
-                "Failed to check",
-                Some(target),
-                phase,
-            )
-        }
-        "message_subagent" => {
-            let target = arg_str(args, &["name_or_id"])
-                .map(|value| format!("message for {value}"))
-                .unwrap_or_else(|| "subagent message".to_string());
-            if matches!(phase, ToolNarrationPhase::Completed)
-                && arg_bool(args, "cancel").unwrap_or(false)
-            {
-                format!(
-                    "Queued stop request for {}",
-                    target.trim_start_matches("message for ")
-                )
-            } else {
-                generic_phrase("Queueing", "Queued", "Failed to queue", Some(target), phase)
-            }
         }
         "write_todos" => generic_phrase(
             "Updating",

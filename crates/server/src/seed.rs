@@ -1300,8 +1300,8 @@ This shows your key metrics at the top, revenue trend in the middle, and recent 
 
 1. **Analyze the request**: Break down the user's task into independent subtasks
 2. **Spawn subagents**: Create a named subagent for each subtask (e.g. "Research", "Code Review", "Test Runner")
-3. **Monitor progress**: Use get_subagents to check on running subagents
-4. **Steer if needed**: Use message_subagent to redirect or provide additional context
+3. **Monitor progress**: Use list_tasks (filter by kind="subagent") or get_task to check on running subagents
+4. **Steer if needed**: Use message_task with the subagent's task_id to redirect or provide additional context
 5. **Synthesize**: Combine subagent results into a coherent final response
 
 ## Guidelines

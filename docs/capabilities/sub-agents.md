@@ -1,6 +1,6 @@
 ---
 title: Sub Agents
-description: Spawn and manage subagents for parallel task execution in isolated context windows. Orchestrate multi-agent workflows with message passing and lifecycle control.
+description: Spawn subagents for parallel task execution in isolated context windows. Orchestrate multi-agent workflows with the generic session task tools.
 ---
 
 | | |
@@ -10,13 +10,13 @@ description: Spawn and manage subagents for parallel task execution in isolated 
 | **Features** | `subagents` |
 | **Dependencies** | None |
 
-Spawn and manage subagents for parallel task execution. Each subagent runs in its own isolated context window, allowing the parent agent to delegate verbose or independent tasks without cluttering the main conversation. Subagents inherit the parent's harness and agent configuration but operate with their own message history.
+Spawn subagents for parallel task execution. Each subagent runs in its own isolated context window, allowing the parent agent to delegate verbose or independent tasks without cluttering the main conversation. Subagents inherit the parent's harness and agent configuration but operate with their own message history.
 
 ## Tools
 
 ### `spawn_subagent`
 
-Create and start a new subagent. The subagent begins executing immediately in the background unless foreground mode is used.
+Create and start a new subagent. The subagent begins executing immediately. Returns a `task_id` that can be used with the generic session task tools to monitor, message, or cancel the subagent.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -25,35 +25,26 @@ Create and start a new subagent. The subagent begins executing immediately in th
 | `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
 | `config` | object | no | Blueprint-specific configuration. Only valid when `blueprint` is set. |
 
-### `get_subagents`
+## Managing subagents after spawn
 
-List subagents or retrieve details for a specific one, including status and output.
+Use the generic `session_tasks` tools to monitor and steer subagents after spawning. The `task_id` is returned by `spawn_subagent`.
 
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name_or_id` | string | no | Specific subagent by name or session ID. Omit to list all subagents. |
-| `status_filter` | string | no | Filter by status: `all`, `running`, `completed`, `failed`. Defaults to `all`. |
-
-### `message_subagent`
-
-Send a follow-up message to an existing subagent. Use this to steer a running subagent, ask clarifying questions, or gracefully stop it.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `name_or_id` | string | yes | Subagent name or session ID. |
-| `message` | string | yes | Message to send to the subagent. |
-| `cancel` | boolean | no | Gracefully stop the subagent after delivering the message. |
+- `list_tasks` with `kind: "subagent"` — list all subagent tasks and their status
+- `get_task` with the task ID — get detailed status and result for a specific subagent
+- `message_task` — send a steering message or additional context to a running subagent
+- `cancel_task` — request cooperative cancellation of a subagent
+- `wait_task` — block until a subagent reaches a terminal or interrupted state
 
 ## Notes
 
 - **No nesting** — subagents cannot spawn other subagents.
-- **Case-insensitive matching** — names are matched case-insensitively when using `name_or_id`.
-- **Foreground mode** — spawning can block until the subagent completes. Foreground execution has a 5-minute timeout.
+- **Foreground mode** — spawning blocks until the subagent completes. Foreground execution has a 5-minute timeout.
 - **Inherited configuration** — subagents inherit the parent's harness and agent configuration.
 - **Blueprints** — specialist blueprints can run with their own prompt, model, and private tools while still using the same subagent lifecycle.
 
 ## See Also
 
+- [Session Tasks](/capabilities/session-tasks/) — generic task monitoring and control
 - [GitHub Scout](/capabilities/github-scout/) — blueprint-only GitHub repository exploration
 - [Session](/capabilities/session/) — session metadata and lifecycle
 - [Platform Management](/capabilities/platform-management/) — agent and platform configuration

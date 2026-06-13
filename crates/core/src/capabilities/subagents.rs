@@ -1,9 +1,7 @@
 // Subagent Capability
 //
-// Decision: 3 tools only — spawn_subagent, get_subagents, message_subagent.
+// Decision: 1 creation tool — spawn_subagent.
 // - spawn_subagent creates a child session with parent_session_id set
-// - get_subagents lists/details child sessions by querying parent_session_id
-// - message_subagent sends steering messages (by name or id)
 //
 // Blueprint support: spawn_subagent accepts optional `blueprint` and `config`
 // params. When blueprint is set, the child session uses the blueprint's
@@ -18,9 +16,9 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
 use crate::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
-    SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
-    TaskMessage, TaskWakePolicy, task_message_text,
+    CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
+    TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -76,11 +74,7 @@ impl Capability for SubagentCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
-            Box::new(SpawnSubagentTool),
-            Box::new(GetSubagentsTool),
-            Box::new(MessageSubagentTool),
-        ]
+        vec![Box::new(SpawnSubagentTool)]
     }
 }
 
@@ -209,23 +203,6 @@ async fn find_subagent_task(
     tasks
         .into_iter()
         .find(|task| task.links.child_session_id == Some(child_id))
-}
-
-/// Find a child session by name (case-insensitive) or ID within a list of sessions.
-fn find_child_session<'a>(
-    sessions: &'a [crate::session::Session],
-    parent_id: crate::typed_id::SessionId,
-    name_or_id: &str,
-) -> Option<&'a crate::session::Session> {
-    sessions
-        .iter()
-        .filter(|s| s.parent_session_id == Some(parent_id))
-        .find(|s| {
-            s.subagent_name
-                .as_ref()
-                .is_some_and(|n| n.eq_ignore_ascii_case(name_or_id))
-                || s.id.to_string() == name_or_id
-        })
 }
 
 // =============================================================================
@@ -768,307 +745,12 @@ async fn run_subagent_wait_and_settle(
 }
 
 // =============================================================================
-// Tool: get_subagents
-// =============================================================================
-
-pub struct GetSubagentsTool;
-
-#[async_trait]
-impl Tool for GetSubagentsTool {
-    fn name(&self) -> &str {
-        "get_subagents"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Get Subagents")
-    }
-
-    fn description(&self) -> &str {
-        "List all subagents or get detailed status of a specific one (by name or ID)."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name_or_id": {
-                    "type": "string",
-                    "description": "Subagent name or session ID for detailed view. Omit to list all."
-                },
-                "status_filter": {
-                    "type": "string",
-                    "enum": ["all", "running", "completed", "failed"],
-                    "description": "Filter by status when listing all subagents."
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default()
-            .with_readonly(true)
-            .with_idempotent(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("get_subagents requires context.")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let all_sessions = match store.list_sessions(Some(100), None).await {
-            Ok(s) => s,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        let name_or_id = arguments
-            .get("name_or_id")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty());
-
-        if let Some(query) = name_or_id {
-            let found = find_child_session(&all_sessions, context.session_id, query);
-
-            match found {
-                Some(child) => {
-                    let messages = store
-                        .get_messages(child.id, Some(10))
-                        .await
-                        .unwrap_or_default();
-
-                    let last_response = last_agent_message(&messages);
-
-                    ToolExecutionResult::success(json!({
-                        "subagent_id": child.id.to_string(),
-                        "name": child.subagent_name,
-                        "instructions": child.subagent_task,
-                        "status": child.subagent_status.as_ref().map(|s| s.to_string())
-                            .unwrap_or_else(|| child.status.to_string()),
-                        "session_status": child.status.to_string(),
-                        "created_at": child.created_at.to_rfc3339(),
-                        "result": last_response,
-                        "blueprint_id": child.blueprint_id,
-                    }))
-                }
-                None => ToolExecutionResult::tool_error(format!(
-                    "No subagent found with name or ID: {query}"
-                )),
-            }
-        } else {
-            // List all subagents
-            let status_filter = arguments.get("status_filter").and_then(|v| v.as_str());
-
-            let filtered: Vec<_> = all_sessions
-                .iter()
-                .filter(|s| s.parent_session_id == Some(context.session_id))
-                .filter(|s| {
-                    if let Some(filter) = status_filter {
-                        if filter == "all" {
-                            return true;
-                        }
-                        s.subagent_status
-                            .as_ref()
-                            .is_some_and(|st| st.to_string() == filter)
-                    } else {
-                        true
-                    }
-                })
-                .map(|s| {
-                    json!({
-                        "subagent_id": s.id.to_string(),
-                        "name": s.subagent_name,
-                        "instructions": s.subagent_task,
-                        "status": s.subagent_status.as_ref().map(|st| st.to_string())
-                            .unwrap_or_else(|| s.status.to_string()),
-                        "created_at": s.created_at.to_rfc3339(),
-                        "blueprint_id": s.blueprint_id,
-                    })
-                })
-                .collect();
-
-            ToolExecutionResult::success(json!({
-                "subagents": filtered,
-                "count": filtered.len(),
-            }))
-        }
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-// =============================================================================
-// Tool: message_subagent
-// =============================================================================
-
-pub struct MessageSubagentTool;
-
-#[async_trait]
-impl Tool for MessageSubagentTool {
-    fn name(&self) -> &str {
-        "message_subagent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Message Subagent")
-    }
-
-    fn description(&self) -> &str {
-        "Send a message to a subagent by name or ID. Steers running subagents, resumes completed/failed ones."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name_or_id": {
-                    "type": "string",
-                    "description": "Subagent name or session ID."
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Message to send to the subagent."
-                },
-                "cancel": {
-                    "type": "boolean",
-                    "description": "If true, deliver the message then gracefully stop the subagent.",
-                    "default": false
-                }
-            },
-            "required": ["name_or_id", "message"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default().with_long_running(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error("message_subagent requires context.")
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let name_or_id = match require_str(&arguments, "name_or_id") {
-            Ok(s) => s.to_string(),
-            Err(e) => return e,
-        };
-        let message = match require_str(&arguments, "message") {
-            Ok(s) => s.to_string(),
-            Err(e) => return e,
-        };
-        let cancel = arguments
-            .get("cancel")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        let all_sessions = match store.list_sessions(Some(100), None).await {
-            Ok(s) => s,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        let child = match find_child_session(&all_sessions, context.session_id, &name_or_id) {
-            Some(c) => c,
-            None => {
-                return ToolExecutionResult::tool_error(format!(
-                    "No subagent found with name or ID: {name_or_id}"
-                ));
-            }
-        };
-
-        let child_id = child.id;
-
-        // Send the message
-        if let Err(e) = store.send_message(child_id, &message).await {
-            return ToolExecutionResult::internal_error(e);
-        }
-
-        // Record the inbound message on the subagent's task channel (best-effort).
-        if let Some(ref task_registry) = context.session_task_registry
-            && let Some(subagent_task) = find_subagent_task(context, child_id).await
-        {
-            let _ = task_registry
-                .record_message(
-                    context.session_id,
-                    &subagent_task.id,
-                    NewTaskMessage::inbound_text(&message),
-                )
-                .await;
-        }
-
-        if cancel {
-            // For cancel, just send the message and report
-            // (actual cancellation mechanism to be added when background mode lands)
-            return ToolExecutionResult::success(json!({
-                "subagent_id": child_id.to_string(),
-                "name": child.subagent_name,
-                "delivered": true,
-                "cancel_requested": true,
-                "note": "Message delivered. Cancellation will take effect after current turn.",
-            }));
-        }
-
-        // Wait for the subagent to process the message
-        let status = match store.wait_for_idle(child_id, Some(300)).await {
-            Ok(s) => s,
-            Err(e) => {
-                return ToolExecutionResult::success(json!({
-                    "subagent_id": child_id.to_string(),
-                    "name": child.subagent_name,
-                    "delivered": true,
-                    "status": "error",
-                    "error": e.to_string(),
-                }));
-            }
-        };
-
-        // Get the latest response
-        let messages = match store.get_messages(child_id, Some(5)).await {
-            Ok(m) => m,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        ToolExecutionResult::success(json!({
-            "subagent_id": child_id.to_string(),
-            "name": child.subagent_name,
-            "delivered": true,
-            "status": status,
-            "result": last_agent_message(&messages),
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-// =============================================================================
 // Task executor: subagent
 // =============================================================================
 
 /// Control plane for `subagent` tasks. Inbound messages and cooperative
 /// cancellation route through the child session's message channel — there is
-/// no hard kill, so cancel delivers a graceful stop request (same mechanics
-/// as `message_subagent(cancel=true)`).
+/// no hard kill, so cancel delivers a graceful stop request via `cancel_task`.
 pub struct SubagentTaskExecutor;
 
 #[async_trait]
@@ -1135,7 +817,7 @@ mod tests {
     fn capability_basics() {
         let cap = SubagentCapability;
         assert_eq!(cap.id(), "subagents");
-        assert_eq!(cap.tools().len(), 3);
+        assert_eq!(cap.tools().len(), 1);
         assert!(cap.system_prompt_addition().is_some());
         assert_eq!(cap.features(), vec!["subagents"]);
     }
@@ -1145,10 +827,7 @@ mod tests {
         let cap = SubagentCapability;
         let tools = cap.tools();
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(
-            names,
-            vec!["spawn_subagent", "get_subagents", "message_subagent"]
-        );
+        assert_eq!(names, vec!["spawn_subagent"]);
     }
 
     #[test]
@@ -1208,22 +887,6 @@ mod tests {
         let tool = SpawnSubagentTool;
         let result = tool
             .execute(json!({"name": "Test", "instructions": "test"}))
-            .await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(_)));
-    }
-
-    #[tokio::test]
-    async fn get_subagents_without_context_returns_error() {
-        let tool = GetSubagentsTool;
-        let result = tool.execute(json!({})).await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(_)));
-    }
-
-    #[tokio::test]
-    async fn message_subagent_without_context_returns_error() {
-        let tool = MessageSubagentTool;
-        let result = tool
-            .execute(json!({"name_or_id": "Test", "message": "hello"}))
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
     }
