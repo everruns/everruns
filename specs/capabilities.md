@@ -187,6 +187,24 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 
 For the full list of built-in capability IDs, see `crates/core/src/capabilities/mod.rs` (registry initialization).
 
+##### Built-in Capability ID Constants
+
+Every built-in capability **must** declare a `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str` in its module and return it from `fn id()`. All constants are re-exported from `crates/core/src/capabilities/mod.rs`.
+
+```rust
+// In crates/core/src/capabilities/current_time.rs
+pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
+
+impl Capability for CurrentTimeCapability {
+    fn id(&self) -> &str {
+        CURRENT_TIME_CAPABILITY_ID
+    }
+    // ...
+}
+```
+
+Call-sites reference capabilities via the constant rather than a bare string literal. Capabilities whose ID is generated at runtime (MCP, declarative, attach-skill) are exempt — those use prefix constants (`MCP_CAPABILITY_PREFIX`, `DECLARATIVE_CAPABILITY_PREFIX`, `SKILL_CAPABILITY_PREFIX`) and helper constructors instead.
+
 ##### ID Aliases
 
 A built-in capability may declare legacy IDs via `Capability::aliases()`. Aliases exist so a capability can be renamed without breaking persisted agent configs: registry lookup (`get`, `has`), dependency resolution, and the high-risk admin gate treat an alias exactly like the canonical ID, and resolution normalizes aliases to the canonical ID (an alias and its canonical ID never activate the capability twice). New configs must use the canonical ID; aliases are a compatibility surface only. Current aliases: `virtual_bash` → `bashkit_shell`.
@@ -855,10 +873,12 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 ### Adding New Capabilities
 
 1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for trait definition)
-2. Register in `CapabilityRegistry::with_builtins()` (same file)
-3. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
-4. No database migration required — capability ID validated at runtime
-5. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+2. Declare `pub const <NAME>_CAPABILITY_ID: &str = "<id>";` at the top of the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
+3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
+4. Register in `CapabilityRegistry::with_builtins()` (same file)
+5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
+6. No database migration required — capability ID validated at runtime
+7. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
 
 ### Capability Mount Points
 
