@@ -55,10 +55,14 @@ equality invariant), and attaches the session to it.
 
 Power users who want to share working state across sessions pre-create a
 Workspace via the API and pass its `workspace_id` (the `wsp_<32-hex>` public id)
-to `CreateSession`. The attach target is validated at create time: it must
-exist in the caller's org (else `404`) and be `active` (an `archived`/`deleted`
-target is rejected `400`). When attached, no default workspace is created and
-the session's `workspace_id` points at the shared workspace.
+to `CreateSession`. The attach target is validated at create time: an unknown
+or `deleted` target returns `404` (the lookup excludes `deleted` rows), an
+`archived` target `400`, and a target the caller lacks `WORKSPACE_MANAGE` for
+`403`. When attached, no default workspace is created and the session's
+`workspace_id` points at the shared workspace. A workspace created before the
+`id.hex == public_id` invariant (legacy random internal PK) is also rejected
+`400`, since the session would otherwise report a non-round-tripping
+`workspace_id`.
 
 File access re-keys by the session's `workspace_id`, not its id, so a shared
 workspace is addressed consistently everywhere: the agent's `file_system` /

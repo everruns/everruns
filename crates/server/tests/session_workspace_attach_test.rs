@@ -165,6 +165,48 @@ async fn create_session_rejects_unknown_workspace() {
 }
 
 #[tokio::test]
+async fn create_session_rejects_legacy_workspace_with_mismatched_id() {
+    use everruns_core::DEFAULT_ORG_ID;
+    use everruns_core::typed_id::WorkspaceId;
+    use everruns_server::storage::models::CreateWorkspaceRow;
+
+    let server = TestServer::in_memory().await;
+    // Simulate a workspace created before the `id.hex == public_id` invariant:
+    // a random internal PK unrelated to the public id.
+    let public = WorkspaceId::new();
+    let internal = uuid::Uuid::now_v7();
+    assert_ne!(internal, public.uuid());
+    server
+        .db
+        .create_workspace(
+            DEFAULT_ORG_ID,
+            CreateWorkspaceRow {
+                id: Some(internal),
+                public_id: public.to_string(),
+                name: unique("legacy-ws"),
+                description: None,
+                owner_principal_id: None,
+                resolved_owner_user_id: None,
+            },
+        )
+        .await
+        .expect("seed legacy workspace");
+
+    // Attaching to it is rejected (the session would otherwise report a
+    // non-round-tripping workspace_id).
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "workspace_id": public.to_string(),
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn create_session_rejects_archived_workspace() {
     let server = TestServer::in_memory().await;
     let wsp = create_workspace(&server).await;

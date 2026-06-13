@@ -388,6 +388,22 @@ impl SessionService {
                     ))
                     .into());
                 }
+                // The session's rendered workspace_id is derived from the
+                // internal id, so it only round-trips when id.hex == public_id
+                // suffix. New workspaces pin this at creation, but a workspace
+                // created before that invariant (random internal PK) would make
+                // the session report a workspace_id that 404s against the
+                // workspace API. Reject it with actionable guidance rather than
+                // silently misrendering.
+                if everruns_core::WorkspaceId::from_uuid(workspace.id).to_string()
+                    != workspace.public_id
+                {
+                    return Err(BadRequestError::new(format!(
+                        "Workspace {public_id} predates the id/public-id invariant \
+                         and cannot be attached; recreate it via POST /v1/workspaces"
+                    ))
+                    .into());
+                }
                 Some(workspace.id)
             }
             None => None,
