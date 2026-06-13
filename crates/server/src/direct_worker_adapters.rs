@@ -40,7 +40,6 @@ use crate::domains::mcp_servers::scoped_mcp::{
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
-use crate::org_init;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
