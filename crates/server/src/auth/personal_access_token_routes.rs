@@ -178,12 +178,17 @@ async fn create_personal_access_token(
         req.scopes
     };
 
+    const PAT_EXPIRES_MIN_DAYS: i64 = 1;
+    const PAT_EXPIRES_MAX_DAYS: i64 = 3650;
+
     let expires_at = req
         .expires_in_days
         .map(|days| -> Result<_, AuthError> {
-            if days <= 0 || days > 3650 {
+            if !(PAT_EXPIRES_MIN_DAYS..=PAT_EXPIRES_MAX_DAYS).contains(&days) {
                 return Err(AuthError {
-                    error: "expires_in_days must be between 1 and 3650".to_string(),
+                    error: format!(
+                        "expires_in_days must be between {PAT_EXPIRES_MIN_DAYS} and {PAT_EXPIRES_MAX_DAYS}"
+                    ),
                     status: StatusCode::BAD_REQUEST,
                     code: Some("invalid_expires_in_days"),
                 });
@@ -191,7 +196,9 @@ async fn create_personal_access_token(
             Duration::try_days(days)
                 .and_then(|d| Utc::now().checked_add_signed(d))
                 .ok_or_else(|| AuthError {
-                    error: "expires_in_days out of range".to_string(),
+                    error: format!(
+                        "expires_in_days must be between {PAT_EXPIRES_MIN_DAYS} and {PAT_EXPIRES_MAX_DAYS}"
+                    ),
                     status: StatusCode::BAD_REQUEST,
                     code: Some("invalid_expires_in_days"),
                 })
