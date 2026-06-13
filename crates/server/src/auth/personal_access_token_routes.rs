@@ -178,9 +178,32 @@ async fn create_personal_access_token(
         req.scopes
     };
 
+    const PAT_EXPIRES_MIN_DAYS: i64 = 1;
+    const PAT_EXPIRES_MAX_DAYS: i64 = 3650;
+
     let expires_at = req
         .expires_in_days
-        .map(|days| Utc::now() + Duration::days(days));
+        .map(|days| -> Result<_, AuthError> {
+            if !(PAT_EXPIRES_MIN_DAYS..=PAT_EXPIRES_MAX_DAYS).contains(&days) {
+                return Err(AuthError {
+                    error: format!(
+                        "expires_in_days must be between {PAT_EXPIRES_MIN_DAYS} and {PAT_EXPIRES_MAX_DAYS}"
+                    ),
+                    status: StatusCode::BAD_REQUEST,
+                    code: Some("invalid_expires_in_days"),
+                });
+            }
+            Duration::try_days(days)
+                .and_then(|d| Utc::now().checked_add_signed(d))
+                .ok_or_else(|| AuthError {
+                    error: format!(
+                        "expires_in_days must be between {PAT_EXPIRES_MIN_DAYS} and {PAT_EXPIRES_MAX_DAYS}"
+                    ),
+                    status: StatusCode::BAD_REQUEST,
+                    code: Some("invalid_expires_in_days"),
+                })
+        })
+        .transpose()?;
 
     let token_row = state
         .db
