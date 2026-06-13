@@ -383,13 +383,7 @@ impl Tool for SpawnSubagentTool {
             let claim_token = uuid::Uuid::new_v4();
 
             let claim = match spawn_store
-                .try_claim_spawn(
-                    context.session_id,
-                    tool_call_id,
-                    &name,
-                    &instructions,
-                    claim_token,
-                )
+                .try_claim_spawn(context.session_id, tool_call_id, claim_token)
                 .await
             {
                 Ok(c) => c,
@@ -876,7 +870,7 @@ mod tests {
         let token = uuid::Uuid::new_v4();
 
         let result = store
-            .try_claim_spawn(parent, "call-1", "Worker", "do work", token)
+            .try_claim_spawn(parent, "call-1", token)
             .await
             .expect("noop should not error");
 
@@ -914,7 +908,7 @@ mod tests {
         let token = uuid::Uuid::new_v4();
 
         let result = store
-            .try_claim_spawn(parent, "call-arc", "ArcWorker", "arc task", token)
+            .try_claim_spawn(parent, "call-arc", token)
             .await
             .expect("arc delegation should not error");
 

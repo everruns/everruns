@@ -1814,8 +1814,6 @@ pub trait SubagentSpawnStore: Send + Sync + 'static {
         &self,
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
-        subagent_name: &str,
-        subagent_task: &str,
         claim_token: uuid::Uuid,
     ) -> Result<SpawnClaimResult>;
 
@@ -1852,18 +1850,10 @@ impl<S: SubagentSpawnStore + ?Sized> SubagentSpawnStore for Arc<S> {
         &self,
         parent_session_id: crate::typed_id::SessionId,
         tool_call_id: &str,
-        subagent_name: &str,
-        subagent_task: &str,
         claim_token: uuid::Uuid,
     ) -> Result<SpawnClaimResult> {
         (**self)
-            .try_claim_spawn(
-                parent_session_id,
-                tool_call_id,
-                subagent_name,
-                subagent_task,
-                claim_token,
-            )
+            .try_claim_spawn(parent_session_id, tool_call_id, claim_token)
             .await
     }
 
@@ -1909,8 +1899,6 @@ impl SubagentSpawnStore for NoopSubagentSpawnStore {
         &self,
         _parent_session_id: crate::typed_id::SessionId,
         _tool_call_id: &str,
-        _subagent_name: &str,
-        _subagent_task: &str,
         claim_token: uuid::Uuid,
     ) -> Result<SpawnClaimResult> {
         Ok(SpawnClaimResult::Claimed {

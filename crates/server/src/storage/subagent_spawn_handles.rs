@@ -32,8 +32,6 @@ impl SubagentSpawnStore for PgSubagentSpawnStore {
         &self,
         parent_session_id: SessionId,
         tool_call_id: &str,
-        subagent_name: &str,
-        subagent_task: &str,
         claim_token: Uuid,
     ) -> Result<SpawnClaimResult, AgentLoopError> {
         let parent_uuid: Uuid = parent_session_id.into();
@@ -42,15 +40,13 @@ impl SubagentSpawnStore for PgSubagentSpawnStore {
         let inserted = sqlx::query(
             r#"
             INSERT INTO subagent_spawn_handles
-                (parent_session_id, tool_call_id, subagent_name, subagent_task, claim_token)
-            VALUES ($1, $2, $3, $4, $5)
+                (parent_session_id, tool_call_id, claim_token)
+            VALUES ($1, $2, $3)
             ON CONFLICT (parent_session_id, tool_call_id) DO NOTHING
             "#,
         )
         .bind(parent_uuid)
         .bind(tool_call_id)
-        .bind(subagent_name)
-        .bind(subagent_task)
         .bind(claim_token)
         .execute(&self.pool)
         .await
