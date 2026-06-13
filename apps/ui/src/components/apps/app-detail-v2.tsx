@@ -240,7 +240,11 @@ export function AppDetailV2({ appId }: { appId: string }) {
                   onToggle={() =>
                     setExpandedChannelId((current) => (current === channel.id ? null : channel.id))
                   }
-                  onRunNow={canManage ? () => triggerMutation.mutate(channel.id) : undefined}
+                  onRunNow={
+                    canManage && !triggerMutation.isPending
+                      ? () => triggerMutation.mutate(channel.id)
+                      : undefined
+                  }
                   configureHref={`/apps/${app.id}/channels/${channel.id}`}
                 />
               ))}
