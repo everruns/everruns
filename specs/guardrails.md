@@ -123,6 +123,29 @@ patterns against real samples before attaching a guardrail to an agent. Input
 text is size-bounded. Gated by the same `capability.view` policy as other
 capability reads.
 
+## Gallery
+
+The guardrail gallery is a read-only catalogue of ready-made `GuardrailsConfig`
+presets (secret detection, PII detection, a profanity starter, dangerous-shell
+blocking, shell-access blocking, prompt-injection heuristics). It mirrors the
+harness-examples pattern: presets live in code
+(`everruns_core::guardrail_gallery`), not the DB, and are served read-only via
+`GET /v1/capabilities/guardrails/examples` (gated by `capability.view`).
+
+Adoption is client-side config composition: each listing carries a full
+`config`, and a client drops it into an agent's `guardrails` capability config
+(merging or replacing checks). There is no new persisted resource and no
+import endpoint — guardrail configs already live in agent capability config.
+
+Each listing carries trust metadata so a picker can show what a preset does
+before adoption: `check_types` (the rule-type composition), `stages`, and
+`data_egress`. Deterministic presets report `data_egress = none` (everything
+runs in-process); model-based and MCP-served presets will report other egress
+markers when those check types land, derived from the check types rather than
+hand-authored. Presets that are inherently noisy (PII, prompt-injection
+heuristics) ship `log`-only so they are safe to adopt active and tuned before
+switching individual checks to `block`.
+
 ## Composition and removal
 
 Guardrail capabilities compose through the standard
@@ -166,5 +189,3 @@ continues to use its own `system_prompt_leak` code.
   model at message-end or parallel-to-input; cost flows through budgeting.
 - `mcp` check type: a third-party guardrail served as an external endpoint over
   existing scoped-MCP auth.
-- A guardrail gallery using the harness-examples import pattern, with per-listing
-  trust metadata (check-type composition; what data leaves the platform).

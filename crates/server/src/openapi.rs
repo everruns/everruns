@@ -101,6 +101,7 @@ use utoipa::OpenApi;
         api::capabilities::delete_declarative_capability,
         api::capabilities::destroy_declarative_capability,
         api::capabilities::dry_run_guardrails,
+        api::capabilities::list_guardrail_examples,
         api::users::list_users,
         // Session filesystem routes (under /v1/sessions/{session_id}/fs)
         // are intentionally omitted from the OpenAPI doc. They remain wired
@@ -370,6 +371,8 @@ use utoipa::OpenApi;
             domains::capabilities::types::GuardrailsDryRunRequest,
             domains::capabilities::types::GuardrailsDryRunHit,
             domains::capabilities::types::GuardrailsDryRunResponse,
+            domains::capabilities::types::GuardrailExample,
+            domains::capabilities::types::GuardrailExamplesResponse,
             everruns_core::GuardrailStage,
             everruns_core::GuardrailAction,
             // Harness types
