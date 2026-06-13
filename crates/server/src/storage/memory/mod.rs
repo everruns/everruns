@@ -49,7 +49,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
     HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
-    PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -195,6 +195,30 @@ impl Default for InMemoryDatabase {
             },
         );
 
+        // Pre-seed default plugin marketplace for the default org.
+        // Mirrors the 058_backfill_default_marketplace.sql migration and
+        // org-creation seeding so in-memory dev mode starts in the same
+        // state as a freshly migrated Postgres instance.
+        let default_marketplace_id = Uuid::now_v7();
+        let mut plugin_marketplaces = HashMap::new();
+        plugin_marketplaces.insert(
+            default_marketplace_id,
+            PluginMarketplaceRow {
+                id: default_marketplace_id,
+                org_id: DEFAULT_ORG_ID,
+                public_id: PluginMarketplaceId::new().to_string(),
+                name: "everruns".to_string(),
+                source_type: "github".to_string(),
+                source: serde_json::json!({"repo": "everruns/everruns"}),
+                status: "active".to_string(),
+                catalog: None,
+                last_synced_at: None,
+                last_synced_sha: None,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+
         Self {
             organizations: RwLock::new(organizations),
             organization_members: RwLock::new(HashMap::new()),
@@ -257,7 +281,7 @@ impl Default for InMemoryDatabase {
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
-            plugin_marketplaces: RwLock::new(HashMap::new()),
+            plugin_marketplaces: RwLock::new(plugin_marketplaces),
             plugin_installs: RwLock::new(HashMap::new()),
         }
     }

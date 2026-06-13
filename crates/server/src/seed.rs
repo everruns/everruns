@@ -195,6 +195,8 @@ async fn seed_default_organization(db: &StorageBackend) -> anyhow::Result<SeedRe
                 public_id = DEFAULT_ORG_PUBLIC_ID,
                 "Created default organization"
             );
+            // Seed the default plugin marketplace for the freshly created default org.
+            org_init::seed_default_plugin_marketplace(db, DEFAULT_ORG_ID).await;
             result.created += 1;
         }
         None => {
@@ -3187,6 +3189,25 @@ mod tests {
     }
 
     // --- seed_all ---
+
+    #[tokio::test]
+    async fn test_seed_all_seeds_default_marketplace() {
+        use everruns_core::DEFAULT_ORG_ID;
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let marketplaces = db
+            .list_plugin_marketplaces(DEFAULT_ORG_ID, None)
+            .await
+            .unwrap();
+        assert!(
+            marketplaces.iter().any(|m| m.name == "everruns"),
+            "seed_all must create the default 'everruns' marketplace; got: {:?}",
+            marketplaces.iter().map(|m| &m.name).collect::<Vec<_>>()
+        );
+    }
 
     #[tokio::test]
     async fn test_seed_all_first_run_creates_everything() {

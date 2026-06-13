@@ -284,6 +284,10 @@ pub async fn create_organization(
         );
     }
 
+    // Seed the default plugin marketplace (everruns/everruns) for the new org.
+    // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
+    crate::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
+
     // Seed agents are available as examples (GET /v1/agent-examples) and adopted
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
     // this prevents duplicate agents when users adopt from the examples gallery.
