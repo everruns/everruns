@@ -201,7 +201,7 @@ impl WorkerService for WorkerServiceImpl {
             .or(agent.as_ref().and_then(|a| a.default_model_id))
             .or(harness.as_ref().and_then(|h| h.default_model_id));
 
-        let model: Option<proto::ModelWithProvider> = if let Some(mid) = model_id {
+        let model: Option<proto::ResolvedModel> = if let Some(mid) = model_id {
             self.llm_resolver_service
                 .resolve_model(req.org_id, mid.uuid())
                 .await
@@ -788,10 +788,10 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(CommitExecResponse { committed: true }))
     }
 
-    async fn get_model_with_provider(
+    async fn get_resolved_model(
         &self,
-        request: Request<GetModelWithProviderRequest>,
-    ) -> Result<Response<GetModelWithProviderResponse>, Status> {
+        request: Request<GetResolvedModelRequest>,
+    ) -> Result<Response<GetResolvedModelResponse>, Status> {
         let req = request.into_inner();
         let model_id = parse_uuid(req.model_id.as_ref())?;
 
@@ -812,7 +812,7 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to resolve model")
             })?;
 
-        Ok(Response::new(GetModelWithProviderResponse {
+        Ok(Response::new(GetResolvedModelResponse {
             model: resolved.map(Self::resolved_model_to_proto),
         }))
     }

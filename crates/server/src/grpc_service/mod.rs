@@ -109,8 +109,8 @@ use everruns_internal_protocol::proto::{
     GetMcpServerByPrefixResponse,
     GetMessageRequest,
     GetMessageResponse,
-    GetModelWithProviderRequest,
-    GetModelWithProviderResponse,
+    GetResolvedModelRequest,
+    GetResolvedModelResponse,
     GetSessionRequest,
     GetSessionResponse,
     GetSessionTaskRequest,
@@ -792,11 +792,11 @@ impl WorkerServiceImpl {
             .max_encoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
     }
 
-    /// Convert ResolvedModel to proto ModelWithProvider
+    /// Convert ResolvedModel to proto ResolvedModel
     fn resolved_model_to_proto(
         resolved: crate::services::ResolvedModel,
-    ) -> proto::ModelWithProvider {
-        proto::ModelWithProvider {
+    ) -> proto::ResolvedModel {
+        proto::ResolvedModel {
             model: resolved.model_id,
             provider_type: resolved.provider_type,
             api_key: resolved.api_key,

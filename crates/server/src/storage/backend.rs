@@ -1351,8 +1351,8 @@ impl StorageBackend {
     pub async fn create_llm_provider(
         &self,
         org_id: i64,
-        input: CreateLlmProviderRow,
-    ) -> Result<LlmProviderRow> {
+        input: CreateProviderRow,
+    ) -> Result<ProviderRow> {
         dispatch!(self, create_llm_provider, org_id, input)
     }
 
@@ -1362,16 +1362,16 @@ impl StorageBackend {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmProviderRow,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: CreateProviderRow,
+    ) -> Result<Option<ProviderRow>> {
         dispatch!(self, create_llm_provider_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
         dispatch!(self, get_llm_provider, org_id, id)
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
         dispatch!(self, list_llm_providers, org_id)
     }
 
@@ -1379,8 +1379,8 @@ impl StorageBackend {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmProvider,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: UpdateProvider,
+    ) -> Result<Option<ProviderRow>> {
         dispatch!(self, update_llm_provider, org_id, id, input)
     }
 
@@ -1408,9 +1408,9 @@ impl StorageBackend {
     /// Note: This is not async, so cannot use dispatch! macro
     pub fn get_provider_with_api_key(
         &self,
-        provider: &LlmProviderRow,
+        provider: &ProviderRow,
         encryption: &super::EncryptionService,
-    ) -> Result<LlmProviderWithApiKey> {
+    ) -> Result<ProviderWithApiKey> {
         match self {
             Self::Postgres(db) => db.get_provider_with_api_key(provider, encryption),
             Self::InMemory(db) => db.get_provider_with_api_key(provider, encryption),
@@ -1424,7 +1424,7 @@ impl StorageBackend {
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         dispatch!(self, get_default_llm_model, org_id)
     }
 
@@ -1469,8 +1469,8 @@ impl StorageBackend {
     pub async fn create_llm_model(
         &self,
         org_id: i64,
-        input: CreateLlmModelRow,
-    ) -> Result<LlmModelRow> {
+        input: CreateModelRow,
+    ) -> Result<ModelRow> {
         dispatch!(self, create_llm_model, org_id, input)
     }
 
@@ -1480,12 +1480,12 @@ impl StorageBackend {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmModelRow,
-    ) -> Result<Option<LlmModelRow>> {
+        input: CreateModelRow,
+    ) -> Result<Option<ModelRow>> {
         dispatch!(self, create_llm_model_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         dispatch!(self, get_llm_model, org_id, id)
     }
 
@@ -1493,7 +1493,7 @@ impl StorageBackend {
         &self,
         org_id: i64,
         id: Uuid,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         dispatch!(self, get_llm_model_with_provider, org_id, id)
     }
 
@@ -1501,11 +1501,11 @@ impl StorageBackend {
         &self,
         org_id: i64,
         provider_id: Uuid,
-    ) -> Result<Vec<LlmModelRow>> {
+    ) -> Result<Vec<ModelRow>> {
         dispatch!(self, list_llm_models_for_provider, org_id, provider_id)
     }
 
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
         dispatch!(self, list_all_llm_models, org_id)
     }
 
@@ -1513,8 +1513,8 @@ impl StorageBackend {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmModel,
-    ) -> Result<Option<LlmModelRow>> {
+        input: UpdateModel,
+    ) -> Result<Option<ModelRow>> {
         dispatch!(self, update_llm_model, org_id, id, input)
     }
 
@@ -1526,7 +1526,7 @@ impl StorageBackend {
         &self,
         org_id: i64,
         model_id: &str,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         dispatch!(self, get_llm_model_by_model_id, org_id, model_id)
     }
 

@@ -16,7 +16,7 @@
 
 use crate::llm_driver_registry::ServiceKind;
 use crate::llm_models::{
-    CostTier, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType,
+    CostTier, ModelCost, ModelLimits, ModelModalities, ModelProfile, DriverId,
     Modality, ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 
@@ -176,7 +176,7 @@ struct ModelDescriptor {
     ids: &'static [&'static str],
     vendor: ModelVendor,
     /// Provider types (API surfaces) this model is offered under.
-    surfaces: &'static [LlmProviderType],
+    surfaces: &'static [DriverId],
     /// Which provider service this model belongs to (specs/providers.md).
     /// Pickers filter on it: chat pickers never list realtime models.
     service: ServiceKind,
@@ -185,7 +185,7 @@ struct ModelDescriptor {
 const fn md(
     ids: &'static [&'static str],
     vendor: ModelVendor,
-    surfaces: &'static [LlmProviderType],
+    surfaces: &'static [DriverId],
 ) -> ModelDescriptor {
     ModelDescriptor {
         ids,
@@ -198,7 +198,7 @@ const fn md(
 const fn md_service(
     ids: &'static [&'static str],
     vendor: ModelVendor,
-    surfaces: &'static [LlmProviderType],
+    surfaces: &'static [DriverId],
     service: ServiceKind,
 ) -> ModelDescriptor {
     ModelDescriptor {
@@ -213,20 +213,20 @@ const fn md_service(
 // Chat Completions path. Third-party OpenAI-compatible models (NVIDIA, Qwen,
 // ...) are reachable via Responses-capable gateways (e.g. OpenRouter) and the
 // Chat Completions path, but never Azure.
-const OPENAI: &[LlmProviderType] = &[
-    LlmProviderType::Openai,
-    LlmProviderType::Openrouter,
-    LlmProviderType::AzureOpenai,
-    LlmProviderType::OpenaiCompletions,
+const OPENAI: &[DriverId] = &[
+    DriverId::OpenAI,
+    DriverId::OpenRouter,
+    DriverId::AzureOpenAI,
+    DriverId::OpenAICompletions,
 ];
-const OPENAI_COMPAT: &[LlmProviderType] = &[
-    LlmProviderType::Openai,
-    LlmProviderType::Openrouter,
-    LlmProviderType::OpenaiCompletions,
+const OPENAI_COMPAT: &[DriverId] = &[
+    DriverId::OpenAI,
+    DriverId::OpenRouter,
+    DriverId::OpenAICompletions,
 ];
-const ANTHROPIC: &[LlmProviderType] = &[LlmProviderType::Anthropic];
-const GEMINI: &[LlmProviderType] = &[LlmProviderType::Gemini];
-const LLMSIM: &[LlmProviderType] = &[LlmProviderType::LlmSim];
+const ANTHROPIC: &[DriverId] = &[DriverId::Anthropic];
+const GEMINI: &[DriverId] = &[DriverId::Gemini];
+const LLMSIM: &[DriverId] = &[DriverId::LlmSim];
 
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
@@ -349,7 +349,7 @@ static REGISTRY: &[ModelDescriptor] = &[
 /// longest matching id so specific variants win over their prefixes (e.g.
 /// `gpt-4o-mini` over `gpt-4o`).
 fn resolve_descriptor(
-    provider_type: &LlmProviderType,
+    provider_type: &DriverId,
     model_id: &str,
 ) -> Option<&'static ModelDescriptor> {
     // Match without allocating: compare bytes case-insensitively. Ids are ASCII.
@@ -382,15 +382,15 @@ fn resolve_descriptor(
 /// Returns None if the id is not in the registry or is not offered under the
 /// given provider type.
 pub fn get_model_profile(
-    provider_type: &LlmProviderType,
+    provider_type: &DriverId,
     model_id: &str,
-) -> Option<LlmModelProfile> {
+) -> Option<ModelProfile> {
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
     // Native execution phases are an OpenAI Responses-only feature. OpenRouter
     // uses a compatible but stateless Responses endpoint, so it keeps the base
     // model profile while masking native OpenAI-only request options.
-    if !matches!(provider_type, LlmProviderType::Openai) {
+    if !matches!(provider_type, DriverId::OpenAI) {
         profile.supports_phases = false;
     }
     // Hosted tool_search is rendered by the OpenAI Responses driver and the
@@ -404,7 +404,7 @@ pub fn get_model_profile(
     // So mask the flag for everything except the two first-party providers.
     if !matches!(
         provider_type,
-        LlmProviderType::Openai | LlmProviderType::Anthropic
+        DriverId::OpenAI | DriverId::Anthropic
     ) {
         profile.tool_search = false;
     }
@@ -420,7 +420,7 @@ pub fn get_model_profile(
 /// profiles are per million tokens. Cache tokens are not discounted here,
 /// matching existing budget metering behavior.
 pub fn estimate_cost_usd(
-    provider_type: &LlmProviderType,
+    provider_type: &DriverId,
     model_id: &str,
     input_tokens: u32,
     output_tokens: u32,
@@ -433,7 +433,7 @@ pub fn estimate_cost_usd(
 
 /// Get the vendor/brand for a model id, or None if it is not in the registry
 /// (or not offered under the given provider type).
-pub fn get_model_vendor(provider_type: &LlmProviderType, model_id: &str) -> Option<ModelVendor> {
+pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<ModelVendor> {
     resolve_descriptor(provider_type, model_id).map(|descriptor| descriptor.vendor)
 }
 
@@ -442,7 +442,7 @@ pub fn get_model_vendor(provider_type: &LlmProviderType, model_id: &str) -> Opti
 /// The key identifies the model's identity independent of which provider
 /// serves it: `("anthropic", "claude-sonnet-4-5-20250929")` and a gateway
 /// alias of the same model both map to `"anthropic/claude-sonnet-4-5"`.
-pub fn get_model_profile_key(provider_type: &LlmProviderType, model_id: &str) -> Option<String> {
+pub fn get_model_profile_key(provider_type: &DriverId, model_id: &str) -> Option<String> {
     resolve_descriptor(provider_type, model_id)
         .map(|descriptor| format!("{}/{}", descriptor.vendor.slug(), descriptor.ids[0]))
 }
@@ -453,7 +453,7 @@ pub fn get_model_profile_key(provider_type: &LlmProviderType, model_id: &str) ->
 /// payload without provider-surface masking (`supports_phases`/`tool_search`
 /// stay as authored). Use [`get_model_profile`] when resolving for a concrete
 /// provider.
-pub fn get_model_profile_by_key(key: &str) -> Option<LlmModelProfile> {
+pub fn get_model_profile_by_key(key: &str) -> Option<ModelProfile> {
     let (vendor_slug, canonical) = key.split_once('/')?;
     let descriptor = REGISTRY.iter().find(|descriptor| {
         descriptor.vendor.slug().eq_ignore_ascii_case(vendor_slug)
@@ -464,7 +464,7 @@ pub fn get_model_profile_by_key(key: &str) -> Option<LlmModelProfile> {
 
 /// Which provider service a model belongs to. Unknown models default to
 /// [`ServiceKind::Chat`].
-pub fn get_model_service_kind(provider_type: &LlmProviderType, model_id: &str) -> ServiceKind {
+pub fn get_model_service_kind(provider_type: &DriverId, model_id: &str) -> ServiceKind {
     resolve_descriptor(provider_type, model_id)
         .map(|descriptor| descriptor.service)
         .unwrap_or(ServiceKind::Chat)
@@ -473,7 +473,7 @@ pub fn get_model_service_kind(provider_type: &LlmProviderType, model_id: &str) -
 /// Profile payload keyed by canonical model id. Pure value store: provider
 /// availability and vendor tagging live in `REGISTRY`, not here. The segments
 /// are grouped by author for readability only — there is no provider dispatch.
-fn profile_data(canonical: &str) -> Option<LlmModelProfile> {
+fn profile_data(canonical: &str) -> Option<ModelProfile> {
     openai_profile_data(canonical)
         .or_else(|| anthropic_profile_data(canonical))
         .or_else(|| gemini_profile_data(canonical))
@@ -481,9 +481,9 @@ fn profile_data(canonical: &str) -> Option<LlmModelProfile> {
         .or_else(|| llmsim_profile_data(canonical))
 }
 
-fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        "gpt-realtime-2" => Some(LlmModelProfile {
+        "gpt-realtime-2" => Some(ModelProfile {
             name: "GPT Realtime 2".into(),
             family: "gpt-realtime".into(),
             description: Some("OpenAI Realtime model for low-latency voice sessions".into()),
@@ -498,7 +498,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             open_weights: false,
             cost: None,
             limits: None,
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Audio],
                 output: vec![Modality::Text, Modality::Audio],
             }),
@@ -508,7 +508,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-4o" => Some(LlmModelProfile {
+        "gpt-4o" => Some(ModelProfile {
             name: "GPT-4o".into(),
             family: "gpt-4o".into(),
             description: None,
@@ -521,19 +521,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.50,
                 output: 10.00,
                 cache_read: Some(1.25),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Audio],
                 output: vec![Modality::Text, Modality::Audio],
             }),
@@ -543,7 +543,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-4o-mini" => Some(LlmModelProfile {
+        "gpt-4o-mini" => Some(ModelProfile {
             name: "GPT-4o mini".into(),
             family: "gpt-4o-mini".into(),
             description: None,
@@ -556,19 +556,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.15,
                 output: 0.60,
                 cache_read: Some(0.075),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -578,7 +578,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o1" => Some(LlmModelProfile {
+        "o1" => Some(ModelProfile {
             name: "o1".into(),
             family: "o1".into(),
             description: None,
@@ -591,19 +591,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 60.00,
                 cache_read: Some(7.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -613,7 +613,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o1-mini" => Some(LlmModelProfile {
+        "o1-mini" => Some(ModelProfile {
             name: "o1-mini".into(),
             family: "o1-mini".into(),
             description: None,
@@ -626,19 +626,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: false,
             structured_output: false,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 12.00,
                 cache_read: Some(1.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 65_536,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -648,7 +648,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o1-pro" => Some(LlmModelProfile {
+        "o1-pro" => Some(ModelProfile {
             name: "o1-pro".into(),
             family: "o1-pro".into(),
             description: None,
@@ -661,19 +661,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 150.00,
                 output: 600.00,
                 cache_read: None,
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -683,7 +683,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o3-mini" => Some(LlmModelProfile {
+        "o3-mini" => Some(ModelProfile {
             name: "o3-mini".into(),
             family: "o3-mini".into(),
             description: None,
@@ -696,19 +696,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -718,7 +718,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o3" => Some(LlmModelProfile {
+        "o3" => Some(ModelProfile {
             name: "o3".into(),
             family: "o3".into(),
             description: None,
@@ -731,19 +731,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -753,7 +753,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o3-pro" => Some(LlmModelProfile {
+        "o3-pro" => Some(ModelProfile {
             name: "o3 Pro".into(),
             family: "o3-pro".into(),
             description: None,
@@ -766,19 +766,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 20.00,
                 output: 80.00,
                 cache_read: None,
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -788,7 +788,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o4-mini" => Some(LlmModelProfile {
+        "o4-mini" => Some(ModelProfile {
             name: "o4 mini".into(),
             family: "o4-mini".into(),
             description: None,
@@ -801,19 +801,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -824,7 +824,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-4.1 family models
-        "gpt-4.1" => Some(LlmModelProfile {
+        "gpt-4.1" => Some(ModelProfile {
             name: "GPT-4.1".into(),
             family: "gpt-4.1".into(),
             description: None,
@@ -837,19 +837,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -859,7 +859,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-4.1-mini" => Some(LlmModelProfile {
+        "gpt-4.1-mini" => Some(ModelProfile {
             name: "GPT-4.1 mini".into(),
             family: "gpt-4.1-mini".into(),
             description: None,
@@ -872,19 +872,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.40,
                 output: 1.60,
                 cache_read: Some(0.20),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -894,7 +894,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-4.1-nano" => Some(LlmModelProfile {
+        "gpt-4.1-nano" => Some(ModelProfile {
             name: "GPT-4.1 nano".into(),
             family: "gpt-4.1-nano".into(),
             description: None,
@@ -907,19 +907,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.05),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -931,7 +931,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
         // GPT-5 family models
         // Pre-5.1 models: default medium, supports low/medium/high (no none)
-        "gpt-5" => Some(LlmModelProfile {
+        "gpt-5" => Some(ModelProfile {
             name: "GPT-5".into(),
             family: "gpt-5".into(),
             description: None,
@@ -944,19 +944,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -966,7 +966,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5-mini" => Some(LlmModelProfile {
+        "gpt-5-mini" => Some(ModelProfile {
             name: "GPT-5 mini".into(),
             family: "gpt-5-mini".into(),
             description: None,
@@ -979,19 +979,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.25,
                 output: 2.00,
                 cache_read: Some(0.025),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1001,7 +1001,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5-nano" => Some(LlmModelProfile {
+        "gpt-5-nano" => Some(ModelProfile {
             name: "GPT-5 nano".into(),
             family: "gpt-5-nano".into(),
             description: None,
@@ -1014,19 +1014,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.05,
                 output: 0.40,
                 cache_read: Some(0.005),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1036,7 +1036,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5-pro" => Some(LlmModelProfile {
+        "gpt-5-pro" => Some(ModelProfile {
             name: "GPT-5 Pro".into(),
             family: "gpt-5-pro".into(),
             description: None,
@@ -1049,19 +1049,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 60.00,
                 cache_read: None,
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1071,7 +1071,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5-codex" => Some(LlmModelProfile {
+        "gpt-5-codex" => Some(ModelProfile {
             name: "GPT-5 Codex".into(),
             family: "gpt-5-codex".into(),
             description: None,
@@ -1084,19 +1084,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1107,7 +1107,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-5.1 models: default none, supports none/low/medium/high
-        "gpt-5.1" => Some(LlmModelProfile {
+        "gpt-5.1" => Some(ModelProfile {
             name: "GPT-5.1".into(),
             family: "gpt-5.1".into(),
             description: None,
@@ -1120,19 +1120,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1142,7 +1142,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.1-codex" => Some(LlmModelProfile {
+        "gpt-5.1-codex" => Some(ModelProfile {
             name: "GPT-5.1 Codex".into(),
             family: "gpt-5.1-codex".into(),
             description: None,
@@ -1155,19 +1155,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1177,7 +1177,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.1-codex-mini" => Some(LlmModelProfile {
+        "gpt-5.1-codex-mini" => Some(ModelProfile {
             name: "GPT-5.1 Codex mini".into(),
             family: "gpt-5.1-codex-mini".into(),
             description: None,
@@ -1190,19 +1190,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.30,
                 output: 2.40,
                 cache_read: Some(0.03),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1213,7 +1213,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-5.1-codex-max and after: supports xhigh
-        "gpt-5.1-codex-max" => Some(LlmModelProfile {
+        "gpt-5.1-codex-max" => Some(ModelProfile {
             name: "GPT-5.1 Codex max".into(),
             family: "gpt-5.1-codex-max".into(),
             description: None,
@@ -1226,19 +1226,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 24.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1249,7 +1249,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-5.2 models: supports xhigh, 400K context
-        "gpt-5.2" => Some(LlmModelProfile {
+        "gpt-5.2" => Some(ModelProfile {
             name: "GPT-5.2".into(),
             family: "gpt-5.2".into(),
             description: None,
@@ -1262,19 +1262,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1284,7 +1284,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.2-pro" => Some(LlmModelProfile {
+        "gpt-5.2-pro" => Some(ModelProfile {
             name: "GPT-5.2 Pro".into(),
             family: "gpt-5.2-pro".into(),
             description: None,
@@ -1297,19 +1297,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 21.00,
                 output: 168.00,
                 cache_read: None,
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1319,7 +1319,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.2-codex" => Some(LlmModelProfile {
+        "gpt-5.2-codex" => Some(ModelProfile {
             name: "GPT-5.2 Codex".into(),
             family: "gpt-5.2-codex".into(),
             description: None,
@@ -1332,19 +1332,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1355,7 +1355,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-5.3 Codex: same pricing as 5.2, 25% faster inference
-        "gpt-5.3-codex" => Some(LlmModelProfile {
+        "gpt-5.3-codex" => Some(ModelProfile {
             name: "GPT-5.3 Codex".into(),
             family: "gpt-5.3-codex".into(),
             description: None,
@@ -1368,19 +1368,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1395,7 +1395,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         // Source: developers.openai.com/api/docs/models/gpt-5.5 and .../gpt-5.5-pro
         // (models.dev did not yet list these variants at the time of addition;
         // refresh once the models.dev entry appears).
-        "gpt-5.5" => Some(LlmModelProfile {
+        "gpt-5.5" => Some(ModelProfile {
             name: "GPT-5.5".into(),
             family: "gpt-5.5".into(),
             description: Some("Latest flagship reasoning model. Best for complex multi-step tasks, code generation, and deep analysis.".into()),
@@ -1408,19 +1408,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 5.00,
                 output: 30.00,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1430,7 +1430,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-5.5-pro" => Some(LlmModelProfile {
+        "gpt-5.5-pro" => Some(ModelProfile {
             name: "GPT-5.5 Pro".into(),
             family: "gpt-5.5-pro".into(),
             description: Some("Extended-thinking variant for the hardest problems. Trades speed for deeper reasoning on math, science, and complex code.".into()),
@@ -1443,19 +1443,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 30.00,
                 output: 180.00,
                 cache_read: None,
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1468,7 +1468,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
         // Released 2026-03-05 (5.4, 5.4-pro), 2026-03-17 (5.4-mini, 5.4-nano).
         // 5.4 and 5.4-pro have tiered pricing above 200K context tokens.
-        "gpt-5.4" => Some(LlmModelProfile {
+        "gpt-5.4" => Some(ModelProfile {
             name: "GPT-5.4".into(),
             family: "gpt-5.4".into(),
             description: Some("Flagship reasoning model with 1M+ context. Best for complex multi-step tasks, code generation, and deep analysis.".into()),
@@ -1481,7 +1481,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.50,
                 output: 15.00,
                 cache_read: Some(0.25),
@@ -1492,13 +1492,13 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                     cache_read: Some(0.50),
                 }],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Pdf],
                 output: vec![Modality::Text],
             }),
@@ -1508,7 +1508,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-5.4-mini" => Some(LlmModelProfile {
+        "gpt-5.4-mini" => Some(ModelProfile {
             name: "GPT-5.4 mini".into(),
             family: "gpt-5.4-mini".into(),
             description: Some("Fast, cost-effective reasoning model. Balances strong performance with low latency for everyday tasks.".into()),
@@ -1521,19 +1521,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.75,
                 output: 4.50,
                 cache_read: Some(0.075),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1543,7 +1543,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-5.4-nano" => Some(LlmModelProfile {
+        "gpt-5.4-nano" => Some(ModelProfile {
             name: "GPT-5.4 nano".into(),
             family: "gpt-5.4-nano".into(),
             description: Some("Smallest and cheapest GPT-5.4 variant. Ideal for high-volume, latency-sensitive workloads.".into()),
@@ -1556,19 +1556,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.20,
                 output: 1.25,
                 cache_read: Some(0.02),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 400_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1578,7 +1578,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: true,
         }),
 
-        "gpt-5.4-pro" => Some(LlmModelProfile {
+        "gpt-5.4-pro" => Some(ModelProfile {
             name: "GPT-5.4 Pro".into(),
             family: "gpt-5.4-pro".into(),
             description: Some("Extended-thinking variant for the hardest problems. Trades speed for deeper reasoning on math, science, and complex code.".into()),
@@ -1591,7 +1591,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: false,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 30.00,
                 output: 180.00,
                 cache_read: None,
@@ -1602,13 +1602,13 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                     cache_read: None,
                 }],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_050_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1619,7 +1619,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // GPT-5 chat-latest models (point to latest chat-optimized versions)
-        "gpt-5-chat-latest" => Some(LlmModelProfile {
+        "gpt-5-chat-latest" => Some(ModelProfile {
             name: "GPT-5 Chat".into(),
             family: "gpt-5".into(),
             description: None,
@@ -1632,19 +1632,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.125),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1654,7 +1654,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.1-chat-latest" => Some(LlmModelProfile {
+        "gpt-5.1-chat-latest" => Some(ModelProfile {
             name: "GPT-5.1 Chat".into(),
             family: "gpt-5.1".into(),
             description: None,
@@ -1667,19 +1667,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.50,
                 output: 12.00,
                 cache_read: Some(0.15),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1689,7 +1689,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gpt-5.2-chat-latest" => Some(LlmModelProfile {
+        "gpt-5.2-chat-latest" => Some(ModelProfile {
             name: "GPT-5.2 Chat".into(),
             family: "gpt-5.2".into(),
             description: None,
@@ -1702,19 +1702,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.75,
                 output: 14.00,
                 cache_read: Some(0.175),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1725,7 +1725,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Deep research models
-        "o3-deep-research" => Some(LlmModelProfile {
+        "o3-deep-research" => Some(ModelProfile {
             name: "o3 Deep Research".into(),
             family: "o3".into(),
             description: None,
@@ -1738,19 +1738,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.00,
                 output: 8.00,
                 cache_read: Some(1.00),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1760,7 +1760,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o4-mini-deep-research" => Some(LlmModelProfile {
+        "o4-mini-deep-research" => Some(ModelProfile {
             name: "o4 mini Deep Research".into(),
             family: "o4-mini".into(),
             description: None,
@@ -1773,19 +1773,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.10,
                 output: 4.40,
                 cache_read: Some(0.55),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 100_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -1795,7 +1795,7 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "o1-preview" => Some(LlmModelProfile {
+        "o1-preview" => Some(ModelProfile {
             name: "o1 Preview".into(),
             family: "o1".into(),
             description: None,
@@ -1808,19 +1808,19 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: false,
             structured_output: false,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 60.00,
                 cache_read: Some(7.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 32_768,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -1846,12 +1846,12 @@ fn openai_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 /// `structured_output` is set to `false` where the upstream models.dev entry
 /// does not assert it: absence of the field is not a claim of support, so we
 /// do not advertise a capability we cannot confirm.
-fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id.to_ascii_lowercase().as_str() {
         // NVIDIA Nemotron 3 Super — flagship Nemotron reasoning model.
         // Source: models.dev (nvidia provider).
         "nemotron-3-super-120b-a12b" | "nvidia/nemotron-3-super-120b-a12b" => {
-            Some(LlmModelProfile {
+            Some(ModelProfile {
                 name: "Nemotron 3 Super".into(),
                 family: "nemotron-3-super".into(),
                 description: None,
@@ -1864,19 +1864,19 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                 tool_call: true,
                 structured_output: false,
                 open_weights: true,
-                cost: Some(LlmModelCost {
+                cost: Some(ModelCost {
                     input: 0.20,
                     output: 0.80,
                     cache_read: None,
                     cost_tiers: vec![],
                 }),
-                limits: Some(LlmModelLimits {
+                limits: Some(ModelLimits {
                     context: 262_144,
                     input: None,
                     output: 262_144,
                     max_media: None,
                 }),
-                modalities: Some(LlmModelModalities {
+                modalities: Some(ModelModalities {
                     input: vec![Modality::Text],
                     output: vec![Modality::Text],
                 }),
@@ -1889,7 +1889,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
         // Alibaba Qwen3.7 Max — flagship Qwen model.
         // Source: models.dev (alibaba provider). Knowledge cutoff not published.
-        "qwen3.7-max" | "qwen/qwen3.7-max" => Some(LlmModelProfile {
+        "qwen3.7-max" | "qwen/qwen3.7-max" => Some(ModelProfile {
             name: "Qwen3.7 Max".into(),
             family: "qwen3.7-max".into(),
             description: None,
@@ -1902,19 +1902,19 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: false,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.50,
                 output: 7.50,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_000_000,
                 input: None,
                 output: 65_536,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -1930,7 +1930,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
         // text-only instruction model (not a reasoning model); context window,
         // pricing, and knowledge cutoff were never publicly disclosed, so cost
         // and limits are left unset rather than guessed.
-        "mai-1-preview" | "microsoft/mai-1-preview" => Some(LlmModelProfile {
+        "mai-1-preview" | "microsoft/mai-1-preview" => Some(ModelProfile {
             name: "MAI-1-preview".into(),
             family: "mai-1-preview".into(),
             description: None,
@@ -1945,7 +1945,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             open_weights: false,
             cost: None,
             limits: None,
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -1957,7 +1957,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
         // MiniMax-M3 — flagship MiniMax model. Source: models.dev (minimax
         // provider). Reasoning is a toggle upstream (no graded effort).
-        "minimax-m3" | "minimax/minimax-m3" => Some(LlmModelProfile {
+        "minimax-m3" | "minimax/minimax-m3" => Some(ModelProfile {
             name: "MiniMax-M3".into(),
             family: "minimax-m3".into(),
             description: None,
@@ -1970,19 +1970,19 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: false,
             open_weights: true,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.60,
                 output: 2.40,
                 cache_read: Some(0.12),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 512_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Video],
                 output: vec![Modality::Text],
             }),
@@ -1994,7 +1994,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
         // Moonshot Kimi K2 Thinking — flagship Kimi reasoning model.
         // Source: models.dev (moonshotai provider).
-        "kimi-k2-thinking" | "moonshotai/kimi-k2-thinking" => Some(LlmModelProfile {
+        "kimi-k2-thinking" | "moonshotai/kimi-k2-thinking" => Some(ModelProfile {
             name: "Kimi K2 Thinking".into(),
             family: "kimi-k2-thinking".into(),
             description: None,
@@ -2007,19 +2007,19 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: false,
             open_weights: true,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.60,
                 output: 2.50,
                 cache_read: Some(0.15),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 262_144,
                 input: None,
                 output: 262_144,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
                 output: vec![Modality::Text],
             }),
@@ -2031,7 +2031,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
         // xAI Grok 4.3 — flagship Grok model. Source: models.dev (xai provider).
         // Pricing has a >200K-token tier. Knowledge cutoff not published.
-        "grok-4.3" | "x-ai/grok-4.3" | "xai/grok-4.3" => Some(LlmModelProfile {
+        "grok-4.3" | "x-ai/grok-4.3" | "xai/grok-4.3" => Some(ModelProfile {
             name: "Grok 4.3".into(),
             family: "grok-4.3".into(),
             description: None,
@@ -2044,7 +2044,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: false,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 2.50,
                 cache_read: Some(0.20),
@@ -2055,13 +2055,13 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                     cache_read: Some(0.40),
                 }],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_000_000,
                 input: None,
                 output: 30_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Pdf],
                 output: vec![Modality::Text],
             }),
@@ -2085,7 +2085,7 @@ fn third_party_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 /// disambiguate the two entries in the model picker; `family` is left unchanged
 /// so the pair groups together. The Anthropic driver additionally sends the
 /// `context-1m` beta header for these ids.
-fn anthropic_1m_variant(mut profile: LlmModelProfile) -> LlmModelProfile {
+fn anthropic_1m_variant(mut profile: ModelProfile) -> ModelProfile {
     if let Some(limits) = profile.limits.as_mut() {
         limits.context = 1_000_000;
     }
@@ -2121,7 +2121,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
     )
 }
 
-fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+fn anthropic_profile_data(model_id: &str) -> Option<ModelProfile> {
     // `tool_search` is assigned centrally by family below, so the per-literal
     // `tool_search` value in the match arms is a placeholder and is overwritten.
     anthropic_profile_data_inner(model_id).map(|mut profile| {
@@ -2130,7 +2130,7 @@ fn anthropic_profile_data(model_id: &str) -> Option<LlmModelProfile> {
     })
 }
 
-fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
+fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
     match model_id {
         // Claude Fable 5 (newest — top tier above Opus)
         // Source: Anthropic model card (claude-api skill `shared/models.md`) and
@@ -2141,7 +2141,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         // param must be omitted entirely (our driver already omits it when no
         // reasoning effort is set). Release/knowledge dates are not published in
         // the model card; the Models API exposes them at runtime.
-        "claude-fable-5" => Some(LlmModelProfile {
+        "claude-fable-5" => Some(ModelProfile {
             name: "Claude Fable 5".into(),
             family: "claude-fable-5".into(),
             description: None,
@@ -2154,20 +2154,20 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 10.00,
                 output: 50.00,
                 cache_read: Some(1.00),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 // Bare id is the 200K profile; `claude-fable-5[1m]` is the 1M twin.
                 context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Pdf],
                 output: vec![Modality::Text],
             }),
@@ -2183,7 +2183,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         // Opus 4.7: adaptive thinking only, sampling parameters removed (temperature
         // returns 400, hence `temperature: false`). Release/knowledge dates are not
         // published in the model card; the Models API exposes them at runtime.
-        "claude-opus-4-8" => Some(LlmModelProfile {
+        "claude-opus-4-8" => Some(ModelProfile {
             name: "Claude Opus 4.8".into(),
             family: "claude-opus-4-8".into(),
             description: None,
@@ -2196,20 +2196,20 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 // Bare id is the 200K profile; `claude-opus-4-8[1m]` is the 1M twin.
                 context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Pdf],
                 output: vec![Modality::Text],
             }),
@@ -2223,7 +2223,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         // Sampling parameters were removed starting with Opus 4.7: the API
         // rejects `temperature` with "`temperature` is deprecated for this
         // model" (verified live), hence `temperature: false`.
-        "claude-opus-4-7" => Some(LlmModelProfile {
+        "claude-opus-4-7" => Some(ModelProfile {
             name: "Claude Opus 4.7".into(),
             family: "claude-opus-4-7".into(),
             description: None,
@@ -2236,20 +2236,20 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 // Bare id is the 200K profile; `claude-opus-4-7[1m]` is the 1M twin.
                 context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image, Modality::Pdf],
                 output: vec![Modality::Text],
             }),
@@ -2260,7 +2260,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4.6 series
-        "claude-opus-4-6" => Some(LlmModelProfile {
+        "claude-opus-4-6" => Some(ModelProfile {
             name: "Claude Opus 4.6".into(),
             family: "claude-opus-4-6".into(),
             description: None,
@@ -2273,20 +2273,20 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 // Bare id is the 200K profile; `claude-opus-4-6[1m]` is the 1M twin.
                 context: 200_000,
                 input: None,
                 output: 128_000,
                 max_media: Some(600),
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2309,7 +2309,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             anthropic_profile_data("claude-opus-4-6").map(anthropic_1m_variant)
         }
 
-        "claude-sonnet-4-6" => Some(LlmModelProfile {
+        "claude-sonnet-4-6" => Some(ModelProfile {
             name: "Claude Sonnet 4.6".into(),
             family: "claude-sonnet-4-6".into(),
             description: None,
@@ -2322,19 +2322,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2345,7 +2345,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4.5 series
-        "claude-opus-4-5" => Some(LlmModelProfile {
+        "claude-opus-4-5" => Some(ModelProfile {
             name: "Claude Opus 4.5".into(),
             family: "claude-opus-4-5".into(),
             description: None,
@@ -2358,19 +2358,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 5.00,
                 output: 25.00,
                 cache_read: Some(0.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2380,7 +2380,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-sonnet-4-5" => Some(LlmModelProfile {
+        "claude-sonnet-4-5" => Some(ModelProfile {
             name: "Claude Sonnet 4.5".into(),
             family: "claude-sonnet-4-5".into(),
             description: None,
@@ -2393,19 +2393,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2415,7 +2415,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-haiku-4-5" => Some(LlmModelProfile {
+        "claude-haiku-4-5" => Some(ModelProfile {
             name: "Claude Haiku 4.5".into(),
             family: "claude-haiku-4-5".into(),
             description: None,
@@ -2428,19 +2428,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.00,
                 output: 5.00,
                 cache_read: Some(0.10),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 16_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2451,7 +2451,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4.1 series
-        "claude-opus-4-1" => Some(LlmModelProfile {
+        "claude-opus-4-1" => Some(ModelProfile {
             name: "Claude Opus 4.1".into(),
             family: "claude-opus-4-1".into(),
             description: None,
@@ -2464,19 +2464,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 32_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2487,7 +2487,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 4 series
-        "claude-sonnet-4" => Some(LlmModelProfile {
+        "claude-sonnet-4" => Some(ModelProfile {
             name: "Claude Sonnet 4".into(),
             family: "claude-sonnet-4".into(),
             description: None,
@@ -2500,19 +2500,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2522,7 +2522,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-opus-4" => Some(LlmModelProfile {
+        "claude-opus-4" => Some(ModelProfile {
             name: "Claude Opus 4".into(),
             family: "claude-opus-4".into(),
             description: None,
@@ -2535,19 +2535,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 32_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2558,7 +2558,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 3.7 series
-        "claude-3-7-sonnet" => Some(LlmModelProfile {
+        "claude-3-7-sonnet" => Some(ModelProfile {
             name: "Claude 3.7 Sonnet".into(),
             family: "claude-3-7-sonnet".into(),
             description: None,
@@ -2571,19 +2571,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000, // Extended output with thinking
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2594,7 +2594,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
         }),
 
         // Claude 3.5 series
-        "claude-3-5-sonnet" => Some(LlmModelProfile {
+        "claude-3-5-sonnet" => Some(ModelProfile {
             name: "Claude 3.5 Sonnet".into(),
             family: "claude-3-5-sonnet".into(),
             description: None,
@@ -2607,19 +2607,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 8_192,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2629,7 +2629,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-3-5-haiku" => Some(LlmModelProfile {
+        "claude-3-5-haiku" => Some(ModelProfile {
             name: "Claude 3.5 Haiku".into(),
             family: "claude-3-5-haiku".into(),
             description: None,
@@ -2642,19 +2642,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.00,
                 output: 5.00,
                 cache_read: Some(0.10),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 8_192,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2664,7 +2664,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-3-opus" => Some(LlmModelProfile {
+        "claude-3-opus" => Some(ModelProfile {
             name: "Claude 3 Opus".into(),
             family: "claude-3-opus".into(),
             description: None,
@@ -2677,19 +2677,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 15.00,
                 output: 75.00,
                 cache_read: Some(1.50),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 4_096,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2699,7 +2699,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-3-sonnet" => Some(LlmModelProfile {
+        "claude-3-sonnet" => Some(ModelProfile {
             name: "Claude 3 Sonnet".into(),
             family: "claude-3-sonnet".into(),
             description: None,
@@ -2712,19 +2712,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 3.00,
                 output: 15.00,
                 cache_read: Some(0.30),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 4_096,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2734,7 +2734,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "claude-3-haiku" => Some(LlmModelProfile {
+        "claude-3-haiku" => Some(ModelProfile {
             name: "Claude 3 Haiku".into(),
             family: "claude-3-haiku".into(),
             description: None,
@@ -2747,19 +2747,19 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.25,
                 output: 1.25,
                 cache_read: Some(0.03),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 4_096,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -2773,14 +2773,14 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<LlmModelProfile> {
     }
 }
 
-fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
         // Gemini 3.x series (newest). Source: models.dev (google provider).
         // `gemini-3-pro-preview` is deprecated upstream; 3.1 Pro Preview is the
         // current flagship Pro. Pricing has a >200K-token tier. Reasoning effort
         // (low/medium/high) is offered upstream but, consistent with the other
         // Gemini profiles here, effort selection is left unset.
-        "gemini-3.1-pro-preview" => Some(LlmModelProfile {
+        "gemini-3.1-pro-preview" => Some(ModelProfile {
             name: "Gemini 3.1 Pro Preview".into(),
             family: "gemini-3.1-pro-preview".into(),
             description: None,
@@ -2793,7 +2793,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 2.00,
                 output: 12.00,
                 cache_read: Some(0.20),
@@ -2804,13 +2804,13 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
                     cache_read: Some(0.40),
                 }],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_048_576,
                 input: None,
                 output: 65_536,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -2826,7 +2826,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-2.5-pro" => Some(LlmModelProfile {
+        "gemini-2.5-pro" => Some(ModelProfile {
             name: "Gemini 2.5 Pro".into(),
             family: "gemini-2.5-pro".into(),
             description: None,
@@ -2839,19 +2839,19 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 10.00,
                 cache_read: Some(0.31),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_048_576,
                 input: None,
                 output: 65_536,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -2866,7 +2866,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-2.5-flash" => Some(LlmModelProfile {
+        "gemini-2.5-flash" => Some(ModelProfile {
             name: "Gemini 2.5 Flash".into(),
             family: "gemini-2.5-flash".into(),
             description: None,
@@ -2879,19 +2879,19 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.15,
                 output: 0.60,
                 cache_read: Some(0.0375),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_048_576,
                 input: None,
                 output: 65_536,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -2906,7 +2906,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-2.0-flash" => Some(LlmModelProfile {
+        "gemini-2.0-flash" => Some(ModelProfile {
             name: "Gemini 2.0 Flash".into(),
             family: "gemini-2.0-flash".into(),
             description: None,
@@ -2919,19 +2919,19 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.10,
                 output: 0.40,
                 cache_read: Some(0.025),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_048_576,
                 input: None,
                 output: 8_192,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -2946,7 +2946,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-1.5-pro" => Some(LlmModelProfile {
+        "gemini-1.5-pro" => Some(ModelProfile {
             name: "Gemini 1.5 Pro".into(),
             family: "gemini-1.5-pro".into(),
             description: None,
@@ -2959,19 +2959,19 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 1.25,
                 output: 5.00,
                 cache_read: Some(0.31),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 2_097_152,
                 input: None,
                 output: 8_192,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -2986,7 +2986,7 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             supports_phases: false,
         }),
 
-        "gemini-1.5-flash" => Some(LlmModelProfile {
+        "gemini-1.5-flash" => Some(ModelProfile {
             name: "Gemini 1.5 Flash".into(),
             family: "gemini-1.5-flash".into(),
             description: None,
@@ -2999,19 +2999,19 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.075,
                 output: 0.30,
                 cache_read: Some(0.01875),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 1_048_576,
                 input: None,
                 output: 8_192,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![
                     Modality::Text,
                     Modality::Image,
@@ -3032,9 +3032,9 @@ fn gemini_profile_data(model_id: &str) -> Option<LlmModelProfile> {
 
 /// Get LlmSim model profile (simulated LLM for testing)
 /// Profile is modeled close to GPT-5.2 for realistic testing
-fn llmsim_profile_data(model_id: &str) -> Option<LlmModelProfile> {
+fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id {
-        "llmsim-default" | "llmsim" => Some(LlmModelProfile {
+        "llmsim-default" | "llmsim" => Some(ModelProfile {
             name: "LlmSim Default".into(),
             family: "llmsim".into(),
             description: None,
@@ -3047,19 +3047,19 @@ fn llmsim_profile_data(model_id: &str) -> Option<LlmModelProfile> {
             tool_call: true,
             structured_output: true,
             open_weights: false,
-            cost: Some(LlmModelCost {
+            cost: Some(ModelCost {
                 input: 0.00, // Free for testing
                 output: 0.00,
                 cache_read: Some(0.00),
                 cost_tiers: vec![],
             }),
-            limits: Some(LlmModelLimits {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
-            modalities: Some(LlmModelModalities {
+            modalities: Some(ModelModalities {
                 input: vec![Modality::Text, Modality::Image],
                 output: vec![Modality::Text],
             }),
@@ -3081,17 +3081,17 @@ mod tests {
     // the original normalization assertions as regression coverage: each maps a
     // wire id to its canonical registry id under the relevant provider surface.
     fn normalize_model_id(id: &str) -> &'static str {
-        resolve_descriptor(&LlmProviderType::Openai, id)
+        resolve_descriptor(&DriverId::OpenAI, id)
             .map(|d| d.ids[0])
             .unwrap_or("")
     }
     fn normalize_anthropic_model_id(id: &str) -> &'static str {
-        resolve_descriptor(&LlmProviderType::Anthropic, id)
+        resolve_descriptor(&DriverId::Anthropic, id)
             .map(|d| d.ids[0])
             .unwrap_or("")
     }
     fn normalize_gemini_model_id(id: &str) -> &'static str {
-        resolve_descriptor(&LlmProviderType::Gemini, id)
+        resolve_descriptor(&DriverId::Gemini, id)
             .map(|d| d.ids[0])
             .unwrap_or("")
     }
@@ -3100,21 +3100,21 @@ mod tests {
     fn test_profile_keys_and_service_kinds() {
         // Canonical key from a dated wire id (version-suffix normalization).
         assert_eq!(
-            get_model_profile_key(&LlmProviderType::Anthropic, "claude-sonnet-4-5-20250929")
+            get_model_profile_key(&DriverId::Anthropic, "claude-sonnet-4-5-20250929")
                 .as_deref(),
             Some("anthropic/claude-sonnet-4-5")
         );
         // Gateway alias and bare id share one key (same model identity).
         assert_eq!(
             get_model_profile_key(
-                &LlmProviderType::Openrouter,
+                &DriverId::OpenRouter,
                 "nvidia/nemotron-3-super-120b-a12b"
             ),
-            get_model_profile_key(&LlmProviderType::Openai, "nemotron-3-super-120b-a12b"),
+            get_model_profile_key(&DriverId::OpenAI, "nemotron-3-super-120b-a12b"),
         );
         // Unknown models have no key.
         assert_eq!(
-            get_model_profile_key(&LlmProviderType::Openai, "not-a-model"),
+            get_model_profile_key(&DriverId::OpenAI, "not-a-model"),
             None
         );
 
@@ -3128,23 +3128,23 @@ mod tests {
 
         // Service kinds: realtime models are not chat models.
         assert_eq!(
-            get_model_service_kind(&LlmProviderType::Openai, "gpt-realtime-2"),
+            get_model_service_kind(&DriverId::OpenAI, "gpt-realtime-2"),
             ServiceKind::Realtime
         );
         assert_eq!(
-            get_model_service_kind(&LlmProviderType::Openai, "gpt-5.5"),
+            get_model_service_kind(&DriverId::OpenAI, "gpt-5.5"),
             ServiceKind::Chat
         );
         // Unknown models default to chat.
         assert_eq!(
-            get_model_service_kind(&LlmProviderType::Openai, "not-a-model"),
+            get_model_service_kind(&DriverId::OpenAI, "not-a-model"),
             ServiceKind::Chat
         );
     }
 
     #[test]
     fn test_get_profile_openai_gpt4o() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4o");
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4o");
         assert!(profile.is_some());
         let profile = profile.unwrap();
         assert_eq!(profile.name, "GPT-4o");
@@ -3155,7 +3155,7 @@ mod tests {
 
     #[test]
     fn test_get_profile_openai_gpt4o_versioned() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4o-2024-11-20");
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4o-2024-11-20");
         assert!(profile.is_some());
         let profile = profile.unwrap();
         assert_eq!(profile.name, "GPT-4o");
@@ -3163,7 +3163,7 @@ mod tests {
 
     #[test]
     fn test_get_profile_anthropic_claude35_sonnet() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-3-5-sonnet-20241022");
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-3-5-sonnet-20241022");
         assert!(profile.is_some());
         let profile = profile.unwrap();
         assert_eq!(profile.name, "Claude 3.5 Sonnet");
@@ -3172,7 +3172,7 @@ mod tests {
 
     #[test]
     fn test_get_profile_anthropic_claude_sonnet4() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-sonnet-4-20250514");
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514");
         assert!(profile.is_some());
         let profile = profile.unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4");
@@ -3180,20 +3180,20 @@ mod tests {
 
     #[test]
     fn test_get_profile_unknown_model() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "unknown-model");
+        let profile = get_model_profile(&DriverId::OpenAI, "unknown-model");
         assert!(profile.is_none());
     }
 
     #[test]
     fn test_get_profile_wrong_provider() {
         // Try to get an OpenAI model with Anthropic provider
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "gpt-4o");
+        let profile = get_model_profile(&DriverId::Anthropic, "gpt-4o");
         assert!(profile.is_none());
     }
 
     #[test]
     fn test_profile_has_cost_and_limits() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4o").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4o").unwrap();
         assert!(profile.cost.is_some());
         assert!(profile.limits.is_some());
 
@@ -3208,13 +3208,13 @@ mod tests {
 
     #[test]
     fn test_o1_has_reasoning() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "o1").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "o1").unwrap();
         assert!(profile.reasoning);
     }
 
     #[test]
     fn test_claude_opus_4_has_reasoning() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4").unwrap();
         assert!(profile.reasoning);
     }
 
@@ -3249,14 +3249,14 @@ mod tests {
 
     #[test]
     fn test_openai_completions_uses_openai_profiles() {
-        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "gpt-4o");
+        let profile = get_model_profile(&DriverId::OpenAICompletions, "gpt-4o");
         assert!(profile.is_some());
         assert_eq!(profile.unwrap().name, "GPT-4o");
     }
 
     #[test]
     fn test_azure_openai_uses_openai_profiles() {
-        let profile = get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o");
+        let profile = get_model_profile(&DriverId::AzureOpenAI, "gpt-4o");
         assert!(profile.is_some());
         assert_eq!(profile.unwrap().name, "GPT-4o");
     }
@@ -3265,7 +3265,7 @@ mod tests {
 
     #[test]
     fn test_gpt5_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5").unwrap();
         assert_eq!(profile.name, "GPT-5");
         assert_eq!(profile.family, "gpt-5");
         assert!(profile.reasoning);
@@ -3285,7 +3285,7 @@ mod tests {
 
     #[test]
     fn test_gpt5_mini_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5-mini").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5-mini").unwrap();
         assert_eq!(profile.name, "GPT-5 mini");
         assert!(profile.reasoning);
 
@@ -3295,7 +3295,7 @@ mod tests {
 
     #[test]
     fn test_gpt5_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5-pro").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5-pro").unwrap();
         assert_eq!(profile.name, "GPT-5 Pro");
         assert!(profile.reasoning);
 
@@ -3308,7 +3308,7 @@ mod tests {
 
     #[test]
     fn test_gpt51_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.1").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.1").unwrap();
         assert_eq!(profile.name, "GPT-5.1");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3333,7 +3333,7 @@ mod tests {
 
     #[test]
     fn test_gpt51_codex_max_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.1-codex-max").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.1-codex-max").unwrap();
         assert_eq!(profile.name, "GPT-5.1 Codex max");
         assert!(profile.reasoning);
 
@@ -3349,7 +3349,7 @@ mod tests {
 
     #[test]
     fn test_gpt52_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.2").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.2").unwrap();
         assert_eq!(profile.name, "GPT-5.2");
         assert!(profile.reasoning);
 
@@ -3369,7 +3369,7 @@ mod tests {
 
     #[test]
     fn test_gpt52_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.2-pro").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.2-pro").unwrap();
         assert_eq!(profile.name, "GPT-5.2 Pro");
         assert!(profile.reasoning);
 
@@ -3389,7 +3389,7 @@ mod tests {
 
     #[test]
     fn test_gpt53_codex_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.3-codex").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.3-codex").unwrap();
         assert_eq!(profile.name, "GPT-5.3 Codex");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3405,7 +3405,7 @@ mod tests {
 
     #[test]
     fn test_gpt55_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.5").unwrap();
         assert_eq!(profile.name, "GPT-5.5");
         assert_eq!(profile.family, "gpt-5.5");
         assert!(profile.reasoning);
@@ -3432,7 +3432,7 @@ mod tests {
 
     #[test]
     fn test_gpt_realtime_2_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-realtime-2").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-realtime-2").unwrap();
         assert_eq!(profile.name, "GPT Realtime 2");
         assert_eq!(profile.family, "gpt-realtime");
         assert!(profile.reasoning);
@@ -3461,7 +3461,7 @@ mod tests {
 
     #[test]
     fn test_gpt55_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-pro").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.5-pro").unwrap();
         assert_eq!(profile.name, "GPT-5.5 Pro");
         assert_eq!(profile.family, "gpt-5.5-pro");
         assert!(profile.reasoning);
@@ -3484,10 +3484,10 @@ mod tests {
 
     #[test]
     fn test_gpt55_versioned() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-2026-04-23").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.5-2026-04-23").unwrap();
         assert_eq!(profile.name, "GPT-5.5");
 
-        let pro = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-pro-2026-04-23").unwrap();
+        let pro = get_model_profile(&DriverId::OpenAI, "gpt-5.5-pro-2026-04-23").unwrap();
         assert_eq!(pro.name, "GPT-5.5 Pro");
     }
 
@@ -3501,7 +3501,7 @@ mod tests {
 
     #[test]
     fn test_gpt54_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4").unwrap();
         assert_eq!(profile.name, "GPT-5.4");
         assert_eq!(profile.family, "gpt-5.4");
         assert!(profile.reasoning);
@@ -3537,7 +3537,7 @@ mod tests {
 
     #[test]
     fn test_gpt54_mini_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-mini").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4-mini").unwrap();
         assert_eq!(profile.name, "GPT-5.4 mini");
         assert_eq!(profile.family, "gpt-5.4-mini");
         assert!(profile.reasoning);
@@ -3560,7 +3560,7 @@ mod tests {
 
     #[test]
     fn test_gpt54_nano_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-nano").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4-nano").unwrap();
         assert_eq!(profile.name, "GPT-5.4 nano");
         assert_eq!(profile.family, "gpt-5.4-nano");
         assert!(profile.reasoning);
@@ -3582,7 +3582,7 @@ mod tests {
 
     #[test]
     fn test_gpt54_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-pro").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4-pro").unwrap();
         assert_eq!(profile.name, "GPT-5.4 Pro");
         assert_eq!(profile.family, "gpt-5.4-pro");
         assert!(profile.reasoning);
@@ -3616,14 +3616,14 @@ mod tests {
 
     #[test]
     fn test_gpt54_versioned() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.4-2026-03-05").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4-2026-03-05").unwrap();
         assert_eq!(profile.name, "GPT-5.4");
     }
 
     #[test]
     fn test_gpt54_mini_versioned() {
         let profile =
-            get_model_profile(&LlmProviderType::Openai, "gpt-5.4-mini-2026-03-17").unwrap();
+            get_model_profile(&DriverId::OpenAI, "gpt-5.4-mini-2026-03-17").unwrap();
         assert_eq!(profile.name, "GPT-5.4 mini");
     }
 
@@ -3665,7 +3665,7 @@ mod tests {
 
     #[test]
     fn test_gpt41_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4.1").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1").unwrap();
         assert_eq!(profile.name, "GPT-4.1");
         assert_eq!(profile.family, "gpt-4.1");
         assert!(!profile.reasoning);
@@ -3674,14 +3674,14 @@ mod tests {
 
     #[test]
     fn test_gpt41_mini_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4.1-mini").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1-mini").unwrap();
         assert_eq!(profile.name, "GPT-4.1 mini");
         assert!(!profile.reasoning);
     }
 
     #[test]
     fn test_gpt41_nano_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-4.1-nano").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1-nano").unwrap();
         assert_eq!(profile.name, "GPT-4.1 nano");
         assert!(!profile.reasoning);
     }
@@ -3690,7 +3690,7 @@ mod tests {
 
     #[test]
     fn test_o3_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "o3").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "o3").unwrap();
         assert_eq!(profile.name, "o3");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3700,7 +3700,7 @@ mod tests {
 
     #[test]
     fn test_o3_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "o3-pro").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "o3-pro").unwrap();
         assert_eq!(profile.name, "o3 Pro");
         assert!(profile.reasoning);
         let effort = profile.reasoning_effort.unwrap();
@@ -3709,7 +3709,7 @@ mod tests {
 
     #[test]
     fn test_o4_mini_profile() {
-        let profile = get_model_profile(&LlmProviderType::Openai, "o4-mini").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "o4-mini").unwrap();
         assert_eq!(profile.name, "o4 mini");
         assert!(profile.reasoning);
         let effort = profile.reasoning_effort.unwrap();
@@ -3720,7 +3720,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_47_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-7").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-7").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.7");
         assert_eq!(profile.family, "claude-opus-4-7");
         assert!(profile.reasoning);
@@ -3759,7 +3759,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_46_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-6").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-6").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.6");
         assert_eq!(profile.family, "claude-opus-4-6");
         assert!(profile.reasoning);
@@ -3787,7 +3787,7 @@ mod tests {
 
     #[test]
     fn test_claude_sonnet_46_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-sonnet-4-6").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-6").unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4.6");
         assert_eq!(profile.family, "claude-sonnet-4-6");
         assert!(profile.reasoning);
@@ -3817,14 +3817,14 @@ mod tests {
     #[test]
     fn test_claude_opus_47_versioned() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-7-20260416").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-opus-4-7-20260416").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.7");
     }
 
     #[test]
     fn test_claude_sonnet_46_versioned() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-sonnet-4-6-20260217").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-6-20260217").unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4.6");
     }
 
@@ -3833,7 +3833,7 @@ mod tests {
     #[test]
     fn test_claude_opus_45_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-5-20251101").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-opus-4-5-20251101").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.5");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3842,7 +3842,7 @@ mod tests {
     #[test]
     fn test_claude_sonnet_45_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-sonnet-4-5-20250929").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-5-20250929").unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4.5");
         assert!(profile.reasoning);
     }
@@ -3850,7 +3850,7 @@ mod tests {
     #[test]
     fn test_claude_haiku_45_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-haiku-4-5-20251001").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-haiku-4-5-20251001").unwrap();
         assert_eq!(profile.name, "Claude Haiku 4.5");
         assert!(profile.reasoning);
     }
@@ -3860,7 +3860,7 @@ mod tests {
     #[test]
     fn test_claude_opus_41_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-1-20250805").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-opus-4-1-20250805").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.1");
         assert_eq!(profile.family, "claude-opus-4-1");
         assert!(profile.reasoning);
@@ -3880,7 +3880,7 @@ mod tests {
     #[test]
     fn test_claude_sonnet_4_output_limit() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-sonnet-4-20250514").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514").unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4");
         let limits = profile.limits.unwrap();
         assert_eq!(limits.output, 64_000);
@@ -3890,7 +3890,7 @@ mod tests {
     #[test]
     fn test_claude_37_sonnet_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Anthropic, "claude-3-7-sonnet-20250219").unwrap();
+            get_model_profile(&DriverId::Anthropic, "claude-3-7-sonnet-20250219").unwrap();
         assert_eq!(profile.name, "Claude 3.7 Sonnet");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3986,7 +3986,7 @@ mod tests {
 
     #[test]
     fn test_gemini_25_pro_profile() {
-        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.5-pro").unwrap();
+        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.5-pro").unwrap();
         assert_eq!(profile.name, "Gemini 2.5 Pro");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3999,7 +3999,7 @@ mod tests {
 
     #[test]
     fn test_gemini_25_flash_profile() {
-        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.5-flash").unwrap();
+        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.5-flash").unwrap();
         assert_eq!(profile.name, "Gemini 2.5 Flash");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -4007,7 +4007,7 @@ mod tests {
 
     #[test]
     fn test_gemini_20_flash_profile() {
-        let profile = get_model_profile(&LlmProviderType::Gemini, "gemini-2.0-flash").unwrap();
+        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.0-flash").unwrap();
         assert_eq!(profile.name, "Gemini 2.0 Flash");
         assert!(!profile.reasoning);
         assert!(profile.tool_call);
@@ -4035,7 +4035,7 @@ mod tests {
 
     #[test]
     fn test_gemini_unknown_model() {
-        let profile = get_model_profile(&LlmProviderType::Gemini, "unknown-model");
+        let profile = get_model_profile(&DriverId::Gemini, "unknown-model");
         assert!(profile.is_none());
     }
 
@@ -4043,7 +4043,7 @@ mod tests {
 
     #[test]
     fn test_claude_fable_5_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-fable-5").unwrap();
         assert_eq!(profile.name, "Claude Fable 5");
         assert_eq!(profile.family, "claude-fable-5");
         assert!(profile.reasoning);
@@ -4062,7 +4062,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_4_8_profile() {
-        let profile = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-8").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.8");
         assert_eq!(profile.family, "claude-opus-4-8");
         assert!(profile.reasoning);
@@ -4077,10 +4077,10 @@ mod tests {
     fn test_claude_opus_4_8_1m_variant() {
         // `[1m]` is the large-context twin: same flat pricing, 1M context,
         // "(1M)" display suffix, shared family for grouping.
-        let base = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8").unwrap();
+        let base = get_model_profile(&DriverId::Anthropic, "claude-opus-4-8").unwrap();
         assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
 
-        let m1 = get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8[1m]").unwrap();
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-opus-4-8[1m]").unwrap();
         assert_eq!(m1.name, "Claude Opus 4.8 (1M)");
         assert_eq!(m1.family, "claude-opus-4-8");
         assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
@@ -4097,10 +4097,10 @@ mod tests {
 
     #[test]
     fn test_claude_fable_5_1m_variant() {
-        let base = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5").unwrap();
+        let base = get_model_profile(&DriverId::Anthropic, "claude-fable-5").unwrap();
         assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
 
-        let m1 = get_model_profile(&LlmProviderType::Anthropic, "claude-fable-5[1m]").unwrap();
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-fable-5[1m]").unwrap();
         assert_eq!(m1.name, "Claude Fable 5 (1M)");
         assert_eq!(m1.family, "claude-fable-5");
         assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
@@ -4110,7 +4110,7 @@ mod tests {
     #[test]
     fn test_claude_opus_4_7_and_4_6_have_1m_variants() {
         for id in ["claude-opus-4-7[1m]", "claude-opus-4-6[1m]"] {
-            let m1 = get_model_profile(&LlmProviderType::Anthropic, id).unwrap();
+            let m1 = get_model_profile(&DriverId::Anthropic, id).unwrap();
             assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
             assert!(m1.name.ends_with("(1M)"));
         }
@@ -4119,7 +4119,7 @@ mod tests {
     #[test]
     fn test_gemini_3_1_pro_preview_profile() {
         let profile =
-            get_model_profile(&LlmProviderType::Gemini, "gemini-3.1-pro-preview").unwrap();
+            get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview").unwrap();
         assert_eq!(profile.name, "Gemini 3.1 Pro Preview");
         assert!(profile.reasoning);
         // >200K-token pricing tier.
@@ -4132,7 +4132,7 @@ mod tests {
     #[test]
     fn test_gemini_3_1_pro_preview_normalizes_dated_suffix() {
         let profile =
-            get_model_profile(&LlmProviderType::Gemini, "gemini-3.1-pro-preview-02-19").unwrap();
+            get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview-02-19").unwrap();
         assert_eq!(profile.family, "gemini-3.1-pro-preview");
     }
 
@@ -4150,7 +4150,7 @@ mod tests {
             ("x-ai/grok-4.3", "Grok 4.3"),
         ];
         for (id, name) in cases {
-            let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, id)
+            let profile = get_model_profile(&DriverId::OpenAICompletions, id)
                 .unwrap_or_else(|| panic!("missing profile for {id}"));
             assert_eq!(profile.name, name, "wrong profile for {id}");
         }
@@ -4158,7 +4158,7 @@ mod tests {
 
     #[test]
     fn test_grok_4_3_has_context_tier() {
-        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "grok-4.3").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAICompletions, "grok-4.3").unwrap();
         let cost = profile.cost.as_ref().unwrap();
         assert_eq!(cost.cost_tiers.len(), 1);
         assert_eq!(cost.cost_tiers[0].above_tokens, 200_000);
@@ -4168,7 +4168,7 @@ mod tests {
     fn test_mai_preview_has_no_cost_or_limits() {
         // Microsoft never published pricing/limits for MAI-1-preview.
         let profile =
-            get_model_profile(&LlmProviderType::OpenaiCompletions, "MAI-1-preview").unwrap();
+            get_model_profile(&DriverId::OpenAICompletions, "MAI-1-preview").unwrap();
         assert!(profile.cost.is_none());
         assert!(profile.limits.is_none());
         assert!(!profile.reasoning);
@@ -4176,7 +4176,7 @@ mod tests {
 
     #[test]
     fn test_third_party_unknown_still_none() {
-        let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, "totally-made-up");
+        let profile = get_model_profile(&DriverId::OpenAICompletions, "totally-made-up");
         assert!(profile.is_none());
     }
 
@@ -4192,43 +4192,43 @@ mod tests {
             "nemotron-3-super-120b-a12b",
         ] {
             assert!(
-                get_model_profile(&LlmProviderType::OpenaiCompletions, id).is_some(),
+                get_model_profile(&DriverId::OpenAICompletions, id).is_some(),
                 "{id} should resolve under openai_completions"
             );
             assert!(
-                get_model_profile(&LlmProviderType::Openai, id).is_some(),
+                get_model_profile(&DriverId::OpenAI, id).is_some(),
                 "{id} should resolve under openai (Open Responses gateway)"
             );
             assert!(
-                get_model_profile(&LlmProviderType::AzureOpenai, id).is_none(),
+                get_model_profile(&DriverId::AzureOpenAI, id).is_none(),
                 "{id} must not resolve under azure_openai"
             );
             assert!(
-                get_model_profile(&LlmProviderType::Anthropic, id).is_none(),
+                get_model_profile(&DriverId::Anthropic, id).is_none(),
                 "{id} must not resolve under anthropic"
             );
         }
         // Native phases / tool_search are advertised only on the Responses
         // surface, never on Chat Completions.
         let grok_completions =
-            get_model_profile(&LlmProviderType::OpenaiCompletions, "grok-4.3").unwrap();
+            get_model_profile(&DriverId::OpenAICompletions, "grok-4.3").unwrap();
         assert!(!grok_completions.supports_phases);
         assert!(!grok_completions.tool_search);
 
         // Genuine OpenAI models still resolve under all OpenAI-family types.
-        assert!(get_model_profile(&LlmProviderType::Openai, "gpt-4o").is_some());
-        assert!(get_model_profile(&LlmProviderType::AzureOpenai, "gpt-4o").is_some());
+        assert!(get_model_profile(&DriverId::OpenAI, "gpt-4o").is_some());
+        assert!(get_model_profile(&DriverId::AzureOpenAI, "gpt-4o").is_some());
     }
 
     #[test]
     fn test_phases_and_tool_search_gated_to_responses_surface() {
         // GPT-5.4 advertises phases + tool_search on the Responses surface...
-        let responses = get_model_profile(&LlmProviderType::Openai, "gpt-5.4").unwrap();
+        let responses = get_model_profile(&DriverId::OpenAI, "gpt-5.4").unwrap();
         assert!(responses.supports_phases);
         assert!(responses.tool_search);
         // ...but not when reached via Chat Completions or Azure.
         let completions =
-            get_model_profile(&LlmProviderType::OpenaiCompletions, "gpt-5.4").unwrap();
+            get_model_profile(&DriverId::OpenAICompletions, "gpt-5.4").unwrap();
         assert!(!completions.supports_phases);
         assert!(!completions.tool_search);
     }
@@ -4249,19 +4249,19 @@ mod tests {
             "claude-sonnet-4",
             "claude-haiku-4-5",
         ] {
-            let p = get_model_profile(&LlmProviderType::Anthropic, id)
+            let p = get_model_profile(&DriverId::Anthropic, id)
                 .unwrap_or_else(|| panic!("{id} should resolve under anthropic"));
             assert!(p.tool_search, "{id} should advertise native tool_search");
         }
         // The 1M twin inherits the flag.
         assert!(
-            get_model_profile(&LlmProviderType::Anthropic, "claude-opus-4-8[1m]")
+            get_model_profile(&DriverId::Anthropic, "claude-opus-4-8[1m]")
                 .unwrap()
                 .tool_search
         );
         // Pre-4 Claude does not support it.
         assert!(
-            !get_model_profile(&LlmProviderType::Anthropic, "claude-3-5-haiku")
+            !get_model_profile(&DriverId::Anthropic, "claude-3-5-haiku")
                 .map(|p| p.tool_search)
                 .unwrap_or(false)
         );
@@ -4269,7 +4269,7 @@ mod tests {
         // server-side tool search; OpenRouter's stateless shim doesn't implement
         // it), the same model must not advertise hosted tool_search — it falls
         // back to client-side search via auto_tool_search.
-        if let Some(bedrock) = get_model_profile(&LlmProviderType::Bedrock, "claude-opus-4-8") {
+        if let Some(bedrock) = get_model_profile(&DriverId::Bedrock, "claude-opus-4-8") {
             assert!(!bedrock.tool_search);
         }
     }
@@ -4277,21 +4277,21 @@ mod tests {
     #[test]
     fn test_model_vendor_lookup() {
         assert_eq!(
-            get_model_vendor(&LlmProviderType::Anthropic, "claude-opus-4-8"),
+            get_model_vendor(&DriverId::Anthropic, "claude-opus-4-8"),
             Some(ModelVendor::Anthropic)
         );
         assert_eq!(
             get_model_vendor(
-                &LlmProviderType::OpenaiCompletions,
+                &DriverId::OpenAICompletions,
                 "nvidia/nemotron-3-super-120b-a12b"
             ),
             Some(ModelVendor::Nvidia)
         );
         assert_eq!(
-            get_model_vendor(&LlmProviderType::Openai, "gpt-5.4"),
+            get_model_vendor(&DriverId::OpenAI, "gpt-5.4"),
             Some(ModelVendor::OpenAi)
         );
-        assert_eq!(get_model_vendor(&LlmProviderType::Openai, "made-up"), None);
+        assert_eq!(get_model_vendor(&DriverId::OpenAI, "made-up"), None);
     }
 
     #[test]
@@ -4325,7 +4325,7 @@ mod tests {
             ("X-AI/Grok-4.3", "Grok 4.3"),
         ];
         for (id, name) in cases {
-            let profile = get_model_profile(&LlmProviderType::OpenaiCompletions, id)
+            let profile = get_model_profile(&DriverId::OpenAICompletions, id)
                 .unwrap_or_else(|| panic!("missing profile for {id}"));
             assert_eq!(profile.name, name, "wrong profile for {id}");
         }
@@ -4334,7 +4334,7 @@ mod tests {
     #[test]
     fn test_estimate_cost_usd_known_model() {
         // gpt-4o profile: input $2.50/M, output $10.00/M.
-        let est = estimate_cost_usd(&LlmProviderType::Openai, "gpt-4o", 1_000_000, 500_000)
+        let est = estimate_cost_usd(&DriverId::OpenAI, "gpt-4o", 1_000_000, 500_000)
             .expect("known model should yield an estimate");
         // 1M input * 2.50 + 0.5M output * 10.00 = 2.50 + 5.00 = 7.50
         assert!((est - 7.50).abs() < 1e-9, "got {est}");
@@ -4342,6 +4342,6 @@ mod tests {
 
     #[test]
     fn test_estimate_cost_usd_unknown_model_is_none() {
-        assert!(estimate_cost_usd(&LlmProviderType::Openai, "no-such-model", 100, 50).is_none());
+        assert!(estimate_cost_usd(&DriverId::OpenAI, "no-such-model", 100, 50).is_none());
     }
 }

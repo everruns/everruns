@@ -5,6 +5,7 @@
 //
 // See specs/budgeting.md for full specification.
 
+use everruns_core::llm_models::DriverId;
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_core::EventListener;
@@ -14,7 +15,6 @@ use everruns_core::budget::{
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use everruns_core::llm_model_profiles::get_model_profile;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::typed_id::{AgentId, BudgetId, SessionId};
 use everruns_core::{UserFacingError, user_facing_error_codes};
 use std::collections::HashSet;
@@ -460,8 +460,8 @@ impl BudgetService {
                 }
                 // Look up model cost from profiles
                 let provider_type = provider
-                    .and_then(|p| p.parse::<LlmProviderType>().ok())
-                    .unwrap_or(LlmProviderType::Openai);
+                    .and_then(|p| p.parse::<DriverId>().ok())
+                    .unwrap_or(DriverId::OpenAI);
                 let model_id = model.unwrap_or("unknown");
                 if let Some(profile) = get_model_profile(&provider_type, model_id) {
                     if let Some(cost) = profile.cost {

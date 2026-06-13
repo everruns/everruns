@@ -5,8 +5,8 @@ use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    Agent, CapabilityRegistry, Harness, InitialFile, LlmProviderType, MessageRole,
-    ModelWithProvider, PlatformDefinition, Session, SessionFileSystem, SessionFileSystemFactory,
+    Agent, CapabilityRegistry, Harness, InitialFile, DriverId, MessageRole,
+    ResolvedModel, PlatformDefinition, Session, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall,
 };
 use everruns_runtime::{
@@ -122,9 +122,9 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
                 vec![],
             ]),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -302,9 +302,9 @@ async fn runtime_seeds_initial_files_from_harness_chain() {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("No-op"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -334,9 +334,9 @@ async fn runtime_runs_session_without_agent_entity() {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Harness-only runtime works"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -371,9 +371,9 @@ async fn runtime_accepts_explicit_backend_bundle() {
         .platform_definition(minimal_platform())
         .backends(RuntimeBackends::in_memory())
         .llm_sim(LlmSimConfig::fixed("Custom backend bundle works"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -446,9 +446,9 @@ async fn runtime_exposes_assembled_context() {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(minimal_platform())
         .llm_sim(LlmSimConfig::fixed("Context inspection"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -899,9 +899,9 @@ async fn injected_resolver_reaches_tool_context_during_a_turn() {
                 vec![],
             ]),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

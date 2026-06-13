@@ -22,10 +22,10 @@ use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateDeclarativeCapabilityRow,
-    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow,
+    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateModelRow, CreateProviderRow,
     CreateMcpServerRow, CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow,
     CreateSessionRow, CreateSessionScheduleRow, CreateUserConnectionRow, CreateUserRow, Database,
-    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateLlmModel, UpdateLlmProvider,
+    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateModel, UpdateProvider,
     UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
     UpdateSessionScheduleRow,
 };
@@ -1202,7 +1202,7 @@ async fn test_llm_provider_crud() {
     let provider = backend
         .create_llm_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Test Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: Some("https://api.openai.com/v1".to_string()),
@@ -1228,7 +1228,7 @@ async fn test_llm_provider_crud() {
         .update_llm_provider(
             TEST_ORG_ID,
             provider.id.into(),
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("Updated Provider".to_string()),
                 provider_type: None,
                 base_url: None,
@@ -1269,7 +1269,7 @@ async fn test_llm_model_crud() {
     let provider = backend
         .create_llm_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Model Test Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -1285,7 +1285,7 @@ async fn test_llm_model_crud() {
     let model = backend
         .create_llm_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4-test".to_string(),
                 display_name: "GPT-4 Test".to_string(),
@@ -1322,7 +1322,7 @@ async fn test_llm_model_crud() {
         .update_llm_model(
             TEST_ORG_ID,
             model.id.into(),
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("Updated GPT-4".to_string()),
                 ..Default::default()
             },
@@ -2138,7 +2138,7 @@ async fn test_llm_provider_org_isolation_postgres() {
     let provider = backend
         .create_llm_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Provider-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2196,7 +2196,7 @@ async fn test_llm_model_org_isolation_postgres() {
     let provider = backend
         .create_llm_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2210,7 +2210,7 @@ async fn test_llm_model_org_isolation_postgres() {
     let model = backend
         .create_llm_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: format!("model-{}", Uuid::now_v7()),
                 display_name: "Test Model".to_string(),
@@ -2290,7 +2290,7 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
     let foreign_provider = backend
         .create_llm_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2304,7 +2304,7 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
     let corrupt_model = backend
         .create_llm_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: foreign_provider.id,
                 model_id: format!("cross-org-model-{}", Uuid::now_v7()),
                 display_name: "Corrupt Model".to_string(),
@@ -2378,7 +2378,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     let provider = backend
         .create_llm_provider(
             org_id,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2392,7 +2392,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     let disabled_model = backend
         .create_llm_model(
             org_id,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: format!("disabled-model-{}", Uuid::now_v7()),
                 display_name: "Disabled Model".to_string(),

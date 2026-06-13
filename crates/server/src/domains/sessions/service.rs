@@ -1801,7 +1801,7 @@ mod tests {
     };
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
-        CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMemoryFileRow,
+        CreateHarnessRow, CreateModelRow, CreateProviderRow, CreateMemoryFileRow,
         CreateOrganizationRow, StorageBackend,
     };
     use everruns_core::capabilities::Capability;
@@ -1919,7 +1919,7 @@ mod tests {
         let provider = db
             .create_llm_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: format!("Provider {org_id}"),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -1932,7 +1932,7 @@ mod tests {
 
         db.create_llm_model(
             org_id,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: model_id.to_string(),
                 display_name: model_id.to_string(),

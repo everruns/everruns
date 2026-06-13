@@ -18,7 +18,7 @@ use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, CapabilityRegistry, Harness, LlmProviderType, ModelWithProvider, PlatformDefinition,
+    Agent, CapabilityRegistry, Harness, DriverId, ResolvedModel, PlatformDefinition,
     Session, ToolCall,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -203,9 +203,9 @@ async fn runtime_emitting_batch(
             LlmSimConfig::fixed("Running the requested tools.")
                 .with_tool_call_sequence(vec![batch, vec![]]),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

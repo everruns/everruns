@@ -54,7 +54,7 @@ use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, LlmProviderStore, ModelWithProvider, PartialStreamStore, ResolvedImage,
+    ImageResolver, ProviderStore, ResolvedModel, PartialStreamStore, ResolvedImage,
     SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -575,7 +575,7 @@ pub struct ReasonAtom {
     agent_store: Arc<dyn AgentStore>,
     session_store: Arc<dyn SessionStore>,
     message_retriever: Arc<dyn MessageRetriever>,
-    provider_store: Arc<dyn LlmProviderStore>,
+    provider_store: Arc<dyn ProviderStore>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     event_emitter: Arc<dyn EventEmitter>,
@@ -602,7 +602,7 @@ impl ReasonAtom {
         agent_store: impl AgentStore + 'static,
         session_store: impl SessionStore + 'static,
         message_retriever: impl MessageRetriever + 'static,
-        provider_store: impl LlmProviderStore + 'static,
+        provider_store: impl ProviderStore + 'static,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
         event_emitter: impl EventEmitter + 'static,
@@ -2616,7 +2616,7 @@ impl ReasonAtom {
     /// Create LLM driver using the driver registry
     fn create_chat_driver(
         &self,
-        model: &ModelWithProvider,
+        model: &ResolvedModel,
     ) -> Result<crate::llm_driver_registry::BoxedChatDriver> {
         self.driver_registry
             .create_chat_driver(&ProviderConfig::from(model))

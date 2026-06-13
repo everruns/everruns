@@ -7,11 +7,11 @@
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
-use everruns_core::llm_models::LlmProvider;
+use everruns_core::llm_models::Provider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, Event,
-    EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, LlmModel,
-    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, McpServer, McpServerStatus,
+    EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, Model,
+    ModelWithProvider, ProviderStatus, DriverId, McpServer, McpServerStatus,
     McpServerTransportType, Session, SessionContextReport, SessionFile, SessionStatus, Skill,
     SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
     events::{
@@ -354,12 +354,12 @@ use utoipa::OpenApi;
             ListResponse<api::messages::Message>,
             ListResponse<Event>,
             domains::events::EventsSummaryResult, domains::events::EventTypeCountOut,
-            LlmProvider, LlmProviderType, LlmProviderStatus,
-            LlmModel, LlmModelWithProvider,
-            api::llm_providers::CreateLlmProviderRequest,
-            api::llm_providers::UpdateLlmProviderRequest,
-            api::llm_models::CreateLlmModelRequest,
-            api::llm_models::UpdateLlmModelRequest,
+            Provider, DriverId, ProviderStatus,
+            Model, ModelWithProvider,
+            api::llm_providers::CreateProviderRequest,
+            api::llm_providers::UpdateProviderRequest,
+            api::llm_models::CreateModelRequest,
+            api::llm_models::UpdateModelRequest,
             CapabilityInfo,
             ListResponse<CapabilityInfo>,
             // Harness types

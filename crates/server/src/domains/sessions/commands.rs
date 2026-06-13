@@ -1,3 +1,4 @@
+use everruns_core::llm_models::DriverId;
 use super::queries as q;
 use super::types::{
     CancelStatus, CancelTurnResponse, CreateSessionRequest, GetOrCreateChatSessionRequest,
@@ -9,7 +10,6 @@ use everruns_core::events::{
     deserialize_event_data,
 };
 use everruns_core::llm_model_profiles::get_model_profile;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::typed_id::{AgentId, MessageId, TurnId};
 use everruns_core::{ANONYMOUS_USER_ID, Message, Session, SessionContextReport};
 use serde::Deserialize;
@@ -356,8 +356,8 @@ impl Command for GetSessionContextReport {
     }
 }
 
-fn parse_provider_type(provider: &str) -> Option<LlmProviderType> {
-    LlmProviderType::from_str(&provider.to_ascii_lowercase()).ok()
+fn parse_provider_type(provider: &str) -> Option<DriverId> {
+    DriverId::from_str(&provider.to_ascii_lowercase()).ok()
 }
 
 #[cfg(test)]
@@ -366,10 +366,10 @@ mod tests {
 
     #[test]
     fn parse_provider_type_accepts_mixed_case_known_values() {
-        assert_eq!(parse_provider_type("OpenAI"), Some(LlmProviderType::Openai));
+        assert_eq!(parse_provider_type("OpenAI"), Some(DriverId::OpenAI));
         assert_eq!(
             parse_provider_type("AZURE_OPENAI"),
-            Some(LlmProviderType::AzureOpenai)
+            Some(DriverId::AzureOpenAI)
         );
     }
 }

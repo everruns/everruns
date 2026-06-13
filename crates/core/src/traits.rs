@@ -7,7 +7,7 @@
 
 use crate::agent::Agent;
 use crate::harness::Harness;
-use crate::llm_models::LlmProviderType;
+use crate::llm_models::DriverId;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};
@@ -118,16 +118,16 @@ impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
 }
 
 // ============================================================================
-// LlmProviderStore - For retrieving LLM provider configurations
+// ProviderStore - For retrieving LLM provider configurations
 // ============================================================================
 
 /// Model information with provider details needed for LLM calls
 #[derive(Debug, Clone)]
-pub struct ModelWithProvider {
+pub struct ResolvedModel {
     /// The model ID string to pass to the LLM API (e.g., "gpt-4o", "claude-3-opus")
     pub model: String,
     /// Provider type for factory selection
-    pub provider_type: LlmProviderType,
+    pub provider_type: DriverId,
     /// Decrypted API key (if configured)
     pub api_key: Option<String>,
     /// Optional base URL override
@@ -147,30 +147,30 @@ pub struct ModelWithProvider {
 /// - Use in-memory configurations for testing
 /// - Load from environment variables for development
 #[async_trait]
-pub trait LlmProviderStore: Send + Sync {
+pub trait ProviderStore: Send + Sync {
     /// Get model with provider info by model ID
     ///
     /// Returns the model string ID, provider type, decrypted API key, and base URL
     /// needed to create an LLM provider via the factory.
-    async fn get_model_with_provider(&self, model_id: ModelId)
-    -> Result<Option<ModelWithProvider>>;
+    async fn get_resolved_model(&self, model_id: ModelId)
+    -> Result<Option<ResolvedModel>>;
 
     /// Get the default model with provider info
     ///
     /// Returns the system default model when an agent has no default_model_id set.
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>>;
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>>;
 }
 
 #[async_trait]
-impl<T: LlmProviderStore + ?Sized> LlmProviderStore for std::sync::Arc<T> {
-    async fn get_model_with_provider(
+impl<T: ProviderStore + ?Sized> ProviderStore for std::sync::Arc<T> {
+    async fn get_resolved_model(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
-        (**self).get_model_with_provider(model_id).await
+    ) -> Result<Option<ResolvedModel>> {
+        (**self).get_resolved_model(model_id).await
     }
 
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         (**self).get_default_model().await
     }
 }

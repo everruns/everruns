@@ -14,9 +14,9 @@ pub use service::*;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "llm_provider.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
     id: "llm_provider.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };

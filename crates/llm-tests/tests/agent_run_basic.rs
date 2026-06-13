@@ -24,8 +24,7 @@ use rstest::rstest;
 use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::llm_models::LlmProviderType;
-use everruns_core::traits::ModelWithProvider;
+use everruns_core::traits::ResolvedModel;
 
 // ============================================================================
 // Scenario: basic completion (no tools)
@@ -147,14 +146,14 @@ async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelCon
 #[rstest]
 #[case::anthropic_nonexistent(
     "claude-sonnet-4-6-20260217",
-    LlmProviderType::Anthropic,
+    DriverId::Anthropic,
     "ANTHROPIC_API_KEY"
 )]
-#[case::openai_nonexistent("gpt-99-nonexistent", LlmProviderType::Openai, "OPENAI_API_KEY")]
+#[case::openai_nonexistent("gpt-99-nonexistent", DriverId::OpenAI, "OPENAI_API_KEY")]
 #[tokio::test]
 async fn test_model_not_available_returns_user_friendly_error(
     #[case] model_name: &str,
-    #[case] provider_type: LlmProviderType,
+    #[case] provider_type: DriverId,
     #[case] env_var: &str,
 ) {
     let Some(api_key) = std::env::var(env_var).ok().filter(|k| !k.is_empty()) else {
@@ -162,7 +161,7 @@ async fn test_model_not_available_returns_user_friendly_error(
         return;
     };
 
-    let model = ModelWithProvider {
+    let model = ResolvedModel {
         model: model_name.to_string(),
         provider_type,
         api_key: Some(api_key),

@@ -70,7 +70,7 @@ impl ClaudeToolSearchCapability {
 /// flag masked off in `get_model_profile` and falls back to client-side search).
 pub fn model_supports_native_tool_search(model: &str) -> bool {
     crate::llm_model_profiles::get_model_profile(
-        &crate::llm_models::LlmProviderType::Anthropic,
+        &crate::llm_models::DriverId::Anthropic,
         model,
     )
     .is_some_and(|profile| profile.tool_search)

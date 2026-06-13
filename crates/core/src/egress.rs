@@ -47,7 +47,7 @@ impl EgressError {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EgressRequestKind {
-    LlmProvider,
+    Provider,
     Capability,
     Integration,
     SystemEmail,
@@ -483,7 +483,7 @@ mod tests {
                 "https://blocked.example.com/path",
                 // Even system-owned traffic (no per-request network_access) is
                 // subject to the host-wide allowlist.
-                EgressRequestKind::LlmProvider,
+                EgressRequestKind::Provider,
             ))
             .await
             .unwrap_err();
@@ -614,7 +614,7 @@ mod tests {
             .send_stream(EgressRequest::new(
                 "GET",
                 format!("{}/stream", server.uri()),
-                EgressRequestKind::LlmProvider,
+                EgressRequestKind::Provider,
             ))
             .await
             .unwrap();

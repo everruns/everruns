@@ -60,7 +60,7 @@ impl OpenAiToolSearchCapability {
 /// lookup is against the OpenAI provider profile regardless of how the model is
 /// otherwise routed.
 pub fn model_supports_native_tool_search(model: &str) -> bool {
-    crate::llm_model_profiles::get_model_profile(&crate::llm_models::LlmProviderType::Openai, model)
+    crate::llm_model_profiles::get_model_profile(&crate::llm_models::DriverId::OpenAI, model)
         .is_some_and(|profile| profile.tool_search)
 }
 

@@ -15,12 +15,12 @@ impl Database {
     pub async fn create_llm_provider(
         &self,
         org_id: i64,
-        input: CreateLlmProviderRow,
-    ) -> Result<LlmProviderRow> {
+        input: CreateProviderRow,
+    ) -> Result<ProviderRow> {
         let api_key_set = input.api_key_encrypted.is_some();
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
-        let row = sqlx::query_as::<_, LlmProviderRow>(
+        let row = sqlx::query_as::<_, ProviderRow>(
             r#"
             INSERT INTO llm_providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -49,12 +49,12 @@ impl Database {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmProviderRow,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: CreateProviderRow,
+    ) -> Result<Option<ProviderRow>> {
         let api_key_set = input.api_key_encrypted.is_some();
         let settings = input.settings.unwrap_or(serde_json::json!({}));
 
-        let row = sqlx::query_as::<_, LlmProviderRow>(
+        let row = sqlx::query_as::<_, ProviderRow>(
             r#"
             INSERT INTO llm_providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -82,8 +82,8 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
-        let row = sqlx::query_as::<_, LlmProviderRow>(
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
+        let row = sqlx::query_as::<_, ProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             FROM llm_providers
@@ -98,8 +98,8 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
-        let rows = sqlx::query_as::<_, LlmProviderRow>(
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
+        let rows = sqlx::query_as::<_, ProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             FROM llm_providers
@@ -118,12 +118,12 @@ impl Database {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmProvider,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: UpdateProvider,
+    ) -> Result<Option<ProviderRow>> {
         // If updating api_key, also update api_key_set
         let api_key_set = input.api_key_encrypted.as_ref().map(|_| true);
 
-        let row = sqlx::query_as::<_, LlmProviderRow>(
+        let row = sqlx::query_as::<_, ProviderRow>(
             r#"
             UPDATE llm_providers
             SET
@@ -190,13 +190,13 @@ impl Database {
     /// to models with `enabled = TRUE`, so disabling a model — even if it is
     /// the org default and its provider is still active — removes it from
     /// resolution. The provider's API-key state is *not* gated here; readiness
-    /// is surfaced via the derived `healthy` field on `LlmModelWithProvider`,
+    /// is surfaced via the derived `healthy` field on `ModelWithProvider`,
     /// and downstream LLM calls fail loudly if the key is missing.
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
-        let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
+    ) -> Result<Option<ModelWithProviderRow>> {
+        let row = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
@@ -220,11 +220,11 @@ impl Database {
     pub async fn create_llm_model(
         &self,
         org_id: i64,
-        input: CreateLlmModelRow,
-    ) -> Result<LlmModelRow> {
+        input: CreateModelRow,
+    ) -> Result<ModelRow> {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
-        let row = sqlx::query_as::<_, LlmModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(
             r#"
             INSERT INTO llm_models (org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -252,11 +252,11 @@ impl Database {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmModelRow,
-    ) -> Result<Option<LlmModelRow>> {
+        input: CreateModelRow,
+    ) -> Result<Option<ModelRow>> {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
-        let row = sqlx::query_as::<_, LlmModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(
             r#"
             INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -295,8 +295,8 @@ impl Database {
     /// needs to read disabled rows (e.g. the management UI, update/delete by id)
     /// uses `get_llm_model_with_provider` or operates via `update_llm_model` /
     /// `delete_llm_model` directly.
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
-        let row = sqlx::query_as::<_, LlmModelRow>(
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
+        let row = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
@@ -315,8 +315,8 @@ impl Database {
         &self,
         org_id: i64,
         id: Uuid,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
-        let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
+    ) -> Result<Option<ModelWithProviderRow>> {
+        let row = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
@@ -337,8 +337,8 @@ impl Database {
         &self,
         org_id: i64,
         provider_id: Uuid,
-    ) -> Result<Vec<LlmModelRow>> {
-        let rows = sqlx::query_as::<_, LlmModelRow>(
+    ) -> Result<Vec<ModelRow>> {
+        let rows = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
@@ -360,8 +360,8 @@ impl Database {
     /// disabled models so administrators can re-enable them. Resolution paths
     /// (`get_default_llm_model`, `get_llm_model_by_model_id`, `get_llm_model`)
     /// enforce `enabled = TRUE`; this listing intentionally does not.
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
-        let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
+        let rows = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
@@ -382,14 +382,14 @@ impl Database {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmModel,
-    ) -> Result<Option<LlmModelRow>> {
+        input: UpdateModel,
+    ) -> Result<Option<ModelRow>> {
         let capabilities_json = input
             .capabilities
             .map(|c| serde_json::to_value(&c))
             .transpose()?;
 
-        let row = sqlx::query_as::<_, LlmModelRow>(
+        let row = sqlx::query_as::<_, ModelRow>(
             r#"
             UPDATE llm_models
             SET
@@ -444,8 +444,8 @@ impl Database {
         &self,
         org_id: i64,
         model_id: &str,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
-        let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
+    ) -> Result<Option<ModelWithProviderRow>> {
+        let row = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status

@@ -6,8 +6,8 @@ mod driver_tests {
         DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver,
         register_driver,
     };
-    use everruns_core::llm_driver_registry::{ChatDriver, ProviderConfig, ProviderType};
-    use everruns_core::llm_models::LlmProviderType;
+    use everruns_core::llm_driver_registry::{ChatDriver, ProviderConfig, DriverId};
+    use everruns_core::llm_models::DriverId;
 
     #[test]
     fn test_driver_with_api_key() {
@@ -60,7 +60,7 @@ mod driver_tests {
         let driver = OpenRouterChatDriver::new("test-key");
         assert!(format!("{:?}", driver).contains("OpenRouterChatDriver"));
         assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
-        assert_eq!(driver.provider_type(), &LlmProviderType::Openrouter);
+        assert_eq!(driver.provider_type(), &DriverId::OpenRouter);
     }
 
     #[test]
@@ -105,29 +105,29 @@ mod driver_tests {
     #[test]
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
-        assert!(!registry.has_driver(&ProviderType::OpenAI));
-        assert!(!registry.has_driver(&ProviderType::OpenRouter));
-        assert!(!registry.has_driver(&ProviderType::AzureOpenAI));
-        assert!(!registry.has_driver(&ProviderType::OpenAICompletions));
+        assert!(!registry.has_driver(&DriverId::OpenAI));
+        assert!(!registry.has_driver(&DriverId::OpenRouter));
+        assert!(!registry.has_driver(&DriverId::AzureOpenAI));
+        assert!(!registry.has_driver(&DriverId::OpenAICompletions));
 
         register_driver(&mut registry);
 
-        assert!(registry.has_driver(&ProviderType::OpenAI));
-        assert!(registry.has_driver(&ProviderType::OpenRouter));
-        assert!(registry.has_driver(&ProviderType::AzureOpenAI));
-        assert!(registry.has_driver(&ProviderType::OpenAICompletions));
+        assert!(registry.has_driver(&DriverId::OpenAI));
+        assert!(registry.has_driver(&DriverId::OpenRouter));
+        assert!(registry.has_driver(&DriverId::AzureOpenAI));
+        assert!(registry.has_driver(&DriverId::OpenAICompletions));
 
         // Verify OpenAI driver can be created
-        let config = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
+        let config = ProviderConfig::new(DriverId::OpenAI).with_api_key("test-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
 
         let openrouter_config =
-            ProviderConfig::new(ProviderType::OpenRouter).with_api_key("test-key");
+            ProviderConfig::new(DriverId::OpenRouter).with_api_key("test-key");
         let openrouter_driver = registry.create_chat_driver(&openrouter_config);
         assert!(openrouter_driver.is_ok());
 
-        let azure_config = ProviderConfig::new(ProviderType::AzureOpenAI)
+        let azure_config = ProviderConfig::new(DriverId::AzureOpenAI)
             .with_api_key("test-key")
             .with_base_url("https://resource.openai.azure.com/openai/v1");
         let azure_driver = registry.create_chat_driver(&azure_config);
@@ -135,7 +135,7 @@ mod driver_tests {
 
         // Verify OpenAI Completions driver can be created
         let completions_config =
-            ProviderConfig::new(ProviderType::OpenAICompletions).with_api_key("test-key");
+            ProviderConfig::new(DriverId::OpenAICompletions).with_api_key("test-key");
         let completions_driver = registry.create_chat_driver(&completions_config);
         assert!(completions_driver.is_ok());
     }
@@ -236,7 +236,7 @@ mod provider_tests {
 #[cfg(test)]
 mod descriptor_tests {
     use crate::register_driver;
-    use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType, ServiceKind};
+    use everruns_core::llm_driver_registry::{DriverRegistry, DriverId, ServiceKind};
 
     #[test]
     fn registered_descriptors_declare_services_and_credentials() {
@@ -244,7 +244,7 @@ mod descriptor_tests {
         register_driver(&mut registry);
 
         // OpenAI providers also power realtime voice sessions.
-        let openai = registry.descriptor(&ProviderType::OpenAI).unwrap();
+        let openai = registry.descriptor(&DriverId::OpenAI).unwrap();
         assert_eq!(openai.display_name, "OpenAI");
         assert!(openai.supports(ServiceKind::Chat));
         assert!(openai.supports(ServiceKind::Realtime));
@@ -252,9 +252,9 @@ mod descriptor_tests {
 
         // The other OpenAI-protocol drivers are chat-only.
         for id in [
-            ProviderType::OpenRouter,
-            ProviderType::AzureOpenAI,
-            ProviderType::OpenAICompletions,
+            DriverId::OpenRouter,
+            DriverId::AzureOpenAI,
+            DriverId::OpenAICompletions,
         ] {
             let descriptor = registry.descriptor(&id).unwrap();
             assert_eq!(descriptor.services, vec![ServiceKind::Chat]);

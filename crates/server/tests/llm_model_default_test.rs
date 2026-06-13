@@ -12,7 +12,7 @@
 use uuid::Uuid;
 
 use everruns_server::storage::{
-    CreateLlmModelRow, CreateLlmProviderRow, InMemoryDatabase, UpdateLlmModel,
+    CreateModelRow, CreateProviderRow, InMemoryDatabase, UpdateModel,
 };
 
 const TEST_ORG_ID: i64 = 1;
@@ -22,7 +22,7 @@ async fn setup() -> (InMemoryDatabase, everruns_core::ProviderId) {
     let provider = db
         .create_llm_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Test Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -39,8 +39,8 @@ fn model_input(
     provider_id: everruns_core::ProviderId,
     name: &str,
     enabled: bool,
-) -> CreateLlmModelRow {
-    CreateLlmModelRow {
+) -> CreateModelRow {
+    CreateModelRow {
         provider_id,
         model_id: name.to_string(),
         display_name: name.to_string(),
@@ -116,7 +116,7 @@ async fn test_update_installed_flag() {
         .update_llm_model(
             TEST_ORG_ID,
             m1.id.into(),
-            UpdateLlmModel {
+            UpdateModel {
                 enabled: Some(true),
                 ..Default::default()
             },
@@ -131,7 +131,7 @@ async fn test_update_installed_flag() {
         .update_llm_model(
             TEST_ORG_ID,
             m1.id.into(),
-            UpdateLlmModel {
+            UpdateModel {
                 enabled: Some(false),
                 ..Default::default()
             },

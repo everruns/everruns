@@ -50,7 +50,7 @@ pub use platform::{default_platform_definition, default_platform_definition_for_
 
 // Re-export gRPC adapters for worker communication with control plane
 pub use grpc_adapters::{
-    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcLlmProviderStore, GrpcMessageRetriever,
+    GrpcAgentStore, GrpcClient, GrpcEventEmitter, GrpcProviderStore, GrpcMessageRetriever,
     GrpcSessionFileStore, GrpcSessionStore, TurnContext, load_turn_context,
 };
 
@@ -60,7 +60,7 @@ pub use runtime_host::WorkerRuntimeHost;
 pub use stream_heartbeater::GrpcTaskHeartbeater;
 pub use unified_worker::{TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
-    AdapterAgentStore, AdapterEventEmitter, AdapterLlmProviderStore, AdapterMessageRetriever,
+    AdapterAgentStore, AdapterEventEmitter, AdapterProviderStore, AdapterMessageRetriever,
     AdapterSessionFileStore, AdapterSessionStore, TurnContext as WorkerTurnContext, WorkerAdapters,
 };
 

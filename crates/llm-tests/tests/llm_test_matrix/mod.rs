@@ -8,8 +8,7 @@
 #![allow(dead_code)] // Not all test binaries use every constant.
 
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
-use everruns_core::traits::ModelWithProvider;
+use everruns_core::traits::ResolvedModel;
 
 // ============================================================================
 // Provider + Model configuration
@@ -18,14 +17,14 @@ use everruns_core::traits::ModelWithProvider;
 /// One cell in the test matrix: a (provider, model, env-var) tuple.
 #[derive(Clone, Debug)]
 pub struct ProviderModelConfig {
-    pub provider_type: LlmProviderType,
+    pub provider_type: DriverId,
     pub model_name: &'static str,
     pub env_var: &'static str,
 }
 
 impl ProviderModelConfig {
     pub const fn new(
-        provider_type: LlmProviderType,
+        provider_type: DriverId,
         model_name: &'static str,
         env_var: &'static str,
     ) -> Self {
@@ -36,11 +35,11 @@ impl ProviderModelConfig {
         }
     }
 
-    /// Build a `ModelWithProvider` from env, returning `None` if the key is
+    /// Build a `ResolvedModel` from env, returning `None` if the key is
     /// missing or empty, or if the provider appears in
     /// `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS` (comma-separated, e.g.
     /// `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini,openai`).
-    pub fn model(&self) -> Option<ModelWithProvider> {
+    pub fn model(&self) -> Option<ResolvedModel> {
         if let Ok(skip) = std::env::var("SKIP_LLM_INTEGRATION_TESTS_PROVIDERS") {
             let provider = self.provider_type.to_string().to_lowercase();
             if skip.split(',').any(|s| s.trim().to_lowercase() == provider) {
@@ -48,7 +47,7 @@ impl ProviderModelConfig {
             }
         }
         let api_key = std::env::var(self.env_var).ok().filter(|k| !k.is_empty())?;
-        Some(ModelWithProvider {
+        Some(ResolvedModel {
             model: self.model_name.to_string(),
             provider_type: self.provider_type.clone(),
             api_key: Some(api_key),
@@ -74,44 +73,44 @@ impl std::fmt::Display for ProviderModelConfig {
 // ============================================================================
 
 pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Anthropic,
+    DriverId::Anthropic,
     "claude-fable-5",
     "ANTHROPIC_API_KEY",
 );
 
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Anthropic,
+    DriverId::Anthropic,
     "claude-haiku-4-5-20251001",
     "ANTHROPIC_API_KEY",
 );
 
 // Bare alias — the API does not serve a dated id for Opus 4.7.
 pub const ANTHROPIC_OPUS: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Anthropic,
+    DriverId::Anthropic,
     "claude-opus-4-7",
     "ANTHROPIC_API_KEY",
 );
 
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Anthropic,
+    DriverId::Anthropic,
     "claude-sonnet-4-20250514",
     "ANTHROPIC_API_KEY",
 );
 
 pub const OPENAI_GPT4O_MINI: ProviderModelConfig =
-    ProviderModelConfig::new(LlmProviderType::Openai, "gpt-4o-mini", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-4o-mini", "OPENAI_API_KEY");
 
 pub const OPENAI_GPT52: ProviderModelConfig =
-    ProviderModelConfig::new(LlmProviderType::Openai, "gpt-5.2", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY");
 
 pub const OPENAI_GPT54: ProviderModelConfig =
-    ProviderModelConfig::new(LlmProviderType::Openai, "gpt-5.4", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", "OPENAI_API_KEY");
 
 pub const OPENAI_GPT55: ProviderModelConfig =
-    ProviderModelConfig::new(LlmProviderType::Openai, "gpt-5.5", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY");
 
 pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Gemini,
+    DriverId::Gemini,
     "gemini-2.0-flash",
     "GEMINI_API_KEY",
 );
@@ -119,13 +118,13 @@ pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
 // Bedrock: credentials are JSON in the env var, not a plain API key.
 // Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.
 pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Bedrock,
+    DriverId::Bedrock,
     "anthropic.claude-3-5-haiku-20241022-v1:0",
     "AWS_BEDROCK_CREDENTIALS",
 );
 
 pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
-    LlmProviderType::Bedrock,
+    DriverId::Bedrock,
     "anthropic.claude-3-5-sonnet-20241022-v2:0",
     "AWS_BEDROCK_CREDENTIALS",
 );

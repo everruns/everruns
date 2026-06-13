@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_core::llm_driver_registry::DriverRegistry;
     use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
     use everruns_core::{
-        AgentId, CapabilityRegistry, HarnessId, LlmProviderType, ModelWithProvider,
+        AgentId, CapabilityRegistry, HarnessId, DriverId, ResolvedModel,
         PlatformDefinition, SessionId,
     };
     use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -106,9 +106,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .llm_sim(sim)
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".to_string(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".to_string()),
             base_url: None,
             provider_metadata: None,

@@ -15,12 +15,12 @@ impl InMemoryDatabase {
     pub async fn create_llm_provider(
         &self,
         org_id: i64,
-        input: CreateLlmProviderRow,
-    ) -> Result<LlmProviderRow> {
+        input: CreateProviderRow,
+    ) -> Result<ProviderRow> {
         let now = Self::now();
         let id = ProviderId::new();
         let api_key_set = input.api_key_encrypted.is_some();
-        let row = LlmProviderRow {
+        let row = ProviderRow {
             id,
             org_id,
             name: input.name,
@@ -46,8 +46,8 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmProviderRow,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: CreateProviderRow,
+    ) -> Result<Option<ProviderRow>> {
         let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
         let now = Self::now();
@@ -56,7 +56,7 @@ impl InMemoryDatabase {
             if existing.name == input.name && existing.provider_type == input.provider_type {
                 return Ok(None); // Unchanged
             }
-            let row = LlmProviderRow {
+            let row = ProviderRow {
                 name: input.name,
                 provider_type: input.provider_type,
                 updated_at: now,
@@ -67,7 +67,7 @@ impl InMemoryDatabase {
         }
 
         let api_key_set = input.api_key_encrypted.is_some();
-        let row = LlmProviderRow {
+        let row = ProviderRow {
             id,
             org_id,
             name: input.name,
@@ -85,7 +85,7 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<LlmProviderRow>> {
+    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
         Ok(self
             .llm_providers
             .read()
@@ -94,7 +94,7 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>> {
+    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
         let providers = self.llm_providers.read();
         let mut result: Vec<_> = providers
             .values()
@@ -109,8 +109,8 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmProvider,
-    ) -> Result<Option<LlmProviderRow>> {
+        input: UpdateProvider,
+    ) -> Result<Option<ProviderRow>> {
         let id = ProviderId::from_uuid(id);
         let mut providers = self.llm_providers.write();
         if let Some(provider) = providers.get_mut(&id) {
@@ -188,9 +188,9 @@ impl InMemoryDatabase {
     /// Get a provider with its decrypted API key
     pub fn get_provider_with_api_key(
         &self,
-        provider: &LlmProviderRow,
+        provider: &ProviderRow,
         encryption: &super::super::EncryptionService,
-    ) -> Result<LlmProviderWithApiKey> {
+    ) -> Result<ProviderWithApiKey> {
         let api_key = if let Some(ref encrypted) = provider.api_key_encrypted {
             Some(encryption.decrypt_to_string(encrypted)?)
         } else {
@@ -201,7 +201,7 @@ impl InMemoryDatabase {
         let settings: serde_json::Value =
             serde_json::from_str(&provider.settings.to_string()).unwrap_or_default();
 
-        Ok(LlmProviderWithApiKey {
+        Ok(ProviderWithApiKey {
             id: provider.id,
             name: provider.name.clone(),
             provider_type: provider.provider_type.clone(),
@@ -218,7 +218,7 @@ impl InMemoryDatabase {
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         let org_settings = self.org_settings.read();
         let default_model_id = org_settings.get(&org_id).and_then(|s| s.default_model_id);
         let default_model_id = match default_model_id {
@@ -235,7 +235,7 @@ impl InMemoryDatabase {
             && provider.status == "active"
             && model.enabled
         {
-            return Ok(Some(LlmModelWithProviderRow {
+            return Ok(Some(ModelWithProviderRow {
                 id: model.id,
                 org_id: model.org_id,
                 provider_id: model.provider_id,
@@ -265,11 +265,11 @@ impl InMemoryDatabase {
     pub async fn create_llm_model(
         &self,
         org_id: i64,
-        input: CreateLlmModelRow,
-    ) -> Result<LlmModelRow> {
+        input: CreateModelRow,
+    ) -> Result<ModelRow> {
         let now = Self::now();
         let id = ModelId::new();
-        let row = LlmModelRow {
+        let row = ModelRow {
             id,
             org_id,
             provider_id: input.provider_id,
@@ -294,8 +294,8 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         id: Uuid,
-        input: CreateLlmModelRow,
-    ) -> Result<Option<LlmModelRow>> {
+        input: CreateModelRow,
+    ) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
         let mut models = self.llm_models.write();
         let now = Self::now();
@@ -308,7 +308,7 @@ impl InMemoryDatabase {
             {
                 return Ok(None); // Unchanged
             }
-            let row = LlmModelRow {
+            let row = ModelRow {
                 display_name: input.display_name,
                 is_favorite: input.is_favorite,
                 enabled: input.enabled,
@@ -319,7 +319,7 @@ impl InMemoryDatabase {
             return Ok(Some(row));
         }
 
-        let row = LlmModelRow {
+        let row = ModelRow {
             id,
             org_id,
             provider_id: input.provider_id,
@@ -341,7 +341,7 @@ impl InMemoryDatabase {
     /// Resolve an LLM model by UUID for use. Mirrors the SQL backend: disabled
     /// models are filtered out so resolution paths cannot reach a model the
     /// administrator has disabled.
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
+    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
         Ok(self
             .llm_models
@@ -355,7 +355,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         id: Uuid,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         let id = ModelId::from_uuid(id);
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
@@ -365,7 +365,7 @@ impl InMemoryDatabase {
             && let Some(provider) = providers.get(&model.provider_id)
             && provider.org_id == org_id
         {
-            return Ok(Some(LlmModelWithProviderRow {
+            return Ok(Some(ModelWithProviderRow {
                 id: model.id,
                 org_id: model.org_id,
                 provider_id: model.provider_id,
@@ -392,7 +392,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         provider_id: Uuid,
-    ) -> Result<Vec<LlmModelRow>> {
+    ) -> Result<Vec<ModelRow>> {
         let provider_id = ProviderId::from_uuid(provider_id);
         let models = self.llm_models.read();
         let mut result: Vec<_> = models
@@ -410,7 +410,7 @@ impl InMemoryDatabase {
     /// disabled models so the management UI can show them. Resolution paths use
     /// `get_default_llm_model`, `get_llm_model_by_model_id`, and `get_llm_model`
     /// which all enforce `enabled = TRUE`.
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
+    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
@@ -421,7 +421,7 @@ impl InMemoryDatabase {
                 providers
                     .get(&model.provider_id)
                     .filter(|provider| provider.org_id == org_id && provider.status == "active")
-                    .map(|provider| LlmModelWithProviderRow {
+                    .map(|provider| ModelWithProviderRow {
                         id: model.id,
                         org_id: model.org_id,
                         provider_id: model.provider_id,
@@ -456,8 +456,8 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         id: Uuid,
-        input: UpdateLlmModel,
-    ) -> Result<Option<LlmModelRow>> {
+        input: UpdateModel,
+    ) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
         if let Some(provider_id) = input.provider_id {
             let providers = self.llm_providers.read();
@@ -519,7 +519,7 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
         model_id: &str,
-    ) -> Result<Option<LlmModelWithProviderRow>> {
+    ) -> Result<Option<ModelWithProviderRow>> {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
@@ -531,7 +531,7 @@ impl InMemoryDatabase {
                 && provider.status == "active"
                 && model.enabled
             {
-                return Ok(Some(LlmModelWithProviderRow {
+                return Ok(Some(ModelWithProviderRow {
                     id: model.id,
                     org_id: model.org_id,
                     provider_id: model.provider_id,

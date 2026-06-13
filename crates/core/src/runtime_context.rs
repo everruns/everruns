@@ -21,7 +21,7 @@ use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::session::Session;
 use crate::tool_types::ToolDefinition;
 use crate::traits::{
-    AgentStore, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileSystem, SessionStore,
+    AgentStore, HarnessStore, ProviderStore, ResolvedModel, SessionFileSystem, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use std::sync::Arc;
@@ -44,7 +44,7 @@ pub struct AssembledTurnContext {
     /// Fully assembled runtime agent for the current turn.
     pub runtime_agent: RuntimeAgent,
     /// Resolved model/provider pair used for the turn.
-    pub model_with_provider: ModelWithProvider,
+    pub model_with_provider: ResolvedModel,
     /// The resolved model ID when a concrete configured model was selected.
     pub resolved_model_id: Option<ModelId>,
     /// Locale resolved from message controls/metadata or session defaults.
@@ -69,7 +69,7 @@ pub async fn assemble_turn_context(
     agent_store: &dyn AgentStore,
     session_store: &dyn SessionStore,
     message_retriever: &dyn MessageRetriever,
-    provider_store: &dyn LlmProviderStore,
+    provider_store: &dyn ProviderStore,
     capability_registry: &CapabilityRegistry,
     session_id: SessionId,
     harness_id: HarnessId,
@@ -104,7 +104,7 @@ pub async fn inspect_turn_context(
     agent_store: &dyn AgentStore,
     session_store: &dyn SessionStore,
     message_retriever: &dyn MessageRetriever,
-    provider_store: &dyn LlmProviderStore,
+    provider_store: &dyn ProviderStore,
     capability_registry: &CapabilityRegistry,
     session_id: SessionId,
     harness_id: HarnessId,
@@ -141,7 +141,7 @@ async fn assemble_turn_context_with_mode(
     agent_store: &dyn AgentStore,
     session_store: &dyn SessionStore,
     message_retriever: &dyn MessageRetriever,
-    provider_store: &dyn LlmProviderStore,
+    provider_store: &dyn ProviderStore,
     capability_registry: &CapabilityRegistry,
     session_id: SessionId,
     harness_id: HarnessId,
@@ -286,7 +286,7 @@ async fn build_runtime_agent(
     capability_registry: &CapabilityRegistry,
     prompt_ctx: &SystemPromptContext,
     mcp_tool_definitions: &[ToolDefinition],
-    model_with_provider: &ModelWithProvider,
+    model_with_provider: &ResolvedModel,
 ) -> Result<RuntimeAgent> {
     let mut runtime_agent = if let Some(ref blueprint_id) = session.blueprint_id {
         let blueprint = capability_registry.blueprint(blueprint_id).ok_or_else(|| {
@@ -341,12 +341,12 @@ async fn build_runtime_agent(
 }
 
 async fn resolve_model_with_provider(
-    provider_store: &dyn LlmProviderStore,
+    provider_store: &dyn ProviderStore,
     controls_model_id: Option<ModelId>,
     overlay_model_id: Option<ModelId>,
-) -> Result<(ModelWithProvider, Option<ModelId>)> {
+) -> Result<(ResolvedModel, Option<ModelId>)> {
     for model_id in [controls_model_id, overlay_model_id].into_iter().flatten() {
-        if let Some(model_with_provider) = provider_store.get_model_with_provider(model_id).await? {
+        if let Some(model_with_provider) = provider_store.get_resolved_model(model_id).await? {
             return Ok((model_with_provider, Some(model_id)));
         }
     }
@@ -384,7 +384,7 @@ mod tests {
     };
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
-        InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore,
+        InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore,
         InMemoryMessageRetriever,
     };
     use crate::message::Controls;
@@ -545,11 +545,11 @@ mod tests {
         });
         message_store.add(session_id, input).await.unwrap();
 
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         provider_store
-            .set_default_model(ModelWithProvider {
+            .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                provider_type: crate::llm_models::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -614,11 +614,11 @@ mod tests {
         );
         message_store.add(session_id, input).await.unwrap();
 
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         provider_store
-            .set_default_model(ModelWithProvider {
+            .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                provider_type: crate::llm_models::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -669,11 +669,11 @@ mod tests {
             .await;
         let message_store = InMemoryMessageRetriever::new();
 
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         provider_store
-            .set_default_model(ModelWithProvider {
+            .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                provider_type: crate::llm_models::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -729,11 +729,11 @@ mod tests {
             .await
             .unwrap();
 
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         provider_store
-            .set_default_model(ModelWithProvider {
+            .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                provider_type: crate::llm_models::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,

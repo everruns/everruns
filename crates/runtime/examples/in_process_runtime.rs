@@ -1,7 +1,7 @@
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::{CapabilityRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition};
+use everruns_core::{CapabilityRegistry, DriverId, ResolvedModel, PlatformDefinition};
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
 #[tokio::main]
@@ -44,9 +44,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vec![],
             ]),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

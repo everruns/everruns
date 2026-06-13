@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
     BoxedChatDriver, ChatDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmMessage,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, ProviderType,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent, DriverId,
 };
 use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
@@ -716,7 +716,7 @@ impl std::fmt::Debug for LlmSimDriver {
 /// register_driver(&mut registry);
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::LlmSim, |_config| {
+    registry.register(DriverId::LlmSim, |_config| {
         // Default driver - tests can create custom drivers directly
         Box::new(LlmSimDriver::default_driver()) as BoxedChatDriver
     });
@@ -732,7 +732,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 /// shared across invocations.
 pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
     let driver = LlmSimDriver::new(config);
-    registry.register(ProviderType::LlmSim, move |_config| {
+    registry.register(DriverId::LlmSim, move |_config| {
         Box::new(driver.clone()) as BoxedChatDriver
     });
 }
@@ -1419,10 +1419,10 @@ mod tests {
         let mut registry = DriverRegistry::new();
         register_driver(&mut registry);
 
-        assert!(registry.has_driver(&ProviderType::LlmSim));
+        assert!(registry.has_driver(&DriverId::LlmSim));
 
         // Creating a driver should work (with any API key since it's simulated)
-        let config = crate::llm_driver_registry::ProviderConfig::new(ProviderType::LlmSim)
+        let config = crate::llm_driver_registry::ProviderConfig::new(DriverId::LlmSim)
             .with_api_key("fake-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());

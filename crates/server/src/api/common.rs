@@ -1609,7 +1609,7 @@ impl ResourceUrlable for everruns_core::Skill {
     }
 }
 
-impl ResourceUrlable for everruns_core::llm_models::LlmProvider {
+impl ResourceUrlable for everruns_core::llm_models::Provider {
     fn api_path() -> &'static str {
         "v1/llm-providers"
     }
@@ -1624,7 +1624,7 @@ impl ResourceUrlable for everruns_core::llm_models::LlmProvider {
     }
 }
 
-impl ResourceUrlable for everruns_core::llm_models::LlmModel {
+impl ResourceUrlable for everruns_core::llm_models::Model {
     fn api_path() -> &'static str {
         "v1/llm-models"
     }
@@ -1639,7 +1639,7 @@ impl ResourceUrlable for everruns_core::llm_models::LlmModel {
     }
 }
 
-impl ResourceUrlable for everruns_core::LlmModelWithProvider {
+impl ResourceUrlable for everruns_core::ModelWithProvider {
     fn api_path() -> &'static str {
         "v1/llm-models"
     }

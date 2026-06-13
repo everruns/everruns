@@ -7,10 +7,10 @@
 
 use crate::agent::Agent;
 use crate::harness::Harness;
-use crate::llm_models::LlmProviderType;
+use crate::llm_models::DriverId;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::ModelWithProvider;
+use crate::traits::ResolvedModel;
 use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -22,7 +22,7 @@ use crate::error::Result;
 use crate::message::Message;
 use crate::message_filter::MessageQuery;
 use crate::message_retriever::{InputMessage, MessageRetriever};
-use crate::traits::{AgentStore, HarnessStore, LlmProviderStore, SessionStore, ToolExecutor};
+use crate::traits::{AgentStore, HarnessStore, ProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
 
 // ============================================================================
@@ -314,7 +314,7 @@ impl SessionStore for InMemorySessionStore {
 }
 
 // ============================================================================
-// InMemoryLlmProviderStore - Stores LLM provider configurations in memory
+// InMemoryProviderStore - Stores LLM provider configurations in memory
 // ============================================================================
 
 /// In-memory LLM provider store
@@ -325,19 +325,19 @@ impl SessionStore for InMemorySessionStore {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::in_memory::InMemoryLlmProviderStore;
-/// use everruns_core::llm_entities::LlmProviderType;
+/// use everruns_core::in_memory::InMemoryProviderStore;
+/// use everruns_core::llm_entities::DriverId;
 ///
-/// let store = InMemoryLlmProviderStore::from_env().await;
+/// let store = InMemoryProviderStore::from_env().await;
 /// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY from environment
 /// ```
 #[derive(Debug, Default, Clone)]
-pub struct InMemoryLlmProviderStore {
-    models: Arc<RwLock<HashMap<ModelId, ModelWithProvider>>>,
-    default_model: Arc<RwLock<Option<ModelWithProvider>>>,
+pub struct InMemoryProviderStore {
+    models: Arc<RwLock<HashMap<ModelId, ResolvedModel>>>,
+    default_model: Arc<RwLock<Option<ResolvedModel>>>,
 }
 
-impl InMemoryLlmProviderStore {
+impl InMemoryProviderStore {
     /// Create a new empty in-memory provider store
     pub fn new() -> Self {
         Self {
@@ -355,18 +355,18 @@ impl InMemoryLlmProviderStore {
 
         // Check for OpenAI first
         if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            let model = ModelWithProvider {
+            let model = ResolvedModel {
                 model: "gpt-5.4".to_string(),
-                provider_type: LlmProviderType::Openai,
+                provider_type: DriverId::OpenAI,
                 api_key: Some(api_key),
                 base_url: std::env::var("OPENAI_BASE_URL").ok(),
                 provider_metadata: None,
             };
             store.set_default_model(model).await;
         } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-            let model = ModelWithProvider {
+            let model = ResolvedModel {
                 model: "claude-sonnet-4-20250514".to_string(),
-                provider_type: LlmProviderType::Anthropic,
+                provider_type: DriverId::Anthropic,
                 api_key: Some(api_key),
                 base_url: std::env::var("ANTHROPIC_BASE_URL").ok(),
                 provider_metadata: None,
@@ -378,19 +378,19 @@ impl InMemoryLlmProviderStore {
     }
 
     /// Create a provider store with a specific default model
-    pub async fn with_default(model: ModelWithProvider) -> Self {
+    pub async fn with_default(model: ResolvedModel) -> Self {
         let store = Self::new();
         store.set_default_model(model).await;
         store
     }
 
     /// Add a model to the store
-    pub async fn add_model(&self, model_id: ModelId, model: ModelWithProvider) {
+    pub async fn add_model(&self, model_id: ModelId, model: ResolvedModel) {
         self.models.write().await.insert(model_id, model);
     }
 
     /// Set the default model
-    pub async fn set_default_model(&self, model: ModelWithProvider) {
+    pub async fn set_default_model(&self, model: ResolvedModel) {
         *self.default_model.write().await = Some(model);
     }
 
@@ -402,15 +402,15 @@ impl InMemoryLlmProviderStore {
 }
 
 #[async_trait]
-impl LlmProviderStore for InMemoryLlmProviderStore {
-    async fn get_model_with_provider(
+impl ProviderStore for InMemoryProviderStore {
+    async fn get_resolved_model(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
 
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         Ok(self.default_model.read().await.clone())
     }
 }
@@ -565,7 +565,7 @@ impl ToolExecutor for FailingToolExecutor {
 }
 
 // ============================================================================
-// MockLlmProvider - Returns predefined responses
+// MockProvider - Returns predefined responses
 // ============================================================================
 
 use crate::events::{Event, EventRequest};
@@ -579,7 +579,7 @@ use futures::stream;
 ///
 /// Returns predefined responses in sequence.
 #[derive(Debug, Default)]
-pub struct MockLlmProvider {
+pub struct MockProvider {
     responses: Arc<RwLock<Vec<MockLlmResponse>>>,
     call_index: Arc<RwLock<usize>>,
     call_log: Arc<RwLock<Vec<Vec<LlmMessage>>>>,
@@ -610,7 +610,7 @@ impl MockLlmResponse {
     }
 }
 
-impl MockLlmProvider {
+impl MockProvider {
     /// Create a new mock LLM provider
     pub fn new() -> Self {
         Self {
@@ -645,7 +645,7 @@ impl MockLlmProvider {
 }
 
 #[async_trait]
-impl ChatDriver for MockLlmProvider {
+impl ChatDriver for MockProvider {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

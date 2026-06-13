@@ -21,7 +21,7 @@ use everruns_core::traits::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{Agent, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness};
 use everruns_worker::worker_adapters::{
-    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
+    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterProviderStore,
     AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
 };
 use std::collections::HashSet;
@@ -178,7 +178,7 @@ impl SessionCommandService {
             Arc::new(AdapterAgentStore::new(adapters.clone(), org_id)),
             Arc::new(AdapterSessionStore::new(adapters.clone(), org_id)),
             Arc::new(AdapterMessageRetriever::new(adapters.clone())),
-            Arc::new(AdapterLlmProviderStore::new(adapters.clone(), org_id)),
+            Arc::new(AdapterProviderStore::new(adapters.clone(), org_id)),
             self.capability_registry.clone(),
             self.driver_registry.clone(),
         )

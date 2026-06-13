@@ -1,6 +1,6 @@
-// Database-backed LlmProviderStore implementation
+// Database-backed ProviderStore implementation
 //
-// This module implements the core LlmProviderStore trait for retrieving
+// This module implements the core ProviderStore trait for retrieving
 // LLM provider and model configurations from the database.
 //
 // Decision: org_id is baked into the struct at construction time,
@@ -9,14 +9,14 @@
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, ModelId, Result, StoreResultExt,
-    llm_models::LlmProviderType,
-    traits::{LlmProviderStore, ModelWithProvider},
+    llm_models::DriverId,
+    traits::{ProviderStore, ResolvedModel},
 };
 
 use super::{encryption::EncryptionService, repositories::Database};
 
 // ============================================================================
-// DbLlmProviderStore - Retrieves LLM provider configurations from database
+// DbProviderStore - Retrieves LLM provider configurations from database
 // ============================================================================
 
 /// Database-backed LLM provider store
@@ -26,13 +26,13 @@ use super::{encryption::EncryptionService, repositories::Database};
 ///
 /// Used by ReasonAtom to resolve model and provider info dynamically.
 #[derive(Clone)]
-pub struct DbLlmProviderStore {
+pub struct DbProviderStore {
     db: Database,
     encryption: EncryptionService,
     org_id: i64,
 }
 
-impl DbLlmProviderStore {
+impl DbProviderStore {
     pub fn new(db: Database, encryption: EncryptionService, org_id: i64) -> Self {
         Self {
             db,
@@ -43,11 +43,11 @@ impl DbLlmProviderStore {
 }
 
 #[async_trait]
-impl LlmProviderStore for DbLlmProviderStore {
-    async fn get_model_with_provider(
+impl ProviderStore for DbProviderStore {
+    async fn get_resolved_model(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         // Look up the model
         let model_row = self
             .db
@@ -81,7 +81,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
 
-        Ok(Some(ModelWithProvider {
+        Ok(Some(ResolvedModel {
             model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
@@ -90,7 +90,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         }))
     }
 
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         // Look up the default model via organization settings
         let model_row = self
             .db
@@ -124,7 +124,7 @@ impl LlmProviderStore for DbLlmProviderStore {
         // Parse provider type
         let provider_type = parse_provider_type(&provider_with_key.provider_type)?;
 
-        Ok(Some(ModelWithProvider {
+        Ok(Some(ResolvedModel {
             model: model_row.model_id,
             provider_type,
             api_key: provider_with_key.api_key,
@@ -139,7 +139,7 @@ impl LlmProviderStore for DbLlmProviderStore {
 /// resolve to a usable provider type instead of erroring. An empty/whitespace
 /// value is a corrupt row and surfaces as a configuration error rather than a
 /// silent `External("")`.
-fn parse_provider_type(provider_type_str: &str) -> Result<LlmProviderType> {
+fn parse_provider_type(provider_type_str: &str) -> Result<DriverId> {
     if provider_type_str.trim().is_empty() {
         return Err(AgentLoopError::Configuration(
             "empty provider_type in database".to_string(),
@@ -158,8 +158,8 @@ pub fn create_db_llm_provider_store(
     db: Database,
     encryption: EncryptionService,
     org_id: i64,
-) -> DbLlmProviderStore {
-    DbLlmProviderStore::new(db, encryption, org_id)
+) -> DbProviderStore {
+    DbProviderStore::new(db, encryption, org_id)
 }
 
 #[cfg(test)]

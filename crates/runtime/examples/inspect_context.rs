@@ -1,11 +1,10 @@
 use chrono::Utc;
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    ModelWithProvider, PlatformDefinition, Session, SessionStatus,
+    ResolvedModel, PlatformDefinition, Session, SessionStatus,
 };
 use everruns_runtime::InProcessRuntimeBuilder;
 use uuid::Uuid;
@@ -23,9 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .llm_sim(LlmSimConfig::fixed("Context example"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

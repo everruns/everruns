@@ -19,7 +19,7 @@ use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus,
+    DriverId, ResolvedModel, PlatformDefinition, Session, SessionStatus,
 };
 use everruns_runtime::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use tempfile::TempDir;
@@ -56,9 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .llm_sim(LlmSimConfig::fixed("ack"))
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

@@ -360,8 +360,8 @@ impl OpenRouterModelInfo {
         }
     }
 
-    /// Build an [`LlmModelProfile`] from OpenRouter's advertised metadata.
-    pub fn to_discovered_profile(&self) -> everruns_core::llm_models::LlmModelProfile {
+    /// Build an [`ModelProfile`] from OpenRouter's advertised metadata.
+    pub fn to_discovered_profile(&self) -> everruns_core::llm_models::ModelProfile {
         use everruns_core::llm_models::*;
 
         // Reasoning is advertised via the `reasoning` parameter (modern unified
@@ -391,7 +391,7 @@ impl OpenRouterModelInfo {
             if pdf_input {
                 input.push(Modality::Pdf);
             }
-            Some(LlmModelModalities {
+            Some(ModelModalities {
                 input,
                 output: vec![Modality::Text],
             })
@@ -409,7 +409,7 @@ impl OpenRouterModelInfo {
             .and_then(|t| t.max_completion_tokens);
         let limits = context.map(|ctx| {
             let context = clamp_i64_to_i32(ctx);
-            LlmModelLimits {
+            ModelLimits {
                 context,
                 input: None,
                 // OpenRouter commonly omits a separate output cap
@@ -421,7 +421,7 @@ impl OpenRouterModelInfo {
             }
         });
 
-        LlmModelProfile {
+        ModelProfile {
             name: self.name.clone().unwrap_or_else(|| self.id.clone()),
             family: self
                 .canonical_slug
@@ -450,7 +450,7 @@ impl OpenRouterModelInfo {
 }
 
 impl OpenRouterPricing {
-    fn to_cost(&self) -> Option<everruns_core::llm_models::LlmModelCost> {
+    fn to_cost(&self) -> Option<everruns_core::llm_models::ModelCost> {
         let input = openrouter_price_per_million(self.prompt.as_deref()?)?;
         let output = openrouter_price_per_million(self.completion.as_deref()?)?;
         let cache_read = self
@@ -459,7 +459,7 @@ impl OpenRouterPricing {
             .or(self.cache_read.as_deref())
             .and_then(openrouter_price_per_million);
 
-        Some(everruns_core::llm_models::LlmModelCost {
+        Some(everruns_core::llm_models::ModelCost {
             input,
             output,
             cache_read,
@@ -470,7 +470,7 @@ impl OpenRouterPricing {
 
 /// Saturating `i64` → `i32` conversion.
 ///
-/// OpenRouter reports token counts as `i64`, while `LlmModelLimits` stores
+/// OpenRouter reports token counts as `i64`, while `ModelLimits` stores
 /// `i32`. A raw `as` cast wraps on overflow (producing negative limits); this
 /// clamps into range instead. Negative inputs clamp to `0`.
 fn clamp_i64_to_i32(value: i64) -> i32 {

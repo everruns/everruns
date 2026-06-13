@@ -12,10 +12,10 @@
 // 2. None — fail closed; no environment variable fallback in the tenant path.
 //
 // The env-var helpers (get_default_api_key_from_env) remain available for
-// explicit standalone/dev entrypoints (CLI, InMemoryLlmProviderStore) but must
+// explicit standalone/dev entrypoints (CLI, InMemoryProviderStore) but must
 // NOT be called from any org-scoped execution path.
 
-use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
+use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
 use moka::future::Cache;
 use std::sync::Arc;
@@ -96,7 +96,7 @@ where
 pub fn resolve_provider_api_key(
     db: &StorageBackend,
     encryption: Option<&EncryptionService>,
-    provider: &LlmProviderRow,
+    provider: &ProviderRow,
 ) -> Result<Option<String>> {
     if provider.api_key_encrypted.is_some() {
         if let Some(encryption) = encryption {
@@ -312,7 +312,7 @@ impl LlmResolverService {
     }
 
     /// Resolve API key for a provider (delegates to shared helper).
-    fn resolve_api_key(&self, provider: &LlmProviderRow) -> Result<Option<String>> {
+    fn resolve_api_key(&self, provider: &ProviderRow) -> Result<Option<String>> {
         resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider)
     }
 
@@ -431,7 +431,7 @@ mod tests {
     // --- Integration tests with in-memory storage ---
 
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateLlmModelRow, CreateLlmProviderRow};
+    use crate::storage::models::{CreateModelRow, CreateProviderRow};
 
     /// Helper: create resolver with in-memory storage and seed a provider + model.
     /// Returns (resolver, model_uuid).
@@ -443,7 +443,7 @@ mod tests {
         let provider_row = db
             .create_llm_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Test OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -457,7 +457,7 @@ mod tests {
         let model_row = db
             .create_llm_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
@@ -561,7 +561,7 @@ mod tests {
         let provider_row = db
             .create_llm_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Anthropic".to_string(),
                     provider_type: "anthropic".to_string(),
                     base_url: None,
@@ -575,7 +575,7 @@ mod tests {
         let model_a = db
             .create_llm_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "claude-3-opus".to_string(),
                     display_name: "Claude 3 Opus".to_string(),
@@ -593,7 +593,7 @@ mod tests {
         let model_b = db
             .create_llm_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "claude-3-sonnet".to_string(),
                     display_name: "Claude 3 Sonnet".to_string(),
@@ -633,7 +633,7 @@ mod tests {
         let provider_row = db
             .create_llm_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -647,7 +647,7 @@ mod tests {
         let model = db
             .create_llm_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
@@ -740,7 +740,7 @@ mod tests {
         let provider = db
             .create_llm_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -762,7 +762,7 @@ mod tests {
         let provider = db
             .create_llm_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -785,7 +785,7 @@ mod tests {
         let provider = db
             .create_llm_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Anthropic".to_string(),
                     provider_type: "anthropic".to_string(),
                     base_url: None,
@@ -811,7 +811,7 @@ mod tests {
         let provider = db
             .create_llm_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -898,7 +898,7 @@ mod tests {
         let provider_row = db
             .create_llm_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -912,7 +912,7 @@ mod tests {
         let model = db
             .create_llm_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),

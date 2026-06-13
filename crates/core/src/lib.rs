@@ -7,7 +7,7 @@
 //!
 //! The crate is deliberately storage-agnostic. Agent execution is expressed in
 //! terms of traits such as [`MessageRetriever`], [`ToolExecutor`],
-//! [`EventEmitter`], and [`LlmProviderStore`], while host crates decide whether
+//! [`EventEmitter`], and [`ProviderStore`], while host crates decide whether
 //! those traits are backed by memory, PostgreSQL, gRPC, or another system.
 //!
 //! # Main Surfaces
@@ -201,7 +201,7 @@ pub use runtime_context::{
 };
 pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore, ModelWithProvider,
+    ImageResolver, KeyInfo, LeasedResourceStore, ProviderStore, ResolvedModel,
     NoopDurableToolResultStore, NoopEventEmitter, NoopPartialStreamStore, NoopStreamHeartbeater,
     NoopSubagentSpawnStore, OutboundToolRateLimiter, PartialStreamState, PartialStreamStore,
     ResolvedImage, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
@@ -267,7 +267,7 @@ pub use llm_driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverFactory, DriverRegistry,
     LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
-    ProviderConfig, ProviderType, ServiceKind,
+    ProviderConfig, DriverId, ServiceKind,
 };
 
 // LLM retry types re-exports
@@ -371,7 +371,7 @@ pub use capability_types::{
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
 // Domain entity re-exports
-// Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
+// Note: Provider entity is in llm_models module. Import as: everruns_core::llm_models::Provider
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
@@ -413,8 +413,8 @@ pub use leased_resource::{
 };
 pub use llm_model_profiles::{get_model_profile, get_model_vendor};
 pub use llm_models::{
-    CostTier, LlmModel, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile,
-    LlmModelSource, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
+    CostTier, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile,
+    ModelSource, ModelWithProvider, ProviderStatus, Modality,
     ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, build_mcp_proxy_tools};

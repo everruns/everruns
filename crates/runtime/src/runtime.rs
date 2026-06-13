@@ -23,8 +23,7 @@ use everruns_core::events::{
     ToolCompletedData,
 };
 use everruns_core::harness::Harness;
-use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
-use everruns_core::llm_models::LlmProviderType;
+use everruns_core::llm_driver_registry::{DriverRegistry, DriverId};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
@@ -34,7 +33,7 @@ use everruns_core::session::{Session, SessionStatus};
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
@@ -166,7 +165,7 @@ impl TurnResult {
 pub struct InProcessRuntimeBuilder {
     platform_definition: PlatformDefinition,
     llm_sim_config: Option<LlmSimConfig>,
-    default_model: Option<ModelWithProvider>,
+    default_model: Option<ResolvedModel>,
     backends: Option<RuntimeBackends>,
     session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
@@ -255,7 +254,7 @@ impl InProcessRuntimeBuilder {
     }
 
     /// Set the runtime default model used when sessions/agents do not override it.
-    pub fn default_model(mut self, model: ModelWithProvider) -> Self {
+    pub fn default_model(mut self, model: ResolvedModel) -> Self {
         self.default_model = Some(model);
         self
     }
@@ -405,14 +404,14 @@ impl InProcessRuntimeBuilder {
             // built-in LlmSim driver, and the builder's config takes precedence.
             self.platform_definition
                 .driver_registry_mut()
-                .register_or_replace(ProviderType::LlmSim, move |_config| {
+                .register_or_replace(DriverId::LlmSim, move |_config| {
                     Box::new(driver.clone())
                 });
 
             if self.default_model.is_none() {
-                self.default_model = Some(ModelWithProvider {
+                self.default_model = Some(ResolvedModel {
                     model: "llmsim-model".to_string(),
-                    provider_type: LlmProviderType::LlmSim,
+                    provider_type: DriverId::LlmSim,
                     api_key: Some("fake-key".to_string()),
                     base_url: None,
                     provider_metadata: None,
@@ -988,7 +987,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         self.session_store.clone()
     }
 
-    fn provider_store(&self, _org_id: i64) -> Arc<dyn LlmProviderStore> {
+    fn provider_store(&self, _org_id: i64) -> Arc<dyn ProviderStore> {
         self.provider_store.clone()
     }
 

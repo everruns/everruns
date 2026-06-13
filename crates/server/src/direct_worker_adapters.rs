@@ -14,13 +14,13 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider, PaymentAuthority,
+    BudgetChecker, CreateStoredImage, ImageArtifactStore, ResolvedModel, PaymentAuthority,
     ProviderCredentialStore, ProviderCredentials, ResolvedImage, StoredImage, StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EgressService, EventData, Harness,
-    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    HarnessStatus, DriverId, Message, MessageRole, Session, SessionStatus, ToolDefinition,
     ToolResultContentPart, UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -669,11 +669,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // LLM Provider Operations
     // =========================================================================
 
-    async fn get_model_with_provider(
+    async fn get_resolved_model(
         &self,
         org_id: i64,
         model_id: Uuid,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         let resolved = self
             .llm_resolver
             .resolve_model(org_id, model_id)
@@ -683,7 +683,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve model")
             })?;
 
-        Ok(resolved.map(|r| ModelWithProvider {
+        Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
@@ -692,7 +692,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
         let resolved = self
             .llm_resolver
             .resolve_default_model(org_id)
@@ -702,7 +702,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve default model")
             })?;
 
-        Ok(resolved.map(|r| ModelWithProvider {
+        Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
@@ -1395,15 +1395,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
-            self.get_model_with_provider(org_id, model_id.uuid())
+            self.get_resolved_model(org_id, model_id.uuid())
                 .await?
         } else if let Some(ref a) = agent {
             if let Some(model_id) = a.default_model_id {
-                self.get_model_with_provider(org_id, model_id.uuid())
+                self.get_resolved_model(org_id, model_id.uuid())
                     .await?
             } else if let Some(ref h) = harness {
                 if let Some(model_id) = h.default_model_id {
-                    self.get_model_with_provider(org_id, model_id.uuid())
+                    self.get_resolved_model(org_id, model_id.uuid())
                         .await?
                 } else {
                     self.get_default_model(org_id).await?
@@ -1413,7 +1413,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             }
         } else if let Some(ref h) = harness {
             if let Some(model_id) = h.default_model_id {
-                self.get_model_with_provider(org_id, model_id.uuid())
+                self.get_resolved_model(org_id, model_id.uuid())
                     .await?
             } else {
                 self.get_default_model(org_id).await?
@@ -1941,7 +1941,7 @@ impl DirectWorkerAdapters {
 // Helper Functions
 // =============================================================================
 
-fn string_to_provider_type(s: &str) -> LlmProviderType {
+fn string_to_provider_type(s: &str) -> DriverId {
     // FromStr is infallible: unknown ids become External providers, preserving
     // the id so embedder-defined providers resolve correctly.
     s.to_lowercase().parse().unwrap_or_else(|_| unreachable!())
@@ -4141,10 +4141,10 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn get_model_with_provider_returns_none_for_missing() {
+    async fn get_resolved_model_returns_none_for_missing() {
         let adapters = test_adapters();
         let result = adapters
-            .get_model_with_provider(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+            .get_resolved_model(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
             .await
             .unwrap();
         assert!(result.is_none());

@@ -16,8 +16,8 @@ use everruns_core::Capability;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
-use everruns_core::traits::ModelWithProvider;
+use everruns_core::llm_models::DriverId;
+use everruns_core::traits::ResolvedModel;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -202,19 +202,19 @@ fn create_driver_registry() -> DriverRegistry {
     registry
 }
 
-fn get_provider_type(model: &str) -> LlmProviderType {
+fn get_provider_type(model: &str) -> DriverId {
     if model.starts_with("claude") {
-        LlmProviderType::Anthropic
+        DriverId::Anthropic
     } else {
-        LlmProviderType::Openai
+        DriverId::OpenAI
     }
 }
 
-fn get_api_key(provider_type: &LlmProviderType) -> Result<String> {
+fn get_api_key(provider_type: &DriverId) -> Result<String> {
     let key_name = match provider_type {
-        LlmProviderType::Anthropic => "ANTHROPIC_API_KEY",
-        LlmProviderType::Openai | LlmProviderType::OpenaiCompletions => "OPENAI_API_KEY",
-        LlmProviderType::LlmSim => return Ok(String::new()),
+        DriverId::Anthropic => "ANTHROPIC_API_KEY",
+        DriverId::OpenAI | DriverId::OpenAICompletions => "OPENAI_API_KEY",
+        DriverId::LlmSim => return Ok(String::new()),
         // This research harness only drives the providers above.
         other => anyhow::bail!("unsupported provider for eval harness: {other}"),
     };
@@ -404,7 +404,7 @@ async fn execute_with_agentic_loop(
     let mut backoff_ms = INITIAL_BACKOFF_MS;
 
     loop {
-        let model = ModelWithProvider {
+        let model = ResolvedModel {
             model: config.model.clone(),
             provider_type: provider_type.clone(),
             api_key: Some(api_key.clone()),

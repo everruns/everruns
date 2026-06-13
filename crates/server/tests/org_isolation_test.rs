@@ -11,9 +11,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use everruns_server::storage::{
-    CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
-    CreateOrganizationRow, CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateLlmModel,
-    UpdateLlmProvider, UpdateMcpServer,
+    CreateImageRow, CreateModelRow, CreateProviderRow, CreateMcpServerRow,
+    CreateOrganizationRow, CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateModel,
+    UpdateProvider, UpdateMcpServer,
 };
 
 use everruns_server::api::common::verify_session_ownership;
@@ -171,7 +171,7 @@ async fn test_llm_provider_positive_own_org() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "My Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -194,7 +194,7 @@ async fn test_llm_provider_positive_own_org() {
         .update_llm_provider(
             ORG1,
             provider.id.uuid(),
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("Renamed Provider".to_string()),
                 provider_type: None,
                 base_url: None,
@@ -223,7 +223,7 @@ async fn test_llm_provider_negative_cross_org() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Org1 Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -246,7 +246,7 @@ async fn test_llm_provider_negative_cross_org() {
         db.update_llm_provider(
             org2,
             provider.id.uuid(),
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("Hacked".to_string()),
                 provider_type: None,
                 base_url: None,
@@ -285,7 +285,7 @@ async fn test_llm_model_positive_own_org() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -298,7 +298,7 @@ async fn test_llm_model_positive_own_org() {
     let model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
@@ -340,7 +340,7 @@ async fn test_llm_model_positive_own_org() {
         .update_llm_model(
             ORG1,
             model.id.uuid(),
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("GPT-4 Turbo".to_string()),
                 ..Default::default()
             },
@@ -361,7 +361,7 @@ async fn test_llm_model_negative_cross_org() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -374,7 +374,7 @@ async fn test_llm_model_negative_cross_org() {
     let foreign_provider = db
         .create_llm_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Foreign Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -388,7 +388,7 @@ async fn test_llm_model_negative_cross_org() {
     let model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
@@ -428,7 +428,7 @@ async fn test_llm_model_negative_cross_org() {
         db.update_llm_model(
             org2,
             model.id.uuid(),
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("Hacked".to_string()),
                 ..Default::default()
             },
@@ -441,7 +441,7 @@ async fn test_llm_model_negative_cross_org() {
         db.update_llm_model(
             ORG1,
             model.id.uuid(),
-            UpdateLlmModel {
+            UpdateModel {
                 provider_id: Some(foreign_provider.id),
                 ..Default::default()
             },
@@ -470,7 +470,7 @@ async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_referen
     let foreign_provider = db
         .create_llm_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Org2 Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -484,7 +484,7 @@ async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_referen
     let corrupt_model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: foreign_provider.id,
                 model_id: "cross-org-provider-model".to_string(),
                 display_name: "Corrupt Model".to_string(),
@@ -606,7 +606,7 @@ async fn test_multi_org_full_isolation() {
     let org1_provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Org1 Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -620,7 +620,7 @@ async fn test_multi_org_full_isolation() {
     let org1_model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: org1_provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
@@ -671,7 +671,7 @@ async fn test_multi_org_full_isolation() {
     let org2_provider = db
         .create_llm_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Org2 Provider".to_string(),
                 provider_type: "anthropic".to_string(),
                 base_url: None,
@@ -685,7 +685,7 @@ async fn test_multi_org_full_isolation() {
     let org2_model = db
         .create_llm_model(
             org2,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: org2_provider.id,
                 model_id: "claude-3".to_string(),
                 display_name: "Claude 3".to_string(),
@@ -803,7 +803,7 @@ async fn test_default_model_org_isolation() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -818,7 +818,7 @@ async fn test_default_model_org_isolation() {
     let model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
@@ -850,7 +850,7 @@ async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() 
     let foreign_provider = db
         .create_llm_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Org2 Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -864,7 +864,7 @@ async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() 
     let corrupt_model = db
         .create_llm_model(
             ORG1,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: foreign_provider.id,
                 model_id: "cross-org-default-model".to_string(),
                 display_name: "Corrupt Default".to_string(),
@@ -1097,7 +1097,7 @@ async fn test_provider_last_synced_cross_org() {
     let provider = db
         .create_llm_provider(
             ORG1,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,

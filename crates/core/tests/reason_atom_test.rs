@@ -13,16 +13,15 @@ use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore, InMemoryMessageRetriever,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemoryMessageRetriever,
     InMemorySessionStore,
 };
 use everruns_core::llm_driver_registry::LlmCallConfigBuilder;
-use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
-use everruns_core::llm_models::LlmProviderType;
+use everruns_core::llm_driver_registry::{DriverRegistry, DriverId};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
-use everruns_core::traits::{ModelWithProvider, NoopEventEmitter};
+use everruns_core::traits::{ResolvedModel, NoopEventEmitter};
 use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
 use futures::stream;
@@ -38,7 +37,7 @@ async fn setup_test_environment() -> (
     InMemoryAgentStore,
     InMemorySessionStore,
     InMemoryMessageRetriever,
-    InMemoryLlmProviderStore,
+    InMemoryProviderStore,
     HarnessId, // harness_id
     Uuid,      // agent_id
     Uuid,      // session_id
@@ -47,7 +46,7 @@ async fn setup_test_environment() -> (
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
-    let provider_store = InMemoryLlmProviderStore::new();
+    let provider_store = InMemoryProviderStore::new();
 
     // Create a test harness
     let harness_id = HarnessId::from_seed(1);
@@ -150,9 +149,9 @@ async fn setup_test_environment() -> (
     session_store.add_session(session).await;
 
     // Set up a default model using the LlmSim provider
-    let model = ModelWithProvider {
+    let model = ResolvedModel {
         model: "llmsim-test".to_string(),
-        provider_type: LlmProviderType::LlmSim,
+        provider_type: DriverId::LlmSim,
         api_key: Some("fake-api-key".to_string()), // Required by registry but unused by LlmSim
         base_url: None,
         provider_metadata: None,
@@ -174,7 +173,7 @@ async fn setup_test_environment() -> (
 /// Create a custom driver registry with a specific LlmSim configuration
 fn create_custom_driver_registry(config: LlmSimConfig) -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    registry.register(ProviderType::LlmSim, move |_config| {
+    registry.register(DriverId::LlmSim, move |_config| {
         Box::new(LlmSimDriver::new(config.clone()))
     });
     registry
@@ -1045,7 +1044,7 @@ async fn test_reason_atom_does_not_retry_transient_stream_error() {
     let attempts = Arc::new(AtomicUsize::new(0));
     let attempts_for_registry = Arc::clone(&attempts);
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, move |_config| {
+    driver_registry.register(DriverId::LlmSim, move |_config| {
         Box::new(FlakyStreamDriver {
             attempts: Arc::clone(&attempts_for_registry),
         })
@@ -1106,10 +1105,10 @@ async fn test_driver_registry_integration() {
     let mut registry = DriverRegistry::new();
     register_driver(&mut registry);
 
-    assert!(registry.has_driver(&ProviderType::LlmSim));
+    assert!(registry.has_driver(&DriverId::LlmSim));
 
     // Create driver via registry
-    let config = everruns_core::llm_driver_registry::ProviderConfig::new(ProviderType::LlmSim)
+    let config = everruns_core::llm_driver_registry::ProviderConfig::new(DriverId::LlmSim)
         .with_api_key("test-key");
 
     let driver = registry
@@ -1506,7 +1505,7 @@ async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
         .await;
 
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, |_config| {
+    driver_registry.register(DriverId::LlmSim, |_config| {
         Box::new(ToolCallsThenErrorDriver)
     });
 
@@ -1595,7 +1594,7 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
         .await;
 
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, |_config| {
+    driver_registry.register(DriverId::LlmSim, |_config| {
         Box::new(TextThenErrorDriver)
     });
 
@@ -1679,7 +1678,7 @@ async fn test_reason_atom_still_fails_on_pure_stream_error() {
         .await;
 
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, |_config| Box::new(PureErrorDriver));
+    driver_registry.register(DriverId::LlmSim, |_config| Box::new(PureErrorDriver));
 
     let event_emitter = InMemoryEventEmitter::new();
 
@@ -2015,7 +2014,7 @@ fn create_conversation_capturing_driver_registry(
     captured_messages: Arc<Mutex<Vec<everruns_core::LlmMessage>>>,
 ) -> DriverRegistry {
     let mut registry = DriverRegistry::new();
-    registry.register(ProviderType::LlmSim, move |_config| {
+    registry.register(DriverId::LlmSim, move |_config| {
         Box::new(ConversationCapturingDriver {
             captured_messages: captured_messages.clone(),
         })
@@ -2100,7 +2099,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
 
     let mut driver_registry = DriverRegistry::new();
     let driver_clone = driver.clone();
-    driver_registry.register(ProviderType::LlmSim, move |_config| {
+    driver_registry.register(DriverId::LlmSim, move |_config| {
         Box::new(driver_clone.clone())
     });
 
@@ -2223,7 +2222,7 @@ async fn test_empty_session_system_prompt_is_ignored() {
 
     let mut driver_registry = DriverRegistry::new();
     let driver_clone = driver.clone();
-    driver_registry.register(ProviderType::LlmSim, move |_config| {
+    driver_registry.register(DriverId::LlmSim, move |_config| {
         Box::new(driver_clone.clone())
     });
 
@@ -2515,7 +2514,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
         answer: "safe answer".to_string(),
     };
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(ProviderType::LlmSim, move |_config| {
+    driver_registry.register(DriverId::LlmSim, move |_config| {
         Box::new(thinking_driver.clone())
     });
 

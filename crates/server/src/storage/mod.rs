@@ -7,7 +7,7 @@
 // - DbMessageRetriever: implements MessageRetriever for message loading
 // - DbSessionFileStore: implements SessionFileSystem for session filesystem
 // - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
-// - DbLlmProviderStore: implements LlmProviderStore for LLM provider retrieval
+// - DbProviderStore: implements ProviderStore for LLM provider retrieval
 
 pub mod agent_store;
 pub mod backend;
@@ -47,7 +47,7 @@ pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };
-pub use llm_provider_store::{DbLlmProviderStore, create_db_llm_provider_store};
+pub use llm_provider_store::{DbProviderStore, create_db_llm_provider_store};
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;

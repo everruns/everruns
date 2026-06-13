@@ -18,7 +18,7 @@ use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
-    LeasedResourceStore, LlmProviderStore, ModelWithProvider, PaymentAuthority,
+    LeasedResourceStore, ProviderStore, ResolvedModel, PaymentAuthority,
     ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionResourceRegistry,
     SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
     UserConnectionResolver,
@@ -39,7 +39,7 @@ pub struct RuntimeHostTurnContext {
     pub agent: Option<Agent>,
     pub session: Session,
     pub messages: Vec<Message>,
-    pub model: Option<ModelWithProvider>,
+    pub model: Option<ResolvedModel>,
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
 
@@ -92,7 +92,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn session_mutator(&self, org_id: i64) -> Arc<dyn SessionMutator>;
 
-    fn provider_store(&self, org_id: i64) -> Arc<dyn LlmProviderStore>;
+    fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore>;
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
 

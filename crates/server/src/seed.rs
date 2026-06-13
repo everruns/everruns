@@ -11,8 +11,8 @@ use crate::org_init;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{
-        CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-        CreateUserRow, UpdateLlmProvider,
+        CreateModelRow, CreateProviderRow, CreateMcpServerRow, CreateOrganizationRow,
+        CreateUserRow, UpdateProvider,
     },
     password::hash_password,
 };
@@ -1440,7 +1440,7 @@ async fn seed_providers_with_platform_definition(
             );
             continue;
         }
-        let input = CreateLlmProviderRow {
+        let input = CreateProviderRow {
             name: seed.name.to_string(),
             provider_type: seed.provider_type.to_string(),
             base_url: None,
@@ -1591,7 +1591,7 @@ where
         db.update_llm_provider(
             DEFAULT_ORG_ID,
             seed.id,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: None,
                 provider_type: None,
                 base_url: None,
@@ -2173,7 +2173,7 @@ async fn seed_models_with_platform_definition(
             );
             continue;
         }
-        let input = CreateLlmModelRow {
+        let input = CreateModelRow {
             provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
@@ -2635,7 +2635,7 @@ mod tests {
     use super::*;
     use crate::storage::StorageBackend;
     use crate::storage::models::{
-        UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
+        UpdateHarness, UpdateModel, UpdateProvider, UpdateMcpServer,
     };
 
     fn make_db() -> StorageBackend {
@@ -2833,7 +2833,7 @@ mod tests {
         db.update_llm_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: None,
                 provider_type: None,
                 base_url: None,
@@ -3401,7 +3401,7 @@ mod tests {
         db.update_llm_model(
             DEFAULT_ORG_ID,
             seed_ids::GPT_5_2,
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("STALE".to_string()),
                 ..Default::default()
             },
@@ -3431,7 +3431,7 @@ mod tests {
         db.update_llm_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("STALE".to_string()),
                 provider_type: None,
                 base_url: None,

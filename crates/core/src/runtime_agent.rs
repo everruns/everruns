@@ -22,7 +22,7 @@ use crate::config_layer::AgentConfigOverlay;
 use crate::harness::Harness;
 use crate::llm_driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::llm_model_profiles::get_model_profile;
-use crate::llm_models::LlmProviderType;
+use crate::llm_models::DriverId;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -429,7 +429,7 @@ impl RuntimeAgentBuilder {
         // renders the hosted format advertises tool_search for this model:
         // OpenAI (Responses) and Anthropic (Messages). A model id resolves under
         // at most one of these provider profiles, so the other lookup is None.
-        let model_supports_native = [LlmProviderType::Openai, LlmProviderType::Anthropic]
+        let model_supports_native = [DriverId::OpenAI, DriverId::Anthropic]
             .iter()
             .any(|provider| {
                 get_model_profile(provider, &self.runtime_agent.model)

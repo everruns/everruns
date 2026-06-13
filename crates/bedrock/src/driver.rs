@@ -25,7 +25,7 @@ use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::llm_driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, ProviderType,
+    LlmResponseStream, LlmStreamEvent, DriverId,
 };
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
@@ -116,7 +116,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                 "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
                     .to_string(),
         },
-        ..DriverDescriptor::chat_only(ProviderType::Bedrock, |config| {
+        ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             match BedrockChatDriver::new(api_key) {
                 Ok(driver) => Box::new(driver) as BoxedChatDriver,
@@ -648,7 +648,7 @@ mod tests {
         let mut registry = DriverRegistry::new();
         super::register_driver(&mut registry);
 
-        let descriptor = registry.descriptor(&ProviderType::Bedrock).unwrap();
+        let descriptor = registry.descriptor(&DriverId::Bedrock).unwrap();
         assert_eq!(descriptor.display_name, "AWS Bedrock");
         let names: Vec<&str> = descriptor
             .credential_schema

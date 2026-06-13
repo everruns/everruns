@@ -1,11 +1,11 @@
 use crate::domains::common::CommandError;
-use crate::domains::llm_providers::LlmProviderService;
+use crate::domains::llm_providers::ProviderService;
 use everruns_core::typed_id::ProviderId;
 use std::sync::Arc;
 
-pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<LlmProviderService> {
+pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<ProviderService> {
     ctx.llm_provider_service.clone().unwrap_or_else(|| {
-        Arc::new(LlmProviderService::new(
+        Arc::new(ProviderService::new(
             ctx.db.clone(),
             ctx.encryption.clone(),
         ))

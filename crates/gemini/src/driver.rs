@@ -25,7 +25,7 @@ use everruns_core::llm_driver_helpers::{
 use everruns_core::llm_driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, ProviderType,
+    LlmResponseStream, LlmStreamEvent, DriverId,
 };
 use everruns_core::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
@@ -307,7 +307,7 @@ impl ChatDriver for GeminiChatDriver {
         if generation_config.max_output_tokens.is_none() {
             generation_config.max_output_tokens = Some(
                 everruns_core::get_model_profile(
-                    &everruns_core::LlmProviderType::Gemini,
+                    &everruns_core::DriverId::Gemini,
                     &config.model,
                 )
                 .and_then(|p| {
@@ -840,7 +840,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).",
         ),
-        ..DriverDescriptor::chat_only(ProviderType::Gemini, |config| {
+        ..DriverDescriptor::chat_only(DriverId::Gemini, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => GeminiChatDriver::with_base_url(api_key, url),
@@ -1447,7 +1447,7 @@ mod tests {
     fn test_default_max_tokens_from_known_model() {
         // Known Gemini models should resolve max_tokens from profile
         let profile = everruns_core::get_model_profile(
-            &everruns_core::LlmProviderType::Gemini,
+            &everruns_core::DriverId::Gemini,
             "gemini-1.5-pro",
         );
         assert!(profile.is_some(), "gemini-1.5-pro should have a profile");
@@ -1459,7 +1459,7 @@ mod tests {
     fn test_default_max_tokens_unknown_model_falls_back() {
         // Unknown model should return None (triggering the 8192 fallback)
         let profile = everruns_core::get_model_profile(
-            &everruns_core::LlmProviderType::Gemini,
+            &everruns_core::DriverId::Gemini,
             "nonexistent-model-xyz",
         );
         assert!(profile.is_none(), "unknown model should not have a profile");

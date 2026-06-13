@@ -12,7 +12,7 @@ use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     CapabilityRegistry, EgressRequest, EgressResponse, EgressResult, EgressService,
-    EgressStreamResponse, LlmProviderType, ModelWithProvider, PlatformDefinition, ScopedMcpServer,
+    EgressStreamResponse, DriverId, ResolvedModel, PlatformDefinition, ScopedMcpServer,
     ScopedMcpServers, ToolCall,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -125,9 +125,9 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
             LlmSimConfig::fixed("Calling the docs MCP tool.")
                 .with_tool_call_sequence(vec![vec![mcp_tool_call], vec![]]),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

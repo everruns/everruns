@@ -17,7 +17,7 @@ use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
-    LeasedResourceStore, LlmProviderStore, ModelWithProvider, ProviderCredentialStore,
+    LeasedResourceStore, ProviderStore, ResolvedModel, ProviderCredentialStore,
     ProviderCredentials, ResolvedImage, SessionFileSystem, SessionStore, StoredImage,
     StoredImageInfo,
 };
@@ -559,7 +559,7 @@ impl GrpcAdapter {
 
 /// Org-scoped gRPC adapter (carries org_id for authorization).
 ///
-/// Implements: AgentStore, HarnessStore, SessionStore, LlmProviderStore,
+/// Implements: AgentStore, HarnessStore, SessionStore, ProviderStore,
 /// ImageResolver, SessionMutator, SessionScheduleStore, PlatformStore.
 #[derive(Clone)]
 pub struct GrpcOrgAdapter {
@@ -708,7 +708,7 @@ pub type GrpcSessionSqlDbStore = GrpcAdapter;
 pub type GrpcAgentStore = GrpcOrgAdapter;
 pub type GrpcHarnessStore = GrpcOrgAdapter;
 pub type GrpcSessionStore = GrpcOrgAdapter;
-pub type GrpcLlmProviderStore = GrpcOrgAdapter;
+pub type GrpcProviderStore = GrpcOrgAdapter;
 pub type GrpcImageResolver = GrpcOrgAdapter;
 pub type GrpcImageArtifactStore = GrpcOrgAdapter;
 pub type GrpcProviderCredentialStore = GrpcOrgAdapter;
@@ -1370,24 +1370,24 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 }
 
 // ============================================================================
-// LlmProviderStore implementation
+// ProviderStore implementation
 // ============================================================================
 
 #[async_trait]
-impl LlmProviderStore for GrpcOrgAdapter {
-    async fn get_model_with_provider(
+impl ProviderStore for GrpcOrgAdapter {
+    async fn get_resolved_model(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         let mut client = self.client.inner.lock().await;
 
-        let request = proto::GetModelWithProviderRequest {
+        let request = proto::GetResolvedModelRequest {
             model_id: Some(uuid_to_proto(model_id.uuid())),
             org_id: self.org_id,
         };
 
         let response = client
-            .get_model_with_provider(request)
+            .get_resolved_model(request)
             .await
             .map_err(grpc_status_to_error)?;
 
@@ -1400,7 +1400,7 @@ impl LlmProviderStore for GrpcOrgAdapter {
         }
     }
 
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetDefaultModelRequest {
@@ -1455,23 +1455,23 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
 }
 
 fn proto_model_with_provider_to_model(
-    proto: proto::ModelWithProvider,
-) -> Result<ModelWithProvider> {
+    proto: proto::ResolvedModel,
+) -> Result<ResolvedModel> {
     // An empty provider_type is a corrupt/missing proto field; fail fast with
     // a clear store error rather than parsing it into an unusable External("").
     if proto.provider_type.trim().is_empty() {
         return Err(AgentLoopError::store(
-            "empty provider_type in ModelWithProvider proto",
+            "empty provider_type in ResolvedModel proto",
         ));
     }
     // Parsing is otherwise infallible: unknown ids become External providers, so
     // embedder-defined providers round-trip across the worker boundary.
-    let provider_type: everruns_core::LlmProviderType = proto
+    let provider_type: everruns_core::DriverId = proto
         .provider_type
         .parse()
         .unwrap_or_else(|_| unreachable!());
 
-    Ok(ModelWithProvider {
+    Ok(ResolvedModel {
         model: proto.model,
         provider_type,
         api_key: proto.api_key.filter(|s| !s.is_empty()),
@@ -1855,7 +1855,7 @@ pub struct TurnContext {
     pub agent: Option<Agent>,
     pub session: Session,
     pub messages: Vec<Message>,
-    pub model: Option<ModelWithProvider>,
+    pub model: Option<ResolvedModel>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
     pub mcp_tool_definitions: Vec<everruns_core::ToolDefinition>,
 }

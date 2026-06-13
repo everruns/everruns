@@ -22,18 +22,17 @@ use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry}
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
 use crate::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryProviderStore,
     InMemoryMessageRetriever, InMemorySessionStore,
 };
-use crate::llm_driver_registry::{DriverRegistry, ProviderType};
-use crate::llm_models::LlmProviderType;
+use crate::llm_driver_registry::{DriverRegistry, DriverId};
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
 use crate::session::{Session, SessionStatus};
 use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
-use crate::traits::{EventEmitter, ModelWithProvider};
+use crate::traits::{EventEmitter, ResolvedModel};
 use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use crate::typed_id::{AgentId, HarnessId, SessionId, TurnId};
 
@@ -170,7 +169,7 @@ impl TurnResult {
 pub struct InMemoryAgenticLoopBuilder {
     agent_name: String,
     system_prompt: String,
-    model: Option<ModelWithProvider>,
+    model: Option<ResolvedModel>,
     driver_registry: Option<DriverRegistry>,
     llm_sim_config: Option<LlmSimConfig>,
     tools: Vec<Box<dyn Tool>>,
@@ -232,12 +231,12 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::traits::ModelWithProvider;
-    /// use everruns_core::llm_models::LlmProviderType;
+    /// use everruns_core::traits::ResolvedModel;
+    /// use everruns_core::llm_models::DriverId;
     ///
-    /// let model = ModelWithProvider {
+    /// let model = ResolvedModel {
     ///     model: "claude-sonnet-4-20250514".to_string(),
-    ///     provider_type: LlmProviderType::Anthropic,
+    ///     provider_type: DriverId::Anthropic,
     ///     api_key: Some(std::env::var("ANTHROPIC_API_KEY").unwrap()),
     ///     base_url: None,
     /// };
@@ -248,7 +247,7 @@ impl InMemoryAgenticLoopBuilder {
     ///     .build()
     ///     .await?;
     /// ```
-    pub fn model(mut self, model: ModelWithProvider) -> Self {
+    pub fn model(mut self, model: ResolvedModel) -> Self {
         self.model = Some(model);
         self.llm_sim_config = None;
         self
@@ -429,7 +428,7 @@ impl InMemoryAgenticLoopBuilder {
         let configured_model = self.model.as_ref().map(|m| m.model.clone());
 
         // Create provider store and driver registry
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         let driver_registry =
             if let (Some(model), Some(registry)) = (self.model, self.driver_registry) {
                 // Use provided model and driver registry
@@ -438,9 +437,9 @@ impl InMemoryAgenticLoopBuilder {
             } else {
                 // Use LlmSim (default or explicitly configured)
                 let config = self.llm_sim_config.unwrap_or_default();
-                let model = ModelWithProvider {
+                let model = ResolvedModel {
                     model: "llmsim-model".to_string(),
-                    provider_type: LlmProviderType::LlmSim,
+                    provider_type: DriverId::LlmSim,
                     api_key: Some("fake-key".to_string()),
                     base_url: None,
                     provider_metadata: None,
@@ -452,7 +451,7 @@ impl InMemoryAgenticLoopBuilder {
                 // because the Arc counters are shared.
                 let driver = LlmSimDriver::new(config);
                 let mut registry = DriverRegistry::new();
-                registry.register(ProviderType::LlmSim, move |_config| {
+                registry.register(DriverId::LlmSim, move |_config| {
                     Box::new(driver.clone())
                 });
                 registry
@@ -561,7 +560,7 @@ pub struct InMemoryAgenticLoop {
     session_store: InMemorySessionStore,
     message_retriever: InMemoryMessageRetriever,
     #[allow(dead_code)]
-    provider_store: InMemoryLlmProviderStore,
+    provider_store: InMemoryProviderStore,
     event_emitter: BridgingEventEmitter,
     tool_registry: ToolRegistry,
     input_atom: Arc<InputAtom<InMemoryMessageRetriever>>,

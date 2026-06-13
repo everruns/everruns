@@ -15,7 +15,7 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, ModelWithProvider,
+    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, ResolvedModel,
     PaymentAuthority, ProviderCredentialStore, ResolvedImage,
 };
 use everruns_core::typed_id::{
@@ -98,14 +98,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     // =========================================================================
 
     /// Get model with provider configuration
-    async fn get_model_with_provider(
+    async fn get_resolved_model(
         &self,
         org_id: i64,
         model_id: Uuid,
-    ) -> Result<Option<ModelWithProvider>>;
+    ) -> Result<Option<ResolvedModel>>;
 
     /// Get default model configuration
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>>;
+    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>>;
 
     // =========================================================================
     // Image Resolution Operations
@@ -412,7 +412,7 @@ pub struct TurnContext {
     pub agent: Option<Agent>,
     pub session: Session,
     pub messages: Vec<Message>,
-    pub model: Option<ModelWithProvider>,
+    pub model: Option<ResolvedModel>,
     /// MCP tool definitions pre-resolved from agent's MCP capabilities
     pub mcp_tool_definitions: Vec<ToolDefinition>,
 }
@@ -443,7 +443,7 @@ impl<A: WorkerAdapters> SessionAdapter<A> {
 /// Org-scoped adapter: bridges WorkerAdapters → core traits that need org_id.
 ///
 /// Implements: AgentStore, HarnessStore, SessionStore, SessionMutator,
-/// LlmProviderStore, ImageResolver.
+/// ProviderStore, ImageResolver.
 pub struct OrgAdapter<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
@@ -460,7 +460,7 @@ pub type AdapterAgentStore<A> = OrgAdapter<A>;
 pub type AdapterHarnessStore<A> = OrgAdapter<A>;
 pub type AdapterSessionStore<A> = OrgAdapter<A>;
 pub type AdapterSessionMutator<A> = OrgAdapter<A>;
-pub type AdapterLlmProviderStore<A> = OrgAdapter<A>;
+pub type AdapterProviderStore<A> = OrgAdapter<A>;
 pub type AdapterImageResolver<A> = OrgAdapter<A>;
 pub type AdapterMessageRetriever<A> = SessionAdapter<A>;
 pub type AdapterEventEmitter<A> = SessionAdapter<A>;
@@ -507,17 +507,17 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> 
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::LlmProviderStore for OrgAdapter<A> {
-    async fn get_model_with_provider(
+impl<A: WorkerAdapters> everruns_core::traits::ProviderStore for OrgAdapter<A> {
+    async fn get_resolved_model(
         &self,
         model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         self.adapters
-            .get_model_with_provider(self.org_id, model_id.uuid())
+            .get_resolved_model(self.org_id, model_id.uuid())
             .await
     }
 
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         self.adapters.get_default_model(self.org_id).await
     }
 }

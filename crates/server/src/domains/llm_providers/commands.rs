@@ -2,8 +2,8 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
-use everruns_core::llm_models::LlmProvider;
-use everruns_core::{LlmProviderStatus, LlmProviderType, Policy};
+use everruns_core::llm_models::Provider;
+use everruns_core::{ProviderStatus, DriverId, Policy};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -24,13 +24,13 @@ fn sync_service(
 pub struct CreateProvider {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
-    pub provider_type: LlmProviderType,
+    pub provider_type: DriverId,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
 }
 
 impl Command for CreateProvider {
-    type Output = LlmProvider;
+    type Output = Provider;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -46,11 +46,11 @@ impl Command for CreateProvider {
         Some(&LLM_PROVIDER_MANAGE)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmProvider, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         q::service(ctx)
             .create(
                 &ctx.caller,
-                crate::api::llm_providers::CreateLlmProviderRequest {
+                crate::api::llm_providers::CreateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -68,7 +68,7 @@ inventory::submit! { CommandDescriptor::of::<CreateProvider>() }
 pub struct ListProviders;
 
 impl Command for ListProviders {
-    type Output = Vec<LlmProvider>;
+    type Output = Vec<Provider>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -84,7 +84,7 @@ impl Command for ListProviders {
         Some(&LLM_PROVIDER_VIEW)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<LlmProvider>, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<Provider>, CommandError> {
         q::service(ctx)
             .list(&ctx.caller)
             .await
@@ -101,7 +101,7 @@ pub struct GetProvider {
 }
 
 impl Command for GetProvider {
-    type Output = LlmProvider;
+    type Output = Provider;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -121,7 +121,7 @@ impl Command for GetProvider {
         Some("id")
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmProvider, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .get(&ctx.caller, provider_id)
@@ -139,15 +139,15 @@ pub struct UpdateProvider {
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
-    pub provider_type: Option<LlmProviderType>,
+    pub provider_type: Option<DriverId>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
     /// Current lifecycle status.
-    pub status: Option<LlmProviderStatus>,
+    pub status: Option<ProviderStatus>,
 }
 
 impl Command for UpdateProvider {
-    type Output = LlmProvider;
+    type Output = Provider;
 
     fn meta() -> CommandMeta {
         CommandMeta {
@@ -163,13 +163,13 @@ impl Command for UpdateProvider {
         Some(&LLM_PROVIDER_MANAGE)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmProvider, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Provider, CommandError> {
         let provider_id = q::parse_provider_id(&self.id)?;
         q::service(ctx)
             .update(
                 &ctx.caller,
                 provider_id,
-                crate::api::llm_providers::UpdateLlmProviderRequest {
+                crate::api::llm_providers::UpdateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
