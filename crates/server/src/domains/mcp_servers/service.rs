@@ -19,7 +19,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
     Caller, DirectEgressService, EgressService, McpServer, McpServerAuthMode, McpServerStatus,
-    McpServerTransportType, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -676,13 +676,12 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, server.id.uuid())
             .await?;
-        let headers = raw_row
-            .as_ref()
-            .map(|r| {
-                serde_json::from_value::<HashMap<String, String>>(r.headers.clone())
-                    .unwrap_or_default()
-            })
-            .unwrap_or_default();
+        let Some(raw_row) = raw_row else {
+            // Server removed between list and resolve — treat as not found.
+            return Ok(None);
+        };
+        let headers =
+            serde_json::from_value::<HashMap<String, String>>(raw_row.headers).unwrap_or_default();
 
         Ok(Some(McpServerResolved {
             id: server.id.uuid(),
@@ -696,34 +695,7 @@ impl McpServerService {
     }
 
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
-        // Redact header values: keep key names so callers can see which headers
-        // are configured, but never return raw secrets in API responses.
-        let headers: HashMap<String, String> =
-            serde_json::from_value::<HashMap<String, String>>(row.headers.clone())
-                .unwrap_or_default()
-                .into_keys()
-                .map(|k| (k, String::new()))
-                .collect();
-        let settings = Self::settings_from_row(row);
-        let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
-            .then(|| Self::oauth_provider_id(row.id.uuid()));
-
-        McpServer {
-            id: row.id,
-            name: row.name.clone(),
-            description: row.description.clone(),
-            url: row.url.clone(),
-            transport_type: McpServerTransportType::from(row.transport_type.as_str()),
-            status: McpServerStatus::from(row.status.as_str()),
-            auth_mode: settings.auth_mode,
-            oauth_provider_id,
-            api_key_set: row.api_key_set,
-            headers,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            archived_at: row.archived_at,
-            deleted_at: row.deleted_at,
-        }
+        super::queries::row_to_mcp_server(row)
     }
 
     fn row_to_mcp_server_with_tools(row: &McpServerRow) -> McpServerWithTools {
@@ -779,7 +751,7 @@ pub(crate) async fn fetch_mcp_tools(
 mod tests {
     use super::*;
     use crate::storage::{EncryptionService, StorageBackend, models::CreateMcpServerRow};
-    use everruns_core::OrgRole;
+    use everruns_core::{McpServerTransportType, OrgRole};
 
     fn test_caller(org_id: i64) -> Caller {
         Caller {

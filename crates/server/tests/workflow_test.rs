@@ -2928,8 +2928,11 @@ async fn test_mcp_server_crud() {
         "Header key must be present"
     );
     assert_eq!(
-        server_with_headers.headers.get("X-Custom-Header"),
-        Some(&String::new()),
+        server_with_headers
+            .headers
+            .get("X-Custom-Header")
+            .map(String::as_str),
+        Some(""),
         "Header values must be redacted in API responses"
     );
     println!(
