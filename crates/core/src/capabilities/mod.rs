@@ -131,6 +131,7 @@ mod session_sql_database;
 mod session_storage;
 mod session_tasks;
 mod skills;
+mod skills_scoped;
 mod stateless_todo_list;
 mod subagents;
 mod system_commands;
@@ -278,6 +279,9 @@ pub use session_storage::{
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
+pub use skills_scoped::{
+    ScopedSkillsCapability, SkillDirResolver, SkillScope, SkillsConfig, VfsSkillDirResolver,
+};
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
