@@ -141,7 +141,6 @@ mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
 mod web_fetch;
-mod web_fetch_egress;
 
 // Re-export capabilities
 pub use a2a_delegation::{

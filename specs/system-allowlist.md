@@ -93,7 +93,7 @@ allowlist also lists it. The system allowlist always wins.
 
 When `ToolContext.egress_service` is present (always true in the runtime),
 `web_fetch` injects the egress boundary as fetchkit's HTTP transport
-(`crates/core/src/capabilities/web_fetch_egress.rs`), so the allowlist is
+(`crates/core/src/capabilities/web_fetch/egress_transport.rs`), so the allowlist is
 enforced at the boundary for every hop like any other egress traffic.
 
 On both paths the tool pre-checks the initial URL and returns the distinct

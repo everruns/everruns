@@ -144,7 +144,7 @@ Deployment properties:
    `UtilityLlmService` follows with provider-driver migration.
 3. Move fetchkit/web_fetch and any future bashkit HTTP hooks onto it.
    *Done for web_fetch*: runtime contexts route through
-   `crates/core/src/capabilities/web_fetch_egress.rs`; the fetchkit direct
+   `crates/core/src/capabilities/web_fetch/egress_transport.rs`; the fetchkit direct
    client remains only as the fallback for contexts without an egress service
    (see `specs/fetchkit.md`).
 4. Move LLM drivers and model discovery onto it.

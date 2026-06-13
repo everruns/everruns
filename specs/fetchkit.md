@@ -10,7 +10,7 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 - **Egress path (default in the runtime)**: when `ToolContext.egress_service`
   is present, fetchkit's `HttpTransport` (fetchkit >= 0.4) is injected via
   `ToolBuilder::transport` with `EgressHttpTransport`
-  (`crates/core/src/capabilities/web_fetch_egress.rs`). fetchkit keeps the
+  (`crates/core/src/capabilities/web_fetch/egress_transport.rs`). fetchkit keeps the
   whole pipeline — specialized fetchers (GitHub, Wikipedia, arXiv, …), SSRF
   via `DnsPolicy` (resolve-then-check; pinned addresses forwarded to
   `EgressRequest.pinned_addrs`), per-hop redirect validation, bot-auth
