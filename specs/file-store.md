@@ -91,6 +91,19 @@ Implementations MUST:
 - Never interpret backslashes as separators or environment variables as
   expansions. Paths are opaque strings of slash-separated segments.
 
+### Display Paths
+
+`/workspace` is the canonical tool namespace, but it is not always the most
+accurate user-facing label. `SessionFileSystem` implementations may expose a
+display root and display paths for capability results and prompt guidance.
+
+Default in-memory and storage-backed implementations display `/workspace`,
+matching the server workspace model. `RealDiskFileStore` displays its
+canonical host root and accepts host-absolute paths under that root as aliases
+for the same canonical session paths. This lets embedders show paths like
+`/Users/alex/project/src/lib.rs` while preserving `/workspace/src/lib.rs` as a
+valid compatibility input.
+
 ### Encoding
 
 File content is round-tripped through two encodings:

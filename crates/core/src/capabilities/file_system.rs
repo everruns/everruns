@@ -12,12 +12,12 @@
 //! - `delete_file`: Delete a file or directory
 //! - `stat_file`: Get file metadata
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
-use crate::traits::ToolContext;
+use crate::traits::{SessionFileSystem, ToolContext};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -161,15 +161,8 @@ fn normalize_path(path: &str) -> String {
     }
 }
 
-/// Add workspace prefix back to a path for display to the user
-fn add_workspace_prefix(path: &str) -> String {
-    if path == "/" {
-        WORKSPACE_PREFIX.to_string()
-    } else if path.starts_with('/') {
-        format!("{}{}", WORKSPACE_PREFIX, path)
-    } else {
-        format!("{}/{}", WORKSPACE_PREFIX, path)
-    }
+fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
+    file_store.display_path(path)
 }
 
 fn file_content_hash(content: &str, encoding: &str) -> crate::error::Result<String> {
@@ -435,6 +428,7 @@ pub const SESSION_FILE_SYSTEM_CAPABILITY_ID: &str = "session_file_system";
 /// Session File System capability - provides file operations for session storage
 pub struct FileSystemCapability;
 
+#[async_trait]
 impl Capability for FileSystemCapability {
     fn id(&self) -> &str {
         SESSION_FILE_SYSTEM_CAPABILITY_ID
@@ -480,20 +474,34 @@ impl Capability for FileSystemCapability {
         Some("File Operations")
     }
 
-    fn system_prompt_addition(&self) -> Option<&str> {
+    async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
-        // Constraints the model cannot infer from tool schemas: workspace
-        // root path and a behavioral nudge against guessing. Sandbox-tool
-        // routing is dynamic — when sandbox tools are present, their own
-        // capability prompt names them; we don't preadvertise here.
-        const BASE: &str = concat!(
-            "Workspace root: `/workspace`. All file paths must start with `/workspace`. ",
-            "Directories are created on write. ",
-            "Read files before claiming what they contain — never speculate about code you have not opened.",
-        );
-        static PROMPT: std::sync::LazyLock<String> =
-            std::sync::LazyLock::new(|| format!("{}{}", BASE, READ_ECONOMY_HINT));
-        Some(PROMPT.as_str())
+        let root = ctx
+            .file_store
+            .as_ref()
+            .map(|store| store.display_root())
+            .unwrap_or_else(|| WORKSPACE_PREFIX.to_string());
+        let root_guidance = if root == WORKSPACE_PREFIX {
+            format!(
+                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`. "
+            )
+        } else {
+            format!(
+                "Workspace root: `{root}`. `{WORKSPACE_PREFIX}` is also accepted as an alias for this root. "
+            )
+        };
+        Some(format!(
+            "<capability id=\"{}\">\n{}Directories are created on write. Read files before claiming what they contain — never speculate about code you have not opened.{}\n</capability>",
+            self.id(),
+            root_guidance,
+            READ_ECONOMY_HINT
+        ))
+    }
+
+    fn system_prompt_preview(&self) -> Option<String> {
+        Some(format!(
+            "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`."
+        ))
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -609,7 +617,7 @@ impl Tool for ReadFileTool {
 
         // Normalize path to strip /workspace prefix for storage
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .read_file(context.session_id, &normalized_path)
@@ -906,7 +914,7 @@ impl Tool for WriteFileTool {
 
         // Normalize path to strip /workspace prefix for storage
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .write_file(context.session_id, &normalized_path, content, encoding)
@@ -1052,7 +1060,7 @@ impl Tool for EditFileTool {
         };
 
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         let existing = match file_store
             .read_file(context.session_id, &normalized_path)
@@ -1282,7 +1290,7 @@ impl Tool for ListDirectoryTool {
 
         // Normalize path to strip /workspace prefix for storage
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .list_directory(context.session_id, &normalized_path)
@@ -1297,7 +1305,7 @@ impl Tool for ListDirectoryTool {
                     .map(|f| {
                         json!({
                             "name": f.name,
-                            "path": add_workspace_prefix(&f.path),
+                            "path": fs_display_path(file_store.as_ref(), &f.path),
                             "is_directory": f.is_directory,
                             "size_bytes": f.size_bytes,
                             "is_readonly": f.is_readonly
@@ -1457,7 +1465,7 @@ impl Tool for GrepFilesTool {
                     .take(limit)
                     .map(|m| {
                         json!({
-                            "path": add_workspace_prefix(&m.path),
+                            "path": fs_display_path(file_store.as_ref(), &m.path),
                             "line_number": m.line_number,
                             "line": m.line
                         })
@@ -1591,7 +1599,7 @@ impl Tool for DeleteFileTool {
 
         // Normalize path to strip /workspace prefix for storage
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .delete_file(context.session_id, &normalized_path, recursive)
@@ -1691,14 +1699,14 @@ impl Tool for StatFileTool {
 
         // Normalize path to strip /workspace prefix for storage
         let normalized_path = normalize_path(path);
-        let display_path = add_workspace_prefix(&normalized_path);
+        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .stat_file(context.session_id, &normalized_path)
             .await
         {
             Ok(Some(stat)) => ToolExecutionResult::success(json!({
-                "path": add_workspace_prefix(&stat.path),
+                "path": fs_display_path(file_store.as_ref(), &stat.path),
                 "name": stat.name,
                 "exists": true,
                 "is_directory": stat.is_directory,
@@ -1790,9 +1798,17 @@ mod tests {
     struct MockFileStore {
         files: Mutex<HashMap<String, StoredFile>>,
         conditional_write_injections: Mutex<HashMap<String, StoredFile>>,
+        display_root: Option<String>,
     }
 
     impl MockFileStore {
+        fn with_display_root(root: &str) -> Self {
+            Self {
+                display_root: Some(root.to_string()),
+                ..Self::default()
+            }
+        }
+
         fn insert(&self, path: &str, file: StoredFile) {
             self.files.lock().unwrap().insert(path.to_string(), file);
         }
@@ -1857,6 +1873,26 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn display_root(&self) -> String {
+            self.display_root
+                .clone()
+                .unwrap_or_else(|| WORKSPACE_PREFIX.to_string())
+        }
+
+        fn display_path(&self, path: &str) -> String {
+            match &self.display_root {
+                Some(root) if path == "/" => root.clone(),
+                Some(root) => format!(
+                    "{}/{}",
+                    root.trim_end_matches('/'),
+                    path.trim_start_matches('/')
+                ),
+                None if path == "/" => WORKSPACE_PREFIX.to_string(),
+                None if path.starts_with('/') => format!("{WORKSPACE_PREFIX}{path}"),
+                None => format!("{WORKSPACE_PREFIX}/{path}"),
+            }
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -2119,26 +2155,44 @@ mod tests {
     }
 
     #[test]
-    fn test_add_workspace_prefix_root() {
-        assert_eq!(add_workspace_prefix("/"), "/workspace");
+    fn test_display_path_root_defaults_to_workspace_namespace() {
+        let store = MockFileStore::default();
+        assert_eq!(fs_display_path(&store, "/"), "/workspace");
     }
 
     #[test]
-    fn test_add_workspace_prefix_file() {
-        assert_eq!(add_workspace_prefix("/test.txt"), "/workspace/test.txt");
+    fn test_display_path_file_defaults_to_workspace_namespace() {
+        let store = MockFileStore::default();
+        assert_eq!(fs_display_path(&store, "/test.txt"), "/workspace/test.txt");
     }
 
     #[test]
-    fn test_add_workspace_prefix_nested() {
+    fn test_display_path_nested_defaults_to_workspace_namespace() {
+        let store = MockFileStore::default();
         assert_eq!(
-            add_workspace_prefix("/foo/bar.txt"),
+            fs_display_path(&store, "/foo/bar.txt"),
             "/workspace/foo/bar.txt"
         );
     }
 
     #[test]
-    fn test_add_workspace_prefix_no_leading_slash() {
-        assert_eq!(add_workspace_prefix("test.txt"), "/workspace/test.txt");
+    fn test_display_path_no_leading_slash_defaults_to_workspace_namespace() {
+        let store = MockFileStore::default();
+        assert_eq!(fs_display_path(&store, "test.txt"), "/workspace/test.txt");
+    }
+
+    #[tokio::test]
+    async fn read_file_uses_store_display_path() {
+        let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
+        store.add_text_file("/notes.txt", "hello");
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({ "path": "/workspace/notes.txt" }), &context)
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["path"], "/host/repo/notes.txt");
     }
 
     #[test]
@@ -2201,14 +2255,32 @@ mod tests {
         assert!(tool_names.contains(&"stat_file"));
     }
 
-    #[test]
-    fn test_capability_has_system_prompt() {
+    #[tokio::test]
+    async fn test_capability_has_system_prompt() {
         let cap = FileSystemCapability;
-        let prompt = cap.system_prompt_addition().unwrap();
+        let ctx = SystemPromptContext::without_file_store(SessionId::new());
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(prompt.contains("/workspace"));
         assert!(prompt.contains("File reading economy"));
         assert!(prompt.contains("offset"));
         assert!(prompt.contains("total_lines"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_uses_store_display_root() {
+        let cap = FileSystemCapability;
+        let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
+        let ctx = SystemPromptContext {
+            session_id: SessionId::new(),
+            locale: None,
+            file_store: Some(store),
+            model: None,
+        };
+
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        assert!(prompt.contains("Workspace root: `/host/repo`"));
+        assert!(prompt.contains("`/workspace` is also accepted"));
     }
 
     #[test]
