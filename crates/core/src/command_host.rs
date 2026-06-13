@@ -492,7 +492,7 @@ mod tests {
         InMemoryMessageRetriever, InMemorySessionStore,
     };
     use crate::llm_driver_registry::{LlmStreamEvent, DriverId};
-    use crate::llm_models::DriverId;
+    use crate::provider::DriverId;
     use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
     use crate::message_retriever::InputMessage;
     use crate::session::SessionStatus;

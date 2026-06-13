@@ -3,13 +3,13 @@
 // On create/update/delete, the LLM resolver cache is invalidated so that
 // subsequent model resolutions pick up the new provider config.
 
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{Caller, ProviderStatus, DriverId, Permission, Policy, Rule};
 use reqwest::Url;
@@ -17,7 +17,7 @@ use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::llm_providers::{CreateProviderRequest, UpdateProviderRequest};
+use crate::api::providers::{CreateProviderRequest, UpdateProviderRequest};
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "llm_provider.view",
@@ -31,7 +31,7 @@ pub const LLM_PROVIDER_MANAGE: Policy = Policy {
 pub struct ProviderService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
-    llm_resolver: Option<Arc<LlmResolverService>>,
+    provider_resolver: Option<Arc<ProviderResolverService>>,
 }
 
 impl ProviderService {
@@ -39,25 +39,25 @@ impl ProviderService {
         Self {
             db,
             encryption,
-            llm_resolver: None,
+            provider_resolver: None,
         }
     }
 
     pub fn with_resolver(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        resolver: Arc<LlmResolverService>,
+        resolver: Arc<ProviderResolverService>,
     ) -> Self {
         Self {
             db,
             encryption,
-            llm_resolver: Some(resolver),
+            provider_resolver: Some(resolver),
         }
     }
 
     /// Invalidate resolver cache after provider mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
-        if let Some(ref resolver) = self.llm_resolver {
+        if let Some(ref resolver) = self.provider_resolver {
             resolver.invalidate_cache(org_id).await;
         }
     }

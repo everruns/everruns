@@ -7,7 +7,7 @@
 
 use crate::agent::Agent;
 use crate::harness::Harness;
-use crate::llm_models::DriverId;
+use crate::provider::DriverId;
 use crate::session::Session;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ResolvedModel;

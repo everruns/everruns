@@ -5,7 +5,7 @@
 //
 // See specs/budgeting.md for full specification.
 
-use everruns_core::llm_models::DriverId;
+use everruns_core::provider::DriverId;
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_core::EventListener;
@@ -14,7 +14,7 @@ use everruns_core::budget::{
     LedgerEntry,
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
-use everruns_core::llm_model_profiles::get_model_profile;
+use everruns_core::model_profiles::get_model_profile;
 use everruns_core::typed_id::{AgentId, BudgetId, SessionId};
 use everruns_core::{UserFacingError, user_facing_error_codes};
 use std::collections::HashSet;

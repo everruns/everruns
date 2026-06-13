@@ -21,8 +21,8 @@ use crate::capabilities::{
 use crate::config_layer::AgentConfigOverlay;
 use crate::harness::Harness;
 use crate::llm_driver_registry::{PromptCacheConfig, ToolSearchConfig};
-use crate::llm_model_profiles::get_model_profile;
-use crate::llm_models::DriverId;
+use crate::model_profiles::get_model_profile;
+use crate::provider::DriverId;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 

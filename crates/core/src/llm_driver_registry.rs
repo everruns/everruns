@@ -93,7 +93,7 @@ pub struct DiscoveredModel {
     pub owned_by: Option<String>,
     /// Structured profile built from provider API metadata (capabilities, limits).
     /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
-    pub discovered_profile: Option<crate::llm_models::ModelProfile>,
+    pub discovered_profile: Option<crate::model::ModelProfile>,
 }
 
 /// Metadata about LLM completion
@@ -1051,7 +1051,7 @@ impl LlmMessage {
 // Driver Factory Types
 // ============================================================================
 
-pub use crate::llm_models::DriverId;
+pub use crate::provider::DriverId;
 
 /// Extra provider-specific authentication/metadata beyond an API key.
 ///

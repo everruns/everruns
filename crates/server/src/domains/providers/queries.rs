@@ -1,5 +1,5 @@
 use crate::domains::common::CommandError;
-use crate::domains::llm_providers::ProviderService;
+use crate::domains::providers::ProviderService;
 use everruns_core::typed_id::ProviderId;
 use std::sync::Arc;
 

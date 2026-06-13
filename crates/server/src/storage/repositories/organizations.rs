@@ -88,7 +88,7 @@ impl Database {
     /// Get a provider with its decrypted API key from database.
     ///
     /// Note: Environment variable fallback (DEFAULT_*_API_KEY) is handled
-    /// at the service layer (LlmResolverService), not here.
+    /// at the service layer (ProviderResolverService), not here.
     pub fn get_provider_with_api_key(
         &self,
         provider: &ProviderRow,

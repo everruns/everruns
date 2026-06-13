@@ -779,21 +779,21 @@ impl ServerAppBuilder {
             }
         });
         let driver_registry = Arc::new(platform_definition.driver_registry().clone());
-        let llm_resolver = Arc::new(services::LlmResolverService::new(
+        let provider_resolver = Arc::new(services::ProviderResolverService::new(
             db.clone(),
             encryption.clone(),
         ));
-        let llm_providers_state = api::llm_providers::AppState::new(
+        let llm_providers_state = api::providers::AppState::new(
             db.clone(),
             encryption.clone(),
             driver_registry.clone(),
             auth_state.clone(),
-            Some(llm_resolver.clone()),
+            Some(provider_resolver.clone()),
         );
-        let llm_models_state = api::llm_models::AppState::new(
+        let llm_models_state = api::models::AppState::new(
             db.clone(),
             auth_state.clone(),
-            Some(llm_resolver.clone()),
+            Some(provider_resolver.clone()),
         );
         let voice_state = api::voice::AppState::new(
             db.clone(),
@@ -802,7 +802,7 @@ impl ServerAppBuilder {
             api::voice::AppDependencies {
                 runner: runner.clone(),
                 message_service: messages_state.message_service.clone(),
-                llm_resolver: llm_resolver.clone(),
+                provider_resolver: provider_resolver.clone(),
                 event_delivery: event_delivery.clone(),
             },
             platform_definition.as_ref(),
@@ -826,7 +826,7 @@ impl ServerAppBuilder {
             crate::domains::session_commands::SessionCommandService::new(
                 db.clone(),
                 event_service.clone(),
-                llm_resolver.clone(),
+                provider_resolver.clone(),
                 mcp_server_service.clone(),
                 platform_definition.capability_registry().clone(),
                 driver_registry.as_ref().clone(),
@@ -1149,8 +1149,8 @@ impl ServerAppBuilder {
             .merge(api::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
-            .merge(api::llm_models::routes(llm_models_state))
-            .merge(api::llm_providers::routes(llm_providers_state))
+            .merge(api::models::routes(llm_models_state))
+            .merge(api::providers::routes(llm_providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::plugins::routes(plugins_state))
             .merge(api::capabilities::routes(capabilities_state))
@@ -1470,7 +1470,7 @@ impl ServerAppBuilder {
             let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
-            let grpc_llm_resolver = llm_resolver.clone();
+            let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
 
             let grpc_task_broadcaster = task_broadcaster.clone();
@@ -1484,7 +1484,7 @@ impl ServerAppBuilder {
                     Some(grpc_runner),
                     grpc_platform_definition.as_ref().clone(),
                     Some(grpc_virtual_registry),
-                    Some(grpc_llm_resolver),
+                    Some(grpc_provider_resolver),
                 );
                 if let Some(broadcaster) = grpc_task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
@@ -1685,7 +1685,7 @@ impl ServerAppBuilder {
             if let Some(shared_store) = shared_durable_store {
                 tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
-                // Reuse the shared llm_resolver from Phase 5
+                // Reuse the shared provider_resolver from Phase 5
                 let mcp_server_service = Arc::new(
                     crate::domains::mcp_servers::McpServerService::with_egress_service(
                         db.clone(),
@@ -1715,7 +1715,7 @@ impl ServerAppBuilder {
                 let mut adapters = DirectWorkerAdapters::new(
                     db.clone(),
                     event_service.clone(),
-                    llm_resolver,
+                    provider_resolver,
                     mcp_server_service,
                     platform_definition.capability_registry().clone(),
                     platform_definition.driver_registry().clone(),

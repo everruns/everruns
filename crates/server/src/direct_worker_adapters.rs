@@ -40,7 +40,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
 use crate::org_init;
-use crate::services::{EventService, LlmResolverService};
+use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
@@ -157,7 +157,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
 }
 
 struct DirectProviderCredentialStore {
-    llm_resolver: Arc<LlmResolverService>,
+    provider_resolver: Arc<ProviderResolverService>,
     org_id: i64,
 }
 
@@ -168,7 +168,7 @@ impl ProviderCredentialStore for DirectProviderCredentialStore {
         provider_type: &str,
     ) -> Result<Option<ProviderCredentials>> {
         Ok(self
-            .llm_resolver
+            .provider_resolver
             .resolve_provider_credentials(self.org_id, provider_type)
             .await
             .map_err(|e| store_error(format!("Failed to resolve provider credentials: {e}")))?
@@ -265,7 +265,7 @@ pub struct DirectWorkerAdapters {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     budget_service: Option<Arc<BudgetService>>,
-    llm_resolver: Arc<LlmResolverService>,
+    provider_resolver: Arc<ProviderResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
@@ -289,7 +289,7 @@ impl DirectWorkerAdapters {
     pub fn new(
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
-        llm_resolver: Arc<LlmResolverService>,
+        provider_resolver: Arc<ProviderResolverService>,
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
@@ -299,7 +299,7 @@ impl DirectWorkerAdapters {
             db,
             event_service,
             budget_service: None,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             capability_registry,
             driver_registry,
@@ -675,7 +675,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         model_id: Uuid,
     ) -> Result<Option<ResolvedModel>> {
         let resolved = self
-            .llm_resolver
+            .provider_resolver
             .resolve_model(org_id, model_id)
             .await
             .map_err(|e| {
@@ -694,7 +694,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
         let resolved = self
-            .llm_resolver
+            .provider_resolver
             .resolve_default_model(org_id)
             .await
             .map_err(|e| {
@@ -1462,7 +1462,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore> {
         Arc::new(DirectProviderCredentialStore {
-            llm_resolver: self.llm_resolver.clone(),
+            provider_resolver: self.provider_resolver.clone(),
             org_id,
         })
     }
@@ -3045,7 +3045,7 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(db.clone(), None));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             None,
@@ -3060,7 +3060,7 @@ mod tests {
         DirectWorkerAdapters::new(
             db,
             event_service,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             cap_registry,
             driver_registry,
@@ -3630,7 +3630,7 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(db.clone(), None));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             Some(encryption),
@@ -3645,7 +3645,7 @@ mod tests {
         DirectWorkerAdapters::new(
             db,
             event_service,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             cap_registry,
             driver_registry,

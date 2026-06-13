@@ -194,7 +194,7 @@ impl WorkerService for WorkerServiceImpl {
             proto_messages.push(message_to_proto(&message));
         }
 
-        // Get model with provider (decrypted API key) via LlmResolverService
+        // Get model with provider (decrypted API key) via ProviderResolverService
         // Priority: session model > agent model > harness model > default model
         let model_id = session
             .model_id
@@ -202,7 +202,7 @@ impl WorkerService for WorkerServiceImpl {
             .or(harness.as_ref().and_then(|h| h.default_model_id));
 
         let model: Option<proto::ResolvedModel> = if let Some(mid) = model_id {
-            self.llm_resolver_service
+            self.provider_resolver_service
                 .resolve_model(req.org_id, mid.uuid())
                 .await
                 .map_err(|e| {
@@ -212,7 +212,7 @@ impl WorkerService for WorkerServiceImpl {
                 .map(Self::resolved_model_to_proto)
         } else {
             // Try to get the default model
-            self.llm_resolver_service
+            self.provider_resolver_service
                 .resolve_default_model(req.org_id)
                 .await
                 .map_err(|e| {
@@ -796,15 +796,15 @@ impl WorkerService for WorkerServiceImpl {
         let model_id = parse_uuid(req.model_id.as_ref())?;
 
         // Check if encryption service is available
-        if !self.llm_resolver_service.has_encryption() {
+        if !self.provider_resolver_service.has_encryption() {
             return Err(Status::unavailable(
                 "Encryption service not configured - cannot decrypt API keys",
             ));
         }
 
-        // Resolve model via LlmResolverService
+        // Resolve model via ProviderResolverService
         let resolved = self
-            .llm_resolver_service
+            .provider_resolver_service
             .resolve_model(req.org_id, model_id)
             .await
             .map_err(|e| {
@@ -823,16 +823,16 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetDefaultModelResponse>, Status> {
         let req = request.into_inner();
         // Check if encryption service is available
-        if !self.llm_resolver_service.has_encryption() {
+        if !self.provider_resolver_service.has_encryption() {
             tracing::error!("gRPC get_default_model: encryption service not available");
             return Err(Status::unavailable(
                 "Encryption service not configured - cannot decrypt API keys",
             ));
         }
 
-        // Resolve default model via LlmResolverService
+        // Resolve default model via ProviderResolverService
         let resolved = self
-            .llm_resolver_service
+            .provider_resolver_service
             .resolve_default_model(req.org_id)
             .await
             .map_err(|e| {
@@ -2186,7 +2186,7 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<GetDefaultProviderCredentialsResponse>, Status> {
         let req = request.into_inner();
         let resolved = self
-            .llm_resolver_service
+            .provider_resolver_service
             .resolve_provider_credentials(req.org_id, &req.provider_type)
             .await
             .map_err(|e| {

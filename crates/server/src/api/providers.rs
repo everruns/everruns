@@ -3,11 +3,11 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::llm_providers::{
+use crate::domains::providers::{
     CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
     ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
 };
-use crate::services::{LlmResolverService, ModelSyncService};
+use crate::services::{ProviderResolverService, ModelSyncService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -15,7 +15,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::{
     Caller, DriverRegistry, ProviderStatus, DriverId, ResourceConfigResponse,
     evaluate_policies_with,
@@ -43,9 +43,9 @@ impl AppState {
         encryption: Option<Arc<EncryptionService>>,
         driver_registry: Arc<DriverRegistry>,
         auth: AuthState,
-        llm_resolver: Option<Arc<LlmResolverService>>,
+        provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let service = if let Some(resolver) = llm_resolver {
+        let service = if let Some(resolver) = provider_resolver {
             ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
         } else {
             ProviderService::new(db.clone(), encryption.clone())

@@ -7,7 +7,7 @@
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, Event,
     EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, Model,
@@ -80,17 +80,17 @@ use utoipa::OpenApi;
         api::events::stream_sse,
         api::events::list_events,
         api::events::events_summary,
-        api::llm_providers::create_provider,
-        api::llm_providers::list_providers,
-        api::llm_providers::get_provider,
-        api::llm_providers::update_provider,
-        api::llm_providers::delete_provider,
-        api::llm_models::create_model,
-        api::llm_models::list_provider_models,
-        api::llm_models::list_all_models,
-        api::llm_models::get_model,
-        api::llm_models::update_model,
-        api::llm_models::delete_model,
+        api::providers::create_provider,
+        api::providers::list_providers,
+        api::providers::get_provider,
+        api::providers::update_provider,
+        api::providers::delete_provider,
+        api::models::create_model,
+        api::models::list_provider_models,
+        api::models::list_all_models,
+        api::models::get_model,
+        api::models::update_model,
+        api::models::delete_model,
         api::capabilities::list_capabilities,
         api::capabilities::get_capability,
         api::capabilities::declarative_capabilities_config,
@@ -183,9 +183,9 @@ use utoipa::OpenApi;
         api::agents::fork_agent_version,
         api::agents::diff_agent_versions,
         // LLM Providers - additional
-        api::llm_providers::sync_models,
-        api::llm_providers::llm_provider_config,
-        api::llm_models::llm_model_config,
+        api::providers::sync_models,
+        api::providers::llm_provider_config,
+        api::models::llm_model_config,
         api::mcp_servers::mcp_server_config,
         // Users - additional
         api::users::switch_org,
@@ -356,10 +356,10 @@ use utoipa::OpenApi;
             domains::events::EventsSummaryResult, domains::events::EventTypeCountOut,
             Provider, DriverId, ProviderStatus,
             Model, ModelWithProvider,
-            api::llm_providers::CreateProviderRequest,
-            api::llm_providers::UpdateProviderRequest,
-            api::llm_models::CreateModelRequest,
-            api::llm_models::UpdateModelRequest,
+            api::providers::CreateProviderRequest,
+            api::providers::UpdateProviderRequest,
+            api::models::CreateModelRequest,
+            api::models::UpdateModelRequest,
             CapabilityInfo,
             ListResponse<CapabilityInfo>,
             // Harness types

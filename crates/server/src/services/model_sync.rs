@@ -3,11 +3,11 @@
 // Handles synchronization of models from provider APIs into the database.
 // Supports both manual sync (via API endpoint) and background sync (periodic).
 //
-// Decision: Reuses the same API key resolution logic as LlmResolverService
+// Decision: Reuses the same API key resolution logic as ProviderResolverService
 // (decrypt from DB first, then env fallback). Enumerates providers across
 // all orgs for background sync, not just DEFAULT_ORG_ID.
 
-use crate::services::llm_resolver::resolve_provider_api_key;
+use crate::services::provider_resolver::resolve_provider_api_key;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{CreateModelRow, ProviderRow, UpdateModel},

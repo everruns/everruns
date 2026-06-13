@@ -90,8 +90,9 @@ pub mod eval;
 pub mod events;
 pub mod harness;
 pub mod leased_resource;
-pub mod llm_model_profiles;
-pub mod llm_models;
+pub mod model_profiles;
+pub mod model;
+pub mod provider;
 pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod memory;
@@ -371,7 +372,7 @@ pub use capability_types::{
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
 // Domain entity re-exports
-// Note: Provider entity is in llm_models module. Import as: everruns_core::llm_models::Provider
+// Note: Provider entity is in llm_models module. Import as: everruns_core::provider::Provider
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
@@ -411,12 +412,12 @@ pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use llm_model_profiles::{get_model_profile, get_model_vendor};
-pub use llm_models::{
-    CostTier, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile,
-    ModelSource, ModelWithProvider, ProviderStatus, Modality,
-    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+pub use model_profiles::{get_model_profile, get_model_vendor};
+pub use model::{
+    CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
+    ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
+pub use provider::{Provider, ProviderStatus};
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,

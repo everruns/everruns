@@ -7,7 +7,7 @@ use crate::api::common::{
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::llm_models::{
+use crate::domains::models::{
     CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
     ListProviderModels, ModelService, UpdateModel,
 };
@@ -26,7 +26,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -39,9 +39,9 @@ impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         auth: AuthState,
-        llm_resolver: Option<Arc<LlmResolverService>>,
+        provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let service = if let Some(resolver) = llm_resolver {
+        let service = if let Some(resolver) = provider_resolver {
             ModelService::with_resolver(db.clone(), resolver)
         } else {
             ModelService::new(db.clone())

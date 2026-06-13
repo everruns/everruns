@@ -232,7 +232,7 @@ impl InMemoryAgenticLoopBuilder {
     ///
     /// ```ignore
     /// use everruns_core::traits::ResolvedModel;
-    /// use everruns_core::llm_models::DriverId;
+    /// use everruns_core::provider::DriverId;
     ///
     /// let model = ResolvedModel {
     ///     model: "claude-sonnet-4-20250514".to_string(),

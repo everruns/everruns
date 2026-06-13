@@ -1585,8 +1585,8 @@ impl AnthropicModelInfo {
     ///
     /// This profile contains limits and capability flags discovered from the API.
     /// Cost data is NOT available from the API and remains in hardcoded profiles.
-    fn to_discovered_profile(&self) -> everruns_core::llm_models::ModelProfile {
-        use everruns_core::llm_models::*;
+    fn to_discovered_profile(&self) -> everruns_core::model::ModelProfile {
+        use everruns_core::model::*;
 
         let caps = self.capabilities.as_ref();
 
@@ -1670,8 +1670,8 @@ impl AnthropicModelInfo {
     fn build_reasoning_effort(
         &self,
         caps: Option<&AnthropicModelCapabilities>,
-    ) -> Option<everruns_core::llm_models::ReasoningEffortConfig> {
-        use everruns_core::llm_models::*;
+    ) -> Option<everruns_core::model::ReasoningEffortConfig> {
+        use everruns_core::model::*;
 
         let thinking = caps?.thinking.as_ref()?;
         if !thinking.supported {
@@ -1783,7 +1783,7 @@ impl AnthropicModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::llm_models::Modality;
+    use everruns_core::model::Modality;
     use everruns_core::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     // These tests verify that empty text blocks are filtered out to avoid

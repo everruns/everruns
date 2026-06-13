@@ -1108,7 +1108,7 @@ impl ReasonAtom {
                 }
                 // Check model profile; if profile exists and reasoning is false, strip it.
                 // Unknown models (no profile) pass through — let the API decide.
-                let profile = crate::llm_model_profiles::get_model_profile(
+                let profile = crate::model_profiles::get_model_profile(
                     &model_with_provider.provider_type,
                     &model_with_provider.model,
                 );
@@ -1403,7 +1403,7 @@ impl ReasonAtom {
         // 13b. Proactive compaction: check token budget BEFORE calling the LLM.
         // This avoids the latency of a RequestTooLarge round-trip.
         if let Some(ref config) = compaction_config {
-            let context_window = crate::llm_model_profiles::get_model_profile(
+            let context_window = crate::model_profiles::get_model_profile(
                 &model_with_provider.provider_type,
                 &model_with_provider.model,
             )
@@ -2357,7 +2357,7 @@ impl ReasonAtom {
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => {
                     let actual_cost_usd = meta.provider_cost_usd;
-                    let estimated_cost_usd = crate::llm_model_profiles::estimate_cost_usd(
+                    let estimated_cost_usd = crate::model_profiles::estimate_cost_usd(
                         &model_with_provider.provider_type,
                         &runtime_agent.model,
                         input,

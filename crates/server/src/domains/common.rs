@@ -311,8 +311,8 @@ pub struct Ctx {
     pub session_schedule_service:
         Option<Arc<crate::domains::session_schedules::SessionScheduleService>>,
     pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
-    pub llm_model_service: Option<Arc<crate::domains::llm_models::ModelService>>,
-    pub llm_provider_service: Option<Arc<crate::domains::llm_providers::ProviderService>>,
+    pub llm_model_service: Option<Arc<crate::domains::models::ModelService>>,
+    pub llm_provider_service: Option<Arc<crate::domains::providers::ProviderService>>,
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
@@ -476,7 +476,7 @@ impl Ctx {
 
     pub fn with_llm_model_service(
         mut self,
-        service: Arc<crate::domains::llm_models::ModelService>,
+        service: Arc<crate::domains::models::ModelService>,
     ) -> Self {
         self.llm_model_service = Some(service);
         self
@@ -484,7 +484,7 @@ impl Ctx {
 
     pub fn with_llm_provider_service(
         mut self,
-        service: Arc<crate::domains::llm_providers::ProviderService>,
+        service: Arc<crate::domains::providers::ProviderService>,
     ) -> Self {
         self.llm_provider_service = Some(service);
         self

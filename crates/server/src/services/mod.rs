@@ -8,7 +8,7 @@
 //   domain.
 // - `event` — event persistence + fanout listener; called by domains that
 //   emit events.
-// - `llm_resolver` — spans `llm_providers` + `llm_models` + params; no single
+// - `provider_resolver` — spans `llm_providers` + `llm_models` + params; no single
 //   owner.
 // - `model_sync` — background provider-model sync listener.
 // - `principal` — resolves users + agent identities; shared.
@@ -19,7 +19,7 @@
 
 pub mod capability;
 pub mod event;
-pub mod llm_resolver;
+pub mod provider_resolver;
 pub mod model_sync;
 pub mod org_feature_flags;
 pub mod principal;
@@ -27,7 +27,7 @@ pub mod usage_tracking;
 
 pub use capability::CapabilityService;
 pub use event::EventService;
-pub use llm_resolver::{LlmResolverService, ResolvedModel};
+pub use provider_resolver::{ProviderResolverService, ResolvedModel};
 pub use model_sync::{ModelSyncService, SyncResult};
 pub use principal::{PrincipalService, row_to_principal};
 pub use usage_tracking::UsageTrackingListener;

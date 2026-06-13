@@ -549,7 +549,7 @@ mod tests {
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::DriverId::LlmSim,
+                provider_type: crate::provider::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -618,7 +618,7 @@ mod tests {
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::DriverId::LlmSim,
+                provider_type: crate::provider::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -673,7 +673,7 @@ mod tests {
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::DriverId::LlmSim,
+                provider_type: crate::provider::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -733,7 +733,7 @@ mod tests {
         provider_store
             .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: crate::llm_models::DriverId::LlmSim,
+                provider_type: crate::provider::DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,

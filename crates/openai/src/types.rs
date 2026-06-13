@@ -361,8 +361,8 @@ impl OpenRouterModelInfo {
     }
 
     /// Build an [`ModelProfile`] from OpenRouter's advertised metadata.
-    pub fn to_discovered_profile(&self) -> everruns_core::llm_models::ModelProfile {
-        use everruns_core::llm_models::*;
+    pub fn to_discovered_profile(&self) -> everruns_core::model::ModelProfile {
+        use everruns_core::model::*;
 
         // Reasoning is advertised via the `reasoning` parameter (modern unified
         // control) or the legacy `reasoning_effort` alias.
@@ -450,7 +450,7 @@ impl OpenRouterModelInfo {
 }
 
 impl OpenRouterPricing {
-    fn to_cost(&self) -> Option<everruns_core::llm_models::ModelCost> {
+    fn to_cost(&self) -> Option<everruns_core::model::ModelCost> {
         let input = openrouter_price_per_million(self.prompt.as_deref()?)?;
         let output = openrouter_price_per_million(self.completion.as_deref()?)?;
         let cache_read = self
@@ -459,7 +459,7 @@ impl OpenRouterPricing {
             .or(self.cache_read.as_deref())
             .and_then(openrouter_price_per_million);
 
-        Some(everruns_core::llm_models::ModelCost {
+        Some(everruns_core::model::ModelCost {
             input,
             output,
             cache_read,
@@ -485,8 +485,8 @@ fn openrouter_price_per_million(value: &str) -> Option<f64> {
 ///
 /// OpenRouter normalizes `reasoning.effort` ∈ {low, medium, high} across upstream
 /// providers, so we expose those three with `medium` as the default.
-fn openrouter_effort_config() -> everruns_core::llm_models::ReasoningEffortConfig {
-    use everruns_core::llm_models::*;
+fn openrouter_effort_config() -> everruns_core::model::ReasoningEffortConfig {
+    use everruns_core::model::*;
     ReasoningEffortConfig {
         values: vec![
             ReasoningEffortValue {
@@ -509,7 +509,7 @@ fn openrouter_effort_config() -> everruns_core::llm_models::ReasoningEffortConfi
 #[cfg(test)]
 mod openrouter_tests {
     use super::*;
-    use everruns_core::llm_models::ReasoningEffort;
+    use everruns_core::model::ReasoningEffort;
 
     // Trimmed copy of the live `nvidia/nemotron-3-super-120b-a12b` entry from
     // OpenRouter's /api/v1/models response.

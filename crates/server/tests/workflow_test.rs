@@ -15,7 +15,7 @@
 //! - PostgreSQL with migrations applied
 //! - Uses LlmSim for workflow tests, no real API keys needed
 
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::{Agent, Model, Session, SessionFile};
 use serde_json::{Value, json};
 

@@ -85,7 +85,7 @@ where
 
 /// Resolve API key for a provider (fail-closed).
 ///
-/// Shared logic used by both LlmResolverService and ModelSyncService.
+/// Shared logic used by both ProviderResolverService and ModelSyncService.
 ///
 /// Resolution order:
 /// 1. Decrypt from database if encryption is available and key is set
@@ -142,13 +142,13 @@ pub struct ResolvedProviderCredentials {
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
 type CacheKey = (i64, Uuid);
 
-pub struct LlmResolverService {
+pub struct ProviderResolverService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     cache: Cache<CacheKey, Option<ResolvedModel>>,
 }
 
-impl LlmResolverService {
+impl ProviderResolverService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         let cache = Cache::builder()
             .max_capacity(CACHE_MAX_ENTRIES)
@@ -435,9 +435,9 @@ mod tests {
 
     /// Helper: create resolver with in-memory storage and seed a provider + model.
     /// Returns (resolver, model_uuid).
-    async fn setup_resolver_with_model() -> (LlmResolverService, Uuid) {
+    async fn setup_resolver_with_model() -> (ProviderResolverService, Uuid) {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
@@ -512,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_model_not_found_is_cached() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db, None);
+        let resolver = ProviderResolverService::new(db, None);
 
         let missing_id = Uuid::new_v4();
 
@@ -555,7 +555,7 @@ mod tests {
     #[tokio::test]
     async fn test_different_models_cached_independently() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
@@ -627,7 +627,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_default_model_cached() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
@@ -689,7 +689,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalidation_forces_fresh_resolution() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         // Resolve a missing model -> cached as None
@@ -845,7 +845,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_provider_credentials_env_key_set_does_not_leak() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
 
         // No provider configured for this org at all.
         // Safety: test-only env mutation, same rationale as above.
@@ -892,7 +892,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_default_model_scoped_to_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db

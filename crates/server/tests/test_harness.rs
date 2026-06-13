@@ -285,14 +285,14 @@ impl TestServer {
             event_broadcaster: None,
             auth: auth_state.clone(),
         };
-        let llm_providers_state = api::llm_providers::AppState::new(
+        let llm_providers_state = api::providers::AppState::new(
             db.clone(),
             encryption.clone(),
             driver_registry.clone(),
             auth_state.clone(),
             None,
         );
-        let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone(), None);
+        let llm_models_state = api::models::AppState::new(db.clone(), auth_state.clone(), None);
         let virtual_registry = Arc::new(
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
@@ -301,7 +301,7 @@ impl TestServer {
         let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
             everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
         );
-        let llm_resolver = Arc::new(services::LlmResolverService::new(
+        let provider_resolver = Arc::new(services::ProviderResolverService::new(
             db.clone(),
             encryption.clone(),
         ));
@@ -340,7 +340,7 @@ impl TestServer {
                 everruns_server::domains::session_commands::SessionCommandService::new(
                     db.clone(),
                     event_service.clone(),
-                    llm_resolver,
+                    provider_resolver,
                     mcp_service.clone(),
                     platform_definition.capability_registry().clone(),
                     driver_registry.as_ref().clone(),
@@ -525,8 +525,8 @@ impl TestServer {
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
             .merge(api::events::routes(events_state))
-            .merge(api::llm_models::routes(llm_models_state))
-            .merge(api::llm_providers::routes(llm_providers_state))
+            .merge(api::models::routes(llm_models_state))
+            .merge(api::providers::routes(llm_providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))
             .merge(api::commands::routes(commands_state))

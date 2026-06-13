@@ -1,4 +1,4 @@
-use everruns_core::llm_models::DriverId;
+use everruns_core::provider::DriverId;
 use super::queries as q;
 use super::types::{
     CancelStatus, CancelTurnResponse, CreateSessionRequest, GetOrCreateChatSessionRequest,
@@ -9,7 +9,7 @@ use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, TurnCancelledData,
     deserialize_event_data,
 };
-use everruns_core::llm_model_profiles::get_model_profile;
+use everruns_core::model_profiles::get_model_profile;
 use everruns_core::typed_id::{AgentId, MessageId, TurnId};
 use everruns_core::{ANONYMOUS_USER_ID, Message, Session, SessionContextReport};
 use serde::Deserialize;

@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, ModelId, Result, StoreResultExt,
-    llm_models::DriverId,
+    provider::DriverId,
     traits::{ProviderStore, ResolvedModel},
 };
 
@@ -154,7 +154,7 @@ fn parse_provider_type(provider_type_str: &str) -> Result<DriverId> {
 // ============================================================================
 
 /// Create a database-backed LLM provider store scoped to the given org
-pub fn create_db_llm_provider_store(
+pub fn create_db_provider_store(
     db: Database,
     encryption: EncryptionService,
     org_id: i64,

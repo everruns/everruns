@@ -16,7 +16,7 @@ use crate::domains::session_files::{
     CreateDirectoryInput, CreateFileInput, GrepInput, SessionFileService, UpdateFileInput,
 };
 use crate::domains::sessions::SessionService;
-use crate::services::{CapabilityService, EventService, LlmResolverService};
+use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
@@ -455,7 +455,7 @@ pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: Arc<SessionService>,
     session_file_service: SessionFileService,
-    llm_resolver_service: Arc<LlmResolverService>,
+    provider_resolver_service: Arc<ProviderResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
@@ -512,7 +512,7 @@ impl WorkerServiceImpl {
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
-        llm_resolver_service: Option<Arc<LlmResolverService>>,
+        provider_resolver_service: Option<Arc<ProviderResolverService>>,
     ) -> Self {
         let capability_registry = platform_definition.capability_registry().clone();
         let session_service = {
@@ -528,8 +528,8 @@ impl WorkerServiceImpl {
         } else {
             SessionFileService::new(db.clone())
         };
-        let llm_resolver_service = llm_resolver_service
-            .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));
+        let provider_resolver_service = provider_resolver_service
+            .unwrap_or_else(|| Arc::new(ProviderResolverService::new(db.clone(), encryption.clone())));
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),
             encryption.clone(),
@@ -597,7 +597,7 @@ impl WorkerServiceImpl {
             event_service,
             session_service: Arc::new(session_service),
             session_file_service,
-            llm_resolver_service,
+            provider_resolver_service,
             mcp_server_service,
             capability_service,
             durable_store,

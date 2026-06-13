@@ -7,7 +7,7 @@ mod driver_tests {
         register_driver,
     };
     use everruns_core::llm_driver_registry::{ChatDriver, ProviderConfig, DriverId};
-    use everruns_core::llm_models::DriverId;
+    use everruns_core::provider::DriverId;
 
     #[test]
     fn test_driver_with_api_key() {

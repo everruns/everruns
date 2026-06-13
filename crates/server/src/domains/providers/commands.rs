@@ -2,7 +2,7 @@ use super::queries as q;
 use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::{ProviderStatus, DriverId, Policy};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -50,7 +50,7 @@ impl Command for CreateProvider {
         q::service(ctx)
             .create(
                 &ctx.caller,
-                crate::api::llm_providers::CreateProviderRequest {
+                crate::api::providers::CreateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,
@@ -169,7 +169,7 @@ impl Command for UpdateProvider {
             .update(
                 &ctx.caller,
                 provider_id,
-                crate::api::llm_providers::UpdateProviderRequest {
+                crate::api::providers::UpdateProviderRequest {
                     name: self.name,
                     provider_type: self.provider_type,
                     base_url: self.base_url,

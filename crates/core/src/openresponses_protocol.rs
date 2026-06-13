@@ -35,7 +35,7 @@ use crate::llm_driver_registry::{
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
     OpenRouterProviderRouting,
 };
-use crate::llm_models::DriverId;
+use crate::provider::DriverId;
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -720,7 +720,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // metadata without supporting OpenAI-only extensions such as phases or
         // hosted tool_search.
         let model_profile =
-            crate::llm_model_profiles::get_model_profile(&self.provider_type, &config.model);
+            crate::model_profiles::get_model_profile(&self.provider_type, &config.model);
         let supports_phases = model_profile
             .as_ref()
             .is_some_and(|profile| profile.supports_phases);

@@ -12,7 +12,7 @@ use crate::domains::messages::{CreateMessage, MessageService};
 use crate::domains::sessions::{CreateSession, GetOrCreateChatSession, SessionService};
 use crate::event_delivery::EventDelivery;
 use crate::services::{
-    EventService, LlmResolverService, llm_resolver::ResolvedProviderCredentials,
+    EventService, ProviderResolverService, provider_resolver::ResolvedProviderCredentials,
 };
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use axum::{
@@ -68,7 +68,7 @@ pub struct AppState {
     pub message_service: Arc<MessageService>,
     pub event_service: EventService,
     pub auth: AuthState,
-    pub llm_resolver: Arc<LlmResolverService>,
+    pub provider_resolver: Arc<ProviderResolverService>,
     pub leased_resource_store: Arc<dyn LeasedResourceStore>,
     pub feature_flags: FeatureFlags,
     pub runner: Arc<dyn everruns_worker::AgentRunner>,
@@ -80,7 +80,7 @@ pub struct AppState {
 pub struct AppDependencies {
     pub runner: Arc<dyn everruns_worker::AgentRunner>,
     pub message_service: Arc<MessageService>,
-    pub llm_resolver: Arc<LlmResolverService>,
+    pub provider_resolver: Arc<ProviderResolverService>,
     pub event_delivery: EventDelivery,
 }
 
@@ -105,7 +105,7 @@ impl AppState {
             event_service: EventService::new(db.clone(), dependencies.event_delivery),
             db,
             auth,
-            llm_resolver: dependencies.llm_resolver,
+            provider_resolver: dependencies.provider_resolver,
             leased_resource_store,
             feature_flags,
             runner: dependencies.runner,
@@ -763,7 +763,7 @@ async fn resolve_openai_credentials(
     org_id: i64,
 ) -> Result<ResolvedProviderCredentials, (StatusCode, Json<ErrorResponse>)> {
     state
-        .llm_resolver
+        .provider_resolver
         .resolve_provider_credentials(org_id, OPENAI_PROVIDER)
         .await
         .map_err(provider_error)?

@@ -4,7 +4,7 @@
 // subsequent model resolutions pick up the new model config.
 
 use crate::errors::ResourceNotFoundError;
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 use crate::storage::{
     StorageBackend,
     models::{CreateModelRow, ModelRow, ModelWithProviderRow, UpdateModel},
@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::llm_models::{CreateModelRequest, UpdateModelRequest};
+use crate::api::models::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
     id: "llm_model.view",
@@ -31,27 +31,27 @@ pub const LLM_MODEL_MANAGE: Policy = Policy {
 
 pub struct ModelService {
     db: Arc<StorageBackend>,
-    llm_resolver: Option<Arc<LlmResolverService>>,
+    provider_resolver: Option<Arc<ProviderResolverService>>,
 }
 
 impl ModelService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             db,
-            llm_resolver: None,
+            provider_resolver: None,
         }
     }
 
-    pub fn with_resolver(db: Arc<StorageBackend>, resolver: Arc<LlmResolverService>) -> Self {
+    pub fn with_resolver(db: Arc<StorageBackend>, resolver: Arc<ProviderResolverService>) -> Self {
         Self {
             db,
-            llm_resolver: Some(resolver),
+            provider_resolver: Some(resolver),
         }
     }
 
     /// Invalidate resolver cache after model mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
-        if let Some(ref resolver) = self.llm_resolver {
+        if let Some(ref resolver) = self.provider_resolver {
             resolver.invalidate_cache(org_id).await;
         }
     }
@@ -639,7 +639,7 @@ mod tests {
 
     #[test]
     fn merge_discovered_fills_gaps() {
-        use everruns_core::llm_models::ModelLimits;
+        use everruns_core::model::ModelLimits;
 
         let hardcoded = ModelProfile {
             limits: None,
@@ -676,7 +676,7 @@ mod tests {
 
     #[test]
     fn merge_hardcoded_limits_take_precedence() {
-        use everruns_core::llm_models::ModelLimits;
+        use everruns_core::model::ModelLimits;
 
         let hardcoded = ModelProfile {
             limits: Some(ModelLimits {

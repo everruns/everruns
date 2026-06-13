@@ -16,7 +16,7 @@ pub mod durable_tool_results;
 pub mod encryption;
 pub mod harness_store;
 pub mod leased_resource_store;
-pub mod llm_provider_store;
+pub mod provider_store;
 pub mod memory;
 pub mod message_store;
 pub mod models;
@@ -47,7 +47,7 @@ pub use harness_store::{DbHarnessStore, create_db_harness_store};
 pub use leased_resource_store::{
     DbLeasedResourceStore, row_to_domain as leased_resource_row_to_domain,
 };
-pub use llm_provider_store::{DbProviderStore, create_db_llm_provider_store};
+pub use provider_store::{DbProviderStore, create_db_provider_store};
 pub use memory::InMemoryDatabase;
 pub use message_store::{DbMessageRetriever, create_db_message_retriever};
 pub use models::*;

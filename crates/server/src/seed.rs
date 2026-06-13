@@ -1548,7 +1548,7 @@ async fn seed_default_provider_keys_from_env(
     platform_definition: &PlatformDefinition,
 ) -> anyhow::Result<SeedResult> {
     seed_default_provider_keys_with_lookup(db, encryption, platform_definition, |provider_type| {
-        crate::services::llm_resolver::get_default_api_key_from_env(provider_type)
+        crate::services::provider_resolver::get_default_api_key_from_env(provider_type)
     })
     .await
 }
@@ -2809,7 +2809,7 @@ mod tests {
             .unwrap()
             .expect("openai provider seeded");
         assert!(provider.api_key_set);
-        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
             &db,
             Some(&encryption),
             &provider,
@@ -2858,7 +2858,7 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
             &db,
             Some(&encryption),
             &provider,

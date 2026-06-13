@@ -15,7 +15,7 @@
 // Cross-referenced with official Anthropic and OpenAI documentation
 
 use crate::llm_driver_registry::ServiceKind;
-use crate::llm_models::{
+use crate::model::{
     CostTier, ModelCost, ModelLimits, ModelModalities, ModelProfile, DriverId,
     Modality, ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };

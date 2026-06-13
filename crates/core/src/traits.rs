@@ -7,7 +7,7 @@
 
 use crate::agent::Agent;
 use crate::harness::Harness;
-use crate::llm_models::DriverId;
+use crate::provider::DriverId;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};

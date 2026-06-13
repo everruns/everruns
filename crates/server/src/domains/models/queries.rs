@@ -1,5 +1,5 @@
 use crate::domains::common::CommandError;
-use crate::domains::llm_models::ModelService;
+use crate::domains::models::ModelService;
 use everruns_core::typed_id::{ModelId, ProviderId};
 use std::sync::Arc;
 

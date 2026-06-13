@@ -18,7 +18,7 @@ use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_core::llm_models::Provider;
+use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{
     Agent, DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport,
