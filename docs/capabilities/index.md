@@ -112,7 +112,10 @@ The `guardrails` capability runs config-driven deterministic checks (regex,
 blocklist, tool-call patterns) over model output and tool activity, blocking or
 logging per check. Configure it per agent; use advisory mode and the
 `POST /v1/capabilities/guardrails/dry-run` endpoint to tune checks against
-false positives before enforcing.
+false positives before enforcing. For ready-made starting points, list the
+gallery at `GET /v1/capabilities/guardrails/examples` (secret detection, PII,
+profanity, dangerous-shell, prompt-injection heuristics) and drop a preset's
+`config` into the agent's `guardrails` capability config.
 
 ### Automation
 

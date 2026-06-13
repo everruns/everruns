@@ -141,6 +141,49 @@ pub struct GuardrailsDryRunResponse {
     pub blocked: bool,
 }
 
+/// A read-only, adoptable guardrails preset from the gallery. Adopt by
+/// dropping `config` into an agent's `guardrails` capability config.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GuardrailExample {
+    /// Stable slug used to reference the preset (e.g. `secret-detection`).
+    #[schema(example = "secret-detection")]
+    pub name: String,
+    /// Human-facing label.
+    #[schema(example = "Secret & Credential Detection")]
+    pub display_name: String,
+    /// What the preset protects against and how to tune it.
+    pub description: String,
+    /// Tags for grouping/filtering in a picker.
+    pub tags: Vec<String>,
+    /// Distinct rule types used across the preset's checks
+    /// (`regex`, `blocklist`, `tool_pattern`) — the check-type composition.
+    pub check_types: Vec<String>,
+    /// Distinct stages the preset's checks run in (`output`, `tool_use`,
+    /// `tool_output`).
+    pub stages: Vec<String>,
+    /// Where the preset sends data when it runs. `none` for deterministic
+    /// presets (everything runs in-process).
+    #[schema(example = "none")]
+    pub data_egress: String,
+    /// The adoptable `GuardrailsConfig`. Same shape persisted in
+    /// `AgentCapabilityConfig.config` for the `guardrails` capability.
+    #[schema(value_type = Object, example = json!({
+        "mode": "active",
+        "checks": [
+            {"id": "secret-output", "stage": "output", "type": "regex",
+             "patterns": ["AKIA[0-9A-Z]{16}"], "on_fail": "block"}
+        ]
+    }))]
+    pub config: serde_json::Value,
+}
+
+/// Response for the `list_guardrail_examples` operation.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GuardrailExamplesResponse {
+    /// Adoptable guardrail presets, in display order.
+    pub examples: Vec<GuardrailExample>,
+}
+
 /// Request body for the `update_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityRequest {

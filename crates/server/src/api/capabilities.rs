@@ -83,6 +83,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/capabilities/guardrails/dry-run",
             post(dry_run_guardrails),
         )
+        .route(
+            "/v1/capabilities/guardrails/examples",
+            get(list_guardrail_examples),
+        )
         .route("/v1/capabilities/{capability_id}", get(get_capability))
         .with_state(state)
 }
@@ -349,6 +353,25 @@ pub async fn dry_run_guardrails(
     state
         .dispatcher(&org)
         .run(crate::domains::capabilities::DryRunGuardrails(req))
+        .await
+}
+
+/// GET /v1/capabilities/guardrails/examples - List adoptable guardrail presets.
+#[utoipa::path(
+    get,
+    path = "/v1/capabilities/guardrails/examples",
+    responses(
+        (status = 200, description = "Adoptable guardrail presets with trust metadata", body = crate::domains::capabilities::types::GuardrailExamplesResponse),
+    ),
+    tag = "capabilities"
+)]
+pub async fn list_guardrail_examples(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<crate::domains::capabilities::types::GuardrailExamplesResponse> {
+    state
+        .dispatcher(&org)
+        .run(crate::domains::capabilities::ListGuardrailExamples::default())
         .await
 }
 

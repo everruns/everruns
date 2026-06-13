@@ -2533,6 +2533,27 @@
         }
       }
     },
+    "/v1/capabilities/guardrails/examples": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities/guardrails/examples - List adoptable guardrail presets.",
+        "operationId": "list_guardrail_examples",
+        "responses": {
+          "200": {
+            "description": "Adoptable guardrail presets with trust metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailExamplesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/capabilities/{capability_id}": {
       "get": {
         "tags": [
@@ -17863,6 +17884,82 @@
           "log"
         ],
         "example": "block"
+      },
+      "GuardrailExample": {
+        "type": "object",
+        "description": "A read-only, adoptable guardrails preset from the gallery. Adopt by\ndropping `config` into an agent's `guardrails` capability config.",
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "tags",
+          "check_types",
+          "stages",
+          "data_egress",
+          "config"
+        ],
+        "properties": {
+          "check_types": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Distinct rule types used across the preset's checks\n(`regex`, `blocklist`, `tool_pattern`) — the check-type composition."
+          },
+          "config": {
+            "type": "object",
+            "description": "The adoptable `GuardrailsConfig`. Same shape persisted in\n`AgentCapabilityConfig.config` for the `guardrails` capability."
+          },
+          "data_egress": {
+            "type": "string",
+            "description": "Where the preset sends data when it runs. `none` for deterministic\npresets (everything runs in-process).",
+            "example": "none"
+          },
+          "description": {
+            "type": "string",
+            "description": "What the preset protects against and how to tune it."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-facing label.",
+            "example": "Secret & Credential Detection"
+          },
+          "name": {
+            "type": "string",
+            "description": "Stable slug used to reference the preset (e.g. `secret-detection`).",
+            "example": "secret-detection"
+          },
+          "stages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Distinct stages the preset's checks run in (`output`, `tool_use`,\n`tool_output`)."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for grouping/filtering in a picker."
+          }
+        }
+      },
+      "GuardrailExamplesResponse": {
+        "type": "object",
+        "description": "Response for the `list_guardrail_examples` operation.",
+        "required": [
+          "examples"
+        ],
+        "properties": {
+          "examples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailExample"
+            },
+            "description": "Adoptable guardrail presets, in display order."
+          }
+        }
       },
       "GuardrailStage": {
         "type": "string",

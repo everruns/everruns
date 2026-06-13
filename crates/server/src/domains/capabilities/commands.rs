@@ -7,8 +7,9 @@
 use super::queries as q;
 use super::types::{
     CapabilityInfo, CreateDeclarativeCapabilityRequest, CreateDeclarativeCapabilityRow,
-    DeclarativeCapability, GuardrailsDryRunHit, GuardrailsDryRunRequest, GuardrailsDryRunResponse,
-    UpdateDeclarativeCapability, UpdateDeclarativeCapabilityRequest,
+    DeclarativeCapability, GuardrailExample, GuardrailExamplesResponse, GuardrailsDryRunHit,
+    GuardrailsDryRunRequest, GuardrailsDryRunResponse, UpdateDeclarativeCapability,
+    UpdateDeclarativeCapabilityRequest,
 };
 use super::{CAPABILITY_DANGEROUS, CAPABILITY_MANAGE, CAPABILITY_VIEW};
 use crate::domains::common::*;
@@ -550,6 +551,60 @@ impl Command for DryRunGuardrails {
 }
 
 inventory::submit! { CommandDescriptor::of::<DryRunGuardrails>() }
+
+// ============================================================================
+// ListGuardrailExamples
+// ============================================================================
+
+/// List the read-only guardrail gallery: ready-made `GuardrailsConfig`
+/// presets an author can adopt into an agent's `guardrails` capability config.
+/// Pure computation over a static catalogue — nothing persisted, no I/O.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+#[serde(default)]
+pub struct ListGuardrailExamples {}
+
+impl Command for ListGuardrailExamples {
+    type Output = GuardrailExamplesResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_guardrail_examples",
+            category: "capabilities",
+            description: "List adoptable guardrail presets (the guardrail gallery), each with its config and trust metadata (check-type composition, stages, data egress).",
+            method: "GET",
+            path: "/v1/capabilities/guardrails/examples",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&CAPABILITY_VIEW)
+    }
+
+    async fn execute(self, _ctx: &Ctx) -> Result<GuardrailExamplesResponse, CommandError> {
+        let mut examples = Vec::new();
+        for item in everruns_core::guardrail_gallery() {
+            let config = serde_json::to_value(&item.config).map_err(|e| {
+                CommandError::internal(anyhow::anyhow!(
+                    "gallery preset '{}' failed to serialize: {e}",
+                    item.name
+                ))
+            })?;
+            examples.push(GuardrailExample {
+                name: item.name.to_string(),
+                display_name: item.display_name.to_string(),
+                description: item.description.to_string(),
+                tags: item.tags.iter().map(|t| t.to_string()).collect(),
+                check_types: item.check_types().iter().map(|t| t.to_string()).collect(),
+                stages: item.stages().iter().map(|s| s.to_string()).collect(),
+                data_egress: item.data_egress().as_str().to_string(),
+                config,
+            });
+        }
+        Ok(GuardrailExamplesResponse { examples })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListGuardrailExamples>() }
 
 async fn get_declarative_capability_by_public_id(
     ctx: &Ctx,

@@ -142,6 +142,69 @@ async fn test_dry_run_tool_pattern_uses_tool_name() {
 }
 
 #[tokio::test]
+async fn test_guardrail_examples_lists_presets_with_trust_metadata() {
+    let server = TestServer::new().await;
+
+    let resp = server
+        .get("/v1/capabilities/guardrails/examples")
+        .await
+        .assert_success();
+    let body = resp.json_value();
+    let examples = body["examples"].as_array().expect("examples array");
+    assert!(!examples.is_empty(), "gallery must not be empty");
+
+    let secret = examples
+        .iter()
+        .find(|e| e["name"] == "secret-detection")
+        .expect("secret-detection preset present");
+    assert_eq!(secret["display_name"], "Secret & Credential Detection");
+    // Trust metadata is present and derived from the config.
+    assert_eq!(secret["data_egress"], "none");
+    assert_eq!(secret["check_types"], json!(["regex"]));
+    assert_eq!(secret["stages"], json!(["output", "tool_output"]));
+    // The adoptable config carries the preset's checks.
+    assert!(
+        !secret["config"]["checks"].as_array().unwrap().is_empty(),
+        "preset config must carry checks"
+    );
+}
+
+#[tokio::test]
+async fn test_gallery_preset_config_round_trips_through_dry_run() {
+    let server = TestServer::new().await;
+
+    // Pull the secret-detection preset from the gallery and feed its config
+    // straight into dry-run — the adoption path a client takes.
+    let examples = server
+        .get("/v1/capabilities/guardrails/examples")
+        .await
+        .assert_success()
+        .json_value();
+    let preset = examples["examples"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "secret-detection")
+        .expect("secret-detection present")
+        .clone();
+
+    let resp = server
+        .post(
+            "/v1/capabilities/guardrails/dry-run",
+            json!({
+                "config": preset["config"],
+                "stage": "tool_output",
+                "text": "leaked AKIAIOSFODNN7EXAMPLE in the log"
+            }),
+        )
+        .await
+        .assert_success();
+    let body = resp.json_value();
+    assert_eq!(body["blocked"], true, "adopted preset should block the key");
+    assert_eq!(body["hits"][0]["reason_code"], "guardrail.regex");
+}
+
+#[tokio::test]
 async fn test_dry_run_rejects_invalid_regex() {
     let server = TestServer::new().await;
 
