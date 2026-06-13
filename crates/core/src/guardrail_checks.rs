@@ -60,6 +60,7 @@ pub enum GuardrailMode {
 /// Pipeline stage a check applies to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "output"))]
 #[serde(rename_all = "snake_case")]
 pub enum GuardrailStage {
     /// The model's streamed assistant text (evaluated per delta against the
@@ -178,6 +179,7 @@ impl GuardrailsConfig {
 /// Effective action of a hit after applying the config mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "block"))]
 #[serde(rename_all = "snake_case")]
 pub enum GuardrailAction {
     Block,
@@ -264,8 +266,7 @@ impl CompiledGuardrails {
             let matched = match &check.matcher {
                 CompiledRule::Regex(patterns) => patterns
                     .iter()
-                    .find(|re| re.is_match(text))
-                    .map(|re| snippet(re.as_str())),
+                    .find_map(|re| re.find(text).map(|m| snippet(m.as_str()))),
                 CompiledRule::Blocklist {
                     words,
                     case_sensitive,
@@ -313,7 +314,7 @@ impl CompiledGuardrails {
 fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, String> {
     let label = match &check.id {
         Some(id) => {
-            if id.is_empty() || id.len() > MAX_CHECK_ID_LEN {
+            if id.is_empty() || id.chars().count() > MAX_CHECK_ID_LEN {
                 return Err(format!(
                     "check #{index}: id must be 1..={MAX_CHECK_ID_LEN} characters"
                 ));

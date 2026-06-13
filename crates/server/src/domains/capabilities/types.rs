@@ -93,7 +93,6 @@ pub struct GuardrailsDryRunRequest {
     }))]
     pub config: serde_json::Value,
     /// Pipeline stage to evaluate.
-    #[schema(value_type = String, example = "output")]
     pub stage: everruns_core::GuardrailStage,
     /// Sample content: model output, serialized tool arguments, or tool
     /// output, depending on `stage`.
@@ -114,13 +113,11 @@ pub struct GuardrailsDryRunHit {
     #[schema(example = "profanity")]
     pub check_id: String,
     /// Stage the check ran in.
-    #[schema(value_type = String, example = "output")]
     pub stage: everruns_core::GuardrailStage,
     /// Rule type: regex, blocklist, or tool_pattern.
     #[schema(example = "blocklist")]
     pub rule_type: String,
     /// Effective action (advisory mode downgrades block to log).
-    #[schema(value_type = String, example = "log")]
     pub action: everruns_core::GuardrailAction,
     /// Stable machine-readable code, `guardrail.<rule_type>`.
     #[schema(example = "guardrail.blocklist")]

@@ -17757,6 +17757,25 @@
           }
         }
       },
+      "GuardrailAction": {
+        "type": "string",
+        "description": "Effective action of a hit after applying the config mode.",
+        "enum": [
+          "block",
+          "log"
+        ],
+        "example": "block"
+      },
+      "GuardrailStage": {
+        "type": "string",
+        "description": "Pipeline stage a check applies to.",
+        "enum": [
+          "output",
+          "tool_use",
+          "tool_output"
+        ],
+        "example": "output"
+      },
       "GuardrailsDryRunHit": {
         "type": "object",
         "description": "One triggered check from a guardrails dry run.",
@@ -17770,9 +17789,8 @@
         ],
         "properties": {
           "action": {
-            "type": "string",
-            "description": "Effective action (advisory mode downgrades block to log).",
-            "example": "log"
+            "$ref": "#/components/schemas/GuardrailAction",
+            "description": "Effective action (advisory mode downgrades block to log)."
           },
           "check_id": {
             "type": "string",
@@ -17811,9 +17829,8 @@
             "example": "blocklist"
           },
           "stage": {
-            "type": "string",
-            "description": "Stage the check ran in.",
-            "example": "output"
+            "$ref": "#/components/schemas/GuardrailStage",
+            "description": "Stage the check ran in."
           }
         }
       },
@@ -17831,9 +17848,8 @@
             "description": "The `guardrails` capability config to evaluate (same shape persisted\nin `AgentCapabilityConfig.config`)."
           },
           "stage": {
-            "type": "string",
-            "description": "Pipeline stage to evaluate.",
-            "example": "output"
+            "$ref": "#/components/schemas/GuardrailStage",
+            "description": "Pipeline stage to evaluate."
           },
           "text": {
             "type": "string",

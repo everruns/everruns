@@ -369,6 +369,8 @@ use utoipa::OpenApi;
             domains::capabilities::types::GuardrailsDryRunRequest,
             domains::capabilities::types::GuardrailsDryRunHit,
             domains::capabilities::types::GuardrailsDryRunResponse,
+            everruns_core::GuardrailStage,
+            everruns_core::GuardrailAction,
             // Harness types
             everruns_core::Harness, everruns_core::HarnessStatus, everruns_core::ResourceConfigResponse,
             domains::harnesses::types::CreateHarnessRequest,
