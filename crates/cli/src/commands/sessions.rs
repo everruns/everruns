@@ -706,6 +706,9 @@ async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> R
     }
 
     let mut stream = client.events().stream(&session_id);
+    // Tracks whether this stream has produced task.* lifecycle events, so the
+    // legacy subagent.* fallback rendering can switch off (see format_event_text).
+    let mut saw_task_events = false;
 
     loop {
         tokio::select! {
@@ -719,7 +722,7 @@ async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> R
                 match item {
                     Some(Ok(event)) => {
                         if output.is_text() {
-                            format_event_text(&event.event_type, &event.data, &event.ts);
+                            format_event_text(&event.event_type, &event.data, &event.ts, &mut saw_task_events);
                         } else {
                             let event_json = serde_json::json!({
                                 "id": event.id,
@@ -748,7 +751,17 @@ async fn watch(client: &Everruns, output: OutputFormat, session_id: String) -> R
 }
 
 /// Format a single event for human-readable text output.
-fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
+///
+/// `saw_task_events` is stream-scoped state: once a `task.*` lifecycle event
+/// has been seen, legacy `subagent.*` events are skipped (they duplicate the
+/// task lifecycle on servers that emit both). Until then they render with the
+/// legacy lines so older servers that only emit `subagent.*` stay readable.
+fn format_event_text(
+    event_type: &str,
+    data: &serde_json::Value,
+    ts: &str,
+    saw_task_events: &mut bool,
+) {
     match event_type {
         "turn.started" => {
             eprintln!("[{ts}] Turn started");
@@ -845,57 +858,76 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
         // Session task lifecycle: events carry a full task snapshot
         // (specs/session-tasks.md). Render kind, name, state, and detail.
         "task.created" | "task.updated" => {
-            let task = data.get("task");
-            let get = |key: &str| {
-                task.and_then(|t| t.get(key))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-            };
-            let state = get("state");
-            let name = get("display_name");
-            let kind = get("kind");
-            let detail = task
-                .and_then(|t| t.get("state_detail"))
-                .and_then(|v| v.as_str())
-                .map(|d| format!(" — {d}"))
-                .unwrap_or_default();
-            let verb = if event_type == "task.created" {
-                "Task started"
-            } else {
-                "Task"
-            };
-            eprintln!("[{ts}] {verb} [{kind}] {name}: {state}{detail}");
+            *saw_task_events = true;
+            eprintln!("{}", format_task_event_line(event_type, data, ts));
         }
         "task.message.sent" | "task.message.received" => {
-            let direction = if event_type == "task.message.sent" {
-                "→ task"
-            } else {
-                "task →"
-            };
-            let text = data
-                .get("message")
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_array())
-                .and_then(|parts| {
-                    parts
-                        .iter()
-                        .find_map(|p| p.get("text").and_then(|t| t.as_str()))
-                });
-            match text {
-                Some(text) => {
-                    let preview = truncate_str(text, 120);
-                    eprintln!("[{ts}] Message {direction}: {preview}");
-                }
-                None => eprintln!("[{ts}] Message {direction}"),
-            }
+            *saw_task_events = true;
+            eprintln!("{}", format_task_message_line(event_type, data, ts));
         }
         // Legacy subagent.* events duplicate the task.* lifecycle above
-        // (subagents are session tasks now). They are still emitted for
-        // external consumers; skip them here to avoid double-printing.
-        "subagent.spawned" | "subagent.completed" | "subagent.failed" | "subagent.cancelled" => {}
+        // (subagents are session tasks now). On servers that emit both, skip
+        // them to avoid double-printing; on older servers that only emit
+        // subagent.* (no task.* seen yet), keep the legacy lines.
+        "subagent.spawned" | "subagent.completed" | "subagent.failed" | "subagent.cancelled" => {
+            if !*saw_task_events {
+                let label = capitalize_first(&event_type.replace('.', " "));
+                eprintln!("[{ts}] {label}");
+            }
+        }
         _ => {
             eprintln!("[{ts}] {event_type}");
         }
+    }
+}
+
+/// Render a `task.created`/`task.updated` line from the event's task snapshot.
+fn format_task_event_line(event_type: &str, data: &serde_json::Value, ts: &str) -> String {
+    let task = data.get("task");
+    let get = |key: &str| {
+        task.and_then(|t| t.get(key))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown")
+    };
+    let state = get("state");
+    let name = get("display_name");
+    let kind = get("kind");
+    let detail = task
+        .and_then(|t| t.get("state_detail"))
+        .and_then(|v| v.as_str())
+        .map(|d| format!(" — {d}"))
+        .unwrap_or_default();
+    let verb = if event_type == "task.created" {
+        "Task created"
+    } else {
+        "Task"
+    };
+    format!("[{ts}] {verb} [{kind}] {name}: {state}{detail}")
+}
+
+/// Render a `task.message.sent`/`task.message.received` line with a
+/// direction tag and a truncated text preview.
+fn format_task_message_line(event_type: &str, data: &serde_json::Value, ts: &str) -> String {
+    let direction = if event_type == "task.message.sent" {
+        "→ task"
+    } else {
+        "task →"
+    };
+    let text = data
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+        .and_then(|parts| {
+            parts
+                .iter()
+                .find_map(|p| p.get("text").and_then(|t| t.as_str()))
+        });
+    match text {
+        Some(text) => {
+            let preview = truncate_str(text, 120);
+            format!("[{ts}] Message {direction}: {preview}")
+        }
+        None => format!("[{ts}] Message {direction}"),
     }
 }
 
@@ -945,6 +977,73 @@ fn capitalize_first(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn task_created_line_uses_created_verb_and_snapshot_fields() {
+        let data = serde_json::json!({
+            "task": {
+                "kind": "subagent",
+                "display_name": "Test Runner",
+                "state": "queued",
+                "state_detail": null
+            }
+        });
+        assert_eq!(
+            format_task_event_line("task.created", &data, "t0"),
+            "[t0] Task created [subagent] Test Runner: queued"
+        );
+    }
+
+    #[test]
+    fn task_updated_line_includes_state_detail() {
+        let data = serde_json::json!({
+            "task": {
+                "kind": "monitor",
+                "display_name": "Build Watch",
+                "state": "running",
+                "state_detail": "iteration 4/10"
+            }
+        });
+        assert_eq!(
+            format_task_event_line("task.updated", &data, "t1"),
+            "[t1] Task [monitor] Build Watch: running — iteration 4/10"
+        );
+    }
+
+    #[test]
+    fn task_event_line_tolerates_missing_snapshot() {
+        assert_eq!(
+            format_task_event_line("task.updated", &serde_json::json!({}), "t2"),
+            "[t2] Task [unknown] unknown: unknown"
+        );
+    }
+
+    #[test]
+    fn task_message_lines_render_direction_and_preview() {
+        let data = serde_json::json!({
+            "task_id": "task_x",
+            "message": { "content": [ { "type": "text", "text": "hello there" } ] }
+        });
+        assert_eq!(
+            format_task_message_line("task.message.sent", &data, "t3"),
+            "[t3] Message → task: hello there"
+        );
+        assert_eq!(
+            format_task_message_line("task.message.received", &data, "t3"),
+            "[t3] Message task →: hello there"
+        );
+    }
+
+    #[test]
+    fn task_message_line_truncates_long_text() {
+        let long = "x".repeat(200);
+        let data = serde_json::json!({
+            "message": { "content": [ { "type": "text", "text": long } ] }
+        });
+        let line = format_task_message_line("task.message.sent", &data, "t4");
+        assert!(line.ends_with("..."));
+        assert!(line.len() < 200);
+    }
 
     #[test]
     fn test_parse_secrets_valid() {
