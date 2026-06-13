@@ -328,6 +328,8 @@ pub struct Ctx {
     /// System utility LLM for sanctioned internal analysis tasks
     /// (specs/utility-llm.md). Not a user-configurable model surface.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
+    /// Agent health check service (specs/agent-checks.md, tier-3).
+    pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
 }
 
 impl Ctx {
@@ -380,6 +382,7 @@ impl Ctx {
             chat_session_title: None,
             egress_service: None,
             utility_llm_service: None,
+            health_check_service: None,
         }
     }
 
@@ -541,6 +544,14 @@ impl Ctx {
         service: Arc<dyn everruns_core::UtilityLlmService>,
     ) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    pub fn with_health_check_service(
+        mut self,
+        service: Arc<crate::domains::agents::AgentHealthCheckService>,
+    ) -> Self {
+        self.health_check_service = Some(service);
         self
     }
 

@@ -923,6 +923,38 @@ impl ServerAppBuilder {
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);
+        // Agent health checks (specs/agent-checks.md, tier-3). Gated on the
+        // utility LLM, which generates and judges cases.
+        let utility_llm = platform_definition.utility_llm_service();
+        let agents_state = if utility_llm.is_configured()
+            && let Some(default_harness_name) = platform_definition
+                .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
+                .map(|h| h.name.clone())
+        {
+            let health_check_ctx = Arc::new(crate::domains::agents::HealthCheckRunContext {
+                db: db.clone(),
+                session_service: Arc::new(
+                    crate::domains::sessions::SessionService::new(db.clone())
+                        .with_virtual_registry(virtual_registry.clone()),
+                ),
+                message_service: Arc::new(crate::domains::messages::MessageService::new(
+                    db.clone(),
+                    runner.clone(),
+                    notifications_enabled,
+                    event_delivery.clone(),
+                )),
+                utility_llm_service: utility_llm,
+                default_harness_name,
+            });
+            let health_check_service =
+                Arc::new(crate::domains::agents::AgentHealthCheckService::new(
+                    health_check_ctx,
+                    capability_service.clone(),
+                ));
+            agents_state.with_health_check_service(health_check_service)
+        } else {
+            agents_state
+        };
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),

@@ -194,6 +194,51 @@ export interface AgentAnalysisResponse {
   findings: AgentFinding[];
 }
 
+export type HealthCheckStatus = "pending" | "running" | "completed" | "failed";
+
+/** Outcome of a single generated health-check case */
+export interface HealthCheckCaseResult {
+  name: string;
+  user_message: string;
+  rubric: string;
+  /** Public ID of the real session created for this case */
+  session_id?: string;
+  passed: boolean;
+  score: number;
+  judge_reason: string;
+  deterministic_reason: string;
+  turns: number;
+  latency_ms: number;
+  error?: string;
+}
+
+/** Aggregate metrics across all cases in a health-check run */
+export interface HealthCheckSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  errored: number;
+  pass_rate: number;
+  avg_score: number;
+  avg_turns: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+}
+
+/** A behavioral health-check run (specs/agent-checks.md, tier-3) */
+export interface HealthCheckRun {
+  id: string;
+  agent_id?: string;
+  config_hash: string;
+  model_id?: string;
+  status: HealthCheckStatus;
+  summary?: HealthCheckSummary;
+  results?: HealthCheckCaseResult[];
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
 /** Response showing the final agent shape after applying capabilities */
 export interface AgentPreviewResponse {
   /** The full system prompt with capability additions prepended */

@@ -7,6 +7,7 @@
 //
 // Split into per-entity modules for maintainability (EVE-99).
 
+mod agent_health_checks;
 mod agent_identities;
 mod agent_identity_connections;
 mod agents;
@@ -153,6 +154,7 @@ pub struct InMemoryDatabase {
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
     eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
     eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
+    agent_health_check_runs: RwLock<HashMap<Uuid, AgentHealthCheckRunRow>>,
     observers: RwLock<HashMap<Uuid, ObserverRow>>,
     trace_scores: RwLock<HashMap<Uuid, TraceScoreRow>>,
     // Budgets
@@ -272,6 +274,7 @@ impl Default for InMemoryDatabase {
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
             eval_case_results: RwLock::new(HashMap::new()),
+            agent_health_check_runs: RwLock::new(HashMap::new()),
             observers: RwLock::new(HashMap::new()),
             trace_scores: RwLock::new(HashMap::new()),
             budgets: RwLock::new(HashMap::new()),

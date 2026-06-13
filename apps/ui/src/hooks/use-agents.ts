@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   agentsCrudApi,
   analyzeAgent,
+  getHealthCheckRun,
+  triggerHealthCheck,
   copyAgent,
   createAgentVersion,
   diffAgentVersions,
@@ -130,6 +132,25 @@ export function usePreviewAgent() {
 export function useAnalyzeAgent() {
   return useMutation({
     mutationFn: (request: PreviewAgentRequest) => analyzeAgent(request),
+  });
+}
+
+export function useTriggerHealthCheck() {
+  return useMutation({
+    mutationFn: (agentId: string) => triggerHealthCheck(agentId),
+  });
+}
+
+/** Poll a health check run until it reaches a terminal state. */
+export function useHealthCheckRun(agentId: string, runId: string | null) {
+  return useQuery({
+    queryKey: ["agent", agentId, "health-check", runId],
+    queryFn: () => getHealthCheckRun(agentId, runId as string),
+    enabled: !!runId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status === "completed" || status === "failed" ? false : 3000;
+    },
   });
 }
 

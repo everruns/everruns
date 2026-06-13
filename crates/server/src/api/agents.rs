@@ -127,6 +127,7 @@ pub struct AppState {
     pub auth: AuthState,
     pub grade: DeploymentGrade,
     pub platform_definition: Arc<PlatformDefinition>,
+    pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
 }
 
 impl AppState {
@@ -143,12 +144,21 @@ impl AppState {
             auth,
             grade,
             platform_definition,
+            health_check_service: None,
         }
+    }
+
+    pub fn with_health_check_service(
+        mut self,
+        service: Arc<crate::domains::agents::AgentHealthCheckService>,
+    ) -> Self {
+        self.health_check_service = Some(service);
+        self
     }
 
     /// Build a domain Ctx from this AppState for the given org.
     pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
+        let mut ctx = crate::domains::common::Ctx::new(
             Caller::from(org),
             self.db.clone(),
             self.capability_service.clone(),
@@ -156,7 +166,11 @@ impl AppState {
             self.auth.permission_resolver.clone(),
         )
         .with_feature_flags(org.feature_flags.clone())
-        .with_utility_llm_service(self.platform_definition.utility_llm_service())
+        .with_utility_llm_service(self.platform_definition.utility_llm_service());
+        if let Some(service) = &self.health_check_service {
+            ctx = ctx.with_health_check_service(service.clone());
+        }
+        ctx
     }
 }
 
@@ -273,6 +287,14 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/agents/import", post(import_agent))
         .route("/v1/agents/preview", post(preview_agent))
         .route("/v1/agents/analyze", post(analyze_agent))
+        .route(
+            "/v1/agents/{agent_id}/health-checks",
+            post(trigger_health_check).get(list_health_checks),
+        )
+        .route(
+            "/v1/agents/{agent_id}/health-checks/{run_id}",
+            get(get_health_check),
+        )
         .route(
             "/v1/agents/{agent_id}",
             get(get_agent)
@@ -1345,6 +1367,78 @@ pub async fn analyze_agent(
     Ok(Json(AgentAnalysisResponse {
         findings: result.findings,
     }))
+}
+
+/// POST /v1/agents/{agent_id}/health-checks - Trigger a behavioral health check
+#[utoipa::path(
+    post,
+    path = "/v1/agents/{agent_id}/health-checks",
+    params(("agent_id" = String, Path, description = "Agent ID")),
+    responses(
+        (status = 200, description = "Health check run started", body = crate::domains::agents::health_check::types::HealthCheckRun),
+        (status = 400, description = "Health checks unavailable on this deployment", body = ErrorResponse),
+        (status = 404, description = "Agent not found", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn trigger_health_check(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<crate::domains::agents::health_check::types::HealthCheckRun> {
+    let run = crate::domains::agents::health_check::commands::TriggerAgentHealthCheck { agent_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(run))
+}
+
+/// GET /v1/agents/{agent_id}/health-checks - List recent health check runs
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/health-checks",
+    params(("agent_id" = String, Path, description = "Agent ID")),
+    responses(
+        (status = 200, description = "Health check runs", body = Vec<crate::domains::agents::health_check::types::HealthCheckRun>),
+        (status = 404, description = "Agent not found", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn list_health_checks(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<Vec<crate::domains::agents::health_check::types::HealthCheckRun>> {
+    let runs =
+        crate::domains::agents::health_check::commands::ListAgentHealthCheckRuns { agent_id }
+            .run(&state.ctx(&org))
+            .await?;
+    Ok(Json(runs))
+}
+
+/// GET /v1/agents/{agent_id}/health-checks/{run_id} - Get a health check run
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/health-checks/{run_id}",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID"),
+        ("run_id" = String, Path, description = "Health check run ID")
+    ),
+    responses(
+        (status = 200, description = "Health check run", body = crate::domains::agents::health_check::types::HealthCheckRun),
+        (status = 404, description = "Run not found", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn get_health_check(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((agent_id, run_id)): Path<(String, String)>,
+) -> ApiResult<crate::domains::agents::health_check::types::HealthCheckRun> {
+    let run =
+        crate::domains::agents::health_check::commands::GetAgentHealthCheckRun { agent_id, run_id }
+            .run(&state.ctx(&org))
+            .await?;
+    Ok(Json(run))
 }
 
 // Regression tests for fix(capabilities): restore high-risk levels for

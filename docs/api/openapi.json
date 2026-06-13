@@ -734,6 +734,152 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/health-checks": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/health-checks - List recent health check runs",
+        "operationId": "list_health_checks",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health check runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HealthCheckRun"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/health-checks - Trigger a behavioral health check",
+        "operationId": "trigger_health_check",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health check run started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Health checks unavailable on this deployment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/health-checks/{run_id}": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/health-checks/{run_id} - Get a health check run",
+        "operationId": "get_health_check",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Health check run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Health check run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthCheckRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/stats": {
       "get": {
         "tags": [
@@ -18672,6 +18818,212 @@
           "deleted"
         ],
         "example": "active"
+      },
+      "HealthCheckCaseResult": {
+        "type": "object",
+        "description": "Outcome of a single case after the agent ran and was scored.",
+        "required": [
+          "name",
+          "user_message",
+          "rubric",
+          "passed",
+          "score",
+          "judge_reason",
+          "deterministic_reason",
+          "turns",
+          "latency_ms"
+        ],
+        "properties": {
+          "deterministic_reason": {
+            "type": "string",
+            "description": "Deterministic-check explanation (completion, non-empty, turn bound)."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the case errored or timed out instead of completing."
+          },
+          "judge_reason": {
+            "type": "string",
+            "description": "LLM judge explanation."
+          },
+          "latency_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "passed": {
+            "type": "boolean",
+            "description": "True only when both the deterministic checks and the LLM judge pass."
+          },
+          "rubric": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "format": "double",
+            "description": "LLM judge score, 0.0–1.0."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Public ID of the real session created for this case (browsable in UI)."
+          },
+          "turns": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "user_message": {
+            "type": "string"
+          }
+        }
+      },
+      "HealthCheckRun": {
+        "type": "object",
+        "description": "API view of a health check run.",
+        "required": [
+          "id",
+          "config_hash",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "config_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Public ID (`healthcheck_…`)."
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "results": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/HealthCheckCaseResult"
+            },
+            "description": "Per-case results (present once the run has produced any)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthCheckStatus"
+          },
+          "summary": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HealthCheckSummary"
+              }
+            ]
+          }
+        }
+      },
+      "HealthCheckStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ]
+      },
+      "HealthCheckSummary": {
+        "type": "object",
+        "description": "Aggregate metrics across all cases in a run.",
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "errored",
+          "pass_rate",
+          "avg_score",
+          "avg_turns",
+          "total_input_tokens",
+          "total_output_tokens"
+        ],
+        "properties": {
+          "avg_score": {
+            "type": "number",
+            "format": "double"
+          },
+          "avg_turns": {
+            "type": "number",
+            "format": "double"
+          },
+          "errored": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "pass_rate": {
+            "type": "number",
+            "format": "double"
+          },
+          "passed": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
       },
       "HealthResponse": {
         "type": "object",

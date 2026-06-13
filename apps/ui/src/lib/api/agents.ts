@@ -9,6 +9,7 @@ import type {
   AgentVersionDiffResponse,
   AgentAnalysisResponse,
   AgentPreviewResponse,
+  HealthCheckRun,
   CreateAgentVersionRequest,
   CreateAgentRequest,
   ForkAgentVersionRequest,
@@ -86,6 +87,21 @@ export async function previewAgent(request: PreviewAgentRequest): Promise<AgentP
 
 export async function analyzeAgent(request: PreviewAgentRequest): Promise<AgentAnalysisResponse> {
   const response = await api.post<AgentAnalysisResponse>("/v1/agents/analyze", request);
+  return response.data;
+}
+
+export async function triggerHealthCheck(agentId: string): Promise<HealthCheckRun> {
+  const response = await api.post<HealthCheckRun>(`/v1/agents/${agentId}/health-checks`, {});
+  return response.data;
+}
+
+export async function getHealthCheckRun(agentId: string, runId: string): Promise<HealthCheckRun> {
+  const response = await api.get<HealthCheckRun>(`/v1/agents/${agentId}/health-checks/${runId}`);
+  return response.data;
+}
+
+export async function listHealthCheckRuns(agentId: string): Promise<HealthCheckRun[]> {
+  const response = await api.get<HealthCheckRun[]>(`/v1/agents/${agentId}/health-checks`);
   return response.data;
 }
 

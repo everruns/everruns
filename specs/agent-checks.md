@@ -107,9 +107,16 @@ Decided ordering (Option A → C → B from the design review):
    returns merged tier-1 + tier-2 findings. Findings gain span locations and
    proposed `fix` payloads with one-click apply. This phase delivers the
    "too verbose / duplicated / contradictory / poor structure" feedback.
-3. **Health checks.** One-click behavioral smoke run: generated cases,
-   score card (pass rate, turns, tokens), per-case drill-down into sessions.
-   Results stored per agent version.
+3. **Health checks.** Async behavioral smoke run: the `trigger_agent_health_check`
+   command (`POST /v1/agents/{agent_id}/health-checks`) resolves the agent
+   config, persists a run row keyed by `config_hash`, and spawns a background
+   task that generates cases (utility LLM), runs each as a real session
+   through the session/message services, and scores them deterministically
+   plus with an LLM judge. `GET .../health-checks/{run_id}` polls status and
+   the score card; per-case results link to the real sessions. Runs persist
+   in `agent_health_check_runs` (whole run + results as JSONB on one row;
+   health checks are not `Eval` entities). Gated on the utility LLM and the
+   org default harness being available.
 4. **Extensible rules.** Org-level rule registry: per-rule enable/severity
    config for built-ins, plus two custom rule types — declarative
    (keyword/regex/structural, no code) and natural-language rubrics judged by

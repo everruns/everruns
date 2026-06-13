@@ -476,6 +476,13 @@ impl IdMarker for EvalRunIdMarker {
     const PREFIX: &'static str = "evalrun";
 }
 
+/// Marker for Agent Health Check Run IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct HealthCheckRunIdMarker;
+impl IdMarker for HealthCheckRunIdMarker {
+    const PREFIX: &'static str = "healthcheck";
+}
+
 /// Marker for Eval Case Result IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EvalResultIdMarker;
@@ -625,6 +632,8 @@ pub type EvalId = TypedId<EvalIdMarker>;
 pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 /// Eval Run ID
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
+/// Agent Health Check Run ID
+pub type HealthCheckRunId = TypedId<HealthCheckRunIdMarker>;
 /// Eval Case Result ID
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
 /// Observer ID (online scoring — see `specs/online-evals.md`)

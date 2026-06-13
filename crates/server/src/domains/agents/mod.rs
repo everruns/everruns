@@ -7,10 +7,12 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod analysis;
 pub mod checks;
 pub mod commands;
+pub mod health_check;
 pub mod queries;
 pub mod types;
 
 pub use commands::*;
+pub use health_check::{AgentHealthCheckService, HealthCheckRunContext};
 
 /// Policy: View agents (read-only).
 pub const AGENT_VIEW: Policy = Policy {

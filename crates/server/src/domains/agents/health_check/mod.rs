@@ -1,0 +1,68 @@
+// Agent health checks (specs/agent-checks.md, tier-3): generate behavioral
+// smoke cases from an agent config, run them as real sessions, score with
+// deterministic checks plus an LLM judge, and persist the run.
+
+pub mod commands;
+pub mod generate;
+pub mod runner;
+pub mod types;
+
+pub use commands::AgentHealthCheckService;
+pub use runner::HealthCheckRunContext;
+
+/// Escape XML metacharacters so untrusted config text cannot forge the wrapper
+/// tags that mark it as data in utility-LLM prompts (TM-LLM hardening).
+pub(crate) fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Strip a single ```/```json fenced block, if present.
+pub(crate) fn strip_code_fences(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    let Some(inner) = trimmed.strip_prefix("```") else {
+        return trimmed;
+    };
+    let inner = inner.strip_prefix("json").unwrap_or(inner);
+    inner.strip_suffix("```").unwrap_or(inner).trim()
+}
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use async_trait::async_trait;
+    use everruns_core::{
+        AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream, Result,
+        UtilityLlmRequest, UtilityLlmService,
+    };
+    use std::sync::Arc;
+
+    /// Utility LLM stub that returns a fixed completion text.
+    pub struct FixedLlm(pub String);
+
+    pub fn mock_llm(text: &str) -> Arc<dyn UtilityLlmService> {
+        Arc::new(FixedLlm(text.to_string()))
+    }
+
+    #[async_trait]
+    impl UtilityLlmService for FixedLlm {
+        fn is_configured(&self) -> bool {
+            true
+        }
+        async fn chat_completion(&self, _request: UtilityLlmRequest) -> Result<LlmResponse> {
+            Ok(LlmResponse {
+                text: self.0.clone(),
+                thinking: None,
+                thinking_signature: None,
+                tool_calls: None,
+                metadata: LlmCompletionMetadata::default(),
+            })
+        }
+        async fn chat_completion_stream(
+            &self,
+            _request: UtilityLlmRequest,
+        ) -> Result<LlmResponseStream> {
+            Err(AgentLoopError::llm("not used in tests"))
+        }
+    }
+}

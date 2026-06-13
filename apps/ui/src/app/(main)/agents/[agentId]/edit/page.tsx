@@ -33,6 +33,7 @@ import {
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
 import { AgentPreview, applyByteSpanReplacement } from "@/components/agents/agent-preview";
+import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
@@ -513,6 +514,9 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   )
                 }
               />
+              <div className="mt-6">
+                <AgentHealthCheck agentId={agent.id} />
+              </div>
             </div>
 
             {/* Summary sidebar */}
