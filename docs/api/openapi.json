@@ -11737,7 +11737,7 @@
           {
             "name": "path",
             "in": "path",
-            "description": "File path",
+            "description": "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value.",
             "required": true,
             "schema": {
               "type": "string"
@@ -11933,7 +11933,7 @@
           {
             "name": "path",
             "in": "path",
-            "description": "File or directory path",
+            "description": "File or directory path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value.",
             "required": true,
             "schema": {
               "type": "string"
@@ -14397,12 +14397,12 @@
         "properties": {
           "dst_path": {
             "type": "string",
-            "description": "Destination path (relative to the session workspace root).",
+            "description": "Destination path (relative to the workspace filesystem root).",
             "example": "docs/runbooks/refund-30-days.md"
           },
           "src_path": {
             "type": "string",
-            "description": "Source path (relative to the session workspace root).",
+            "description": "Source path (relative to the workspace filesystem root).",
             "example": "templates/runbook.md"
           }
         }
@@ -23463,12 +23463,12 @@
         "properties": {
           "dst_path": {
             "type": "string",
-            "description": "Destination path (relative to the session workspace root).",
+            "description": "Destination path (relative to the workspace filesystem root).",
             "example": "docs/migration-plan.md"
           },
           "src_path": {
             "type": "string",
-            "description": "Source path (relative to the session workspace root).",
+            "description": "Source path (relative to the workspace filesystem root).",
             "example": "drafts/migration-plan.md"
           }
         }

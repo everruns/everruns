@@ -86,10 +86,10 @@ pub struct UpdateFileRequest {
 /// Request to move/rename a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct MoveFileRequest {
-    /// Source path (relative to the session workspace root).
+    /// Source path (relative to the workspace filesystem root).
     #[schema(example = "drafts/migration-plan.md")]
     pub src_path: String,
-    /// Destination path (relative to the session workspace root).
+    /// Destination path (relative to the workspace filesystem root).
     #[schema(example = "docs/migration-plan.md")]
     pub dst_path: String,
 }
@@ -97,10 +97,10 @@ pub struct MoveFileRequest {
 /// Request to copy a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CopyFileRequest {
-    /// Source path (relative to the session workspace root).
+    /// Source path (relative to the workspace filesystem root).
     #[schema(example = "templates/runbook.md")]
     pub src_path: String,
-    /// Destination path (relative to the session workspace root).
+    /// Destination path (relative to the workspace filesystem root).
     #[schema(example = "docs/runbooks/refund-30-days.md")]
     pub dst_path: String,
 }
@@ -120,7 +120,7 @@ pub struct GrepRequest {
 /// Request to get file stat
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StatRequest {
-    /// Path to the file or directory (relative to the session workspace root).
+    /// Path to the file or directory (relative to the workspace filesystem root).
     #[schema(example = "docs/migration-plan.md")]
     pub path: String,
 }

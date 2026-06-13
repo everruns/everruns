@@ -116,8 +116,9 @@ REST endpoints:
 
 A `GET` on a file path also returns raw bytes when the request carries
 `Accept: application/octet-stream`; otherwise it returns the JSON envelope.
-The same surface is mirrored on the legacy `/v1/sessions/{session_id}/fs/_/*`
-aliases for backwards compatibility.
+The whole `/fs/*` surface (the path routes plus the `/fs/_/*` action routes)
+is mirrored on the legacy `/v1/sessions/{session_id}/fs/*` aliases for
+backwards compatibility.
 
 ### Session-scoped aliases
 

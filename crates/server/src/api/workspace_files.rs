@@ -241,7 +241,7 @@ pub async fn get_root(
     path = "/v1/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
-        ("path" = String, Path, description = "File or directory path"),
+        ("path" = String, Path, description = "File or directory path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
         ("recursive" = Option<bool>, Query, description = "List recursively"),
     ),
     responses(
@@ -632,7 +632,7 @@ pub async fn copy_file(
     path = "/v1/workspaces/{workspace_id}/fs/_/download/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
-        ("path" = String, Path, description = "File path"),
+        ("path" = String, Path, description = "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
     ),
     responses(
         (status = 200, description = "Raw file bytes", content_type = "application/octet-stream"),
