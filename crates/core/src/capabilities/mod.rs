@@ -118,6 +118,7 @@ mod model_scout;
 mod monitors;
 mod noop;
 mod openai_tool_search;
+mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
 mod platform_management;
@@ -247,6 +248,11 @@ pub use noop::{NOOP_CAPABILITY_ID, NoopCapability};
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     model_supports_native_tool_search,
+};
+pub use openrouter_workspace::{
+    OPENROUTER_WORKSPACE_CAPABILITY_ID, OpenRouterKeyInfo, OpenRouterRateLimit,
+    OpenRouterWorkspaceCapability, PolicyCompatibilityReport, WorkspacePolicyDrift,
+    detect_policy_drift,
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
@@ -1154,6 +1160,7 @@ impl CapabilityRegistry {
         registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
         registry.register(ModelScoutCapability);
+        registry.register(OpenRouterWorkspaceCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
@@ -2458,6 +2465,7 @@ mod tests {
             "guardrails",
             "user_hooks",
             "model_scout",
+            "openrouter_workspace",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();
