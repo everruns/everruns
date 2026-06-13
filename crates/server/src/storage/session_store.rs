@@ -108,6 +108,7 @@ impl SessionStore for DbSessionStore {
 
                 Ok(Some(Session {
                     id: row.id,
+                    workspace_id: everruns_core::WorkspaceId::from_uuid(row.workspace_id),
                     organization_id: self.org_public_id.clone(),
                     harness_id,
                     agent_id: row.agent_id,

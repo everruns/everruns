@@ -580,6 +580,7 @@ impl SessionBuilder {
 
         Session {
             id: self.id,
+            workspace_id: everruns_core::WorkspaceId::from_uuid((self.id).uuid()),
             organization_id: self.organization_id,
             harness_id: self.harness_id,
             agent_id: self.agent_id,

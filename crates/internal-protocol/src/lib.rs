@@ -1437,6 +1437,7 @@ mod tests {
         let now = Utc::now();
         let session = everruns_core::Session {
             id: everruns_core::SessionId::new(),
+            workspace_id: everruns_core::WorkspaceId::new(),
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: everruns_core::HarnessId::new(),
             agent_id: None,

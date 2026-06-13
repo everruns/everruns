@@ -269,6 +269,7 @@ mod tests {
     fn build_session(agent_id: Option<AgentId>) -> Session {
         Session {
             id: SessionId::new(),
+            workspace_id: crate::WorkspaceId::new(),
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: HarnessId::new(),
             agent_id,

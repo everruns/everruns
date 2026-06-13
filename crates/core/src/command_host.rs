@@ -581,6 +581,7 @@ mod tests {
     fn test_session(session_id: SessionId, harness_id: HarnessId, agent_id: AgentId) -> Session {
         Session {
             id: session_id,
+            workspace_id: crate::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),

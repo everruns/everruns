@@ -1315,6 +1315,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 
     Ok(Session {
         id: id.into(),
+        workspace_id: everruns_core::WorkspaceId::from_uuid(id),
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
         agent_version_id: proto_session

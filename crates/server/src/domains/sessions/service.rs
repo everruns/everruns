@@ -25,7 +25,7 @@ use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
-    SessionFile, SessionId, SessionStatus, SubagentStatus, TokenUsage,
+    SessionFile, SessionId, SessionStatus, SubagentStatus, TokenUsage, WorkspaceId,
     capabilities::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
@@ -1635,6 +1635,7 @@ impl SessionService {
         Session {
             id: row.id,
             organization_id: org_public_id.to_string(),
+            workspace_id: WorkspaceId::from_uuid(row.workspace_id),
             harness_id: row.harness_id.or(fallback_harness).unwrap_or_else(|| {
                 panic!(
                     "session {} has no harness_id and no fallback was provided; \

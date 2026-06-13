@@ -14,6 +14,7 @@ use crate::principal::PrincipalSummary;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId,
+    WorkspaceId,
 };
 
 #[cfg(feature = "openapi")]
@@ -118,6 +119,11 @@ pub struct Session {
     /// Organization this session belongs to (format: org_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "org_00000000000000000000000000000001"))]
     pub organization_id: String,
+    /// Workspace this session is attached to (format: wsp_{32-hex}). Owns the
+    /// session's virtual filesystem. For the default 1:1 case this mirrors the
+    /// session id, but clients should read it here rather than deriving it.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "wsp_01933b5a00007000800000000000001"))]
+    pub workspace_id: WorkspaceId,
     /// ID of the harness for this session (format: harness_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
     pub harness_id: HarnessId,

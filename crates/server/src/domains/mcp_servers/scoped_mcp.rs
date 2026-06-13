@@ -393,6 +393,7 @@ mod tests {
     fn test_session(harness_id: HarnessId, agent_id: everruns_core::AgentId) -> Session {
         Session {
             id: SessionId::new(),
+            workspace_id: everruns_core::WorkspaceId::new(),
             organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),
