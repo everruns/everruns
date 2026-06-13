@@ -56,7 +56,7 @@ fn test_e2b_capability_metadata() {
     assert_eq!(cap.id(), "e2b");
     assert_eq!(cap.name(), "E2B");
     assert_eq!(cap.icon(), Some("cloud"));
-    assert_eq!(cap.category(), Some("Execution"));
+    assert_eq!(cap.category(), Some("Sandboxes"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);
     assert_eq!(cap.tools().len(), 6);
 }

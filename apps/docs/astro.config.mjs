@@ -164,7 +164,13 @@ export default defineConfig({
                         { label: "Session", slug: "capabilities/session" },
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
-                        { label: "Browserless", slug: "capabilities/browserless" },
+                        { label: "Current Time", slug: "capabilities/current-time" },
+                        { label: "Message Metadata", slug: "capabilities/message-metadata" },
+                        { label: "Task Management", slug: "capabilities/task-management" },
+                        { label: "Schedules", slug: "capabilities/session-schedules" },
+                        { label: "Sub Agents", slug: "capabilities/sub-agents" },
+                        { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
+                        { label: "Agent Skills", slug: "capabilities/agent-skills" },
                       ],
                     },
                     {
@@ -172,20 +178,23 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Daytona", slug: "capabilities/daytona" },
-                        { label: "Deno", slug: "capabilities/deno" },
+                        { label: "Deno Sandboxes", slug: "capabilities/deno" },
                         { label: "E2B", slug: "capabilities/e2b" },
                         { label: "Docker Container", slug: "capabilities/docker" },
                       ],
                     },
                     {
-                      label: "Data & Productivity",
+                      label: "Browser",
+                      collapsed: true,
+                      items: [
+                        { label: "Browserless", slug: "capabilities/browserless" },
+                      ],
+                    },
+                    {
+                      label: "Data",
                       collapsed: true,
                       items: [
                         { label: "SQL Database", slug: "capabilities/sql-database" },
-                        { label: "Current Time", slug: "capabilities/current-time" },
-                        { label: "Message Metadata", slug: "capabilities/message-metadata" },
-                        { label: "Task Management", slug: "capabilities/task-management" },
-                        { label: "Schedules", slug: "capabilities/session-schedules" },
                       ],
                     },
                     {
@@ -196,13 +205,6 @@ export default defineConfig({
                       ],
                     },
                     {
-                      label: "Orchestration",
-                      collapsed: true,
-                      items: [
-                        { label: "Sub Agents", slug: "capabilities/sub-agents" },
-                      ],
-                    },
-                    {
                       label: "Integrations",
                       collapsed: true,
                       items: [
@@ -210,12 +212,10 @@ export default defineConfig({
                       ],
                     },
                     {
-                      label: "Platform & Configuration",
+                      label: "Platform",
                       collapsed: true,
                       items: [
                         { label: "Platform Management", slug: "capabilities/platform-management" },
-                        { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
-                        { label: "Agent Skills", slug: "capabilities/agent-skills" },
                       ],
                     },
                     {

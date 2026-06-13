@@ -120,7 +120,7 @@ fn test_docker_capability_metadata() {
     assert_eq!(cap.id(), "docker_container");
     assert_eq!(cap.name(), "[Experimental] Docker Container");
     assert_eq!(cap.icon(), Some("container"));
-    assert_eq!(cap.category(), Some("Development"));
+    assert_eq!(cap.category(), Some("Sandboxes"));
     assert_eq!(cap.tools().len(), 5);
     unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 }

@@ -40,7 +40,7 @@ Cloud and container sandbox environments for isolated code execution.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Daytona](/capabilities/daytona/) | `daytona` | 9 |
+| [Daytona](/capabilities/daytona/) | `daytona` | 10 |
 | [Deno Sandboxes](/capabilities/deno/) | `deno` | 6 |
 | [E2B](/capabilities/e2b/) | `e2b` | 6 |
 | [Docker Container](/capabilities/docker/) | `docker_container` | 5 |
