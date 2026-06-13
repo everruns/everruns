@@ -788,6 +788,7 @@ mod tests {
         let created = CreateKnowledgeBase {
             name: "Sales Playbook".into(),
             description: Some("Curated sales knowledge".into()),
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -877,6 +878,7 @@ mod tests {
         let kb = CreateKnowledgeBase {
             name: "K".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -929,6 +931,7 @@ mod tests {
         let created = CreateKnowledgeBase {
             name: "Private".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&org_one)
         .await
@@ -955,6 +958,7 @@ mod tests {
         CreateKnowledgeBase {
             name: "Research".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -963,6 +967,7 @@ mod tests {
         let err = CreateKnowledgeBase {
             name: "research".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -982,6 +987,7 @@ mod tests {
         let kb = CreateKnowledgeBase {
             name: "Archive Me".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -1077,6 +1083,7 @@ mod tests {
             request: UpdateKnowledgeBaseRequest {
                 name: Some("Renamed".into()),
                 description: UpdateField::Unchanged,
+                embedding_model_id: UpdateField::Unchanged,
             },
         }
         .run(&ctx)
