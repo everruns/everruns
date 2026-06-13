@@ -23,6 +23,12 @@ export interface Session {
   id: string;
   /** Organization this session belongs to */
   organization_id: string;
+  /**
+   * Workspace this session is attached to (wsp_<32-hex>); owns the virtual
+   * filesystem. For the default 1:1 case this equals the session id. Optional
+   * here until the UI consumes it directly instead of deriving from the id.
+   */
+  workspace_id?: string;
   harness_id: string;
   agent_id: string | null;
   agent_identity_id?: string | null;
