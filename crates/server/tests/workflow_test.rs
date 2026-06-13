@@ -2921,9 +2921,16 @@ async fn test_mcp_server_crud() {
         .await
         .expect("Failed to parse MCP server");
     assert_eq!(server_with_headers.headers.len(), 2);
+    // Header names are present in API responses, but values are redacted to
+    // prevent secret exposure. Verify the key exists and value is cleared.
+    assert!(
+        server_with_headers.headers.contains_key("X-Custom-Header"),
+        "Header key must be present"
+    );
     assert_eq!(
         server_with_headers.headers.get("X-Custom-Header"),
-        Some(&"custom-value".to_string())
+        Some(&String::new()),
+        "Header values must be redacted in API responses"
     );
     println!(
         "Created MCP server with headers: {} ({} headers)",

@@ -671,6 +671,19 @@ impl McpServerService {
             None
         };
 
+        // Fetch raw headers from DB — server.headers has values redacted for API safety.
+        let raw_row = self
+            .db
+            .get_mcp_server(caller.org_id, server.id.uuid())
+            .await?;
+        let headers = raw_row
+            .as_ref()
+            .map(|r| {
+                serde_json::from_value::<HashMap<String, String>>(r.headers.clone())
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default();
+
         Ok(Some(McpServerResolved {
             id: server.id.uuid(),
             name: server.name,
@@ -678,14 +691,19 @@ impl McpServerService {
             auth_mode: server.auth_mode,
             oauth_provider_id: server.oauth_provider_id,
             api_key,
-            headers: server.headers,
+            headers,
         }))
     }
 
     fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
-        // Parse headers from JSON
+        // Redact header values: keep key names so callers can see which headers
+        // are configured, but never return raw secrets in API responses.
         let headers: HashMap<String, String> =
-            serde_json::from_value(row.headers.clone()).unwrap_or_default();
+            serde_json::from_value::<HashMap<String, String>>(row.headers.clone())
+                .unwrap_or_default()
+                .into_keys()
+                .map(|k| (k, String::new()))
+                .collect();
         let settings = Self::settings_from_row(row);
         let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
             .then(|| Self::oauth_provider_id(row.id.uuid()));
