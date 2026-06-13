@@ -20,9 +20,9 @@
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::SessionId;
-use crate::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionType,
-    ConnectionValidation, FieldType, FormField,
+use crate::connector::{
+    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FieldType,
+    FormField,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -34,9 +34,9 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(FakeAwsConnectionProvider),
+        factory: || Box::new(FakeAwsConnector),
     }
 }
 
@@ -44,10 +44,10 @@ inventory::submit! {
 ///
 /// The key is intentionally opaque to agents: it is captured through the normal
 /// Connections flow and resolved server-side by handoff gates or tools.
-pub struct FakeAwsConnectionProvider;
+pub struct FakeAwsConnector;
 
 #[async_trait]
-impl ConnectionProvider for FakeAwsConnectionProvider {
+impl Connector for FakeAwsConnector {
     fn provider_id(&self) -> &str {
         "fake_aws"
     }
@@ -64,12 +64,12 @@ impl ConnectionProvider for FakeAwsConnectionProvider {
         "cloud"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "Fake AWS API key".to_string(),
@@ -84,11 +84,11 @@ impl ConnectionProvider for FakeAwsConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         if credential.trim().is_empty() {
             return Err("Fake AWS API key cannot be empty".to_string());
         }
-        Ok(ConnectionValidation {
+        Ok(ConnectorValidation {
             provider_username: Some("fake-aws-account".to_string()),
             provider_metadata: Some(json!({
                 "account_alias": "fake-aws-account",

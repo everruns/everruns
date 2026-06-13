@@ -50,7 +50,7 @@ pub mod storage;
 pub mod openapi;
 pub mod platform;
 pub use platform::{
-    oss_built_in_harnesses, oss_connection_provider_registry, oss_platform_definition,
+    oss_built_in_harnesses, oss_connector_registry, oss_platform_definition,
     oss_platform_definition_for_grade,
 };
 pub mod harnesses;

@@ -237,5 +237,5 @@ Until the refactor lands, current implementations live at:
 - `crates/server/src/services/model_sync.rs` — model discovery
 - `crates/server/src/api/llm_providers.rs`, `crates/server/src/api/llm_models.rs` — REST API
 - `crates/server/src/api/voice.rs` — realtime credential resolution (to be rerouted)
-- `crates/core/src/connection_provider.rs` — connector plugin trait (to be renamed)
+- `crates/core/src/connector.rs` — connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/` — provider settings UI

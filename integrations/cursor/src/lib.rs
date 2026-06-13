@@ -16,12 +16,12 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
     ToolCallHook,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tool_narration::ToolNarrationPhase;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::tools::Tool;
 
-use connection::CursorConnectionProvider;
+use connection::CursorConnector;
 use tools::{
     CursorAddFollowupTool, CursorDeleteAgentTool, CursorGetAgentTool, CursorGetConversationTool,
     CursorKeyInfoTool, CursorLaunchAgentTool, CursorListAgentsTool, CursorListModelsTool,
@@ -37,9 +37,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: false,
-        factory: || Box::new(CursorConnectionProvider),
+        factory: || Box::new(CursorConnector),
     }
 }
 

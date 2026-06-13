@@ -433,7 +433,7 @@ impl TestServer {
             encryption.clone(),
             auth_state.clone(),
             auth_config.clone(),
-            platform_definition.connection_providers().clone(),
+            platform_definition.connectors().clone(),
             mcp_service,
         );
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -447,7 +447,7 @@ impl TestServer {
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
-            platform_definition.connection_providers().clone(),
+            platform_definition.connectors().clone(),
         );
         let apps_state = api::apps::AppState::new(
             db.clone(),

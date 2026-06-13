@@ -40,10 +40,10 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, MountDirectoryBuilder,
     MountPoint, RiskLevel, SystemPromptContext,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 
-use connection::DaytonaConnectionProvider;
+use connection::DaytonaConnector;
 use session_sandbox_provider::DaytonaSessionSandboxProvider;
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -68,9 +68,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(DaytonaConnectionProvider),
+        factory: || Box::new(DaytonaConnector),
     }
 }
 

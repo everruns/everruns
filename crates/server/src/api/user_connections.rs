@@ -1,7 +1,7 @@
 // User Connections API routes
 // Decision: User-scoped (not org-scoped) — token represents user's identity
 // Decision: GitHub App installation flow replaces OAuth App for repo access
-// Decision: API-key providers (Daytona etc.) register via ConnectionProviderPlugin
+// Decision: API-key providers (Daytona etc.) register via ConnectorPlugin
 //   and define their own form schema + validation. Server discovers them at runtime.
 
 use crate::auth::ResolvedOrg;
@@ -20,8 +20,8 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Utc};
-use everruns_core::connection_provider::{
-    ConnectionFormSchema as CoreFormSchema, ConnectionProviderRegistry, ConnectionType,
+use everruns_core::connector::{
+    ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use everruns_core::{
     Caller, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
@@ -44,7 +44,7 @@ pub struct AppState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
     pub auth_config: AuthConfig,
-    pub connection_providers: ConnectionProviderRegistry,
+    pub connectors: ConnectorRegistry,
     pub mcp_service: Arc<McpServerService>,
 }
 
@@ -54,7 +54,7 @@ impl AppState {
         encryption: Option<Arc<EncryptionService>>,
         auth: AuthState,
         auth_config: AuthConfig,
-        connection_providers: ConnectionProviderRegistry,
+        connectors: ConnectorRegistry,
         mcp_service: Arc<McpServerService>,
     ) -> Self {
         Self {
@@ -62,7 +62,7 @@ impl AppState {
             encryption,
             auth,
             auth_config,
-            connection_providers,
+            connectors,
             mcp_service,
         }
     }
@@ -134,7 +134,7 @@ pub struct ApiKeyConnectionRequest {
     pub api_key: String,
 }
 
-/// Providers that support API-key-based connections (legacy, prefer ConnectionProviderPlugin).
+/// Providers that support API-key-based connections (legacy, prefer ConnectorPlugin).
 const API_KEY_PROVIDERS: &[&str] = &[];
 
 /// Cookie name for GitHub App installation CSRF state
@@ -218,10 +218,7 @@ struct OAuthTokenResponse {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/user/connections", get(list_connections))
-        .route(
-            "/v1/user/connections/providers",
-            get(list_connection_providers),
-        )
+        .route("/v1/user/connections/providers", get(list_connectors))
         .route(
             "/v1/user/connections/{provider}",
             delete(delete_connection).post(create_api_key_connection),
@@ -278,11 +275,11 @@ pub async fn list_connections(
     Ok(Json(connections))
 }
 
-/// GET /v1/user/connections/providers — List available connection providers
+/// GET /v1/user/connections/providers — List available connectors
 ///
-/// Returns both hardcoded providers (GitHub/OAuth) and plugin-registered
-/// providers (Daytona/API-key). Frontend uses this to render connection forms.
-pub async fn list_connection_providers(
+/// Returns both hardcoded connectors (GitHub/OAuth) and plugin-registered
+/// connectors (Daytona/API-key). Frontend uses this to render connection forms.
+pub async fn list_connectors(
     State(state): State<AppState>,
     org: ResolvedOrg,
 ) -> Json<Vec<ProviderResponse>> {
@@ -301,11 +298,11 @@ pub async fn list_connection_providers(
     }
 
     // Platform-registered providers (API-key based)
-    for provider in state.connection_providers.list() {
+    for provider in state.connectors.list() {
         let form_schema = provider.form_schema().map(|s| form_schema_to_response(&s));
         let conn_type = match provider.connection_type() {
-            ConnectionType::OAuth => "oauth",
-            ConnectionType::ApiKey => "api_key",
+            ConnectorType::OAuth => "oauth",
+            ConnectorType::ApiKey => "api_key",
         };
         providers.push(ProviderResponse {
             provider_id: provider.provider_id().to_string(),
@@ -351,18 +348,15 @@ pub async fn create_api_key_connection(
     Path(provider_id): Path<String>,
     Json(body): Json<CreateApiKeyConnectionRequest>,
 ) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, String)> {
-    let provider = state
-        .connection_providers
-        .get(&provider_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Unknown connection provider: {provider_id}"),
-            )
-        })?;
+    let provider = state.connectors.get(&provider_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Unknown connector: {provider_id}"),
+        )
+    })?;
 
     // Only API-key providers support direct creation
-    if provider.connection_type() != ConnectionType::ApiKey {
+    if provider.connection_type() != ConnectorType::ApiKey {
         return Err((
             StatusCode::BAD_REQUEST,
             format!("Provider '{provider_id}' uses OAuth, not API key"),
@@ -386,7 +380,7 @@ pub async fn create_api_key_connection(
     }
 
     // Validate all fields via the provider
-    let validation: everruns_core::connection_provider::ConnectionValidation =
+    let validation: everruns_core::connector::ConnectorValidation =
         provider.validate_fields(&fields).await.map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
@@ -473,7 +467,7 @@ pub struct VerifyConnectionResponse {
 ///
 /// Generic endpoint: decrypts the stored credential and calls the provider's
 /// validate() method. Works for any API-key provider that implements
-/// ConnectionProvider::validate().
+/// Connector::validate().
 pub async fn verify_connection(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -528,15 +522,12 @@ pub async fn verify_connection(
         )
     })?;
 
-    let provider = state
-        .connection_providers
-        .get(&provider_id)
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                format!("Unknown connection provider: {provider_id}"),
-            )
-        })?;
+    let provider = state.connectors.get(&provider_id).ok_or_else(|| {
+        (
+            StatusCode::NOT_FOUND,
+            format!("Unknown connector: {provider_id}"),
+        )
+    })?;
 
     // Build fields map from stored credential + metadata for full validation
     let mut fields = std::collections::HashMap::new();
@@ -1123,9 +1114,9 @@ fn form_schema_to_response(schema: &CoreFormSchema) -> FormSchemaResponse {
             .iter()
             .map(|f| {
                 let field_type = match f.field_type {
-                    everruns_core::connection_provider::FieldType::Password => "password",
-                    everruns_core::connection_provider::FieldType::Text => "text",
-                    everruns_core::connection_provider::FieldType::Url => "url",
+                    everruns_core::connector::FieldType::Password => "password",
+                    everruns_core::connector::FieldType::Text => "text",
+                    everruns_core::connector::FieldType::Url => "url",
                 };
                 FormFieldResponse {
                     name: f.name.clone(),

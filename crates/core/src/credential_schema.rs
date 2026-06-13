@@ -6,7 +6,7 @@
 //
 // - Provider drivers (`DriverDescriptor::credential_schema`) — org-scoped
 //   vendor accounts that power agent execution.
-// - Connection providers (`ConnectionProvider::form_schema`) — user-scoped
+// - Connectors (`Connector::form_schema`) — user-scoped
 //   accounts on external services used by tools.
 
 use serde::Serialize;

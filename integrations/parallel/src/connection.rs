@@ -5,18 +5,17 @@
 // storing any credential.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 use everruns_core::{McpToolsListRequest, McpToolsListResponse};
 
 use crate::{PARALLEL_MCP_URL, PARALLEL_PROVIDER_ID};
 
-pub struct ParallelConnectionProvider;
+pub struct ParallelConnector;
 
 #[async_trait]
-impl ConnectionProvider for ParallelConnectionProvider {
+impl Connector for ParallelConnector {
     fn provider_id(&self) -> &str {
         PARALLEL_PROVIDER_ID
     }
@@ -33,12 +32,12 @@ impl ConnectionProvider for ParallelConnectionProvider {
         "search"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "API Key".to_string(),
@@ -59,7 +58,7 @@ To use authenticated mode:\n\
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let response = reqwest::Client::new()
             .post(PARALLEL_MCP_URL)
             .bearer_auth(credential)
@@ -77,7 +76,7 @@ To use authenticated mode:\n\
                 if let Some(error) = mcp_response.error {
                     return Err(format!("Parallel MCP error: {}", error.message));
                 }
-                Ok(ConnectionValidation {
+                Ok(ConnectorValidation {
                     provider_username: None,
                     provider_metadata: None,
                 })
@@ -97,16 +96,16 @@ mod tests {
 
     #[test]
     fn provider_metadata() {
-        let p = ParallelConnectionProvider;
+        let p = ParallelConnector;
         assert_eq!(p.provider_id(), "parallel");
         assert_eq!(p.display_name(), "Parallel");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "search");
     }
 
     #[test]
     fn form_schema_describes_optional_key() {
-        let p = ParallelConnectionProvider;
+        let p = ParallelConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

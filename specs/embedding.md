@@ -345,7 +345,7 @@ Those may be added later, but they are outside the current embedding contract.
 ## Source Index
 
 - `crates/core/src/platform_definition.rs`
-- `crates/core/src/connection_provider.rs`
+- `crates/core/src/connector.rs`
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`

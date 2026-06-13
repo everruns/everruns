@@ -6,18 +6,17 @@
 // connection setup.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 use serde_json::json;
 
 use crate::client::CursorClient;
 
-pub struct CursorConnectionProvider;
+pub struct CursorConnector;
 
 #[async_trait]
-impl ConnectionProvider for CursorConnectionProvider {
+impl Connector for CursorConnector {
     fn provider_id(&self) -> &str {
         "cursor"
     }
@@ -34,12 +33,12 @@ impl ConnectionProvider for CursorConnectionProvider {
         "code"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "Cloud Agents API Key".to_string(),
@@ -61,7 +60,7 @@ Cursor must also have GitHub access to any repositories you want agents to work 
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let api_base = std::env::var(crate::CURSOR_API_BASE_ENV)
             .ok()
             .filter(|v| !v.trim().is_empty())
@@ -75,7 +74,7 @@ Cursor must also have GitHub access to any repositories you want agents to work 
             }
         })?;
 
-        Ok(ConnectionValidation {
+        Ok(ConnectorValidation {
             provider_username: info.user_email.clone(),
             provider_metadata: Some(json!({
                 "api_key_name": info.api_key_name,
@@ -92,16 +91,16 @@ mod tests {
 
     #[test]
     fn provider_metadata() {
-        let p = CursorConnectionProvider;
+        let p = CursorConnector;
         assert_eq!(p.provider_id(), "cursor");
         assert_eq!(p.display_name(), "Cursor");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "code");
     }
 
     #[test]
     fn form_schema_mentions_cloud_agents_key() {
-        let p = CursorConnectionProvider;
+        let p = CursorConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

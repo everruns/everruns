@@ -18,12 +18,12 @@ use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 
 use std::sync::LazyLock;
 
-use connection::SpritesConnectionProvider;
+use connection::SpritesConnector;
 
 use tools::{
     SpritesCheckpointTool, SpritesCreateSpriteTool, SpritesExecTool, SpritesListSpritesTool,
@@ -44,9 +44,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(SpritesConnectionProvider),
+        factory: || Box::new(SpritesConnector),
     }
 }
 

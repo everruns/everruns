@@ -14,10 +14,10 @@ mod tools;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin,
 };
-use everruns_core::connection_provider::ConnectionProviderPlugin;
+use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tools::Tool;
 
-use connection::BraveSearchConnectionProvider;
+use connection::BraveSearchConnector;
 use tools::BraveWebSearchTool;
 
 // ============================================================================
@@ -33,9 +33,9 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    ConnectionProviderPlugin {
+    ConnectorPlugin {
         experimental_only: true,
-        factory: || Box::new(BraveSearchConnectionProvider),
+        factory: || Box::new(BraveSearchConnector),
     }
 }
 

@@ -3680,7 +3680,7 @@ async fn test_verify_connection_no_connection_returns_404() {
 }
 
 #[tokio::test]
-async fn test_verify_connection_providers_listed() {
+async fn test_verify_connectors_listed() {
     let server = TestServer::in_memory().await;
 
     let resp: Value = server

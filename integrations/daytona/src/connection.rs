@@ -6,17 +6,16 @@
 //   lives in this crate, not in the server crate.
 
 use async_trait::async_trait;
-use everruns_core::connection_provider::{
-    ConnectionFormSchema, ConnectionProvider, ConnectionType, ConnectionValidation, FieldType,
-    FormField,
+use everruns_core::connector::{
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
 };
 
 use crate::DAYTONA_API_BASE;
 
-pub struct DaytonaConnectionProvider;
+pub struct DaytonaConnector;
 
 #[async_trait]
-impl ConnectionProvider for DaytonaConnectionProvider {
+impl Connector for DaytonaConnector {
     fn provider_id(&self) -> &str {
         "daytona"
     }
@@ -33,12 +32,12 @@ impl ConnectionProvider for DaytonaConnectionProvider {
         "daytona"
     }
 
-    fn connection_type(&self) -> ConnectionType {
-        ConnectionType::ApiKey
+    fn connection_type(&self) -> ConnectorType {
+        ConnectorType::ApiKey
     }
 
-    fn form_schema(&self) -> Option<ConnectionFormSchema> {
-        Some(ConnectionFormSchema {
+    fn form_schema(&self) -> Option<ConnectorFormSchema> {
+        Some(ConnectorFormSchema {
             fields: vec![FormField {
                 name: "api_key".to_string(),
                 label: "API Key".to_string(),
@@ -56,7 +55,7 @@ impl ConnectionProvider for DaytonaConnectionProvider {
         })
     }
 
-    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+    async fn validate(&self, credential: &str) -> Result<ConnectorValidation, String> {
         let client = reqwest::Client::new();
         let response = client
             .get(format!("{DAYTONA_API_BASE}/sandbox"))
@@ -66,7 +65,7 @@ impl ConnectionProvider for DaytonaConnectionProvider {
             .map_err(|e| format!("Failed to reach Daytona API: {e}"))?;
 
         match response.status().as_u16() {
-            200 => Ok(ConnectionValidation {
+            200 => Ok(ConnectorValidation {
                 provider_username: None,
                 provider_metadata: None,
             }),
@@ -84,16 +83,16 @@ mod tests {
 
     #[test]
     fn test_provider_metadata() {
-        let p = DaytonaConnectionProvider;
+        let p = DaytonaConnector;
         assert_eq!(p.provider_id(), "daytona");
         assert_eq!(p.display_name(), "Daytona");
-        assert_eq!(p.connection_type(), ConnectionType::ApiKey);
+        assert_eq!(p.connection_type(), ConnectorType::ApiKey);
         assert_eq!(p.icon(), "daytona");
     }
 
     #[test]
     fn test_form_schema() {
-        let p = DaytonaConnectionProvider;
+        let p = DaytonaConnector;
         let schema = p.form_schema().expect("should have form schema");
         assert_eq!(schema.fields.len(), 1);
         assert_eq!(schema.fields[0].name, "api_key");

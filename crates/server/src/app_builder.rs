@@ -887,7 +887,7 @@ impl ServerAppBuilder {
             db.clone(),
             encryption.clone(),
             auth_state.clone(),
-            platform_definition.connection_providers().clone(),
+            platform_definition.connectors().clone(),
         );
         let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
@@ -1061,7 +1061,7 @@ impl ServerAppBuilder {
             encryption.clone(),
             auth_state.clone(),
             auth_config.clone(),
-            platform_definition.connection_providers().clone(),
+            platform_definition.connectors().clone(),
             mcp_server_service,
         );
         let session_schedule_service =

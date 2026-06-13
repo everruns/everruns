@@ -390,7 +390,7 @@ async fn test_validate_rest_ok_cdp_probe_400() {
         .mount(&mock_server)
         .await;
 
-    // BrowserlessConnectionProvider uses BROWSERLESS_API_BASE which is hardcoded,
+    // BrowserlessConnector uses BROWSERLESS_API_BASE which is hardcoded,
     // so we test the validate logic directly by hitting the mock endpoints.
     let client = reqwest::Client::new();
 

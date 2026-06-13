@@ -16,7 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::connection_provider::{ConnectionProviderRegistry, ConnectionType};
+use everruns_core::connector::{ConnectorRegistry, ConnectorType};
 use everruns_core::{AgentIdentityId, Caller};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -29,7 +29,7 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub encryption: Option<Arc<EncryptionService>>,
     pub auth: AuthState,
-    pub connection_providers: ConnectionProviderRegistry,
+    pub connectors: ConnectorRegistry,
 }
 
 impl AppState {
@@ -37,13 +37,13 @@ impl AppState {
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
         auth: AuthState,
-        connection_providers: ConnectionProviderRegistry,
+        connectors: ConnectorRegistry,
     ) -> Self {
         Self {
             db,
             encryption,
             auth,
-            connection_providers,
+            connectors,
         }
     }
 }
@@ -192,15 +192,12 @@ pub async fn create_api_key_connection(
 ) -> Result<(StatusCode, Json<ConnectionResponse>), (StatusCode, Json<ErrorResponse>)> {
     let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
-    let provider = state
-        .connection_providers
-        .get(&provider_id)
-        .ok_or_else(|| {
-            ErrorResponse::new(format!("Unknown connection provider: {provider_id}"))
-                .into_response(StatusCode::NOT_FOUND)
-        })?;
+    let provider = state.connectors.get(&provider_id).ok_or_else(|| {
+        ErrorResponse::new(format!("Unknown connector: {provider_id}"))
+            .into_response(StatusCode::NOT_FOUND)
+    })?;
 
-    if provider.connection_type() != ConnectionType::ApiKey {
+    if provider.connection_type() != ConnectorType::ApiKey {
         return Err(ErrorResponse::new(format!(
             "Provider '{provider_id}' uses OAuth, not API key"
         ))
@@ -339,13 +336,10 @@ pub async fn verify_connection(
             .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
-    let provider = state
-        .connection_providers
-        .get(&provider_id)
-        .ok_or_else(|| {
-            ErrorResponse::new(format!("Unknown connection provider: {provider_id}"))
-                .into_response(StatusCode::NOT_FOUND)
-        })?;
+    let provider = state.connectors.get(&provider_id).ok_or_else(|| {
+        ErrorResponse::new(format!("Unknown connector: {provider_id}"))
+            .into_response(StatusCode::NOT_FOUND)
+    })?;
 
     // Build fields map from stored credential + metadata for full validation
     let mut fields = std::collections::HashMap::new();
