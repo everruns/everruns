@@ -377,6 +377,34 @@ The strategy is compiled into the low-level `OpenRouterProviderRouting` by
 default, no-op state) and returns `false` for `ByokFirst`/`ByokOnly` so those
 configs are not silently discarded.
 
+### OpenRouter Routing Presets
+
+`OpenRouterRoutingConfig.presets` accepts a list of `OpenRouterRoutingPreset` values that
+express routing quality, cost, privacy, and capability intent at a higher level than raw
+`OpenRouterProviderRouting` flags. Multiple presets may be combined.
+
+`apply_presets()` compiles the preset list into `OpenRouterProviderRouting` flags and
+clears `presets` from the resulting config. The driver calls this before serializing any
+routing fields to the request wire format. Explicit `provider` fields always override
+preset-derived values; when multiple presets target the same field, later ones win.
+
+Presets are applied before capacity strategy — `apply_presets()` runs first, then
+`apply_capacity_strategy()` runs on the result.
+
+| Preset | Wire effect |
+|--------|-------------|
+| `CheapestWithTools` | `require_parameters = true`, `sort = price` |
+| `LowestLatencyReview` | `sort = throughput` |
+| `ZdrOnly` | `zdr = true` |
+| `ByokFirst` | `allow_fallbacks = true` (if not already set) |
+| `NoDataCollection` | `data_collection = deny` |
+| `StrictJson` | `require_parameters = true` |
+| `ReasoningRequired` | `require_parameters = true` |
+| `MaxPrice { prompt_usd_per_million, completion_usd_per_million }` | `max_price.prompt`, `max_price.completion` (converted from USD/M to per-token) |
+
+`apply_presets()` returns `Err` for invalid inputs (e.g. negative `MaxPrice` values).
+When `presets` is empty the driver skips calling `apply_presets()` entirely (clone-free fast path).
+
 ### Stateful Continuation Invariant
 
 When a request to the OpenAI Responses API sets `previous_response_id`, the provider already holds the prior transcript server-side. The request must NOT also carry the full reconstructed transcript in `input` — that double-counts context and inflates prompt-cache keys.

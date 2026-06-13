@@ -793,20 +793,28 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .validate_for_primary_model(&config.model)
                 .map_err(AgentLoopError::llm)?;
         }
-        // Apply capacity strategy without cloning when the strategy is a no-op.
+        // Apply routing presets then capacity strategy; avoid allocating when both are no-ops.
+        let preset_applied_owned: Option<crate::llm_driver_registry::OpenRouterRoutingConfig>;
+        let after_presets: Option<&crate::llm_driver_registry::OpenRouterRoutingConfig> =
+            match openrouter_routing {
+                None => None,
+                Some(r) if r.presets.is_empty() => Some(r),
+                Some(r) => {
+                    preset_applied_owned = Some(r.apply_presets().map_err(AgentLoopError::llm)?);
+                    preset_applied_owned.as_ref()
+                }
+            };
         let effective_routing_cow: Option<
             std::borrow::Cow<'_, crate::llm_driver_registry::OpenRouterRoutingConfig>,
-        > = match openrouter_routing {
+        > = match after_presets {
             None => None,
-            Some(routing) => match routing.capacity_strategy {
+            Some(r) => match r.capacity_strategy {
                 None
                 | Some(crate::llm_driver_registry::OpenRouterCapacityStrategy::SharedCapacity) => {
-                    Some(std::borrow::Cow::Borrowed(routing))
+                    Some(std::borrow::Cow::Borrowed(r))
                 }
                 _ => Some(std::borrow::Cow::Owned(
-                    routing
-                        .apply_capacity_strategy()
-                        .map_err(AgentLoopError::llm)?,
+                    r.apply_capacity_strategy().map_err(AgentLoopError::llm)?,
                 )),
             },
         };
