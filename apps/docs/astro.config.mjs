@@ -165,7 +165,16 @@ export default defineConfig({
                         { label: "Session Storage", slug: "capabilities/session-storage" },
                         { label: "Web Fetch", slug: "capabilities/web-fetch" },
                         { label: "Browserless", slug: "capabilities/browserless" },
+                      ],
+                    },
+                    {
+                      label: "Sandboxes",
+                      collapsed: true,
+                      items: [
                         { label: "Daytona", slug: "capabilities/daytona" },
+                        { label: "Deno", slug: "capabilities/deno" },
+                        { label: "E2B", slug: "capabilities/e2b" },
+                        { label: "Docker Container", slug: "capabilities/docker" },
                       ],
                     },
                     {
