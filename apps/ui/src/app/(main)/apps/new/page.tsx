@@ -37,6 +37,11 @@ import {
 } from "@/lib/app-channels";
 import { DEFAULT_AG_UI_GENERIC_TOOL_TEXT } from "@/lib/api/types/app-types";
 import { generateChannelToken } from "@/lib/channel-tokens";
+import {
+  CRON_MIN_INTERVAL_SECONDS,
+  getCronIntervalSeconds,
+  isSupportedCronExpression,
+} from "@/components/apps/cron-label";
 
 export default function NewAppPage() {
   usePageTitle("New App", "Apps");
@@ -55,7 +60,7 @@ export default function NewAppPage() {
   const [slackChannelId, setSlackChannelId] = useState("");
   const [slackSessionStrategy, setSlackSessionStrategy] = useState<SessionStrategy>("per_thread");
   const [slackReplyMode, setSlackReplyMode] = useState<SlackReplyMode>("all_messages");
-  const [scheduleCronExpression, setScheduleCronExpression] = useState("0 * * * * * *");
+  const [scheduleCronExpression, setScheduleCronExpression] = useState("0 */5 * * * * *");
   const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
   const [invocationSessionMode, setInvocationSessionMode] =
     useState<InvocationSessionMode>("shared_session");
@@ -117,8 +122,11 @@ export default function NewAppPage() {
         : channelType === "slack"
           ? !!slackSigningSecret && !!slackBotToken
           : channelType === "schedule"
-            ? !!scheduleCronExpression && !!channelMessage
-            : !!webhookToken && !!channelMessage;
+            ? !!scheduleCronExpression &&
+              !!channelMessage.trim() &&
+              isSupportedCronExpression(scheduleCronExpression) &&
+              (getCronIntervalSeconds(scheduleCronExpression) ?? 0) >= CRON_MIN_INTERVAL_SECONDS
+            : !!webhookToken && !!channelMessage.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -385,8 +393,16 @@ export default function NewAppPage() {
                       id="schedule_cron_expression"
                       value={scheduleCronExpression}
                       onChange={(e) => setScheduleCronExpression(e.target.value)}
-                      placeholder="0 * * * * * *"
+                      placeholder="0 */5 * * * * *"
                     />
+                    {scheduleCronExpression &&
+                      isSupportedCronExpression(scheduleCronExpression) &&
+                      (getCronIntervalSeconds(scheduleCronExpression) ?? 0) <
+                        CRON_MIN_INTERVAL_SECONDS && (
+                        <p className="text-xs text-destructive">
+                          Minimum interval is {Math.floor(CRON_MIN_INTERVAL_SECONDS / 60)} minutes.
+                        </p>
+                      )}
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="schedule_timezone">Timezone</Label>
