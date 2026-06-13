@@ -19,6 +19,7 @@ ALTER INDEX IF EXISTS idx_llm_models_provider_model RENAME TO idx_models_provide
 ALTER INDEX IF EXISTS idx_llm_models_favorite RENAME TO idx_models_favorite;
 ALTER INDEX IF EXISTS idx_llm_models_source RENAME TO idx_models_source;
 ALTER INDEX IF EXISTS idx_llm_models_enabled RENAME TO idx_models_enabled;
+ALTER INDEX IF EXISTS idx_llm_models_last_seen RENAME TO idx_models_last_seen;
 
 ALTER TABLE providers RENAME CONSTRAINT llm_providers_pkey TO providers_pkey;
 ALTER TABLE models RENAME CONSTRAINT llm_models_pkey TO models_pkey;

@@ -7,8 +7,8 @@ use everruns_core::session_file::InitialFile;
 use everruns_core::tool_types::{ToolCall, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus, Message,
-    ResolvedModel, PlatformDefinition, Session, SessionStatus,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness, HarnessStatus,
+    Message, PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use serde::Serialize;
 use serde_json::{Value, json};

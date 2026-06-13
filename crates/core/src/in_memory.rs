@@ -326,7 +326,7 @@ impl SessionStore for InMemorySessionStore {
 ///
 /// ```ignore
 /// use everruns_core::in_memory::InMemoryProviderStore;
-/// use everruns_core::llm_entities::DriverId;
+/// use everruns_core::DriverId;
 ///
 /// let store = InMemoryProviderStore::from_env().await;
 /// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY from environment

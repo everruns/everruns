@@ -7,7 +7,7 @@
 //!
 //! Uses in-memory backend (no PostgreSQL required).
 //!
-//! Run with: cargo test -p everruns-server --test model_default_test
+//! Run with: cargo test -p everruns-server --test llm_model_default_test
 
 use uuid::Uuid;
 

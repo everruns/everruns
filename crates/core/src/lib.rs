@@ -373,7 +373,7 @@ pub use capability_types::{
 // Note: CapabilityId and CapabilityStatus are re-exported via capabilities module
 
 // Domain entity re-exports
-// Note: Provider entity is in models module. Import as: everruns_core::provider::Provider
+// Note: Provider entity is in the provider module. Import as: everruns_core::provider::Provider
 pub use agent::{
     Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
