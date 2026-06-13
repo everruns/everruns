@@ -10,7 +10,7 @@ use crate::harness::Harness;
 use crate::provider::DriverId;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId, WorkspaceId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::any::{Any, TypeId};
@@ -440,6 +440,99 @@ pub trait SessionFileSystem: Send + Sync {
         self.write_file(session_id, &file.path, &file.content, &file.encoding)
             .await?;
         Ok(())
+    }
+}
+
+/// A [`SessionFileSystem`] decorator that pins every operation to a fixed
+/// workspace key, ignoring the per-call `session_id`.
+///
+/// Used to re-key file I/O for a session attached to a shared workspace (where
+/// `workspace.id != session.id`): wrap the session's file store once with the
+/// session's `workspace_id`, and all downstream capability/tool access then
+/// addresses the attached workspace rather than the session's own keyspace. For
+/// the default 1:1 session the key equals the session id, so the wrapper is a
+/// transparent pass-through. See `specs/workspace.md`.
+pub struct WorkspaceScopedFileSystem {
+    inner: Arc<dyn SessionFileSystem>,
+    key: SessionId,
+}
+
+impl WorkspaceScopedFileSystem {
+    /// Wrap `inner`, pinning all operations to `workspace_id`'s key.
+    pub fn wrap(
+        inner: Arc<dyn SessionFileSystem>,
+        workspace_id: WorkspaceId,
+    ) -> Arc<dyn SessionFileSystem> {
+        Arc::new(Self {
+            inner,
+            key: SessionId::from_uuid(workspace_id.uuid()),
+        })
+    }
+}
+
+#[async_trait]
+impl SessionFileSystem for WorkspaceScopedFileSystem {
+    async fn read_file(&self, _session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
+        self.inner.read_file(self.key, path).await
+    }
+    async fn write_file(
+        &self,
+        _session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile> {
+        self.inner
+            .write_file(self.key, path, content, encoding)
+            .await
+    }
+    async fn write_file_if_content_matches(
+        &self,
+        _session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        self.inner
+            .write_file_if_content_matches(
+                self.key,
+                path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
+            .await
+    }
+    async fn delete_file(
+        &self,
+        _session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
+        self.inner.delete_file(self.key, path, recursive).await
+    }
+    async fn list_directory(&self, _session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        self.inner.list_directory(self.key, path).await
+    }
+    async fn stat_file(&self, _session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        self.inner.stat_file(self.key, path).await
+    }
+    async fn grep_files(
+        &self,
+        _session_id: SessionId,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> Result<Vec<GrepMatch>> {
+        self.inner.grep_files(self.key, pattern, path_pattern).await
+    }
+    async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
+        self.inner.create_directory(self.key, path).await
+    }
+    async fn seed_initial_file(&self, _session_id: SessionId, file: &InitialFile) -> Result<()> {
+        self.inner.seed_initial_file(self.key, file).await
     }
 }
 
@@ -1091,6 +1184,13 @@ impl PartialStreamStore for NoopPartialStreamStore {
 pub struct ToolContext {
     /// The session ID for the current execution
     pub session_id: SessionId,
+    /// The workspace this session is attached to — the key for the virtual
+    /// file store. For the default 1:1 session this equals
+    /// `WorkspaceId::from_uuid(session_id.uuid())`; for a shared workspace it
+    /// differs. File-system tools MUST key by this (via `workspace_fs_key`)
+    /// rather than `session_id` so shared-workspace sessions read/write the
+    /// attached workspace's files. See specs/workspace.md.
+    pub workspace_id: WorkspaceId,
 
     /// Optional file store for filesystem operations
     pub file_store: Option<Arc<dyn SessionFileSystem>>,
@@ -1191,10 +1291,25 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
+    /// The virtual-file-store key for this execution, derived from the attached
+    /// workspace. Carried through the `SessionFileSystem` trait's `SessionId`
+    /// parameter (the store keys by `.uuid()`), so a shared-workspace session
+    /// addresses the workspace's files rather than its own session-id keyspace.
+    pub fn workspace_fs_key(&self) -> SessionId {
+        SessionId::from_uuid(self.workspace_id.uuid())
+    }
+
+    /// Override the attached workspace (default is the 1:1 session-derived id).
+    pub fn with_workspace_id(mut self, workspace_id: WorkspaceId) -> Self {
+        self.workspace_id = workspace_id;
+        self
+    }
+
     /// Create a new tool context with just a session ID
     pub fn new(session_id: SessionId) -> Self {
         Self {
             session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: None,
             storage_store: None,
             image_store: None,
@@ -1231,6 +1346,7 @@ impl ToolContext {
     pub fn with_file_store(session_id: SessionId, file_store: Arc<dyn SessionFileSystem>) -> Self {
         Self {
             session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: Some(file_store),
             storage_store: None,
             image_store: None,
@@ -1270,6 +1386,7 @@ impl ToolContext {
     ) -> Self {
         Self {
             session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: None,
             storage_store: Some(storage_store),
             image_store: None,
@@ -1310,6 +1427,7 @@ impl ToolContext {
     ) -> Self {
         Self {
             session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: Some(file_store),
             storage_store: Some(storage_store),
             sqldb_store: None,
@@ -1388,6 +1506,7 @@ impl ToolContext {
     ) -> Self {
         Self {
             session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
             file_store: None,
             storage_store: None,
             image_store: Some(image_store),

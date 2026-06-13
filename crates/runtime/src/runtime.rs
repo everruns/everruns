@@ -626,7 +626,8 @@ impl InProcessRuntime {
                 TurnAction::ExecuteInput => {
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     execute_input_activity(
                         self,
                         org_id,
@@ -640,7 +641,8 @@ impl InProcessRuntime {
                 TurnAction::ExecuteReason => {
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     let reason_result = execute_reason_activity(
                         self,
                         org_id,
@@ -674,7 +676,8 @@ impl InProcessRuntime {
                         .expect("ExecuteAct requires a prior ReasonResult");
                     let ctx = state_machine.context();
                     let base_context =
-                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
+                            .with_workspace_id(session.workspace_id);
                     execute_act_activity(
                         self,
                         ActInput {

@@ -15,7 +15,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Result;
-use crate::typed_id::{ExecId, MessageId, SessionId, TurnId};
+use crate::typed_id::{ExecId, MessageId, SessionId, TurnId, WorkspaceId};
 
 // ============================================================================
 // Atom Modules
@@ -68,6 +68,14 @@ pub struct AtomContext {
     /// Execution ID - unique identifier for this specific atom execution
     /// Also serves as a version identifier for the execution
     pub exec_id: ExecId,
+
+    /// Workspace the session is attached to (the virtual-file-store key). `None`
+    /// means "derive from session id" (the default 1:1 case, and how older
+    /// durable records — serialized before this field existed — replay). The
+    /// runtime injects `Some(session.workspace_id)` so shared-workspace sessions
+    /// address the attached workspace's files. See specs/workspace.md.
+    #[serde(default)]
+    pub workspace_id: Option<WorkspaceId>,
 }
 
 impl AtomContext {
@@ -78,7 +86,14 @@ impl AtomContext {
             turn_id,
             input_message_id,
             exec_id: ExecId::new(),
+            workspace_id: None,
         }
+    }
+
+    /// Attach the workspace this session uses (the file-store key).
+    pub fn with_workspace_id(mut self, workspace_id: WorkspaceId) -> Self {
+        self.workspace_id = Some(workspace_id);
+        self
     }
 
     /// Create a new execution context for a new atom within the same turn
@@ -88,6 +103,7 @@ impl AtomContext {
             turn_id: self.turn_id,
             input_message_id: self.input_message_id,
             exec_id: ExecId::new(),
+            workspace_id: self.workspace_id,
         }
     }
 }

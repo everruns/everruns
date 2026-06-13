@@ -1463,6 +1463,19 @@ where
         } else {
             ToolContext::new(context.session_id)
         };
+        // Key file I/O by the attached workspace when known: pin the file store
+        // to the workspace so shared-workspace sessions address the workspace's
+        // files, not the session's own keyspace. For the default 1:1 case this
+        // is a transparent pass-through.
+        if let Some(workspace_id) = context.workspace_id {
+            tool_context.workspace_id = workspace_id;
+            if let Some(store) = tool_context.file_store.take() {
+                tool_context.file_store = Some(crate::traits::WorkspaceScopedFileSystem::wrap(
+                    store,
+                    workspace_id,
+                ));
+            }
+        }
         if let Some(ref store) = self.sqldb_store {
             tool_context.sqldb_store = Some(store.clone());
         }
