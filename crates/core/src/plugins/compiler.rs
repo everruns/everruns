@@ -432,11 +432,29 @@ fn compile_mcp_servers(
             .unwrap_or("")
             .to_string();
 
+        // The URL is fixed at compile time and SSRF-validated at install.
+        // `${user_config.*}` placeholders are only substituted in headers/env,
+        // never the URL (a templated host would bypass SSRF validation), so
+        // warn authors that a URL placeholder will not be filled in.
+        if url.contains("${user_config.") {
+            warnings.push(format!(
+                "MCP server '{server_name}': '${{user_config.*}}' placeholders in 'url' are not substituted (only headers and env support them); the URL is used verbatim"
+            ));
+        }
+
+        // Carry over `headers` and `env` string maps. Values may contain
+        // `${user_config.KEY}` placeholders, preserved verbatim here and
+        // substituted per-agent at hydration time.
+        let headers = extract_string_map(&server_config, "headers");
+        let env = extract_string_map(&server_config, "env");
+
         servers.insert(
             server_name,
             ScopedMcpServer {
                 transport_type: McpServerTransportType::Http,
                 url,
+                headers,
+                env,
                 ..ScopedMcpServer::default()
             },
         );
@@ -566,6 +584,28 @@ fn parse_mcp_json_file(
     }
 
     Ok(BTreeMap::new())
+}
+
+/// Extract a `name → string` map from a JSON object field (e.g. `headers`,
+/// `env`). Non-string values are coerced via `to_string()` of the JSON scalar;
+/// nested objects/arrays are skipped. Returns an empty map when absent.
+fn extract_string_map(
+    server_config: &serde_json::Value,
+    field: &str,
+) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    if let Some(obj) = server_config.get(field).and_then(|v| v.as_object()) {
+        for (k, v) in obj {
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                serde_json::Value::Number(n) => n.to_string(),
+                serde_json::Value::Bool(b) => b.to_string(),
+                _ => continue,
+            };
+            out.insert(k.clone(), s);
+        }
+    }
+    out
 }
 
 // ============================================================================
@@ -810,6 +850,111 @@ mod tests {
         );
         // No servers compiled since only one was stdio.
         assert!(result.unwrap().is_none());
+    }
+
+    fn mcp_test_manifest() -> PluginManifest {
+        PluginManifest {
+            name: "p".to_string(),
+            display_name: None,
+            version: None,
+            description: Some("test".to_string()),
+            author: None,
+            homepage: None,
+            repository: None,
+            license: None,
+            keywords: Vec::new(),
+            skills: None,
+            commands: None,
+            agents: None,
+            mcp_servers: None,
+            user_config: None,
+            extra: Default::default(),
+        }
+    }
+
+    #[test]
+    fn http_mcp_carries_headers_and_env_with_placeholders() {
+        let mut warnings = Vec::new();
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            ".mcp.json".to_string(),
+            serde_json::json!({
+                "mcpServers": {
+                    "api": {
+                        "type": "http",
+                        "url": "https://api.example.com/mcp",
+                        "headers": {
+                            "Authorization": "Bearer ${user_config.api_token}",
+                            "X-Static": "constant"
+                        },
+                        "env": { "REGION": "${user_config.region}" }
+                    }
+                }
+            })
+            .to_string()
+            .into_bytes(),
+        );
+        let file_set = PluginFileSet {
+            files,
+            dir_name: "p".to_string(),
+        };
+        let servers = compile_mcp_servers(&file_set, &mcp_test_manifest(), &mut warnings)
+            .expect("ok")
+            .expect("servers");
+        let api = servers.get("api").expect("api server");
+        assert_eq!(api.url, "https://api.example.com/mcp");
+        // Header/env placeholders are preserved verbatim at compile time.
+        assert_eq!(
+            api.headers.get("Authorization").map(String::as_str),
+            Some("Bearer ${user_config.api_token}")
+        );
+        assert_eq!(
+            api.headers.get("X-Static").map(String::as_str),
+            Some("constant")
+        );
+        assert_eq!(
+            api.env.get("REGION").map(String::as_str),
+            Some("${user_config.region}")
+        );
+        // A fixed URL produces no placeholder warning.
+        assert!(!warnings.iter().any(|w| w.contains("url")), "{warnings:?}");
+    }
+
+    #[test]
+    fn url_placeholder_produces_warning() {
+        let mut warnings = Vec::new();
+        let mut files = std::collections::BTreeMap::new();
+        files.insert(
+            ".mcp.json".to_string(),
+            serde_json::json!({
+                "mcpServers": {
+                    "api": {
+                        "type": "http",
+                        "url": "https://${user_config.host}/mcp"
+                    }
+                }
+            })
+            .to_string()
+            .into_bytes(),
+        );
+        let file_set = PluginFileSet {
+            files,
+            dir_name: "p".to_string(),
+        };
+        let servers = compile_mcp_servers(&file_set, &mcp_test_manifest(), &mut warnings)
+            .expect("ok")
+            .expect("servers");
+        // URL is kept verbatim (never substituted) and a warning is emitted.
+        assert_eq!(
+            servers.get("api").unwrap().url,
+            "https://${user_config.host}/mcp"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("url") && w.contains("not substituted")),
+            "expected url placeholder warning, got: {warnings:?}"
+        );
     }
 
     #[test]

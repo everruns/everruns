@@ -59,11 +59,25 @@ capability contributions:
 | `agents/*.md`                     | system prompt contribution: each agent file rendered as a named persona/instructions section |
 | `skills/<name>/SKILL.md` + files  | skill packages (same shape as `DeclarativeCapabilitySkill`)   |
 | `commands/*.md`                   | user-invocable skills (`user_invocable: true`); frontmatter `name`/`description` carried over |
-| `.mcp.json` / `mcpServers`        | scoped MCP servers; HTTP transport only, SSRF-validated like all scoped MCP config |
-| `userConfig`                      | *(phase 2)* capability `config_schema`                        |
+| `.mcp.json` / `mcpServers`        | scoped MCP servers; HTTP transport only, SSRF-validated like all scoped MCP config. `headers` and `env` are carried over and may contain `${user_config.*}` placeholders |
+| `userConfig`                      | capability `config_schema` (+ `config_ui_schema`); per-agent values substituted into MCP `headers`/`env` at enable time |
 | `hooks`, `lspServers`, `monitors`, `themes`, `outputStyles` | ignored; surfaced as install warnings |
 
 Notes:
+
+- `userConfig` fields compile to a JSON Schema (`config_schema`) plus a
+  react-jsonschema-form `config_ui_schema`. `type`/`title`/`description`/
+  `default`/`enum` carry into the schema; `sensitive: true` becomes a
+  `ui:widget: password` hint (UI affordance only — not encrypted at rest);
+  `required: true` is hoisted into the schema's top-level `required` array.
+  The form a user fills when enabling the plugin is stored as the per-agent
+  capability config. At hydration, `${user_config.KEY}` placeholders in the
+  compiled MCP `headers` and `env` values are substituted from that config.
+  The MCP server `url` is **never** templated: it is fixed at compile time and
+  SSRF-validated at install, so a per-agent value cannot redirect the request
+  to an internal host (TM-PLUGIN-008). A placeholder in a `url` is kept verbatim
+  and surfaces an install warning. For real secrets, prefer scoped-MCP
+  OAuth/provider auth over a plaintext `userConfig` field (TM-PLUGIN-009).
 
 - `agents/*.md` are subagent definitions on other hosts. Everruns has no
   per-plugin subagent runtime, so v1 folds them into the capability system
@@ -231,9 +245,11 @@ capability threat model:
    picker integration, marketplace/plugin management UI, core-owned compiler
    with `InProcessRuntimeBuilder` local-directory loading, dogfood by
    installing `everruns`/`everruns-dev` and the `microsoft-docs` fixture.
-2. **v2**: `userConfig` → capability `config_schema`, `git-subdir` and git
-   URL sources, update UX with version diffing, install warnings surfaced in
-   UI.
+2. **v2**: `userConfig` → capability `config_schema` with `${user_config.*}`
+   substitution into MCP `headers`/`env` *(done)*; install warnings surfaced in
+   UI *(done)*. Remaining: `git-subdir` and git URL sources, update UX with
+   version diffing, a config-form prompt at enable time, and surfacing
+   `config_schema` in the capability assignment UI.
 3. **Later**: publishing (export a declarative capability as a plugin
    directory), org-to-org sharing, `agents/*.md` → blueprints/subagents,
    hooks → `user_hooks` (high-risk gated), npm source.

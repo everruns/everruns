@@ -1340,11 +1340,16 @@ Installed plugins (`specs/plugins.md`) compile third-party remote content into a
 | TM-PLUGIN-005 | Code-execution smuggling via plugin components | High | v1 compiles data-only contributions; `hooks`, `lspServers`, `monitors` and other executable components are dropped with install warnings and never executed server-side; MCP tools execute remotely under existing TM-MCP controls | MITIGATED |
 | TM-PLUGIN-006 | Server filesystem read via `local_path` marketplace source | High | `local_path` is rejected unless the deployment is dev-grade (`DeploymentGrade::from_env().is_dev()`); production deployments only accept `github`/`url` sources | MITIGATED |
 | TM-PLUGIN-007 | Typosquatting / spoofed plugin names in an org's marketplaces | Medium | Marketplace registration is admin-gated; plugin and marketplace names are unique per org; no global plugin namespace exists in v1, so impersonation requires an admin to register the hostile marketplace | **ACCEPTED** |
+| TM-PLUGIN-008 | SSRF re-routing via `userConfig` substitution into a plugin MCP server URL | High | `${user_config.*}` placeholders are substituted only into MCP `headers` and `env` values at hydration, **never** the server `url`. The URL is fixed at compile time and SSRF-validated at install; a per-agent config value therefore cannot redirect a request to an internal host. A `${user_config.*}` placeholder found in a `url` is kept verbatim and surfaces an install warning | MITIGATED |
+| TM-PLUGIN-009 | Plaintext storage of sensitive `userConfig` values | Medium | `userConfig` fields compile to a capability `config_schema`; per-agent values are stored as capability config (not encrypted at rest). `sensitive: true` only renders a password input (anti-shoulder-surf), it does not encrypt. For real secrets, plugins should use scoped-MCP OAuth/provider auth (`auth_mode`/`oauth_provider_id`) instead of a plaintext `userConfig` field | **ACCEPTED** |
 
 ### Mitigation Details
 
 **TM-PLUGIN-002 — Pinned compile-at-install model:**
 The capability that agents execute is the compiled `definition` JSONB persisted in `plugin_installs` at install/update time. Upstream changes to the source repository have no effect on running agents until an admin explicitly updates, at which point the content is re-fetched at the marketplace's current synced SHA and re-validated end to end. This is the same trust shape as a lockfile: sync moves the candidate version; update moves the installed one.
+
+**TM-PLUGIN-008 — URL is never templated:**
+`hydrate_plugin_capability_config` walks the compiled `mcp_servers` and substitutes `${user_config.KEY}` only in header values and `env` values, using the per-agent config map. The `url` field is copied through untouched. This preserves the install-time SSRF validation as authoritative: because the destination host cannot be influenced by per-agent config, the only user-controlled surface is request headers/env, which cannot re-route the request. Header values still flow through the HTTP client's header-value validation, which rejects control characters (CR/LF), so a config value cannot smuggle additional headers.
 
 ## Vulnerability Summary
 

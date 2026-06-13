@@ -202,19 +202,94 @@ pub fn declarative_capability_info(
     }
 }
 
-/// Hydrate a `plugin:` capability config: same logic as the declarative counterpart.
+/// Hydrate a `plugin:` capability config.
 ///
-/// The per-agent config for a `plugin:` capability ref is the serialized
-/// `DeclarativeCapabilityDefinition` produced by the compiler. Hydration simply
-/// re-serializes the definition so callers get a canonical JSON value.
+/// The per-agent `config` carries user-supplied values keyed by the plugin's
+/// `userConfig` field names (the form rendered from `config_schema`). Before
+/// re-serializing the compiled definition, `${user_config.KEY}` placeholders in
+/// the compiled MCP server header values and `env` values are substituted from
+/// that map. The server `url` is deliberately not templated (see
+/// `substitute_user_config_placeholders`). This is how plugin configuration
+/// (e.g. an API token in an `Authorization` header) reaches the runtime.
 pub fn hydrate_plugin_capability_config(
     config: serde_json::Value,
     definition: &DeclarativeCapabilityDefinition,
 ) -> serde_json::Value {
-    // Identical to the declarative path: discard the incoming config and
-    // return the canonical definition. The `plugin:` namespace keeps refs
-    // from colliding with `declarative:` refs.
-    hydrate_declarative_capability_config(config, definition)
+    let mut def = definition.clone();
+    if let Some(values) = config.as_object()
+        && let Some(servers) = def.mcp_servers.as_mut()
+    {
+        substitute_user_config_placeholders(servers, values);
+    }
+    serde_json::to_value(&def).unwrap_or_default()
+}
+
+/// Replace `${user_config.KEY}` placeholders in each scoped MCP server's header
+/// values and `env` values using the provided config map. Keys absent from the
+/// map resolve to an empty string so an unconfigured optional value does not
+/// leak a literal placeholder into outbound requests.
+///
+/// The server `url` is deliberately NOT substituted: it is fixed at compile
+/// time and SSRF-validated at install time. Allowing user config to rewrite the
+/// URL would let a per-agent value redirect the request to an internal host
+/// (e.g. cloud metadata), bypassing that validation. Headers and env cannot
+/// change the request destination, so user-supplied values there are safe.
+fn substitute_user_config_placeholders(
+    servers: &mut ScopedMcpServers,
+    values: &serde_json::Map<String, serde_json::Value>,
+) {
+    for server in servers.values_mut() {
+        for v in server.headers.values_mut() {
+            *v = substitute_user_config_str(v, values);
+        }
+        for v in server.env.values_mut() {
+            *v = substitute_user_config_str(v, values);
+        }
+    }
+}
+
+fn substitute_user_config_str(
+    input: &str,
+    values: &serde_json::Map<String, serde_json::Value>,
+) -> String {
+    const MARKER: &str = "${user_config.";
+    if !input.contains(MARKER) {
+        return input.to_string();
+    }
+    let mut out = String::with_capacity(input.len());
+    let mut rest = input;
+    while let Some(start) = rest.find(MARKER) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + MARKER.len()..];
+        match after.find('}') {
+            Some(end) => {
+                let key = &after[..end];
+                let replacement = values
+                    .get(key)
+                    .map(json_scalar_to_string)
+                    .unwrap_or_default();
+                out.push_str(&replacement);
+                rest = &after[end + 1..];
+            }
+            None => {
+                // Unterminated placeholder: emit the remainder verbatim.
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn json_scalar_to_string(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => b.to_string(),
+        serde_json::Value::Null => String::new(),
+        other => other.to_string(),
+    }
 }
 
 /// Build a `CapabilityInfo` DTO for a `plugin:{name}` capability.
@@ -421,5 +496,84 @@ mod tests {
         let info = declarative_capability_info("research_pack", valid_definition());
         assert_eq!(info.id.as_str(), "declarative:research_pack");
         assert_eq!(info.name, "Research Pack");
+    }
+
+    fn definition_with_mcp_placeholders() -> DeclarativeCapabilityDefinition {
+        let mut servers = ScopedMcpServers::new();
+        // URL is fixed (no placeholder) — only headers/env are templated.
+        let mut server = crate::ScopedMcpServer {
+            url: "https://api.example.com/mcp".to_string(),
+            ..Default::default()
+        };
+        server.headers.insert(
+            "Authorization".to_string(),
+            "Bearer ${user_config.api_token}".to_string(),
+        );
+        server
+            .env
+            .insert("REGION".to_string(), "${user_config.region}".to_string());
+        servers.insert("api".to_string(), server);
+        DeclarativeCapabilityDefinition {
+            name: "p".to_string(),
+            description: "plugin".to_string(),
+            mcp_servers: Some(servers),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn hydrate_plugin_substitutes_user_config_into_headers_and_env() {
+        let def = definition_with_mcp_placeholders();
+        let config = serde_json::json!({ "api_token": "secret-123", "region": "westus" });
+        let hydrated = hydrate_plugin_capability_config(config, &def);
+        let out: DeclarativeCapabilityDefinition = serde_json::from_value(hydrated).unwrap();
+        let server = out.mcp_servers.unwrap();
+        let api = server.get("api").unwrap();
+        // URL is never templated.
+        assert_eq!(api.url, "https://api.example.com/mcp");
+        assert_eq!(
+            api.headers.get("Authorization").map(String::as_str),
+            Some("Bearer secret-123")
+        );
+        assert_eq!(api.env.get("REGION").map(String::as_str), Some("westus"));
+    }
+
+    #[test]
+    fn hydrate_plugin_missing_key_resolves_to_empty() {
+        let def = definition_with_mcp_placeholders();
+        // api_token absent from config.
+        let config = serde_json::json!({ "region": "eastus" });
+        let hydrated = hydrate_plugin_capability_config(config, &def);
+        let out: DeclarativeCapabilityDefinition = serde_json::from_value(hydrated).unwrap();
+        let api = out.mcp_servers.unwrap();
+        let api = api.get("api").unwrap();
+        // Absent key → empty substitution, no literal placeholder leaks through.
+        assert_eq!(
+            api.headers.get("Authorization").map(String::as_str),
+            Some("Bearer ")
+        );
+        assert!(!api.headers["Authorization"].contains("${user_config"));
+    }
+
+    #[test]
+    fn hydrate_plugin_no_config_leaves_placeholders() {
+        // A non-object config (or null) leaves the definition untouched.
+        let def = definition_with_mcp_placeholders();
+        let hydrated = hydrate_plugin_capability_config(serde_json::Value::Null, &def);
+        let out: DeclarativeCapabilityDefinition = serde_json::from_value(hydrated).unwrap();
+        let api = out.mcp_servers.unwrap();
+        let api = api.get("api").unwrap();
+        assert_eq!(
+            api.headers.get("Authorization").map(String::as_str),
+            Some("Bearer ${user_config.api_token}")
+        );
+    }
+
+    #[test]
+    fn substitute_handles_unterminated_placeholder() {
+        let values = serde_json::Map::new();
+        let got = substitute_user_config_str("prefix ${user_config.x", &values);
+        // Unterminated marker is emitted verbatim.
+        assert_eq!(got, "prefix ${user_config.x");
     }
 }
