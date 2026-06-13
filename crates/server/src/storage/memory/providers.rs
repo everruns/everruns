@@ -592,7 +592,7 @@ impl InMemoryDatabase {
 
     pub async fn reconcile_llm_generation(
         &self,
-        _provider_response_id: &str,
+        _id: uuid::Uuid,
         _input_tokens: Option<i64>,
         _output_tokens: Option<i64>,
         _actual_cost_usd: Option<f64>,

@@ -14,6 +14,6 @@ ALTER TABLE llm_generations
     ADD COLUMN provider_response_id TEXT,
     ADD COLUMN reconciled_at TIMESTAMPTZ;
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_llm_generations_provider_response_id
+CREATE INDEX IF NOT EXISTS idx_llm_generations_provider_response_id
     ON llm_generations (provider, provider_response_id)
     WHERE provider_response_id IS NOT NULL AND reconciled_at IS NULL;

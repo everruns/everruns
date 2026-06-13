@@ -83,7 +83,7 @@ impl GenerationReconcilerService {
                     if let Err(e) = self
                         .db
                         .reconcile_llm_generation(
-                            &row.provider_response_id,
+                            row.id,
                             authoritative.tokens_prompt,
                             authoritative.tokens_completion,
                             authoritative.total_cost,

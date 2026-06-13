@@ -565,7 +565,7 @@ impl Database {
     /// IS NOT NULL`) is not modified.
     pub async fn reconcile_llm_generation(
         &self,
-        provider_response_id: &str,
+        id: Uuid,
         input_tokens: Option<i64>,
         output_tokens: Option<i64>,
         actual_cost_usd: Option<f64>,
@@ -582,11 +582,11 @@ impl Database {
                 provider              = COALESCE($5, provider),
                 model                 = COALESCE($6, model),
                 reconciled_at         = NOW()
-            WHERE provider_response_id = $1
+            WHERE id = $1
               AND reconciled_at IS NULL
             "#,
         )
-        .bind(provider_response_id)
+        .bind(id)
         .bind(input_tokens)
         .bind(output_tokens)
         .bind(actual_cost_usd)

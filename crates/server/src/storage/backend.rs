@@ -2193,7 +2193,7 @@ impl StorageBackend {
 
     pub async fn reconcile_llm_generation(
         &self,
-        provider_response_id: &str,
+        id: Uuid,
         input_tokens: Option<i64>,
         output_tokens: Option<i64>,
         actual_cost_usd: Option<f64>,
@@ -2203,7 +2203,7 @@ impl StorageBackend {
         dispatch!(
             self,
             reconcile_llm_generation,
-            provider_response_id,
+            id,
             input_tokens,
             output_tokens,
             actual_cost_usd,
