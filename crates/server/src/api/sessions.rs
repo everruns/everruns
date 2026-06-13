@@ -995,6 +995,7 @@ mod tests {
                     mcp_servers: serde_json::json!({}),
                     is_built_in: true,
                     network_access: None,
+                    embedder_metadata: serde_json::json!({}),
                 },
             )
             .await

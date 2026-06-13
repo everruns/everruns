@@ -1778,6 +1778,8 @@ impl DirectWorkerAdapters {
                 network_access: row
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),
+                embedder_metadata: serde_json::from_value(row.embedder_metadata)
+                    .unwrap_or_default(),
                 is_built_in: row.is_built_in,
                 status: match row.status.as_str() {
                     "active" => HarnessStatus::Active,
@@ -3258,6 +3260,7 @@ mod tests {
                 initial_files: serde_json::json!([]),
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
+                embedder_metadata: serde_json::json!({}),
                 is_built_in,
             },
         )

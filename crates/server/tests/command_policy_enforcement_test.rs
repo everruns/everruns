@@ -72,6 +72,7 @@ fn minimal_harness(name: &str) -> CreateHarnessRequest {
         initial_files: Vec::new(),
         mcp_servers: Default::default(),
         network_access: None,
+        embedder_metadata: Default::default(),
     }
 }
 

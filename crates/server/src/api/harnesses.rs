@@ -285,6 +285,7 @@ pub async fn import_harness(
         initial_files: vec![],
         mcp_servers: Default::default(),
         network_access: None,
+        embedder_metadata: Default::default(),
     };
 
     let harness = crate::domains::harnesses::CreateHarness(req)

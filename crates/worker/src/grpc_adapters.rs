@@ -1179,6 +1179,7 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
+        embedder_metadata: Default::default(),
         is_built_in: proto_harness.is_built_in,
         status,
         created_at: proto_timestamp_or_now(proto_harness.created_at.as_ref()),

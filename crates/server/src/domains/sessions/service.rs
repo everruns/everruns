@@ -2012,6 +2012,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2134,6 +2135,7 @@ mod tests {
             ],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2240,6 +2242,7 @@ mod tests {
             ],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2262,6 +2265,7 @@ mod tests {
             }],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2313,6 +2317,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2371,6 +2376,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2419,6 +2425,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&other_ctx)
         .await
@@ -2460,6 +2467,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2500,6 +2508,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&other_ctx)
         .await
@@ -2621,6 +2630,7 @@ mod tests {
                     initial_files: serde_json::json!([]),
                     mcp_servers: serde_json::json!({}),
                     network_access: None,
+                    embedder_metadata: serde_json::json!({}),
                     is_built_in: false,
                 },
             )
@@ -2702,6 +2712,7 @@ mod tests {
                     initial_files: serde_json::json!([]),
                     mcp_servers: serde_json::json!({}),
                     network_access: None,
+                    embedder_metadata: serde_json::json!({}),
                     is_built_in: false,
                 },
             )
@@ -2766,6 +2777,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&other_ctx)
         .await
@@ -2900,6 +2912,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -2971,6 +2984,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -3013,6 +3027,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -3067,6 +3082,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -3128,6 +3144,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -3181,6 +3198,7 @@ mod tests {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         })
         .execute(&ctx)
         .await
@@ -3262,6 +3280,7 @@ mod tests {
                     initial_files: serde_json::json!([]),
                     mcp_servers: serde_json::json!({}),
                     network_access: None,
+                    embedder_metadata: serde_json::json!({}),
                     is_built_in: false,
                 },
             )

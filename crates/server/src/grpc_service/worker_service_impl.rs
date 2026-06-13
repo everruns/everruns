@@ -3410,6 +3410,7 @@ impl WorkerService for WorkerServiceImpl {
             initial_files: vec![],
             mcp_servers: Default::default(),
             network_access: None,
+            embedder_metadata: Default::default(),
         };
 
         use crate::domains::common::Command;
@@ -3453,6 +3454,7 @@ impl WorkerService for WorkerServiceImpl {
             mcp_servers: None,
             network_access: None,
             status: None,
+            embedder_metadata: None,
         };
 
         use crate::domains::common::Command;
@@ -3523,6 +3525,7 @@ impl WorkerService for WorkerServiceImpl {
                 mcp_servers: None,
                 network_access: None,
                 status: None,
+                embedder_metadata: None,
             };
             crate::domains::harnesses::UpdateHarnessCmd {
                 id: harness.id.to_string(),

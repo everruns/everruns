@@ -487,6 +487,7 @@ fn build_request_options(
         prompt_cache,
         tool_search,
         provider_options,
+        metadata: config.metadata.clone(),
     };
 
     (!request_options.is_empty()).then_some(request_options)
@@ -1048,6 +1049,7 @@ impl ReasonAtom {
         let compaction_config = assembled.compaction_config;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
+        let embedder_metadata = assembled.embedder_metadata;
 
         self.emit_capability_usage_snapshot(
             session_id,
@@ -1269,6 +1271,11 @@ impl ReasonAtom {
         let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
+        }
+
+        // Inject embedder metadata first; system keys added below take precedence
+        for (k, v) in &embedder_metadata {
+            llm_config_builder = llm_config_builder.with_metadata(k, v.clone());
         }
 
         // Add metadata for API tracking and debugging

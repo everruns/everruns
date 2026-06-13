@@ -195,6 +195,7 @@ impl Command for CreateHarness {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
+            embedder_metadata: serde_json::to_value(&req.embedder_metadata).unwrap_or_default(),
             is_built_in: false,
         };
         let row = ctx
@@ -470,6 +471,9 @@ impl Command for UpdateHarnessCmd {
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap())),
+            embedder_metadata: req
+                .embedder_metadata
+                .map(|m| serde_json::to_value(&m).unwrap_or_default()),
             status: req.status.map(|s| s.to_string()),
         };
         let row = ctx
@@ -708,6 +712,7 @@ impl Command for CopyHarness {
             initial_files: source.initial_files,
             mcp_servers: source.mcp_servers,
             network_access: None,
+            embedder_metadata: source.embedder_metadata,
         };
 
         CreateHarness(req).execute(ctx).await

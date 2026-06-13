@@ -4,6 +4,8 @@
 // Agent (optional) provides domain-specific customizations on top.
 // Hierarchy: Harness → Agent → Session
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +119,11 @@ pub struct Harness {
         skip_serializing_if = "scoped_mcp_servers_is_empty"
     )]
     pub mcp_servers: ScopedMcpServers,
+    /// Arbitrary key-value metadata injected into LLM requests for observability.
+    /// Keys from system context (session_id, org_id, etc.) always take precedence.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(example = json!({"env": "production", "team": "platform"})))]
+    pub embedder_metadata: HashMap<String, String>,
     /// Whether this harness is built-in (system-managed, readonly).
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.
@@ -172,6 +179,17 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         initial_files: effective.initial_files,
         network_access: effective.network_access,
         mcp_servers: effective.mcp_servers,
+        // embedder_metadata: parent base, child keys win
+        embedder_metadata: {
+            let mut m = parent.embedder_metadata.clone();
+            m.extend(
+                child
+                    .embedder_metadata
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+            m
+        },
     }
 }
 
@@ -200,6 +218,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             mcp_servers: ScopedMcpServers::default(),
+            embedder_metadata: HashMap::new(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),

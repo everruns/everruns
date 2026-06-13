@@ -29,6 +29,7 @@ impl InMemoryDatabase {
             initial_files: input.initial_files,
             mcp_servers: input.mcp_servers,
             network_access: input.network_access,
+            embedder_metadata: input.embedder_metadata,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -73,6 +74,7 @@ impl InMemoryDatabase {
                 tags: input.tags,
                 initial_files: input.initial_files,
                 mcp_servers: input.mcp_servers,
+                embedder_metadata: input.embedder_metadata,
                 updated_at: now,
                 ..existing.clone()
             };
@@ -93,6 +95,7 @@ impl InMemoryDatabase {
             initial_files: input.initial_files,
             mcp_servers: input.mcp_servers,
             network_access: input.network_access,
+            embedder_metadata: input.embedder_metadata,
             is_built_in: input.is_built_in,
             status: "active".to_string(),
             created_at: now,
@@ -200,6 +203,9 @@ impl InMemoryDatabase {
             }
             if let Some(network_access) = input.network_access {
                 harness.network_access = network_access;
+            }
+            if let Some(embedder_metadata) = input.embedder_metadata {
+                harness.embedder_metadata = embedder_metadata;
             }
             if let Some(status) = input.status {
                 harness.status = status;

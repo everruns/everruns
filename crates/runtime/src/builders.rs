@@ -2,6 +2,8 @@
 // Decision: keep these in everruns-runtime so core domain structs stay literal
 // data models while runtime owns the public embedding ergonomics.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
@@ -30,6 +32,7 @@ pub struct HarnessBuilder {
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     mcp_servers: ScopedMcpServers,
+    embedder_metadata: HashMap<String, String>,
     is_built_in: bool,
     status: HarnessStatus,
     created_at: Option<DateTime<Utc>>,
@@ -52,6 +55,7 @@ impl HarnessBuilder {
             initial_files: Vec::new(),
             network_access: None,
             mcp_servers: ScopedMcpServers::default(),
+            embedder_metadata: HashMap::new(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: None,
@@ -148,6 +152,22 @@ impl HarnessBuilder {
         self
     }
 
+    pub fn metadata_entry(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.embedder_metadata.insert(key.into(), value.into());
+        self
+    }
+
+    pub fn metadata_entries<I, K, V>(mut self, entries: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.embedder_metadata
+            .extend(entries.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self
+    }
+
     pub fn is_built_in(mut self, is_built_in: bool) -> Self {
         self.is_built_in = is_built_in;
         self
@@ -186,6 +206,7 @@ impl HarnessBuilder {
             initial_files: self.initial_files,
             network_access: self.network_access,
             mcp_servers: self.mcp_servers,
+            embedder_metadata: self.embedder_metadata,
             is_built_in: self.is_built_in,
             status: self.status,
             created_at,
