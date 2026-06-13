@@ -152,6 +152,17 @@ impl Command for CreateSession {
                 .map_err(limit_validation_error)?;
         }
 
+        // Attaching a session to an existing workspace grants the session (and
+        // its agent) read/write access to that workspace's files, so require
+        // WORKSPACE_MANAGE on the caller — SESSION_MANAGE alone must not be a
+        // path to a workspace the caller cannot otherwise manage. The service
+        // additionally validates the target exists, is active, and is in-org.
+        if req.workspace_id.is_some() {
+            crate::domains::workspaces::WORKSPACE_MANAGE
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.to_string()))?;
+        }
+
         q::session_service(ctx)?
             .create(
                 &ctx.caller,
