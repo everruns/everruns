@@ -57,12 +57,43 @@ function isImagePart(
   return part.type === "image";
 }
 
-function buildImageSrc(part: {
+// Raster-only allowlist. SVG is intentionally excluded: script/event-handler
+// payloads in SVG are an XSS risk when rendered via <img>.
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/avif",
+  "image/tiff",
+  "image/ico",
+  "image/x-icon",
+]);
+
+function isAllowedImageMimeType(mediaType: string): boolean {
+  return ALLOWED_IMAGE_MIME_TYPES.has(mediaType.toLowerCase().split(";")[0].trim());
+}
+
+// Exported for unit tests.
+export function buildImageSrc(part: {
   url?: string;
   base64?: string;
   media_type?: string;
 }): string | null {
   if (typeof part.url === "string" && part.url.length > 0) {
+    // Block non-http(s) schemes (data:, javascript:, etc.).
+    if (!part.url.startsWith("https://") && !part.url.startsWith("http://")) {
+      return null;
+    }
+    // If media_type is declared, enforce the allowlist to block SVG URLs.
+    if (
+      typeof part.media_type === "string" &&
+      part.media_type.length > 0 &&
+      !isAllowedImageMimeType(part.media_type)
+    ) {
+      return null;
+    }
     return part.url;
   }
   if (typeof part.base64 === "string" && part.base64.length > 0) {
@@ -70,6 +101,9 @@ function buildImageSrc(part: {
       typeof part.media_type === "string" && part.media_type.length > 0
         ? part.media_type
         : "image/png";
+    if (!isAllowedImageMimeType(mediaType)) {
+      return null;
+    }
     return `data:${mediaType};base64,${part.base64}`;
   }
   return null;
