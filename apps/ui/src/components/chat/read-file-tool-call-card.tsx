@@ -69,6 +69,7 @@ const ALLOWED_IMAGE_MIME_TYPES = new Set([
   "image/tiff",
   "image/ico",
   "image/x-icon",
+  "image/vnd.microsoft.icon",
 ]);
 
 function isAllowedImageMimeType(mediaType: string): boolean {
@@ -82,8 +83,12 @@ export function buildImageSrc(part: {
   media_type?: string;
 }): string | null {
   if (typeof part.url === "string" && part.url.length > 0) {
-    // Block non-http(s) schemes (data:, javascript:, etc.).
-    if (!part.url.startsWith("https://") && !part.url.startsWith("http://")) {
+    // Only allow http(s) schemes. Use URL parsing so the check is
+    // case-insensitive and handles any leading/trailing whitespace.
+    try {
+      const { protocol } = new URL(part.url);
+      if (protocol !== "https:" && protocol !== "http:") return null;
+    } catch {
       return null;
     }
     // If media_type is declared, enforce the allowlist to block SVG URLs.

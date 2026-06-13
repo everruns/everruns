@@ -21,9 +21,7 @@ describe("buildImageSrc", () => {
     });
 
     it("rejects data: URLs", () => {
-      expect(
-        buildImageSrc({ url: "data:image/png;base64,abc123" }),
-      ).toBeNull();
+      expect(buildImageSrc({ url: "data:image/png;base64,abc123" })).toBeNull();
     });
 
     it("rejects javascript: URLs", () => {
@@ -45,9 +43,7 @@ describe("buildImageSrc", () => {
     });
 
     it("rejects SVG data URLs", () => {
-      expect(
-        buildImageSrc({ base64: "PHN2Zy8+", media_type: "image/svg+xml" }),
-      ).toBeNull();
+      expect(buildImageSrc({ base64: "PHN2Zy8+", media_type: "image/svg+xml" })).toBeNull();
     });
 
     it("rejects unknown/arbitrary media types", () => {
