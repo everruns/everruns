@@ -325,6 +325,9 @@ pub struct Ctx {
     /// Outbound HTTP boundary. Used by commands that make sanctioned egress
     /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
     pub egress_service: Option<Arc<dyn EgressService>>,
+    /// System utility LLM for sanctioned internal analysis tasks
+    /// (specs/utility-llm.md). Not a user-configurable model surface.
+    pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
 }
 
 impl Ctx {
@@ -376,6 +379,7 @@ impl Ctx {
             chat_harness_name: None,
             chat_session_title: None,
             egress_service: None,
+            utility_llm_service: None,
         }
     }
 
@@ -529,6 +533,14 @@ impl Ctx {
 
     pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
         self.runner = Some(runner);
+        self
+    }
+
+    pub fn with_utility_llm_service(
+        mut self,
+        service: Arc<dyn everruns_core::UtilityLlmService>,
+    ) -> Self {
+        self.utility_llm_service = Some(service);
         self
     }
 

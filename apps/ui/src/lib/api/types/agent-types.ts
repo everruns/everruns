@@ -189,6 +189,11 @@ export interface AgentFinding {
   source: FindingSource;
 }
 
+/** Response from on-demand agent analysis (built-in rules + LLM checkers) */
+export interface AgentAnalysisResponse {
+  findings: AgentFinding[];
+}
+
 /** Response showing the final agent shape after applying capabilities */
 export interface AgentPreviewResponse {
   /** The full system prompt with capability additions prepended */

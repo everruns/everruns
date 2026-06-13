@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePreviewAgent } from "@/hooks/use-agents";
+import { useAnalyzeAgent, usePreviewAgent } from "@/hooks/use-agents";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -13,9 +14,10 @@ import type {
   AgentPreviewResponse,
   FindingSeverity,
   InitialFile,
+  PreviewAgentRequest,
   ToolDefinition,
 } from "@/lib/api/types";
-import { Wrench, FileText, AlertCircle, ShieldCheck } from "lucide-react";
+import { Wrench, FileText, AlertCircle, ShieldCheck, Sparkles } from "lucide-react";
 
 interface AgentPreviewProps {
   systemPrompt: string;
@@ -23,6 +25,9 @@ interface AgentPreviewProps {
   // Accept missing `initial_files` from agents persisted before that field existed.
   initialFiles: InitialFile[] | null | undefined;
   tools?: ToolDefinition[];
+  /** When set, findings with a proposed fix show an Apply button that
+   * replaces the located span in the authored system prompt. */
+  onApplyFix?: (start: number, end: number, replacement: string) => void;
 }
 
 export function AgentPreview({
@@ -30,6 +35,7 @@ export function AgentPreview({
   capabilities,
   initialFiles,
   tools = [],
+  onApplyFix,
 }: AgentPreviewProps) {
   const previewMutation = usePreviewAgent();
   const [preview, setPreview] = useState<AgentPreviewResponse | null>(null);
@@ -98,7 +104,11 @@ export function AgentPreview({
 
   return (
     <div className="space-y-6">
-      <FindingsCard findings={preview.findings ?? []} />
+      <FindingsCard
+        findings={preview.findings ?? []}
+        request={{ system_prompt: systemPrompt, capabilities, tools }}
+        onApplyFix={onApplyFix}
+      />
 
       {/* System Prompt Preview */}
       <Card>
@@ -156,10 +166,37 @@ const SEVERITY_STYLES: Record<FindingSeverity, string> = {
   suggestion: "border-muted-foreground/50 text-muted-foreground",
 };
 
-function FindingsCard({ findings }: { findings: AgentFinding[] }) {
-  if (findings.length === 0) {
-    return null;
-  }
+/** Replace a byte-offset span (as reported by the server) in a JS string. */
+function applyByteSpanReplacement(
+  text: string,
+  start: number,
+  end: number,
+  replacement: string,
+): string {
+  const bytes = new TextEncoder().encode(text);
+  const decoder = new TextDecoder();
+  return decoder.decode(bytes.slice(0, start)) + replacement + decoder.decode(bytes.slice(end));
+}
+
+interface FindingsCardProps {
+  findings: AgentFinding[];
+  request: PreviewAgentRequest;
+  onApplyFix?: (start: number, end: number, replacement: string) => void;
+}
+
+function FindingsCard({ findings, request, onApplyFix }: FindingsCardProps) {
+  const analyzeMutation = useAnalyzeAgent();
+  const [analysis, setAnalysis] = useState<AgentFinding[] | null>(null);
+
+  // Analysis results are tied to the config they were computed against;
+  // invalidate them when the prompt, capabilities, or tools change (tools
+  // feed the server-side llm.tool_guidance checker).
+  useEffect(() => {
+    setAnalysis(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request.system_prompt, JSON.stringify(request.capabilities), JSON.stringify(request.tools)]);
+
+  const shown = analysis ?? findings;
 
   return (
     <Card>
@@ -167,32 +204,105 @@ function FindingsCard({ findings }: { findings: AgentFinding[] }) {
         <CardTitle className="flex items-center gap-2">
           <ShieldCheck className="w-5 h-5" />
           Checks
-          <Badge variant="secondary" className="ml-2">
-            {findings.length}
-          </Badge>
+          {shown.length > 0 && (
+            <Badge variant="secondary" className="ml-2">
+              {shown.length}
+            </Badge>
+          )}
+          <span className="flex-1" />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={analyzeMutation.isPending}
+            onClick={() =>
+              analyzeMutation.mutate(request, {
+                onSuccess: (data) => setAnalysis(data.findings),
+              })
+            }
+          >
+            <Sparkles className="w-4 h-4 mr-1" />
+            {analyzeMutation.isPending ? "Analyzing…" : "Analyze"}
+          </Button>
         </CardTitle>
         <CardDescription>
-          Advisory findings about this configuration. They never block saving.
+          Advisory findings about this configuration. They never block saving. Analyze runs a deeper
+          AI review (takes ~30s).
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <ul className="space-y-3">
-          {findings.map((finding, index) => (
-            <li key={`${finding.rule_id}-${index}`} className="flex items-start gap-3">
-              <Badge variant="outline" className={`text-xs ${SEVERITY_STYLES[finding.severity]}`}>
-                {finding.severity}
-              </Badge>
-              <div className="space-y-0.5">
-                <p className="text-sm">{finding.message}</p>
-                <p className="text-xs text-muted-foreground font-mono">{finding.rule_id}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        {analyzeMutation.error && (
+          <p className="text-sm text-destructive mb-3">
+            Analysis failed: {analyzeMutation.error.message}
+          </p>
+        )}
+        {shown.length === 0 ? (
+          <p className="text-sm text-muted-foreground italic">
+            {analysis
+              ? "No issues found by built-in rules or AI analysis."
+              : "No issues found by built-in rules."}
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {shown.map((finding, index) => (
+              <FindingRow
+                key={`${finding.rule_id}-${index}`}
+                finding={finding}
+                onApplyFix={onApplyFix}
+              />
+            ))}
+          </ul>
+        )}
       </CardContent>
     </Card>
   );
 }
+
+function FindingRow({
+  finding,
+  onApplyFix,
+}: {
+  finding: AgentFinding;
+  onApplyFix?: (start: number, end: number, replacement: string) => void;
+}) {
+  const fixSpan =
+    finding.fix !== undefined &&
+    finding.location?.field === "system_prompt" &&
+    finding.location.start !== undefined &&
+    finding.location.end !== undefined
+      ? { start: finding.location.start, end: finding.location.end }
+      : null;
+
+  return (
+    <li className="flex items-start gap-3">
+      <Badge variant="outline" className={`text-xs ${SEVERITY_STYLES[finding.severity]}`}>
+        {finding.severity}
+      </Badge>
+      <div className="space-y-1 min-w-0">
+        <p className="text-sm">{finding.message}</p>
+        <p className="text-xs text-muted-foreground font-mono">{finding.rule_id}</p>
+        {finding.fix !== undefined && (
+          <div className="text-xs border p-2 bg-muted/50 space-y-1">
+            <p className="text-muted-foreground">Suggested replacement:</p>
+            <pre className="whitespace-pre-wrap font-mono">{finding.fix}</pre>
+            {fixSpan && onApplyFix && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onApplyFix(fixSpan.start, fixSpan.end, finding.fix ?? "")}
+              >
+                Apply fix
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+export { applyByteSpanReplacement };
 
 function ToolCard({ tool }: { tool: ToolDefinition }) {
   const [isExpanded, setIsExpanded] = useState(false);

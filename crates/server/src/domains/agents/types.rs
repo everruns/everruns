@@ -233,6 +233,13 @@ pub struct AgentPreviewResponse {
     pub findings: Vec<super::checks::Finding>,
 }
 
+/// Response from on-demand agent analysis (built-in rules + LLM checkers)
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentAnalysisResponse {
+    /// Advisory findings, built-in and LLM-sourced (specs/agent-checks.md)
+    pub findings: Vec<super::checks::Finding>,
+}
+
 /// Query parameters for listing agents.
 #[derive(Debug, Clone, Deserialize, IntoParams)]
 pub struct ListAgentsQuery {

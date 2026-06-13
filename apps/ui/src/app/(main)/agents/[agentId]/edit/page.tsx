@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
-import { AgentPreview } from "@/components/agents/agent-preview";
+import { AgentPreview, applyByteSpanReplacement } from "@/components/agents/agent-preview";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
@@ -506,6 +506,12 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                 capabilities={selectedCapabilities}
                 initialFiles={selectedInitialFiles}
                 tools={agent.tools ?? []}
+                onApplyFix={(start, end, replacement) =>
+                  handleFormChange(
+                    "system_prompt",
+                    applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
+                  )
+                }
               />
             </div>
 

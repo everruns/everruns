@@ -482,6 +482,8 @@ pub struct WorkerServiceImpl {
     budget_service: Arc<crate::domains::budgets::BudgetService>,
     /// Active permission resolver for user-scoped command execution over gRPC.
     permission_resolver: Arc<dyn PermissionResolver>,
+    /// System utility LLM for sanctioned internal analysis commands.
+    utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
 }
 
 impl WorkerServiceImpl {
@@ -541,6 +543,7 @@ impl WorkerServiceImpl {
             encryption.clone(),
             capability_registry,
         ));
+        let utility_llm_service = platform_definition.utility_llm_service();
 
         // Create durable store using the pool if available (PostgreSQL mode only)
         // In dev mode (in-memory), durable execution is handled differently
@@ -613,6 +616,7 @@ impl WorkerServiceImpl {
             presign_secret,
             budget_service,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
+            utility_llm_service,
         }
     }
 
@@ -656,6 +660,7 @@ impl WorkerServiceImpl {
             self.encryption.clone(),
             resolver,
         )
+        .with_utility_llm_service(self.utility_llm_service.clone())
         .with_workflow_store(
             self.durable_store
                 .clone()

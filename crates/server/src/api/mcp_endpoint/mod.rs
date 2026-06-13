@@ -199,6 +199,8 @@ pub struct AppState {
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
+    /// System utility LLM for sanctioned internal analysis commands.
+    pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
@@ -255,6 +257,7 @@ impl AppState {
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
                 .map(|h| h.display_name.clone()),
             sqldb_store,
+            utility_llm_service: platform_definition.utility_llm_service(),
             resource_metadata_url: None,
         }
     }
@@ -520,6 +523,7 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
         state.encryption.clone(),
         state.auth.permission_resolver.clone(),
     )
+    .with_utility_llm_service(state.utility_llm_service.clone())
 }
 
 fn resource_error(resource: &str, e: CommandError) -> String {
