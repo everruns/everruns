@@ -118,6 +118,17 @@ impl RealDiskFileStore {
         &self.root
     }
 
+    fn normalize_path(&self, path: &str) -> String {
+        let input = Path::new(path);
+        if input.is_absolute()
+            && let Ok(relative) = input.strip_prefix(&self.root)
+            && let Ok(path) = capability_path_from_relative(relative)
+        {
+            return path;
+        }
+        normalize_path(path)
+    }
+
     /// Resolve a capability-facing path to an absolute host path.
     ///
     /// Returns an error if the input contains a `..` segment or if joining
@@ -125,7 +136,7 @@ impl RealDiskFileStore {
     /// `reject_symlink_path` at each filesystem access so missing write
     /// targets can still be created safely.
     fn resolve(&self, path: &str) -> Result<PathBuf> {
-        let normalized = normalize_path(path);
+        let normalized = self.normalize_path(path);
         if normalized == "/" {
             return Ok(self.root.clone());
         }
@@ -212,40 +223,61 @@ impl RealDiskFileStore {
                 absolute.display()
             ))
         })?;
-        if rel.as_os_str().is_empty() {
-            return Ok("/".to_string());
-        }
-        let mut out = String::from("/");
-        let mut first = true;
-        for component in rel.components() {
-            if !first {
-                out.push('/');
-            }
-            first = false;
-            match component {
-                Component::Normal(s) => {
-                    let segment = s.to_str().ok_or_else(|| {
-                        AgentLoopError::tool(format!(
-                            "non-UTF-8 path component: {}",
-                            absolute.display()
-                        ))
-                    })?;
-                    out.push_str(segment);
-                }
-                _ => {
-                    return Err(AgentLoopError::tool(format!(
-                        "unexpected path component in {}",
-                        absolute.display()
-                    )));
-                }
-            }
-        }
-        Ok(out)
+        capability_path_from_relative(rel)
     }
+}
+
+fn capability_path_from_relative(relative: &Path) -> Result<String> {
+    if relative.as_os_str().is_empty() {
+        return Ok("/".to_string());
+    }
+    let mut segments = Vec::new();
+    for component in relative.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(s) => {
+                let segment = s.to_str().ok_or_else(|| {
+                    AgentLoopError::tool(format!(
+                        "non-UTF-8 path component: {}",
+                        relative.display()
+                    ))
+                })?;
+                segments.push(segment);
+            }
+            _ => {
+                return Err(AgentLoopError::tool(format!(
+                    "unexpected path component in {}",
+                    relative.display()
+                )));
+            }
+        }
+    }
+    if segments.is_empty() {
+        Ok("/".to_string())
+    } else {
+        Ok(format!("/{}", segments.join("/")))
+    }
+}
+
+fn display_join(root: &Path, path: &str) -> String {
+    if path == "/" {
+        return root.display().to_string();
+    }
+    root.join(path.trim_start_matches('/'))
+        .display()
+        .to_string()
 }
 
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
+    fn display_root(&self) -> String {
+        self.root.display().to_string()
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        display_join(&self.root, &self.normalize_path(path))
+    }
+
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         // Clear any prior readonly mark so seeding always wins over a
         // previous starter-file declaration with the same path.
@@ -545,7 +577,11 @@ impl SessionFileSystem for RealDiskFileStore {
     ) -> Result<Vec<GrepMatch>> {
         let root = self.root.clone();
         let pattern = pattern.to_string();
-        let path_pattern = path_pattern.map(str::to_string);
+        let path_pattern = path_pattern.map(|path| {
+            self.normalize_path(path)
+                .trim_start_matches('/')
+                .to_string()
+        });
 
         // `ignore::WalkBuilder` is sync; reading file content per match is
         // sync too. Push the whole walk onto `spawn_blocking` so we don't
@@ -798,6 +834,84 @@ mod tests {
             .expect("present");
         assert_eq!(via_canonical.content, via_workspace.content);
         assert_eq!(via_canonical.path, "/sub/dir/file.txt");
+    }
+
+    #[tokio::test]
+    async fn real_disk_display_paths_use_host_root() {
+        let (store, dir) = make_store();
+        let root = std::fs::canonicalize(dir.path()).expect("canonical tempdir");
+
+        assert_eq!(store.display_root(), root.display().to_string());
+        assert_eq!(
+            store.display_path("/sub/dir/file.txt"),
+            root.join("sub/dir/file.txt").display().to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn host_absolute_paths_under_root_are_workspace_aliases() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        let host_path = store.display_path("/sub/dir/file.txt");
+
+        store
+            .write_file(session, &host_path, "hi", "text")
+            .await
+            .expect("write via host path");
+
+        let via_workspace = store
+            .read_file(session, "/workspace/sub/dir/file.txt")
+            .await
+            .expect("read")
+            .expect("present");
+        assert_eq!(via_workspace.content.as_deref(), Some("hi"));
+        assert_eq!(via_workspace.path, "/sub/dir/file.txt");
+    }
+
+    #[tokio::test]
+    async fn host_absolute_aliases_allow_current_dir_segments() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        let host_path = Path::new(&store.display_root())
+            .join("./sub/dir/file.txt")
+            .display()
+            .to_string();
+
+        store
+            .write_file(session, &host_path, "hi", "text")
+            .await
+            .expect("write via host path");
+
+        let via_workspace = store
+            .read_file(session, "/workspace/sub/dir/file.txt")
+            .await
+            .expect("read")
+            .expect("present");
+        assert_eq!(via_workspace.content.as_deref(), Some("hi"));
+        assert_eq!(via_workspace.path, "/sub/dir/file.txt");
+    }
+
+    #[tokio::test]
+    async fn grep_path_pattern_accepts_host_absolute_path_alias() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        store
+            .write_file(session, "/src/lib.rs", "needle", "text")
+            .await
+            .expect("write src");
+        store
+            .write_file(session, "/docs/readme.md", "needle", "text")
+            .await
+            .expect("write docs");
+        let host_filter = store.display_path("/src");
+
+        let matches = store
+            .grep_files(session, "needle", Some(&host_filter))
+            .await
+            .expect("grep");
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "/src/lib.rs");
     }
 
     #[tokio::test]

@@ -18,6 +18,16 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
+fn workspace_display_path(path: &str) -> String {
+    if path == "/" {
+        "/workspace".to_string()
+    } else if path.starts_with('/') {
+        format!("/workspace{path}")
+    } else {
+        format!("/workspace/{path}")
+    }
+}
+
 /// Build a map of tool names to definitions for efficient lookup
 fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition> {
     tool_defs.iter().map(|def| (def.name(), def)).collect()
@@ -366,6 +376,20 @@ impl ToolExecutor for std::sync::Arc<dyn ToolExecutor> {
 /// - Project files onto real disk or object storage
 #[async_trait]
 pub trait SessionFileSystem: Send + Sync {
+    /// Human-facing root path for this filesystem.
+    ///
+    /// `/workspace` remains the stable agent namespace, but embedded runtimes
+    /// backed by a host directory can expose the real root here so shared
+    /// capabilities can avoid misleading users about where files live.
+    fn display_root(&self) -> String {
+        "/workspace".to_string()
+    }
+
+    /// Convert a canonical session path into a human-facing path.
+    fn display_path(&self, path: &str) -> String {
+        workspace_display_path(path)
+    }
+
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -534,10 +558,26 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     async fn seed_initial_file(&self, _session_id: SessionId, file: &InitialFile) -> Result<()> {
         self.inner.seed_initial_file(self.key, file).await
     }
+
+    fn display_root(&self) -> String {
+        self.inner.display_root()
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        self.inner.display_path(path)
+    }
 }
 
 #[async_trait]
 impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
+    fn display_root(&self) -> String {
+        (**self).display_root()
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        (**self).display_path(path)
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         (**self).read_file(session_id, path).await
     }
