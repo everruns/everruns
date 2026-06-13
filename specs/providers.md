@@ -126,14 +126,16 @@ New entry point for consumers that need a service rather than a chat model:
 resolve_service(org, ServiceKind, binding) -> (ProviderConnection, service client)
 ```
 
-Selection: explicit `provider_id` on the consumer's binding (e.g. the voice connection's `provider_id` field) wins; otherwise an org-level default provider per service; otherwise the single active provider whose driver declares the service. "First active provider matching a type string" — the current voice behavior — is removed. Resolution failures surface structured "no provider configured for {service}" errors, fail-closed.
+Selection: explicit `provider_id` on the consumer's binding (e.g. the voice connection's `provider_id` field) wins; otherwise an org-level default provider per service; otherwise the single active provider whose driver declares the service. "First active provider matching a type string" — the old voice behavior — is removed. Resolution failures surface structured "no provider configured for {service}" errors, fail-closed.
+
+Implemented today: the explicit-binding tier (validated against the driver's declared services) and the active-provider-declaring-service tier. The org-default-per-service tier is not built yet (no consumer needs it). Voice realtime currently calls `resolve_service(org, Realtime, None)` — a per-connection provider binding is not plumbed, so it resolves the single realtime-capable provider; the binding parameter exists for when that selection lands.
 
 Consumers and their paths:
 
 | Consumer | Path |
 |---|---|
 | Agent chat turns | Model-bound resolution (above) |
-| Voice realtime | `resolve_service(org, Realtime, voice_connection.provider_id)` |
+| Voice realtime | `resolve_service(org, Realtime, None)` today (single realtime-capable provider); passes `voice_connection.provider_id` once per-connection provider selection is plumbed |
 | Knowledge-base embeddings (future) | `resolve_service` with an embedding model selection |
 | Model sync | Per-provider, via the driver's `list_models` with the provider's connection |
 | Utility LLM | **Not a provider consumer.** Stays system-owned and env-configured by design (`specs/utility-llm.md`) |
@@ -208,7 +210,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 1. **Core domain types and registry** — `ServiceKind`, driver descriptor with credential schema and service factories (building on `DriverConfig`/`External` from EVE-561), `ChatDriver` rename, profile keys. No DB change.
 2. **DB + storage rename** — migrations, storage traits, repositories, seeds, resolver rename, `profile_key` backfill.
 3. **API + UI rename** — routes, OpenAPI, UI pages/hooks/clients, profile catalog endpoint, picker grouping.
-4. **Service resolution** — `resolve_service`, voice rerouted, org default provider per service.
+4. ✅ **Service resolution** — `resolve_service(org, ServiceKind, binding)` (explicit-binding and active-provider-declaring-service tiers), voice realtime rerouted through it (`ServiceKind::Realtime`, fail-closed). The org-level default-provider-per-service tier is deferred — no consumer requires it yet (chat already has `default_model_id`; voice resolves the single realtime-capable provider).
 5. **Connector alignment** — shared credential primitives, `ConnectorPlugin` rename.
 6. ✅ **First new service** — `EmbeddingsDriver` + knowledge-base hybrid retrieval configuration (closes the open question in `specs/knowledge-bases.md`).
 
