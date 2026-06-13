@@ -305,7 +305,7 @@ pub struct Ctx {
     pub session_service: Option<Arc<crate::domains::sessions::SessionService>>,
     pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
-    pub session_file_service: Option<Arc<crate::domains::session_files::SessionFileService>>,
+    pub session_file_service: Option<Arc<crate::domains::session_files::WorkspaceFileService>>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
     pub session_schedule_service:
@@ -444,7 +444,7 @@ impl Ctx {
 
     pub fn with_session_file_service(
         mut self,
-        service: Arc<crate::domains::session_files::SessionFileService>,
+        service: Arc<crate::domains::session_files::WorkspaceFileService>,
     ) -> Self {
         self.session_file_service = Some(service);
         self

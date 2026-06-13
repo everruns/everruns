@@ -8,7 +8,7 @@
 
 use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
-use crate::domains::session_files::{CreateFileInput, SessionFileService};
+use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
@@ -69,7 +69,7 @@ pub struct SessionService {
     db: Arc<StorageBackend>,
     principal_service: PrincipalService,
     capability_registry: CapabilityRegistry,
-    session_file_service: SessionFileService,
+    session_file_service: WorkspaceFileService,
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
     caps: OrgCaps,
 }
@@ -79,7 +79,7 @@ impl SessionService {
         Self {
             principal_service: PrincipalService::new(db.clone()),
             capability_registry: CapabilityRegistry::with_builtins(),
-            session_file_service: SessionFileService::new(db.clone()),
+            session_file_service: WorkspaceFileService::new(db.clone()),
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
@@ -91,7 +91,7 @@ impl SessionService {
         Self {
             principal_service: PrincipalService::new(db.clone()),
             capability_registry: registry,
-            session_file_service: SessionFileService::new(db.clone()),
+            session_file_service: WorkspaceFileService::new(db.clone()),
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
@@ -109,7 +109,7 @@ impl SessionService {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.session_file_service =
-            SessionFileService::new(self.db.clone()).with_virtual_registry(registry);
+            WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry);
         self
     }
 
@@ -1296,7 +1296,7 @@ impl SessionService {
         }
         let specs = everruns_core::hook_adapter::finalize_hook_specs(contributions, &disabled);
         let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(
-            crate::domains::session_files::SessionFileService::new(self.db.clone()),
+            crate::domains::session_files::WorkspaceFileService::new(self.db.clone()),
         );
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
             Arc::new(everruns_core::hook_dispatch::BashkitShellHookDispatcher::new(file_store));
@@ -2138,7 +2138,7 @@ mod tests {
             .await
             .unwrap();
 
-        let file_service = SessionFileService::new(db);
+        let file_service = WorkspaceFileService::new(db);
         let config = file_service
             .read_file(session.id.uuid(), "/config.txt")
             .await
@@ -2234,7 +2234,7 @@ mod tests {
             .await
             .unwrap();
 
-        let file_service = SessionFileService::new(db);
+        let file_service = WorkspaceFileService::new(db);
         let config = file_service
             .read_file(session.id.uuid(), "/config.txt")
             .await
@@ -2703,7 +2703,7 @@ mod tests {
     async fn apply_capability_mounts_skips_foreign_harness_and_agent_capabilities() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
-        let file_service = SessionFileService::new(db.clone());
+        let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
         let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
@@ -2796,7 +2796,7 @@ mod tests {
     async fn workspace_memory_mount_materializes_source_memory_readonly() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
-        let file_service = SessionFileService::new(db.clone());
+        let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let ctx = test_ctx(caller.clone(), db.clone());
 
@@ -3266,7 +3266,7 @@ mod tests {
             .unwrap();
 
         // The session_start hook ran during create and wrote into the VFS.
-        let file = SessionFileService::new(db)
+        let file = WorkspaceFileService::new(db)
             .read_file(session.id.uuid(), "/.session_start_ok")
             .await
             .unwrap();

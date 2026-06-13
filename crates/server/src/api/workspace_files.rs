@@ -3,7 +3,7 @@
 // Mounted on /v1/workspaces/{workspace_id}/fs/*. The migration that renamed
 // `session_files` to `workspace_files` (054) and the equality invariant
 // `workspace.id == session.id` for default 1:1 sessions mean
-// SessionFileService is already keyed by workspace UUID — these handlers just
+// WorkspaceFileService is already keyed by workspace UUID — these handlers just
 // resolve the public `wsp_<32-hex>` ID to that UUID and delegate.
 //
 // This is the canonical filesystem surface. The legacy
@@ -12,12 +12,13 @@
 
 use crate::api::session_files::{
     CopyFileRequest, CreateFileRequest, DeleteQuery, DeleteResponse, GetQuery, GetResponse,
-    GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, raw_file_response, wants_raw_file,
+    GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, raw_file_response,
+    wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_files::{
     CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
-    SessionFileService, UpdateFileInput,
+    UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::storage::StorageBackend;
@@ -38,7 +39,7 @@ use super::common::{ApiPolicyResultExt, ListResponse, impl_auth_state};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub file_service: Arc<SessionFileService>,
+    pub file_service: Arc<WorkspaceFileService>,
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
 }
@@ -46,7 +47,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
-            file_service: Arc::new(SessionFileService::new(db.clone())),
+            file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             db,
             auth,
         }
@@ -57,7 +58,7 @@ impl AppState {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.file_service =
-            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+            Arc::new(WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry));
         self
     }
 }

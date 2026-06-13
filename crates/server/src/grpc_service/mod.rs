@@ -13,7 +13,7 @@ mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::{
-    CreateDirectoryInput, CreateFileInput, GrepInput, SessionFileService, UpdateFileInput,
+    CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::sessions::SessionService;
 use crate::services::{CapabilityService, EventService, LlmResolverService};
@@ -454,7 +454,7 @@ impl crate::storage::session_task_store::SessionTaskWaker for GrpcSessionTaskWak
 pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: Arc<SessionService>,
-    session_file_service: SessionFileService,
+    session_file_service: WorkspaceFileService,
     llm_resolver_service: Arc<LlmResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
@@ -524,9 +524,9 @@ impl WorkerServiceImpl {
             }
         };
         let session_file_service = if let Some(ref reg) = virtual_registry {
-            SessionFileService::new(db.clone()).with_virtual_registry(reg.clone())
+            WorkspaceFileService::new(db.clone()).with_virtual_registry(reg.clone())
         } else {
-            SessionFileService::new(db.clone())
+            WorkspaceFileService::new(db.clone())
         };
         let llm_resolver_service = llm_resolver_service
             .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));

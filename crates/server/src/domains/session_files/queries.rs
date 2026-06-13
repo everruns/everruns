@@ -1,14 +1,14 @@
 use crate::domains::common::{CommandError, Ctx};
-use crate::domains::session_files::SessionFileService;
+use crate::domains::session_files::WorkspaceFileService;
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 
 const WORKSPACE_PREFIX: &str = "/workspace";
 
-pub fn service(ctx: &Ctx) -> Arc<SessionFileService> {
+pub fn service(ctx: &Ctx) -> Arc<WorkspaceFileService> {
     ctx.session_file_service
         .clone()
-        .unwrap_or_else(|| Arc::new(SessionFileService::new(ctx.db.clone())))
+        .unwrap_or_else(|| Arc::new(WorkspaceFileService::new(ctx.db.clone())))
 }
 
 pub fn parse_session_id(session_id: &str) -> Result<SessionId, CommandError> {

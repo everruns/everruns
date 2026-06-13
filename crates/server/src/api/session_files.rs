@@ -23,8 +23,9 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::session_files::{
-    CopySessionFile, CreateSessionFile, DeleteSessionFile, GetSessionFile, GrepSessionFiles,
-    ListSessionFiles, MoveSessionFile, SessionFileService, StatSessionFile, UpdateSessionFile,
+    CopyWorkspaceFile, CreateWorkspaceFile, DeleteWorkspaceFile, GetWorkspaceFile,
+    GrepWorkspaceFiles, ListWorkspaceFiles, MoveWorkspaceFile, StatWorkspaceFile,
+    UpdateWorkspaceFile, WorkspaceFileService,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -157,7 +158,7 @@ pub enum GetResponse {
 /// App state for session files routes
 #[derive(Clone)]
 pub struct AppState {
-    pub file_service: Arc<SessionFileService>,
+    pub file_service: Arc<WorkspaceFileService>,
     pub db: Arc<StorageBackend>,
     pub event_service: Arc<crate::services::EventService>,
     pub auth: AuthState,
@@ -170,7 +171,7 @@ impl AppState {
         auth: AuthState,
     ) -> Self {
         Self {
-            file_service: Arc::new(SessionFileService::new(db.clone())),
+            file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             db,
             event_service,
             auth,
@@ -182,7 +183,7 @@ impl AppState {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.file_service =
-            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+            Arc::new(WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry));
         self
     }
 
@@ -422,7 +423,7 @@ pub async fn get_root(
     Path(session_id): Path<String>,
     Query(query): Query<GetQuery>,
 ) -> Result<Json<GetResponse>, (StatusCode, String)> {
-    let response = ListSessionFiles {
+    let response = ListWorkspaceFiles {
         session_id,
         recursive: query.recursive,
     }
@@ -456,7 +457,7 @@ pub async fn get_path(
     headers: HeaderMap,
     Query(query): Query<GetQuery>,
 ) -> Result<Response, (StatusCode, String)> {
-    let response = GetSessionFile {
+    let response = GetWorkspaceFile {
         session_id,
         path,
         recursive: query.recursive,
@@ -499,7 +500,7 @@ pub async fn download_path(
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
 ) -> Result<Response, (StatusCode, String)> {
-    let response = GetSessionFile {
+    let response = GetWorkspaceFile {
         session_id,
         path,
         recursive: false,
@@ -548,7 +549,7 @@ pub async fn create_path(
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<CreateFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let file = CreateSessionFile {
+    let file = CreateWorkspaceFile {
         session_id,
         path,
         req,
@@ -582,7 +583,7 @@ pub async fn update_path(
     Path((session_id, path)): Path<(String, String)>,
     Json(req): Json<UpdateFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let file = UpdateSessionFile {
+    let file = UpdateWorkspaceFile {
         session_id,
         path,
         req,
@@ -624,7 +625,7 @@ pub async fn delete_path(
     Path((session_id, path)): Path<(String, String)>,
     Query(query): Query<DeleteQuery>,
 ) -> Result<Json<DeleteResponse>, (StatusCode, String)> {
-    let response = DeleteSessionFile {
+    let response = DeleteWorkspaceFile {
         session_id,
         path,
         recursive: query.recursive,
@@ -658,7 +659,7 @@ pub async fn move_file(
     Path(session_id): Path<String>,
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
-    let file = MoveSessionFile { session_id, req }
+    let file = MoveWorkspaceFile { session_id, req }
         .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
@@ -688,7 +689,7 @@ pub async fn copy_file(
     Path(session_id): Path<String>,
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
-    let file = CopySessionFile { session_id, req }
+    let file = CopyWorkspaceFile { session_id, req }
         .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
@@ -716,7 +717,7 @@ pub async fn grep_files(
     Path(session_id): Path<String>,
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
-    let results = GrepSessionFiles { session_id, req }
+    let results = GrepWorkspaceFiles { session_id, req }
         .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
@@ -745,7 +746,7 @@ pub async fn stat_file(
     Path(session_id): Path<String>,
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
-    let stat = StatSessionFile { session_id, req }
+    let stat = StatWorkspaceFile { session_id, req }
         .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;

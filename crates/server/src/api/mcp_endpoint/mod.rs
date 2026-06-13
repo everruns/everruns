@@ -25,7 +25,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
 use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
-use crate::domains::session_files::SessionFileService;
+use crate::domains::session_files::WorkspaceFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::SessionService;
 use crate::services::{CapabilityService, EventService};
@@ -186,7 +186,7 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
-    pub session_file_service: Arc<SessionFileService>,
+    pub session_file_service: Arc<WorkspaceFileService>,
     pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
     pub budget_service: Arc<BudgetService>,
@@ -233,7 +233,7 @@ impl AppState {
                 event_delivery.clone(),
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
-            session_file_service: Arc::new(SessionFileService::new(db.clone())),
+            session_file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             session_sandbox_service: None,
             capability_service,
             budget_service: Arc::new(BudgetService::new(db.clone())),
@@ -269,7 +269,7 @@ impl AppState {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.session_file_service =
-            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+            Arc::new(WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry));
         self
     }
 
