@@ -2652,7 +2652,6 @@ mod tests {
         assert!(json.get("search_prompt").is_none());
     }
 
-<<<<<<< HEAD
     #[test]
     fn test_capacity_strategy_shared_capacity_is_noop() {
         let base = OpenRouterRoutingConfig {
@@ -2688,7 +2687,78 @@ mod tests {
         };
         let result = base.apply_capacity_strategy().unwrap();
         let provider = result.provider.as_ref().expect("provider set by ByokFirst");
-=======
+        assert_eq!(provider.allow_fallbacks, Some(true));
+    }
+
+    #[test]
+    fn test_capacity_strategy_byok_first_preserves_explicit_allow_fallbacks() {
+        // If allow_fallbacks was already set explicitly, ByokFirst must not override it.
+        let base = OpenRouterRoutingConfig {
+            models: vec!["openai/gpt-5-mini".to_string()],
+            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
+            provider: Some(OpenRouterProviderRouting {
+                allow_fallbacks: Some(false),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let result = base.apply_capacity_strategy().unwrap();
+        let provider = result.provider.as_ref().unwrap();
+        assert_eq!(provider.allow_fallbacks, Some(false));
+    }
+
+    #[test]
+    fn test_capacity_strategy_byok_only_requires_provider_only() {
+        let base = OpenRouterRoutingConfig {
+            models: vec!["openai/gpt-5-mini".to_string()],
+            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
+            ..Default::default()
+        };
+        let err = base.apply_capacity_strategy().unwrap_err();
+        assert!(
+            err.contains("provider.only"),
+            "error should mention provider.only: {err}"
+        );
+    }
+
+    #[test]
+    fn test_capacity_strategy_byok_only_disables_fallbacks() {
+        let base = OpenRouterRoutingConfig {
+            models: vec!["openai/gpt-5-mini".to_string()],
+            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
+            provider: Some(OpenRouterProviderRouting {
+                only: vec!["my-byok-provider".to_string()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let result = base.apply_capacity_strategy().unwrap();
+        let provider = result.provider.as_ref().unwrap();
+        assert_eq!(provider.allow_fallbacks, Some(false));
+        assert_eq!(provider.only, vec!["my-byok-provider"]);
+    }
+
+    #[test]
+    fn test_capacity_strategy_byok_only_not_empty_in_is_empty() {
+        let with_strategy = OpenRouterRoutingConfig {
+            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
+            ..Default::default()
+        };
+        assert!(!with_strategy.is_empty());
+
+        let byok_first = OpenRouterRoutingConfig {
+            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
+            ..Default::default()
+        };
+        assert!(!byok_first.is_empty());
+
+        let shared = OpenRouterRoutingConfig {
+            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
+            ..Default::default()
+        };
+        assert!(shared.is_empty());
+    }
+
     // -------------------------------------------------------------------------
     // OpenRouterRoutingPreset tests
     // -------------------------------------------------------------------------
@@ -2756,40 +2826,10 @@ mod tests {
         };
         let result = base.apply_presets().unwrap();
         let provider = result.provider.expect("provider set");
->>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
         assert_eq!(provider.allow_fallbacks, Some(true));
     }
 
     #[test]
-<<<<<<< HEAD
-    fn test_capacity_strategy_byok_first_preserves_explicit_allow_fallbacks() {
-        // If allow_fallbacks was already set explicitly, ByokFirst must not override it.
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            provider: Some(OpenRouterProviderRouting {
-                allow_fallbacks: Some(false),
-                ..Default::default()
-            }),
-            ..Default::default()
-        };
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_requires_provider_only() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        let err = base.apply_capacity_strategy().unwrap_err();
-        assert!(
-            err.contains("provider.only"),
-            "error should mention provider.only: {err}"
-=======
     fn test_preset_no_data_collection_sets_data_collection_deny() {
         let base = OpenRouterRoutingConfig {
             presets: vec![OpenRouterRoutingPreset::NoDataCollection],
@@ -2800,19 +2840,10 @@ mod tests {
         assert_eq!(
             provider.data_collection,
             Some(OpenRouterDataCollection::Deny)
->>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
         );
     }
 
     #[test]
-<<<<<<< HEAD
-    fn test_capacity_strategy_byok_only_disables_fallbacks() {
-        let base = OpenRouterRoutingConfig {
-            models: vec!["openai/gpt-5-mini".to_string()],
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            provider: Some(OpenRouterProviderRouting {
-                only: vec!["my-byok-provider".to_string()],
-=======
     fn test_preset_strict_json_sets_require_parameters() {
         let base = OpenRouterRoutingConfig {
             presets: vec![OpenRouterRoutingPreset::StrictJson],
@@ -2894,38 +2925,10 @@ mod tests {
                 sort: Some(OpenRouterProviderSort::Simple(
                     OpenRouterProviderSortBy::Throughput,
                 )),
->>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
                 ..Default::default()
             }),
             ..Default::default()
         };
-<<<<<<< HEAD
-        let result = base.apply_capacity_strategy().unwrap();
-        let provider = result.provider.as_ref().unwrap();
-        assert_eq!(provider.allow_fallbacks, Some(false));
-        assert_eq!(provider.only, vec!["my-byok-provider"]);
-    }
-
-    #[test]
-    fn test_capacity_strategy_byok_only_not_empty_in_is_empty() {
-        let with_strategy = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokOnly),
-            ..Default::default()
-        };
-        assert!(!with_strategy.is_empty());
-
-        let byok_first = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::ByokFirst),
-            ..Default::default()
-        };
-        assert!(!byok_first.is_empty());
-
-        let shared = OpenRouterRoutingConfig {
-            capacity_strategy: Some(OpenRouterCapacityStrategy::SharedCapacity),
-            ..Default::default()
-        };
-        assert!(shared.is_empty());
-=======
         let result = base.apply_presets().unwrap();
         let provider = result.provider.expect("provider set");
         // Explicit sort wins
@@ -2996,6 +2999,5 @@ mod tests {
 
         let without = OpenRouterRoutingConfig::default();
         assert!(without.is_empty());
->>>>>>> 34cd871 (feat(openrouter): add provider-quality routing presets)
     }
 }

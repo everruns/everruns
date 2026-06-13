@@ -800,8 +800,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 None => None,
                 Some(r) if r.presets.is_empty() => Some(r),
                 Some(r) => {
-                    preset_applied_owned =
-                        Some(r.apply_presets().map_err(AgentLoopError::llm)?);
+                    preset_applied_owned = Some(r.apply_presets().map_err(AgentLoopError::llm)?);
                     preset_applied_owned.as_ref()
                 }
             };
