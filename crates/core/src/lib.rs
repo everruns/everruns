@@ -97,6 +97,7 @@ pub mod mcp_server;
 pub mod memory;
 pub mod model_router;
 pub mod network_access;
+pub mod observer;
 pub mod organization;
 pub mod payment;
 pub mod principal;

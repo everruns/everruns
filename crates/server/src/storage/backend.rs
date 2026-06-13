@@ -3027,6 +3027,98 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Observers (online scoring — specs/online-evals.md)
+    // ============================================
+
+    pub async fn create_observer(
+        &self,
+        org_id: i64,
+        input: CreateObserverRow,
+    ) -> Result<ObserverRow> {
+        dispatch!(self, create_observer, org_id, input)
+    }
+
+    pub async fn get_observer_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<ObserverRow>> {
+        dispatch!(self, get_observer_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_observer(&self, id: Uuid) -> Result<Option<ObserverRow>> {
+        dispatch!(self, get_observer, id)
+    }
+
+    pub async fn list_observers(
+        &self,
+        org_id: i64,
+        include_archived: bool,
+    ) -> Result<Vec<ObserverRow>> {
+        dispatch!(self, list_observers, org_id, include_archived)
+    }
+
+    pub async fn list_active_observers(&self, org_id: i64) -> Result<Vec<ObserverRow>> {
+        dispatch!(self, list_active_observers, org_id)
+    }
+
+    pub async fn count_active_observers(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_active_observers, org_id)
+    }
+
+    pub async fn update_observer(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateObserverRow,
+    ) -> Result<Option<ObserverRow>> {
+        dispatch!(self, update_observer, org_id, id, input)
+    }
+
+    pub async fn delete_observer(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_observer, org_id, id)
+    }
+
+    pub async fn enqueue_trace_scores(
+        &self,
+        org_id: i64,
+        inputs: &[CreateTraceScoreRow],
+    ) -> Result<u64> {
+        dispatch!(self, enqueue_trace_scores, org_id, inputs)
+    }
+
+    pub async fn claim_trace_scores(
+        &self,
+        limit: i64,
+        stale_after_seconds: i64,
+        max_attempts: i32,
+    ) -> Result<Vec<TraceScoreRow>> {
+        dispatch!(
+            self,
+            claim_trace_scores,
+            limit,
+            stale_after_seconds,
+            max_attempts
+        )
+    }
+
+    pub async fn complete_trace_score(
+        &self,
+        id: Uuid,
+        input: CompleteTraceScoreRow,
+    ) -> Result<Option<TraceScoreRow>> {
+        dispatch!(self, complete_trace_score, id, input)
+    }
+
+    pub async fn list_trace_scores(
+        &self,
+        org_id: i64,
+        params: ListTraceScoresParams,
+    ) -> Result<Vec<TraceScoreRow>> {
+        dispatch!(self, list_trace_scores, org_id, params)
+    }
+
+    // ============================================
     // Eval CRUD
     // ============================================
 

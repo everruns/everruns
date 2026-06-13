@@ -16909,7 +16909,8 @@
           "agent_versions",
           "voice",
           "apps.detailV2",
-          "agent_delegation"
+          "agent_delegation",
+          "observers"
         ],
         "properties": {
           "agent_delegation": {
@@ -16943,6 +16944,10 @@
           "notifications": {
             "type": "boolean",
             "description": "In-app notifications (bell, toasts, notification SSE). Experimental."
+          },
+          "observers": {
+            "type": "boolean",
+            "description": "Observers (online scoring of production sessions). Experimental."
           },
           "voice": {
             "type": "boolean",

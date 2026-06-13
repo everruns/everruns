@@ -253,6 +253,7 @@ impl TestServer {
         ));
         let mut feature_flags = everruns_core::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
+        feature_flags.observers = true;
 
         // Create module-specific states
         let sessions_state = api::sessions::AppState::with_platform_definition(
@@ -575,6 +576,10 @@ impl TestServer {
         }
         if feature_flags.evals {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
+        }
+        if feature_flags.observers {
+            let observers_state = api::observers::AppState::new(db.clone(), auth_state.clone());
+            api_routes = api_routes.merge(api::observers::routes(observers_state));
         }
 
         api_routes = api_routes.merge(auth::personal_access_token_routes(

@@ -621,6 +621,25 @@ impl ServerAppBuilder {
             );
         }
 
+        // Observers: tap turn.completed to enqueue scoring; a background worker
+        // drains the queue. Same code path in dev (in-memory) and full mode.
+        // See specs/online-evals.md.
+        if feature_flags.observers {
+            let observer_wake = Arc::new(tokio::sync::Notify::new());
+            let observer_listener: Arc<dyn EventListener> =
+                Arc::new(crate::domains::observers::ObserverMatchListener::new(
+                    db.clone(),
+                    observer_wake.clone(),
+                ));
+            event_listeners.push(observer_listener);
+            crate::domains::observers::spawn_observer_worker(
+                db.clone(),
+                observer_wake,
+                crate::domains::observers::ObserverWorkerConfig::default(),
+            );
+            tracing::info!("Observers enabled: scoring worker started");
+        }
+
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
             event_listeners.push(Arc::new(braintrust_listener));
@@ -1221,6 +1240,13 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         } else {
             tracing::info!("Evals disabled via feature flag");
+        }
+
+        if feature_flags.observers {
+            let observers_state = api::observers::AppState::new(db.clone(), auth_state.clone());
+            api_routes = api_routes.merge(api::observers::routes(observers_state));
+        } else {
+            tracing::info!("Observers disabled via feature flag");
         }
 
         if let Some(session_sandbox_state) = session_sandbox_state {

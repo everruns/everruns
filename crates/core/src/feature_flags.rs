@@ -42,6 +42,8 @@ pub struct FeatureFlags {
     /// Experimental: auto-enabled in dev, off in prod by default.
     /// When off, these capabilities are not registered and cannot be assigned to agents.
     pub agent_delegation: bool,
+    /// Observers (online scoring of production sessions). Experimental.
+    pub observers: bool,
 }
 
 /// Metadata for an API-visible feature flag (org opt-in UI + catalog).
@@ -107,6 +109,12 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Channels-first app detail page and full-page channel forms.",
         experimental: true,
     },
+    FeatureFlagDefinition {
+        name: "observers",
+        label: "Observers",
+        description: "Online scoring of production sessions.",
+        experimental: true,
+    },
 ];
 
 impl FeatureFlags {
@@ -128,6 +136,7 @@ impl FeatureFlags {
             voice: opt_in("voice", system.voice),
             apps_detail_v2: opt_in("apps.detailV2", system.apps_detail_v2),
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
+            observers: opt_in("observers", system.observers),
         }
     }
 
@@ -143,6 +152,7 @@ impl FeatureFlags {
             voice: experimental_flag("FEATURE_VOICE", grade),
             apps_detail_v2: experimental_flag("FEATURE_APPS_DETAIL_V2", grade),
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
+            observers: experimental_flag("FEATURE_OBSERVERS", grade),
         }
     }
 
@@ -164,6 +174,7 @@ impl FeatureFlags {
             "voice" => self.voice,
             "apps.detailV2" => self.apps_detail_v2,
             "agent_delegation" => self.agent_delegation,
+            "observers" => self.observers,
             _ => false,
         }
     }
@@ -181,6 +192,7 @@ impl FeatureFlags {
             voice: true,
             apps_detail_v2: true,
             agent_delegation: true,
+            observers: true,
         }
     }
 }
@@ -338,6 +350,7 @@ mod tests {
             voice: true,
             apps_detail_v2: true,
             agent_delegation: true,
+            observers: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -348,6 +361,7 @@ mod tests {
         assert!(flags.is_enabled("voice"));
         assert!(flags.is_enabled("apps.detailV2"));
         assert!(flags.is_enabled("agent_delegation"));
+        assert!(flags.is_enabled("observers"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -363,6 +377,7 @@ mod tests {
             voice: true,
             apps_detail_v2: true,
             agent_delegation: true,
+            observers: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
@@ -372,6 +387,7 @@ mod tests {
         assert!(json.contains("\"voice\":true"));
         assert!(json.contains("\"apps.detailV2\":true"));
         assert!(json.contains("\"agent_delegation\":true"));
+        assert!(json.contains("\"observers\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);

@@ -24,6 +24,7 @@ mod llm;
 mod mcp_servers;
 mod memories;
 mod notifications;
+mod observers;
 mod org_feature_flags;
 mod organizations;
 mod payments;
@@ -152,6 +153,8 @@ pub struct InMemoryDatabase {
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
     eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
     eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
+    observers: RwLock<HashMap<Uuid, ObserverRow>>,
+    trace_scores: RwLock<HashMap<Uuid, TraceScoreRow>>,
     // Budgets
     budgets: RwLock<HashMap<Uuid, BudgetRow>>,
     usage_journal: RwLock<HashMap<Uuid, UsageJournalRow>>,
@@ -267,6 +270,8 @@ impl Default for InMemoryDatabase {
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
             eval_case_results: RwLock::new(HashMap::new()),
+            observers: RwLock::new(HashMap::new()),
+            trace_scores: RwLock::new(HashMap::new()),
             budgets: RwLock::new(HashMap::new()),
             usage_journal: RwLock::new(HashMap::new()),
             usage_ledger: RwLock::new(Vec::new()),
