@@ -1,8 +1,8 @@
-# TC003: Message Subagent - Send Follow-Up Message
+# TC003: Message Task - Send Follow-Up to Subagent
 
 ## Description
 
-Verify that `message_subagent` can send a follow-up message to a completed subagent, resuming it and receiving a new response.
+Verify that `message_task` can send a follow-up message to a subagent's task channel and that the subagent processes the message. This test was previously titled "Message Subagent" using the retired `message_subagent` tool; it now uses the generic `message_task` replacement.
 
 ## Preconditions
 
@@ -14,10 +14,10 @@ Verify that `message_subagent` can send a follow-up message to a completed subag
 | Field | Value |
 |-------|-------|
 | Agent Name | Messenger Orchestrator |
-| Capabilities | `subagents` |
-| System Prompt | You are an orchestrator. Spawn subagents and message them as instructed. |
-| First Message | Spawn a subagent named "Helper" with task "Introduce yourself briefly." |
-| Second Message | Now send a message to Helper saying "What is 2 + 2?" |
+| Capabilities | `subagents`, `session_tasks` |
+| System Prompt | You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_subagent to send follow-up messages. |
+| First Message | Spawn a subagent named "Helper" with task "Introduce yourself briefly." Record the task_id. |
+| Second Message | Now send a message to Helper's task saying "What is 2 + 2?" using message_task with Helper's task_id. |
 
 ## Steps
 
@@ -27,8 +27,8 @@ Verify that `message_subagent` can send a follow-up message to a completed subag
      -H "Content-Type: application/json" \
      -d '{
        "name": "Messenger Orchestrator",
-       "system_prompt": "You are an orchestrator. Spawn subagents and message them as instructed.",
-       "capabilities": ["subagents"]
+       "system_prompt": "You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_subagent to send follow-up messages.",
+       "capabilities": ["subagents", "session_tasks"]
      }'
    ```
    Save `agent_id` from response.
@@ -48,21 +48,21 @@ Verify that `message_subagent` can send a follow-up message to a completed subag
      -d '{
        "message": {
          "role": "user",
-         "content": [{"type": "text", "text": "Spawn a subagent named \"Helper\" with task \"Introduce yourself briefly.\""}]
+         "content": [{"type": "text", "text": "Spawn a subagent named \"Helper\" with task \"Introduce yourself briefly.\" Record the task_id."}]
        }
      }'
    ```
 
 4. Wait for first turn to complete (60-120 seconds).
 
-5. Send second message to message the subagent:
+5. Send second message to message the subagent via task:
    ```bash
    curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
          "role": "user",
-         "content": [{"type": "text", "text": "Now send a message to Helper saying \"What is 2 + 2?\""}]
+         "content": [{"type": "text", "text": "Now send a message to Helper’s task saying \"What is 2 + 2?\" using message_task with Helper’s task_id."}]
        }
      }'
    ```
@@ -81,24 +81,14 @@ Verify that `message_subagent` can send a follow-up message to a completed subag
 | Check | Expected |
 |-------|----------|
 | spawn_subagent called | `tool.called` event with `tool_name: "spawn_subagent"` and `arguments.name: "Helper"` |
-| Spawn completed | `tool.completed` for `spawn_subagent` with `subagent_id` in result |
+| Spawn completed | `tool.completed` for `spawn_subagent` with `task_id` in result |
 
 ### Message Phase Assertions
 
 | Check | Expected |
 |-------|----------|
-| message_subagent called | `tool.called` event with `tool_name: "message_subagent"` |
-| Target is Helper | `arguments.name_or_id` is `"Helper"` |
-| Message delivered | `tool.completed` result contains `delivered: true` |
-| Response received | Result contains `result` with non-empty text |
-| Status present | Result contains `status` field |
-| subagent_id in result | Result contains `subagent_id` matching the spawned session |
-
-### Event Lifecycle Assertions
-
-| Check | Expected |
-|-------|----------|
-| Two turns started | Two `turn.started` events |
+| message_task called | `tool.called` event with `tool_name: "message_task"` |
+| Message recorded and delivered | `tool.completed` for `message_task` whose result has `recorded: true` and `delivery: "delivered"` |
 | Two turns completed | Two `turn.completed` events |
 
 ## Validation Commands
@@ -107,14 +97,11 @@ Verify that `message_subagent` can send a follow-up message to a completed subag
 # Assert: spawn_subagent was called
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length > 0'
 
-# Assert: message_subagent was called
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "message_subagent")] | length > 0'
+# Assert: message_task was called
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "message_task")] | length > 0'
 
-# Assert: message delivered
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_subagent")] | .[0].data.result | fromjson | .delivered == true'
-
-# Assert: response received
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_subagent")] | .[0].data.result | fromjson | .result | length > 0'
+# Assert: message_task recorded and delivered the message
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_task" and (.data.result.recorded == true) and (.data.result.delivery == "delivered"))] | length > 0'
 
 # Assert: two turns completed
 curl -s ".../events" | jq '[.data[] | select(.type == "turn.completed")] | length == 2'

@@ -305,7 +305,10 @@ No backward compatibility is required; data migrates forward once:
   record; `parent_session_id` stays.
 - `subagent.*` event types are superseded by `task.*` events.
 - `get_subagents`, `get_agent_runs`, `wait_agent`, `message_agent`,
-  `message_subagent` retire in favor of the generic tools.
+  `message_subagent`, `cancel_agent` — **retired (done)**. These per-kind tools have
+  been removed; all listing, waiting, messaging, and cancellation now routes
+  through the generic tools (`list_tasks`, `get_task`, `message_task`,
+  `cancel_task`, `wait_task`).
 - `GET /v1/sessions/{id}/resources` keeps serving infrastructure resources.
 
 ## Implementation notes (v1)

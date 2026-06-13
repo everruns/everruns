@@ -1039,7 +1039,7 @@ Emitted when a subagent encounters an error.
 
 #### `subagent.cancelled`
 
-Emitted when a subagent is cancelled via `message_subagent` with `cancel: true`.
+Emitted when a subagent is cancelled (via `cancel_task` or the `SubagentTaskExecutor` cancel path).
 
 All four events share the same `SubagentEventData` shape: `subagent_session_id`, `subagent_name`, `task`, `status`, and optional `result`/`error` fields.
 

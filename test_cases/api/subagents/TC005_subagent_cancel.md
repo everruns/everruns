@@ -1,8 +1,8 @@
-# TC005: Subagent Cancel
+# TC005: Cancel Task - Subagent Cancellation
 
 ## Description
 
-Verify that `message_subagent` with `cancel=true` delivers the message and returns `cancel_requested: true` in the response.
+Verify that `cancel_task` delivers a cooperative cancellation request to a subagent task and that the task transitions to a canceled state. This test was previously titled "Subagent Cancel" using the retired `message_subagent(cancel=true)` mechanism; it now uses the generic `cancel_task` replacement.
 
 ## Preconditions
 
@@ -14,10 +14,10 @@ Verify that `message_subagent` with `cancel=true` delivers the message and retur
 | Field | Value |
 |-------|-------|
 | Agent Name | Cancel Tester |
-| Capabilities | `subagents` |
-| System Prompt | You are an orchestrator. Spawn subagents and cancel them as instructed. Always use the cancel parameter when asked to cancel. |
-| First Message | Spawn a subagent named "Worker" with task "Write a long story about a dragon." |
-| Second Message | Cancel the Worker subagent with the message "Stop now, we no longer need this." |
+| Capabilities | `subagents`, `session_tasks` |
+| System Prompt | You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_subagent. |
+| First Message | Spawn a subagent named "Worker" with task "Write a long story about a dragon." Record the task_id. |
+| Second Message | Cancel the Worker subagent using cancel_task with Worker's task_id. |
 
 ## Steps
 
@@ -27,8 +27,8 @@ Verify that `message_subagent` with `cancel=true` delivers the message and retur
      -H "Content-Type: application/json" \
      -d '{
        "name": "Cancel Tester",
-       "system_prompt": "You are an orchestrator. Spawn subagents and cancel them as instructed. Always use the cancel parameter when asked to cancel.",
-       "capabilities": ["subagents"]
+       "system_prompt": "You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_subagent.",
+       "capabilities": ["subagents", "session_tasks"]
      }'
    ```
    Save `agent_id` from response.
@@ -48,7 +48,7 @@ Verify that `message_subagent` with `cancel=true` delivers the message and retur
      -d '{
        "message": {
          "role": "user",
-         "content": [{"type": "text", "text": "Spawn a subagent named \"Worker\" with task \"Write a long story about a dragon.\""}]
+         "content": [{"type": "text", "text": "Spawn a subagent named \"Worker\" with task \"Write a long story about a dragon.\" Record the task_id."}]
        }
      }'
    ```
@@ -62,7 +62,7 @@ Verify that `message_subagent` with `cancel=true` delivers the message and retur
      -d '{
        "message": {
          "role": "user",
-         "content": [{"type": "text", "text": "Cancel the Worker subagent with the message \"Stop now, we no longer need this.\""}]
+         "content": [{"type": "text", "text": "Cancel the Worker subagent using cancel_task with Worker's task_id."}]
        }
      }'
    ```
@@ -81,28 +81,25 @@ Verify that `message_subagent` with `cancel=true` delivers the message and retur
 | Check | Expected |
 |-------|----------|
 | Worker spawned | `tool.called` with `tool_name: "spawn_subagent"` and `arguments.name: "Worker"` |
-| Spawn completed | `tool.completed` for `spawn_subagent` with `subagent_id` in result |
+| Spawn completed | `tool.completed` for `spawn_subagent` with `task_id` in result |
 
 ### Cancel Phase Assertions
 
 | Check | Expected |
 |-------|----------|
-| message_subagent called | `tool.called` with `tool_name: "message_subagent"` |
-| cancel flag set | `arguments.cancel` is `true` |
-| Target is Worker | `arguments.name_or_id` is `"Worker"` |
-| Message delivered | Result `delivered` is `true` |
-| Cancel requested | Result `cancel_requested` is `true` |
-| Note present | Result `note` contains "Cancellation will take effect" |
+| cancel_task called | `tool.called` with `tool_name: "cancel_task"` |
+| Cancel intent recorded | `tool.completed` for `cancel_task` whose result has `cancel_requested: true` |
+| Cooperative wind-down | The task reaches a terminal state (`canceled`, or `succeeded`/`failed` if it finished first) — `cancel_task` requests, it does not force |
 
 ## Validation Commands
 
 ```bash
-# Assert: message_subagent called with cancel=true
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "message_subagent" and .data.arguments.cancel == true)] | length > 0'
+# Assert: cancel_task called
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "cancel_task")] | length > 0'
 
-# Assert: cancel_requested in result
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_subagent")] | .[0].data.result | fromjson | .cancel_requested == true'
+# Assert: cancel_task result recorded the cancel intent
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "cancel_task" and (.data.result.cancel_requested == true))] | length > 0'
 
-# Assert: delivered
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed" and .data.tool_name == "message_subagent")] | .[0].data.result | fromjson | .delivered == true'
+# Assert: the task reaches some terminal state (cooperative cancel may settle as canceled/succeeded/failed)
+curl -s ".../events" | jq '[.data[] | select(.type == "task.updated" and (.data.task.state | IN("canceled","succeeded","failed")))] | length > 0'
 ```

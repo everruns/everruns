@@ -4,10 +4,11 @@
   - V1 is outbound-only: Everruns agents can delegate to external A2A agents.
   - Do not expose Everruns agents over A2A by default.
   - Inbound A2A is an explicit future App channel, not a global agent endpoint.
-  - Runtime surface is unified agent delegation: spawn_agent/get_agent_runs/wait_agent/message_agent/cancel_agent.
+  - Runtime surface is unified agent delegation: spawn_agent + generic session_tasks tools.
   - V1 stores external agents in capability config; future org-managed external_agents can replace this source.
   - Run state is registered as session_resources.kind = agent_run for visibility and wake-up.
   - Official Rust A2A SDK crates provide wire types, client, and integration-test server.
+  - get_agent_runs, wait_agent, message_agent, cancel_agent retired in favour of generic tools (see migration below).
 -->
 
 ## Abstract
@@ -21,9 +22,9 @@ V1 supports:
 - AgentCard discovery from configured external A2A agents.
 - JSON-RPC and HTTP+JSON transport negotiation through the official Rust A2A client.
 - `spawn_agent` in `wait` or `background` mode.
-- `wait_agent` for pending runs.
-- `message_agent` for follow-up or `input_required` runs.
-- `cancel_agent` for remote task cancellation.
+- `wait_task` for pending runs (generic session task tool).
+- `message_task` for follow-up or `input_required` runs (generic session task tool).
+- `cancel_task` for remote task cancellation (generic session task tool).
 - Wake-up by synthetic session message when a background run completes.
 - Result persistence under `/.agent-runs/{agent_run_id}/result.json` when session files are available.
 
@@ -93,15 +94,15 @@ This keeps external A2A and local subagent delegation visible through the same s
 
 Each run is additionally tracked as a session task (`kind = external_agent`)
 with the full lifecycle, message thread, and `task.*` events — see
-[`specs/session-tasks.md`](./session-tasks.md). The generic `message_task` /
-`cancel_task` / `wait_task` tools work on agent runs via the
-`ExternalAgentTaskExecutor`.
+[`specs/session-tasks.md`](./session-tasks.md). The generic `list_tasks`,
+`get_task`, `message_task`, `cancel_task`, and `wait_task` tools work on
+agent runs via the `ExternalAgentTaskExecutor`.
 
 ## Tools
 
 ### `spawn_agent`
 
-Creates an external A2A run.
+Creates an external A2A run. Returns an `agent_run_id` and `task_id`.
 
 Parameters:
 
@@ -114,21 +115,28 @@ Parameters:
 
 `mode = wait` blocks until the remote task reaches a terminal state or timeout. `mode = background` returns an `agent_run_id` immediately and monitors completion in a detached task.
 
-### `get_agent_runs`
+### Monitoring and steering agent runs
 
-Lists all session `agent_run` resources or returns one run by `agent_run_id`.
+Use the generic `session_tasks` tools after spawning. The `task_id` is returned by `spawn_agent`.
 
-### `wait_agent`
+| Tool | Description |
+|------|-------------|
+| `list_tasks` with `kind: "external_agent"` | List all agent run tasks |
+| `get_task` | Get detailed status for a specific run |
+| `message_task` | Send follow-up input using the saved remote taskId/contextId |
+| `cancel_task` | Call A2A task cancellation and update local run state |
+| `wait_task` | Poll until terminal state or timeout |
 
-Polls the remote A2A task by `remote_task_id` until terminal state or timeout.
+### Retired tools (removed)
 
-### `message_agent`
+The following per-kind tools were retired in favour of the generic tools above:
 
-Sends follow-up input using the saved remote `taskId` and `contextId`.
-
-### `cancel_agent`
-
-Calls A2A task cancellation and updates the local run state from the returned task.
+| Retired | Replacement |
+|---------|-------------|
+| `get_agent_runs` | `list_tasks(kind="external_agent")` + `get_task` |
+| `wait_agent` | `wait_task` |
+| `message_agent` | `message_task` |
+| `cancel_agent` | `cancel_task` |
 
 ## A2A Mapping
 
@@ -141,7 +149,7 @@ Calls A2A task cancellation and updates the local run state from the returned ta
 | result summary | first text artifact, else status message text |
 | `input_required` | non-terminal interrupted run |
 | `auth_required` | non-terminal interrupted run |
-| `cancel_agent` | A2A `CancelTask` |
+| `cancel_task` | A2A `CancelTask` |
 
 ## Wake-Up
 
@@ -177,5 +185,5 @@ Integration tests use the official Rust `a2a-server-lf` crate to start a real lo
 
 - AgentCard discovery.
 - `spawn_agent` wait mode.
-- Background mode plus `wait_agent`.
+- Background mode (background spawn).
 - Local URL blocking unless `allow_local_urls` is set.

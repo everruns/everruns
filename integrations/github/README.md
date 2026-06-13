@@ -38,8 +38,9 @@ A read-only scout agent for repository exploration:
 - Resolves credentials from the existing `github` user connection.
 - Returns `connection_required` when no GitHub connection is available.
 - Depends on the built-in `subagents` capability, so hosts that enable
-  `github_scout` also get `spawn_subagent`, `get_subagents`, and
-  `message_subagent`.
+  `github_scout` also get `spawn_subagent`. Monitoring and steering use the
+  generic `session_tasks` tools (`list_tasks`, `get_task`, `message_task`,
+  `cancel_task`).
 
 ## Tool Privacy
 

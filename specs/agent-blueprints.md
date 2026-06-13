@@ -206,8 +206,8 @@ No new event types needed. The `subagent.spawned` event gains an optional `bluep
 ### Statefulness and Follow-ups
 
 The spawned session is **fully stateful** — real session with messages, events, durable workflow state. The host can:
-- `message_subagent("Scout", "also check the auth middleware tests")` — sends a follow-up
-- `get_subagents("Scout")` — checks status and reads messages
+- `message_task(task_id, "also check the auth middleware tests")` — sends a follow-up
+- `get_task(task_id)` or `list_tasks(kind="subagent")` — checks status and reads messages
 
 The `AgentBlueprint` definition is stateless (code template). The session instance is stateful.
 

@@ -3,17 +3,16 @@
 Each spawned subagent is also tracked as a session task (`kind = subagent`,
 `links.child_session_id` pointing at the child) with lifecycle `task.*`
 events and a message channel — see
-[`specs/session-tasks.md`](./session-tasks.md). The generic `message_task` /
-`cancel_task` tools work on subagents via the `SubagentTaskExecutor`.
+[`specs/session-tasks.md`](./session-tasks.md). The generic `list_tasks`,
+`get_task`, `message_task`, and `cancel_task` tools work on subagents via
+the `SubagentTaskExecutor`.
 
 <!-- Design Decisions:
-  - 3 tools only: spawn_subagent, get_subagents, message_subagent
+  - 1 creation tool: spawn_subagent (get/message/cancel handled by generic session_tasks tools)
   - Foreground execution blocks parent tool call (Phase 1); background mode deferred
   - No nesting: subagents cannot spawn subagents
   - Human-readable names by default ("Test Runner" not "test-runner")
-  - Case-insensitive name matching for get/message operations
-  - Completion notifications use steering messages (injected mid-turn)
-  - message_subagent unifies cancel + resume + mid-execution steering
+  - message_task / cancel_task unify steering and cancellation via the task registry
   - Subagent inherits parent's harness and agent configuration
   - UI: dedicated Subagents tab with master-detail layout
 -->
@@ -28,12 +27,12 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 
 | Principle | Rationale |
 |-----------|-----------|
-| Exactly 3 tools | Minimal surface area. spawn/get/message covers full lifecycle. |
+| Single creation tool | Minimal surface area. `spawn_subagent` covers creation; lifecycle is managed via generic task tools. |
 | Foreground-first | Simpler mental model: agent calls tool, blocks, gets result. Background deferred to Phase 1b. |
 | No nesting | Prevents runaway resource consumption and simplifies reasoning about execution depth. |
-| Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. Case-insensitive matching for ergonomics. |
+| Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. |
 | Inherit parent config | Subagent uses same harness, agent, and model. No capability escalation. |
-| Steering via messages | `message_subagent` unifies cancel, resume, and mid-execution guidance into one tool. |
+| Generic lifecycle tools | `list_tasks`, `get_task`, `message_task`, `cancel_task` work for all task kinds including subagents. |
 
 ## Data Model
 
@@ -65,7 +64,7 @@ Spawning → Running → Completed
 | `Running` | Task sent, agentic loop active |
 | `Completed` | Child session idled after processing task |
 | `Failed` | Child session encountered an unrecoverable error |
-| `Cancelled` | Parent cancelled via `message_subagent(cancel: true)` |
+| `Cancelled` | Parent cancelled via `cancel_task` |
 | `MaxIterationsReached` | Child hit iteration limit |
 
 ### Database Migration
@@ -76,14 +75,14 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ### spawn_subagent
 
-Creates a child session and sends the instructions as the first user message. In foreground mode, blocks until the child idles.
+Creates a child session and sends the instructions as the first user message. In foreground mode, blocks until the child idles. Returns a `task_id` that can be used with the generic session task tools.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name for the subagent |
 | `instructions` | string | Yes | Instructions sent as first user message |
 
-**Returns:** Last assistant message from the child session (the subagent's response to the instructions).
+**Returns:** Last assistant message from the child session plus a `task_id` for the session task record.
 
 **Behavior:**
 1. Creates child session with `parent_session_id` set to current session
@@ -94,30 +93,17 @@ Creates a child session and sends the instructions as the first user message. In
 6. On child idle: returns last assistant message, status → `Completed`
 7. On child failure: returns error, status → `Failed`
 
-### get_subagents
+### Monitoring and steering subagents
 
-Lists or retrieves detail for subagents spawned by the current session.
+Use the generic `session_tasks` tools after spawning. The `task_id` is returned by `spawn_subagent`.
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name_or_id` | string | No | Filter by name (case-insensitive) or session ID |
-| `status_filter` | string | No | Filter by SubagentStatus value |
-
-**Returns:** Array of subagent summaries (name, status, instructions, created_at), or single subagent detail when `name_or_id` matches exactly one.
-
-### message_subagent
-
-Sends a follow-up message to an existing subagent. Unifies steering, resuming, and cancellation.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name_or_id` | string | Yes | Subagent name (case-insensitive) or session ID |
-| `message` | string | Yes* | Message content to send (* not required when `cancel: true`) |
-| `cancel` | bool | No | If true, cancel the subagent instead of messaging |
-
-**Returns:** Last assistant message after the subagent processes the message, or cancellation confirmation.
-
-**Cancel behavior:** Sets `subagent_status = Cancelled`, cancels any active turn in the child session.
+| Tool | Description |
+|------|-------------|
+| `list_tasks` with `kind: "subagent"` | List all subagent tasks and their status |
+| `get_task` | Get detailed status and result for a specific subagent |
+| `message_task` | Send a steering message or additional context to a running subagent |
+| `cancel_task` | Request cooperative cancellation of a subagent |
+| `wait_task` | Block until a subagent reaches a terminal or interrupted state |
 
 ## Events
 

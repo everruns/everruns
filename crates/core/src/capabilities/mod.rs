@@ -145,8 +145,7 @@ mod web_fetch;
 
 // Re-export capabilities
 pub use a2a_delegation::{
-    A2A_AGENT_DELEGATION_CAPABILITY_ID, A2aAgentDelegationCapability, CancelAgentTool,
-    GetAgentRunsTool, MessageAgentTool, SpawnAgentTool, WaitAgentTool,
+    A2A_AGENT_DELEGATION_CAPABILITY_ID, A2aAgentDelegationCapability, SpawnAgentTool,
 };
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
