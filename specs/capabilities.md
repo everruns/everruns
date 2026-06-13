@@ -873,7 +873,7 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 ### Adding New Capabilities
 
 1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for trait definition)
-2. Declare `pub const <NAME>_CAPABILITY_ID: &str = "<id>";` at the top of the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
+2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
 3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
 4. Register in `CapabilityRegistry::with_builtins()` (same file)
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
