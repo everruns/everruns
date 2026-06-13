@@ -842,18 +842,57 @@ fn format_event_text(event_type: &str, data: &serde_json::Value, ts: &str) {
             let label = capitalize_first(&label);
             eprintln!("[{ts}] {label}");
         }
-        "subagent.spawned" => {
-            eprintln!("[{ts}] Subagent spawned");
+        // Session task lifecycle: events carry a full task snapshot
+        // (specs/session-tasks.md). Render kind, name, state, and detail.
+        "task.created" | "task.updated" => {
+            let task = data.get("task");
+            let get = |key: &str| {
+                task.and_then(|t| t.get(key))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+            };
+            let state = get("state");
+            let name = get("display_name");
+            let kind = get("kind");
+            let detail = task
+                .and_then(|t| t.get("state_detail"))
+                .and_then(|v| v.as_str())
+                .map(|d| format!(" — {d}"))
+                .unwrap_or_default();
+            let verb = if event_type == "task.created" {
+                "Task started"
+            } else {
+                "Task"
+            };
+            eprintln!("[{ts}] {verb} [{kind}] {name}: {state}{detail}");
         }
-        "subagent.completed" => {
-            eprintln!("[{ts}] Subagent completed");
+        "task.message.sent" | "task.message.received" => {
+            let direction = if event_type == "task.message.sent" {
+                "→ task"
+            } else {
+                "task →"
+            };
+            let text = data
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_array())
+                .and_then(|parts| {
+                    parts
+                        .iter()
+                        .find_map(|p| p.get("text").and_then(|t| t.as_str()))
+                });
+            match text {
+                Some(text) => {
+                    let preview = truncate_str(text, 120);
+                    eprintln!("[{ts}] Message {direction}: {preview}");
+                }
+                None => eprintln!("[{ts}] Message {direction}"),
+            }
         }
-        "subagent.failed" => {
-            eprintln!("[{ts}] Subagent failed");
-        }
-        "subagent.cancelled" => {
-            eprintln!("[{ts}] Subagent cancelled");
-        }
+        // Legacy subagent.* events duplicate the task.* lifecycle above
+        // (subagents are session tasks now). They are still emitted for
+        // external consumers; skip them here to avoid double-printing.
+        "subagent.spawned" | "subagent.completed" | "subagent.failed" | "subagent.cancelled" => {}
         _ => {
             eprintln!("[{ts}] {event_type}");
         }

@@ -328,8 +328,10 @@ No backward compatibility is required; data migrates forward once:
 - Session-resource dual-write retired (migration 054): subagent, background_run,
   and agent_handoff no longer register in `session_resources`. A2A agent runs
   (`external_agent` tasks) now store their run records in session storage KV
-  (`agent_run:{run_id}` keys). Legacy `subagent.*` events are retained for CLI
-  compatibility. The `task` → `instructions` parameter rename is done (model-facing
+  (`agent_run:{run_id}` keys). Legacy `subagent.*` events are still
+  emitted for external consumers, but the CLI now renders the `task.*`
+  lifecycle instead; retiring the legacy emission awaits a compatibility
+  decision (specs/events.md). The `task` → `instructions` parameter rename is done (model-facing
   tool parameters `spawn_subagent`, `spawn_agent`, `handoff`). The
   `sessions.subagent_*` column retirement remains follow-up work.
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
