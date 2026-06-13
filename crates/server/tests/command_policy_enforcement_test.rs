@@ -428,6 +428,7 @@ async fn eval_manage_without_session_permission_still_allows_list() {
 // ============================================================================
 // EVE-551: ListWorkspaceFiles and GetWorkspaceFile must enforce SESSION_VIEW.
 // A resolver denying OrgSessionsManage must get 403 before any file lookup.
+// (Commands were renamed from ListSessionFiles/GetSessionFile in #2189.)
 // ============================================================================
 
 #[tokio::test]
