@@ -167,11 +167,22 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
+    const expected: McpAppResource[] = [
+      { uri: "ui://everruns/agent/agent_01/card", mimeType: "text/html", html },
+    ];
+
+    // First-party and Everruns-prefixed MCP tools are accepted.
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual(expected);
+    expect(extractMcpAppResources(result, "mcp_everruns__agent_get_card")).toEqual(expected);
+
     // Generic remote MCP tool or no tool name — must be rejected.
     expect(extractMcpAppResources(result, "some_remote_tool")).toEqual([]);
     expect(extractMcpAppResources(result, "get_agent")).toEqual([]);
     expect(extractMcpAppResources(result, undefined)).toEqual([]);
     expect(extractMcpAppResources(result)).toEqual([]);
+    // Non-everruns MCP server ending in _get_card is rejected.
+    expect(extractMcpAppResources(result, "mcp_evil__agent_get_card")).toEqual([]);
+    expect(extractMcpAppResources(result, "mcp_other__agent_get_card")).toEqual([]);
   });
 
   it("rejects ui://everruns URIs that don't match the strict entity/id/card pattern", () => {
