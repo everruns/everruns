@@ -2020,7 +2020,7 @@ impl Tool for ManageSessionsTool {
                 let title = get_str(&arguments, "title");
                 let locale = get_str(&arguments, "locale");
                 match store
-                    .create_session(harness_id, agent_id, title, locale, None, None)
+                    .create_session(harness_id, agent_id, title, locale, None, None, None)
                     .await
                 {
                     Ok(s) => ToolExecutionResult::success(json!({

@@ -614,9 +614,6 @@ impl SessionBuilder {
             active_schedule_count: None,
             features: Vec::new(),
             parent_session_id: None,
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
             blueprint_id: None,
             blueprint_config: None,
         }

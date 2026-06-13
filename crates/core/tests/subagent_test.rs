@@ -219,7 +219,7 @@ fn test_subagent_capability_metadata() {
     let cap = SubagentCapability;
 
     assert_eq!(cap.icon(), Some("git-branch"));
-    assert_eq!(cap.category(), Some("Orchestration"));
+    assert_eq!(cap.category(), Some("Core"));
     assert_eq!(
         cap.description(),
         "Spawn and manage subagents for parallel task execution in isolated context windows."

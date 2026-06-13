@@ -460,10 +460,6 @@ pub fn proto_session_to_schema(
         .parent_session_id
         .as_ref()
         .map(|u| format!("session_{}", u.value.replace("-", "")));
-    let subagent_status = value
-        .subagent_status
-        .as_deref()
-        .map(everruns_core::session::SubagentStatus::from);
     let blueprint_config = value
         .blueprint_config_json
         .as_deref()
@@ -501,9 +497,6 @@ pub fn proto_session_to_schema(
         "finished_at": finished_at,
         "hints": value.hints.as_ref().map(proto_struct_to_json),
         "parent_session_id": parent_session_id_str,
-        "subagent_name": value.subagent_name,
-        "subagent_task": value.subagent_task,
-        "subagent_status": subagent_status,
         "blueprint_id": value.blueprint_id,
         "blueprint_config": blueprint_config,
     });
@@ -537,9 +530,6 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         parent_session_id: value
             .parent_session_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
-        subagent_name: value.subagent_name.clone(),
-        subagent_task: value.subagent_task.clone(),
-        subagent_status: value.subagent_status.as_ref().map(ToString::to_string),
         blueprint_id: value.blueprint_id.clone(),
         blueprint_config_json: value
             .blueprint_config
@@ -1482,9 +1472,6 @@ mod tests {
             active_schedule_count: None,
             features: vec![],
             parent_session_id: Some(everruns_core::SessionId::new()),
-            subagent_name: Some("Test Runner".to_string()),
-            subagent_task: Some("Run focused tests".to_string()),
-            subagent_status: Some(everruns_core::session::SubagentStatus::Running),
             blueprint_id: Some("oracle".to_string()),
             blueprint_config: Some(serde_json::json!({ "depth": "focused" })),
         };
@@ -1497,8 +1484,6 @@ mod tests {
         );
         assert_eq!(proto_session.capabilities.len(), 1);
         assert_eq!(proto_session.tags, vec!["slack:thread:123.456".to_string()]);
-        assert_eq!(proto_session.subagent_name.as_deref(), Some("Test Runner"));
-        assert_eq!(proto_session.subagent_status.as_deref(), Some("running"));
         assert_eq!(proto_session.blueprint_id.as_deref(), Some("oracle"));
 
         // Convert back to schema
@@ -1523,9 +1508,6 @@ mod tests {
         assert_eq!(schema_session.capabilities.len(), 1);
         assert_eq!(schema_session.capabilities[0].capability_id(), "session");
         assert_eq!(schema_session.parent_session_id, session.parent_session_id);
-        assert_eq!(schema_session.subagent_name, session.subagent_name);
-        assert_eq!(schema_session.subagent_task, session.subagent_task);
-        assert_eq!(schema_session.subagent_status, session.subagent_status);
         assert_eq!(schema_session.blueprint_id, session.blueprint_id);
         assert_eq!(schema_session.blueprint_config, session.blueprint_config);
     }

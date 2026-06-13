@@ -61,6 +61,7 @@ async fn create_session_with_owner_and_tags(
         max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
+        parent_session_id: None,
     })
     .await
     .unwrap()

@@ -188,6 +188,8 @@ pub trait PlatformStore: Send + Sync {
     /// When `blueprint_id` is set, the session runs a blueprint agent instead
     /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
     /// validated config for the blueprint (JSON, optional).
+    /// `parent_session_id` links child subagent/handoff sessions to their parent
+    /// (used as the nesting guard in spawn_subagent).
     #[allow(clippy::too_many_arguments)]
     async fn create_session(
         &self,
@@ -197,19 +199,7 @@ pub trait PlatformStore: Send + Sync {
         locale: Option<&str>,
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
-    ) -> Result<Session>;
-
-    /// Attach subagent metadata to an existing session.
-    ///
-    /// Used by subagent orchestration to persist parent/child linkage and
-    /// support nesting guards plus child-session lookups.
-    async fn set_subagent_metadata(
-        &self,
-        session_id: SessionId,
-        parent_session_id: SessionId,
-        subagent_name: &str,
-        subagent_task: &str,
-        subagent_status: crate::session::SubagentStatus,
+        parent_session_id: Option<SessionId>,
     ) -> Result<Session>;
 
     /// Get a session by ID.
@@ -424,9 +414,6 @@ pub mod tests {
                         active_schedule_count: None,
                         features: vec![],
                         parent_session_id: None,
-                        subagent_name: None,
-                        subagent_task: None,
-                        subagent_status: None,
                         blueprint_id: None,
                         blueprint_config: None,
                     }
@@ -677,6 +664,7 @@ pub mod tests {
             locale: Option<&str>,
             blueprint_id: Option<&str>,
             blueprint_config: Option<&serde_json::Value>,
+            parent_session_id: Option<SessionId>,
         ) -> Result<Session> {
             if let Ok(mut recorder) = self.created_session_harness_ids.lock() {
                 recorder.push(hid);
@@ -689,6 +677,7 @@ pub mod tests {
             s.locale = locale.map(|value| value.to_string());
             s.blueprint_id = blueprint_id.map(|b| b.to_string());
             s.blueprint_config = blueprint_config.cloned();
+            s.parent_session_id = parent_session_id;
             Ok(s)
         }
         async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
@@ -709,22 +698,6 @@ pub mod tests {
                 contributions: vec![],
                 cumulative_usage: None,
             })
-        }
-        async fn set_subagent_metadata(
-            &self,
-            session_id: SessionId,
-            parent_session_id: SessionId,
-            subagent_name: &str,
-            subagent_task: &str,
-            subagent_status: crate::session::SubagentStatus,
-        ) -> Result<Session> {
-            let mut s = self.session.clone();
-            s.id = session_id;
-            s.parent_session_id = Some(parent_session_id);
-            s.subagent_name = Some(subagent_name.to_string());
-            s.subagent_task = Some(subagent_task.to_string());
-            s.subagent_status = Some(subagent_status);
-            Ok(s)
         }
         async fn delete_session(&self, _id: SessionId) -> Result<()> {
             Ok(())

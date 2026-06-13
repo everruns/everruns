@@ -149,6 +149,7 @@ async fn test_create_and_list_sessions() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -230,6 +231,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -326,6 +328,7 @@ async fn test_session_updated_at() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -404,6 +407,7 @@ async fn test_events_sequence() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -496,6 +500,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -641,6 +646,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -714,6 +720,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -1422,6 +1429,7 @@ async fn test_list_events_empty_session_with_limit() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -1483,6 +1491,7 @@ async fn test_sessions_pagination() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -1583,6 +1592,7 @@ async fn test_sessions_pagination_ordering() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -2312,6 +2322,7 @@ async fn test_search_sessions_by_title() {
         max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
+        parent_session_id: None,
     })
     .await
     .unwrap();
@@ -2338,6 +2349,7 @@ async fn test_search_sessions_by_title() {
         max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
+        parent_session_id: None,
     })
     .await
     .unwrap();
@@ -2380,6 +2392,7 @@ async fn test_search_sessions_with_agent_filter() {
         max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
+        parent_session_id: None,
     })
     .await
     .unwrap();
@@ -2406,6 +2419,7 @@ async fn test_search_sessions_with_agent_filter() {
         max_iterations: None,
         blueprint_id: None,
         blueprint_config: None,
+        parent_session_id: None,
     })
     .await
     .unwrap();
@@ -2633,6 +2647,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -2823,6 +2838,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -2849,6 +2865,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -2875,6 +2892,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -2967,6 +2985,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();
@@ -3017,6 +3036,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .unwrap();

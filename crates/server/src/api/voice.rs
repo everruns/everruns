@@ -517,6 +517,7 @@ pub async fn create_agent_voice_session(
         hints: Some(HashMap::from([("voice".to_string(), json!(true))])),
         network_access: None,
         max_iterations: None,
+        parent_session_id: None,
     })
     .run(&state.ctx(&org))
     .await?;

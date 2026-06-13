@@ -292,6 +292,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             network_access: None,
+            parent_session_id: None,
         })
         .await
         .expect("test session should be created")

@@ -514,7 +514,7 @@ async fn spawn_create_and_wait(
         uuid::Uuid,
     )>,
 ) -> ToolExecutionResult {
-    // Create child session
+    // Create child session, linking it to the parent (nesting guard).
     let child_session = match store
         .create_session(
             parent_session.harness_id,
@@ -527,26 +527,13 @@ async fn spawn_create_and_wait(
             parent_session.locale.as_deref(),
             blueprint_param.as_deref(),
             config_param.as_ref(),
+            Some(context.session_id),
         )
         .await
     {
         Ok(s) => s,
         Err(e) => return ToolExecutionResult::internal_error(e),
     };
-    let child_session = match store
-        .set_subagent_metadata(
-            child_session.id,
-            context.session_id,
-            name,
-            instructions,
-            crate::session::SubagentStatus::Running,
-        )
-        .await
-    {
-        Ok(s) => s,
-        Err(e) => return ToolExecutionResult::internal_error(e),
-    };
-
     // Create the session task tracking this subagent (specs/session-tasks.md).
     let mut task_id: Option<String> = None;
     if let Some(ref task_registry) = context.session_task_registry
@@ -630,7 +617,7 @@ async fn run_subagent_wait_and_settle(
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
     name: &str,
-    instructions: &str,
+    _instructions: &str,
     blueprint_param: &Option<String>,
     task_id: Option<String>,
     settle_ctx: Option<(&dyn crate::traits::SubagentSpawnStore, &str, uuid::Uuid)>,
@@ -694,28 +681,11 @@ async fn run_subagent_wait_and_settle(
         );
     }
 
-    // Persist metadata and update the session task only when the child reached a
-    // terminal state. Non-terminal results from wait_for_idle (paused,
-    // waiting_for_tool_results, timeout) leave the child Active.
+    // Update the session task only when the child reached a terminal state.
+    // Non-terminal results from wait_for_idle (paused, waiting_for_tool_results,
+    // timeout) leave the child Active.
     if let Some(subagent_status) = terminal_status {
         let task_state = terminal_subagent_task_state(&subagent_status);
-        if let Err(e) = store
-            .set_subagent_metadata(
-                child_id,
-                context.session_id,
-                name,
-                instructions,
-                subagent_status,
-            )
-            .await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                child_session_id = %child_id,
-                error = %e,
-                "failed to persist terminal subagent metadata"
-            );
-        }
         let task_error = if task_state == SessionTaskState::Failed {
             Some(TaskError {
                 kind: status.clone(),

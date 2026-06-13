@@ -654,6 +654,7 @@ async fn process_slack_message(
                 hints: None,
                 network_access: None,
                 max_iterations: None,
+                parent_session_id: None,
             };
             let internal_caller = Caller::internal(org_id);
             let s = state
@@ -2437,6 +2438,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             network_access: None,
+            parent_session_id: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

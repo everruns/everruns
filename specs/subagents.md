@@ -38,14 +38,16 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 
 ### Session Extensions
 
-The `Session` entity is extended with subagent-specific fields:
+The `Session` entity is extended with a subagent nesting guard:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `parent_session_id` | SessionId? | Parent session (null for top-level sessions) |
-| `subagent_name` | String? | Human-readable name ("Test Runner") |
-| `subagent_task` | String? | Original task description |
-| `subagent_status` | SubagentStatus? | Current lifecycle status |
+
+`subagent_name`, `subagent_task`, and `subagent_status` were retired in
+migration 059. Lifecycle state is now tracked via `SessionTask` records
+(`TASK_KIND_SUBAGENT`) owned by the parent session; use `list_tasks` /
+`get_task` to read subagent status.
 
 See `crates/core/src/session.rs` for full field list.
 
@@ -87,11 +89,11 @@ Creates a child session and sends the instructions as the first user message. In
 **Behavior:**
 1. Creates child session with `parent_session_id` set to current session
 2. Inherits the parent session locale when present
-3. Sets `subagent_name`, `subagent_task`, `subagent_status = Spawning`
-4. Sends `instructions` as first user message → status transitions to `Running`
+3. Creates a `TASK_KIND_SUBAGENT` task on the parent session linked to the child session
+4. Sends `instructions` as first user message
 5. Blocks on `wait_for_idle` (foreground mode)
-6. On child idle: returns last assistant message, status → `Completed`
-7. On child failure: returns error, status → `Failed`
+6. On child idle: returns last assistant message, task state → `succeeded`
+7. On child failure: returns error, task state → `failed`
 
 ### Monitoring and steering subagents
 

@@ -2339,6 +2339,7 @@ mod tests {
             _locale: Option<&str>,
             _blueprint_id: Option<&str>,
             _blueprint_config: Option<&serde_json::Value>,
+            _parent_session_id: Option<SessionId>,
         ) -> crate::Result<crate::Session> {
             unreachable!()
         }
@@ -2358,16 +2359,6 @@ mod tests {
                 contributions: vec![],
                 cumulative_usage: None,
             })
-        }
-        async fn set_subagent_metadata(
-            &self,
-            _session_id: SessionId,
-            _parent_session_id: SessionId,
-            _subagent_name: &str,
-            _subagent_task: &str,
-            _subagent_status: crate::session::SubagentStatus,
-        ) -> crate::Result<crate::Session> {
-            unreachable!()
         }
         async fn delete_session(&self, _id: SessionId) -> crate::Result<()> {
             Ok(())
