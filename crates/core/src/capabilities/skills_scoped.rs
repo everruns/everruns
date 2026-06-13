@@ -244,8 +244,13 @@ impl Capability for ScopedSkillsCapability {
         let mut prompt = String::from(SCOPED_SKILLS_SYSTEM_PROMPT);
 
         if let Some(file_store) = ctx.file_store.as_ref() {
-            let discovered =
-                discover_skills(&self.config, file_store.as_ref(), ctx.session_id).await;
+            let discovered = discover_skills(
+                &self.config,
+                file_store.as_ref(),
+                ctx.session_id,
+                Some(MAX_SKILLS_SCAN_PER_SCOPE),
+            )
+            .await;
             let visible: Vec<&DiscoveredSkill> = discovered
                 .iter()
                 .filter(|s| s.error.is_none() && !s.disable_model_invocation)
@@ -380,10 +385,15 @@ struct DiscoveredSkill {
 
 /// Discover every unique skill across scopes, in precedence order. The first
 /// occurrence of a directory name wins; later (farther-scope) duplicates drop.
+/// `scan_limit` bounds the number of skill directories read per scope. It is
+/// `Some(MAX_SKILLS_SCAN_PER_SCOPE)` only when building the system prompt (to
+/// bound per-turn reads); `list_skills` passes `None` so the full set is
+/// returned, matching the existing `SkillsCapability` behavior.
 async fn discover_skills(
     config: &SkillsConfig,
     fs: &dyn SessionFileSystem,
     session_id: SessionId,
+    scan_limit: Option<usize>,
 ) -> Vec<DiscoveredSkill> {
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -394,7 +404,10 @@ async fn discover_skills(
         };
         let mut dirs: Vec<_> = entries.into_iter().filter(|e| e.is_directory).collect();
         dirs.sort_by(|a, b| a.name.cmp(&b.name));
-        for entry in dirs.into_iter().take(MAX_SKILLS_SCAN_PER_SCOPE) {
+        if let Some(limit) = scan_limit {
+            dirs.truncate(limit);
+        }
+        for entry in dirs {
             if !seen.insert(entry.name.clone()) {
                 continue;
             }
@@ -504,7 +517,9 @@ impl Tool for ListSkillsTool {
                 "File store not available. The session_file_system capability is required.",
             );
         };
-        let discovered = discover_skills(&self.config, fs.as_ref(), ctx.session_id).await;
+        // `list_skills` is uncapped (scan_limit = None); the per-scope scan cap
+        // applies only to system-prompt building.
+        let discovered = discover_skills(&self.config, fs.as_ref(), ctx.session_id, None).await;
         let skills: Vec<Value> = discovered
             .into_iter()
             .map(|s| {

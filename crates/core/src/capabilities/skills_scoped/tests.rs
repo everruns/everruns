@@ -124,7 +124,8 @@ impl SessionFileSystem for MockFs {
             .lock()
             .unwrap()
             .insert((session_id, path.to_string()));
-        Ok(file_info(session_id, path, path, true, 0))
+        let name = path.rsplit('/').next().unwrap_or(path);
+        Ok(file_info(session_id, path, name, true, 0))
     }
 }
 
@@ -268,6 +269,29 @@ async fn list_skills_merges_scopes_with_precedence() {
     assert_eq!(shared["description"], "workspace copy");
     let og = skills.iter().find(|s| s["name"] == "only-global").unwrap();
     assert_eq!(og["scope"], "global");
+}
+
+#[tokio::test]
+async fn list_skills_is_not_capped_by_prompt_scan_limit() {
+    // Regression: discovery is shared with the system prompt (which caps at
+    // MAX_SKILLS_SCAN_PER_SCOPE=64), but list_skills must return the full set.
+    let fs = Arc::new(MockFs::new());
+    let sid = SessionId::new();
+    for i in 0..70 {
+        let name = format!("skill-{i:03}");
+        fs.add_file(
+            sid,
+            &format!("/.agents/skills/{name}/SKILL.md"),
+            &valid_skill_md(&name, "many"),
+        );
+    }
+    let cap = ScopedSkillsCapability::new(SkillsConfig::default());
+    let list = &cap.tools()[0];
+    let result = list.execute_with_context(json!({}), &ctx(fs, sid)).await;
+    match result {
+        ToolExecutionResult::Success(val) => assert_eq!(val["count"], 70),
+        other => panic!("expected success, got {other:?}"),
+    }
 }
 
 // ----------------------------------------------------------------------------

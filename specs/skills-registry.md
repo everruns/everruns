@@ -651,8 +651,8 @@ filesystem path, and every discovery/read/write goes through the injected
 how each VFS root maps to storage (a sandboxed overlay on the server, a real on-disk
 directory in a single-user CLI) is decided by the file store, not by any configuration
 knob on the capability. There is deliberately no API that accepts a host path. The
-command-injection trust gate is unchanged — `!`cmd`` is never expanded (EVE-388 /
-TM-TOOL-020).
+command-injection trust gate is unchanged — `` !`cmd` `` is never expanded
+(EVE-388 / TM-TOOL-020).
 
 ## Example Skills
 
