@@ -623,6 +623,37 @@ Skills can also be discovered from the session filesystem at `/.agents/skills/`.
 
 A third source — **capability-contributed skills** — also feeds this pipeline. Any `Capability` can ship skills in code via `contribute_skills()` (see `specs/capabilities.md`); those contributions mount at the same `/.agents/skills/{name}/` path and are served through the same `skills` capability. They are per-session (scoped to the contributing capability's activation) and best for bundling a reusable workflow with the capability that powers it — e.g., a `gpt_image_gen` capability shipping a "prompt an image" skill alongside its tools.
 
+### Multi-Scope Discovery (`ScopedSkillsCapability`)
+
+The default `SkillsCapability` scans the single `/.agents/skills/` root and exposes
+`list_skills` + `activate_skill`. Embedders that need **multiple labeled skill
+sources** — for example a terminal coding agent with workspace, per-user *global*,
+and binary-bundled *system* scopes — can register `ScopedSkillsCapability` instead.
+It takes a `SkillsConfig`:
+
+- **`scopes`** — an ordered list of `SkillScope { label, vfs_root, writable }`, highest
+  precedence first. Discovery merges all scopes and de-duplicates by skill directory
+  name, so a nearer scope shadows a farther one. Each `list_skills` entry is tagged
+  with its scope.
+- **`resolver`** — a `SkillDirResolver` that produces the `${SKILL_DIR}` value and the
+  agent-facing display path. The default keeps both in the VFS namespace; an embedder
+  whose shell runs in a different namespace (e.g. a CLI whose `bash` runs on the host)
+  overrides it to return a path valid there. This is the seam that lets `${SKILL_DIR}`
+  and the discovery file store stay namespace-consistent.
+- **`manage_tools`** — when set, additionally exposes `read_skill` and `write_skill`.
+  `write_skill` installs/updates a skill in a **writable** scope (system/bundled scopes
+  are read-only), validating the name, matching the frontmatter `name`, bounding extra
+  files, and rejecting path traversal and `SKILL.md` overrides.
+
+**Sources are VFS-bound by construction.** A scope is a *labeled VFS root*, never a host
+filesystem path, and every discovery/read/write goes through the injected
+`SessionFileSystem`. The capability therefore cannot be pointed outside the session VFS:
+how each VFS root maps to storage (a sandboxed overlay on the server, a real on-disk
+directory in a single-user CLI) is decided by the file store, not by any configuration
+knob on the capability. There is deliberately no API that accepts a host path. The
+command-injection trust gate is unchanged — `!`cmd`` is never expanded (EVE-388 /
+TM-TOOL-020).
+
 ## Example Skills
 
 Example skills are provided in `examples/skills/`:
