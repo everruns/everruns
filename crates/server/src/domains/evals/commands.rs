@@ -254,6 +254,10 @@ impl Command for ListEvalCases {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCase>, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
@@ -282,6 +286,10 @@ impl Command for GetEvalCase {
             method: "GET",
             path: "/v1/evals/{eval_id}/cases/{case_id}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
@@ -433,6 +441,10 @@ impl Command for ListEvalRuns {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
@@ -461,6 +473,10 @@ impl Command for GetEvalRun {
             method: "GET",
             path: "/v1/evals/{eval_id}/runs/{run_id}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
@@ -493,6 +509,10 @@ impl Command for ExportEvalRunArtifacts {
             method: "GET",
             path: "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalArtifactExport, CommandError> {

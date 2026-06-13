@@ -87,6 +87,10 @@ impl Command for ListSessionFiles {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::verify_session(ctx, session_id).await?;
@@ -128,6 +132,10 @@ impl Command for GetSessionFile {
             method: "GET",
             path: "/v1/sessions/{session_id}/fs/{path}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
