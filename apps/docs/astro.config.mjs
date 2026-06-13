@@ -150,7 +150,102 @@ export default defineConfig({
                 },
                 {
                   label: "Capabilities",
-                  items: [{ autogenerate: { directory: "capabilities" } }],
+                  // Grouped to mirror the category taxonomy in
+                  // docs/capabilities/index.md. Keep the two in sync when
+                  // adding or recategorizing a capability.
+                  items: [
+                    { label: "Overview", slug: "capabilities" },
+                    {
+                      label: "Core",
+                      collapsed: true,
+                      items: [
+                        { label: "File System", slug: "capabilities/file-system" },
+                        { label: "Bashkit Shell", slug: "capabilities/bashkit-shell" },
+                        { label: "Session", slug: "capabilities/session" },
+                        { label: "Session Storage", slug: "capabilities/session-storage" },
+                        { label: "Web Fetch", slug: "capabilities/web-fetch" },
+                        { label: "Browserless", slug: "capabilities/browserless" },
+                        { label: "Daytona", slug: "capabilities/daytona" },
+                      ],
+                    },
+                    {
+                      label: "Data & Productivity",
+                      collapsed: true,
+                      items: [
+                        { label: "SQL Database", slug: "capabilities/sql-database" },
+                        { label: "Current Time", slug: "capabilities/current-time" },
+                        { label: "Message Metadata", slug: "capabilities/message-metadata" },
+                        { label: "Task Management", slug: "capabilities/task-management" },
+                        { label: "Schedules", slug: "capabilities/session-schedules" },
+                      ],
+                    },
+                    {
+                      label: "Media",
+                      collapsed: true,
+                      items: [
+                        { label: "OpenAI Image Generation", slug: "capabilities/openai-image-generation" },
+                      ],
+                    },
+                    {
+                      label: "Orchestration",
+                      collapsed: true,
+                      items: [
+                        { label: "Sub Agents", slug: "capabilities/sub-agents" },
+                      ],
+                    },
+                    {
+                      label: "Integrations",
+                      collapsed: true,
+                      items: [
+                        { label: "GitHub Scout", slug: "capabilities/github-scout" },
+                      ],
+                    },
+                    {
+                      label: "Platform & Configuration",
+                      collapsed: true,
+                      items: [
+                        { label: "Platform Management", slug: "capabilities/platform-management" },
+                        { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
+                        { label: "Agent Skills", slug: "capabilities/agent-skills" },
+                      ],
+                    },
+                    {
+                      label: "Optimization",
+                      collapsed: true,
+                      items: [
+                        { label: "Infinity Context", slug: "capabilities/infinity-context" },
+                        { label: "Auto Tool Search", slug: "capabilities/auto-tool-search" },
+                        { label: "OpenAI Tool Search", slug: "capabilities/openai-tool-search" },
+                        { label: "Claude Tool Search", slug: "capabilities/claude-tool-search" },
+                        { label: "Tool Search", slug: "capabilities/tool-search" },
+                        { label: "Budgeting", slug: "capabilities/budgeting" },
+                        { label: "Self-Budget", slug: "capabilities/self-budget" },
+                      ],
+                    },
+                    {
+                      label: "Safety",
+                      collapsed: true,
+                      items: [
+                        { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
+                      ],
+                    },
+                    {
+                      label: "Automation",
+                      collapsed: true,
+                      items: [
+                        { label: "User Hooks", slug: "capabilities/user-hooks" },
+                      ],
+                    },
+                    {
+                      label: "Demo",
+                      collapsed: true,
+                      items: [
+                        { label: "Fake Warehouse", slug: "capabilities/fake-warehouse" },
+                        { label: "Fake AWS", slug: "capabilities/fake-aws" },
+                        { label: "Fake CRM", slug: "capabilities/fake-crm" },
+                      ],
+                    },
+                  ],
                 },
               ],
             },

@@ -26,6 +26,7 @@ Fundamental capabilities for file operations, command execution, web access, and
 | [Session](/capabilities/session/) | `session` | 2 |
 | [Storage](/capabilities/session-storage/) | `session_storage` | 2 |
 | [Web Fetch](/capabilities/web-fetch/) | `web_fetch` | 1 |
+| [Browserless](/capabilities/browserless/) | `browserless` | 7 |
 | [Daytona](/capabilities/daytona/) | `daytona` | 9 |
 
 ### Data & Productivity
