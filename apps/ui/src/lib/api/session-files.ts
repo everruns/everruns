@@ -33,12 +33,17 @@ function workspaceIdFromSessionId(sessionId: string): string {
 }
 
 // Base path for the workspace filesystem.
+// Each path segment is percent-encoded so that URL delimiter characters
+// (?, #, %) in workspace filenames are treated as literal bytes, not as
+// query-string or fragment delimiters. E.g. a file named "foo?x=1" becomes
+// "foo%3Fx%3D1" in the URL and reaches the server as a literal path.
 function fsPath(sessionId: string, path?: string): string {
   const workspaceId = workspaceIdFromSessionId(sessionId);
   const base = `/v1/workspaces/${workspaceId}/fs`;
   if (!path || path === "/") return base;
   const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
-  return `${base}/${normalizedPath}`;
+  const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
+  return `${base}/${encodedPath}`;
 }
 
 function actionPath(sessionId: string, action: string): string {
@@ -62,7 +67,8 @@ export async function listFiles(
   path: string = "/",
   recursive: boolean = false,
 ): Promise<FileInfo[]> {
-  const url = recursive ? `${fsPath(sessionId, path)}?recursive=true` : fsPath(sessionId, path);
+  const base = fsPath(sessionId, path);
+  const url = recursive ? `${base}?${new URLSearchParams({ recursive: "true" })}` : base;
   const response = await api.get<ListResponse<FileInfo>>(url);
   return response.data.data;
 }
@@ -105,7 +111,8 @@ export async function deleteFile(
   path: string,
   recursive: boolean = false,
 ): Promise<boolean> {
-  const url = recursive ? `${fsPath(sessionId, path)}?recursive=true` : fsPath(sessionId, path);
+  const base = fsPath(sessionId, path);
+  const url = recursive ? `${base}?${new URLSearchParams({ recursive: "true" })}` : base;
   const response = await api.delete<DeleteFileResponse>(url);
   return response.data.deleted;
 }
