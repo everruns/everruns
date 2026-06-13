@@ -15,8 +15,14 @@ use super::types::McpServerRow;
 // ============================================================================
 
 pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
+    // Redact header values: keep key names so callers can see which headers are
+    // configured, but never return raw secrets through the API response path.
     let headers: HashMap<String, String> =
-        serde_json::from_value(row.headers.clone()).unwrap_or_default();
+        serde_json::from_value::<HashMap<String, String>>(row.headers.clone())
+            .unwrap_or_default()
+            .into_keys()
+            .map(|k| (k, String::new()))
+            .collect();
     let settings = McpServerService::settings_from_row(row);
     let oauth_provider_id = (settings.auth_mode == McpServerAuthMode::OAuth)
         .then(|| McpServerService::oauth_provider_id(row.id.uuid()));
