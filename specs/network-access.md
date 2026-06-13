@@ -60,7 +60,7 @@ Merged `NetworkAccessList` flows through:
 5. `EgressService` denies blocked/disallowed URLs before making the outbound
    request (THREAT[TM-AGENT-018])
 
-`web_fetch` follows this path (`crates/core/src/capabilities/web_fetch_egress.rs`),
+`web_fetch` follows this path (`crates/core/src/capabilities/web_fetch/egress_transport.rs`),
 re-checking the list on every redirect hop. Tools may additionally pre-check the
 requested URL for a clearer user-facing error; the egress boundary remains the
 final enforcement point.

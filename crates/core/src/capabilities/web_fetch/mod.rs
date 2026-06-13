@@ -40,6 +40,8 @@ use fetchkit::{BotAuthConfig, FetchError, FetchRequest};
 use serde_json::Value;
 use std::sync::Arc;
 
+mod egress_transport;
+
 pub const WEB_FETCH_CAPABILITY_ID: &str = "web_fetch";
 
 /// Ed25519 public key JWK derived from a signing key seed.
@@ -359,7 +361,7 @@ impl FileSaver for SessionFileSaver {
 pub struct WebFetchTool {
     /// Builder template for this tool's fetchkit configuration. Cloned per
     /// execution to inject the egress transport when the context provides an
-    /// `EgressService` (see `super::web_fetch_egress`).
+    /// `EgressService` (see `egress_transport`).
     builder: fetchkit::ToolBuilder,
     /// Direct (non-egress) tool built from `builder`: serves metadata
     /// (schema/description) and execution for contexts without an egress
@@ -601,7 +603,7 @@ impl Tool for WebFetchTool {
                 routed_tool = self
                     .builder
                     .clone()
-                    .transport(Arc::new(super::web_fetch_egress::EgressHttpTransport::new(
+                    .transport(Arc::new(egress_transport::EgressHttpTransport::new(
                         egress.clone(),
                         context.network_access.clone(),
                     )))
