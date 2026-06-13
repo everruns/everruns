@@ -426,6 +426,14 @@ pub fn proto_session_to_schema(
         .as_ref()
         .map(|u| format!("session_{}", u.value.replace("-", "")))
         .unwrap_or_default();
+    // The proto Session does not carry a workspace id yet; reconstruct it from
+    // the session id under the workspace.id == session.id equality invariant
+    // (see specs/workspace.md). Revisit when shared workspaces add it to proto.
+    let workspace_id_str = value
+        .id
+        .as_ref()
+        .map(|u| format!("wsp_{}", u.value.replace("-", "")))
+        .unwrap_or_default();
     let agent_id_str = value
         .agent_id
         .as_ref()
@@ -469,6 +477,7 @@ pub fn proto_session_to_schema(
 
     let json = serde_json::json!({
         "id": id_str,
+        "workspace_id": workspace_id_str,
         "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
@@ -1435,9 +1444,11 @@ mod tests {
         use everruns_core::AgentCapabilityConfig;
 
         let now = Utc::now();
+        let session_id = everruns_core::SessionId::new();
         let session = everruns_core::Session {
-            id: everruns_core::SessionId::new(),
-            workspace_id: everruns_core::WorkspaceId::new(),
+            id: session_id,
+            // Equality invariant: workspace.id == session.id for default sessions.
+            workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: everruns_core::HarnessId::new(),
             agent_id: None,
@@ -1497,6 +1508,9 @@ mod tests {
             "org_00000000000000000000000000000001"
         );
         assert_eq!(schema_session.id, session.id);
+        // workspace_id is reconstructed from the session id (equality invariant)
+        // since the proto Session does not carry it yet.
+        assert_eq!(schema_session.workspace_id, session.workspace_id);
         assert_eq!(schema_session.harness_id, session.harness_id);
         assert_eq!(
             schema_session.owner_principal_id,
