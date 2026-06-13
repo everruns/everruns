@@ -130,13 +130,19 @@ pub async fn create_workspace(
             Json(ErrorResponse::new("name must be at most 255 characters")),
         ));
     }
-    let public_id = WorkspaceId::new().to_string();
+    // Pin the internal primary key to the public id's uuid so
+    // `id.hex == public_id suffix` holds universally (matching default
+    // per-session workspaces). This keeps `WorkspaceId::from_uuid(id)` equal to
+    // the public id, so callers — e.g. the `workspace_id` rendered on a session
+    // response — round-trip correctly.
+    let workspace_id = WorkspaceId::new();
+    let public_id = workspace_id.to_string();
     let row = state
         .db
         .create_workspace(
             org.org_id,
             CreateWorkspaceRow {
-                id: None,
+                id: Some(workspace_id.uuid()),
                 public_id,
                 name: name.to_string(),
                 description: req.description,
