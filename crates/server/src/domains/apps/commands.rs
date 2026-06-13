@@ -684,7 +684,12 @@ fn redact_inline_endpoint_auth(config: &mut Value) {
     if provider.remove("client_secret").is_some() {
         provider.insert("client_secret_configured".to_string(), Value::Bool(true));
     }
-    if provider.remove("proxy_secret").is_some() {
+    let has_proxy_secret = provider
+        .get("proxy_secret")
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.trim().is_empty());
+    provider.remove("proxy_secret");
+    if has_proxy_secret {
         provider.insert("proxy_secret_configured".to_string(), Value::Bool(true));
     }
 }
@@ -798,7 +803,7 @@ fn merge_preserved_endpoint_auth_secrets(
     if !same_type {
         return;
     }
-    for key in ["password_hash", "client_secret"] {
+    for key in ["password_hash", "client_secret", "proxy_secret"] {
         let should_preserve = out_provider
             .get(key)
             .and_then(Value::as_str)

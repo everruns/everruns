@@ -250,7 +250,7 @@ impl AppEndpointAuthVerifier {
         // spoof the identity header directly (EVE-545).
         let (proxy_hdr, expected_secret) =
             match (proxy_secret_header.as_deref(), proxy_secret.as_deref()) {
-                (Some(h), Some(s)) if !h.is_empty() && !s.is_empty() => (h, s),
+                (Some(h), Some(s)) if !h.trim().is_empty() && !s.trim().is_empty() => (h, s),
                 _ => return Err(AppEndpointAuthError::Misconfigured),
             };
         let cert_value = headers
