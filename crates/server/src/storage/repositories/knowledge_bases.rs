@@ -5,7 +5,7 @@ use super::{Database, build_search_sql};
 use anyhow::Result;
 use uuid::Uuid;
 
-const KB_COLUMNS: &str = "id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at";
+const KB_COLUMNS: &str = "id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at, embedding_model_id";
 const ENTRY_COLUMNS: &str = "id, kb_id, public_id, title, body, kind, tags, created_at, updated_at";
 
 impl Database {
@@ -19,10 +19,12 @@ impl Database {
         let row = sqlx::query_as::<_, KnowledgeBaseRow>(
             r#"
             INSERT INTO knowledge_bases
-                (org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id,
+                 embedding_model_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, org_id, public_id, name, description, owner_principal_id,
-                      resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+                      resolved_owner_user_id, status, created_at, updated_at, archived_at,
+                      deleted_at, embedding_model_id
             "#,
         )
         .bind(org_id)
@@ -31,6 +33,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.owner_principal_id)
         .bind(input.resolved_owner_user_id)
+        .bind(input.embedding_model_id.map(|id| id.uuid()))
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -101,6 +104,11 @@ impl Database {
         id: Uuid,
         input: UpdateKnowledgeBase,
     ) -> Result<Option<KnowledgeBaseRow>> {
+        let (embedding_model_update, embedding_model_value) = match input.embedding_model_id {
+            Some(everruns_durable::UpdateField::Set(v)) => (true, Some(v.uuid())),
+            Some(everruns_durable::UpdateField::Clear) => (true, None),
+            Some(everruns_durable::UpdateField::Unchanged) | None => (false, None),
+        };
         let row = sqlx::query_as::<_, KnowledgeBaseRow>(
             r#"
             UPDATE knowledge_bases
@@ -117,10 +125,12 @@ impl Database {
                     WHEN $6 = 'deleted' THEN COALESCE(deleted_at, NOW())
                     ELSE deleted_at
                 END,
+                embedding_model_id = CASE WHEN $7 THEN $8 ELSE embedding_model_id END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
             RETURNING id, org_id, public_id, name, description, owner_principal_id,
-                      resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+                      resolved_owner_user_id, status, created_at, updated_at, archived_at,
+                      deleted_at, embedding_model_id
             "#,
         )
         .bind(org_id)
@@ -129,6 +139,8 @@ impl Database {
         .bind(input.description.is_some())
         .bind(input.description.flatten())
         .bind(&input.status)
+        .bind(embedding_model_update)
+        .bind(embedding_model_value)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)

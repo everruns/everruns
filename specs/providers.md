@@ -67,7 +67,7 @@ Each registered driver declares:
 enum ServiceKind { Chat, Embeddings, Realtime, Images, Rerank }
 ```
 
-Adding a service is additive: a new driver trait, a new factory slot on the driver, a service-kind value on model profiles, and a resolver entry point. No speculative service traits are built before their first consumer; the first planned addition is `Embeddings` for knowledge-base hybrid retrieval.
+Adding a service is additive: a new driver trait, a new factory slot on the driver, a service-kind value on model profiles, and a resolver entry point. No speculative service traits are built before their first consumer. `Embeddings` is the first shipped addition: `EmbeddingsDriver` trait wired to `OpenAIEmbeddingsDriver`; knowledge-base hybrid retrieval configuration (`embedding_model_id` on `knowledge_bases`) uses it — see `specs/knowledge-bases.md`.
 
 ### Provider
 
@@ -210,7 +210,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 3. **API + UI rename** — routes, OpenAPI, UI pages/hooks/clients, profile catalog endpoint, picker grouping.
 4. **Service resolution** — `resolve_service`, voice rerouted, org default provider per service.
 5. **Connector alignment** — shared credential primitives, `ConnectorPlugin` rename.
-6. **First new service** — `EmbeddingsDriver` + knowledge-base hybrid retrieval configuration (closes the open question in `specs/knowledge-bases.md`).
+6. ✅ **First new service** — `EmbeddingsDriver` + knowledge-base hybrid retrieval configuration (closes the open question in `specs/knowledge-bases.md`).
 
 ## Design Decisions
 

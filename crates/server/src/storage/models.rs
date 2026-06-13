@@ -1171,6 +1171,9 @@ pub struct KnowledgeBaseRow {
     pub updated_at: DateTime<Utc>,
     pub archived_at: Option<DateTime<Utc>>,
     pub deleted_at: Option<DateTime<Utc>>,
+    /// Optional embedding model for hybrid retrieval. NULL = keyword search only.
+    #[sqlx(default)]
+    pub embedding_model_id: Option<ModelId>,
 }
 
 #[derive(Debug, Clone)]
@@ -1180,6 +1183,8 @@ pub struct CreateKnowledgeBaseRow {
     pub description: Option<String>,
     pub owner_principal_id: Option<String>,
     pub resolved_owner_user_id: Option<Uuid>,
+    /// Optional embedding model for hybrid retrieval.
+    pub embedding_model_id: Option<ModelId>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1187,6 +1192,8 @@ pub struct UpdateKnowledgeBase {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub status: Option<String>,
+    /// Optional update to the embedding model. `None` = unchanged.
+    pub embedding_model_id: Option<UpdateField<ModelId>>,
 }
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]

@@ -18,8 +18,9 @@ use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::credential_schema::CredentialFormSchema;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponseStream, ProviderType, ServiceKind,
+    BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
+    DriverRegistry, EmbeddingsDriverFactory, LlmCallConfig, LlmMessage, LlmResponseStream,
+    ProviderType, ServiceKind,
 };
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::openai_protocol::is_azure_openai_api_url;
@@ -541,13 +542,23 @@ fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> R
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Register OpenAI with Open Responses API (recommended). OpenAI providers
-    // also power realtime voice sessions (specs/voice.md), so the descriptor
-    // declares the Realtime service alongside Chat.
+    // also power realtime voice sessions (specs/voice.md) and text embeddings
+    // (specs/providers.md phase 6), so the descriptor declares those services
+    // alongside Chat.
+    let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
+        let api_key = config.api_key.as_deref().unwrap_or("");
+        let driver = match config.base_url.as_deref() {
+            Some(url) => crate::embeddings::OpenAIEmbeddingsDriver::with_base_url(api_key, url),
+            None => crate::embeddings::OpenAIEmbeddingsDriver::new(api_key),
+        };
+        Box::new(driver) as BoxedEmbeddingsDriver
+    });
     registry.register_descriptor(DriverDescriptor {
-        services: vec![ServiceKind::Chat, ServiceKind::Realtime],
+        services: vec![ServiceKind::Chat, ServiceKind::Realtime, ServiceKind::Embeddings],
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
+        embeddings: Some(openai_embeddings_factory),
         ..DriverDescriptor::chat_only(ProviderType::OpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {

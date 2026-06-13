@@ -1252,6 +1252,59 @@ impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
 pub type BoxedChatDriver = Box<dyn ChatDriver>;
 
 // ============================================================================
+// EmbeddingsDriver Trait
+// ============================================================================
+
+/// Request to embed a batch of text strings into dense vectors.
+#[derive(Debug, Clone)]
+pub struct EmbedRequest {
+    /// Texts to embed. All texts in a batch share the same model.
+    pub texts: Vec<String>,
+    /// Provider-side model id (e.g. `text-embedding-3-small`).
+    pub model: String,
+}
+
+/// Response from an embedding request.
+#[derive(Debug, Clone)]
+pub struct EmbedResponse {
+    /// One float vector per input text, in the same order.
+    pub embeddings: Vec<Vec<f32>>,
+    /// Total tokens consumed (for usage tracking). `None` if the provider
+    /// does not report token counts.
+    pub usage_tokens: Option<u32>,
+}
+
+/// Error returned by [`EmbeddingsDriver::embed`].
+#[derive(Debug, thiserror::Error)]
+pub enum EmbeddingsDriverError {
+    #[error("embeddings provider returned an error: {0}")]
+    Provider(String),
+    #[error("embeddings request failed: {0}")]
+    Transport(String),
+}
+
+/// Driver trait for text embedding services.
+///
+/// Implementors call their provider's embedding API and return dense float
+/// vectors. Used by knowledge-base hybrid retrieval (see specs/knowledge-bases.md
+/// and specs/providers.md phase 6).
+#[async_trait]
+pub trait EmbeddingsDriver: Send + Sync {
+    /// Embed a batch of texts and return one vector per input.
+    async fn embed(
+        &self,
+        request: EmbedRequest,
+    ) -> std::result::Result<EmbedResponse, EmbeddingsDriverError>;
+}
+
+/// Boxed embeddings driver for dynamic dispatch.
+pub type BoxedEmbeddingsDriver = Box<dyn EmbeddingsDriver>;
+
+/// Factory function type for creating embeddings drivers.
+pub type EmbeddingsDriverFactory =
+    Arc<dyn Fn(&DriverConfig) -> BoxedEmbeddingsDriver + Send + Sync>;
+
+// ============================================================================
 // Driver Registry
 // ============================================================================
 
@@ -1312,6 +1365,8 @@ pub struct DriverDescriptor {
     pub credential_schema: CredentialFormSchema,
     /// Chat service factory. `None` for drivers that only offer other services.
     pub chat: Option<DriverFactory>,
+    /// Embeddings service factory. `None` for drivers that do not support embeddings.
+    pub embeddings: Option<EmbeddingsDriverFactory>,
 }
 
 impl DriverDescriptor {
@@ -1329,6 +1384,7 @@ impl DriverDescriptor {
             credential_schema: default_credential_schema(&id),
             services: vec![ServiceKind::Chat],
             chat: Some(Arc::new(factory)),
+            embeddings: None,
             id,
         }
     }
@@ -1346,6 +1402,7 @@ impl std::fmt::Debug for DriverDescriptor {
             .field("display_name", &self.display_name)
             .field("services", &self.services)
             .field("chat", &self.chat.is_some())
+            .field("embeddings", &self.embeddings.is_some())
             .finish()
     }
 }
@@ -1530,6 +1587,47 @@ impl DriverRegistry {
     /// Get the list of registered provider types
     pub fn registered_providers(&self) -> Vec<ProviderType> {
         self.descriptors.keys().cloned().collect()
+    }
+
+    /// Create an embeddings driver based on configuration.
+    ///
+    /// API keys must be provided in the config for real providers. Exception:
+    /// `LlmSim` and `External` providers do not require an API key.
+    ///
+    /// Returns an error if the driver is not registered or does not implement
+    /// the embeddings service.
+    pub fn create_embeddings_driver(
+        &self,
+        config: &ProviderConfig,
+    ) -> std::result::Result<BoxedEmbeddingsDriver, EmbeddingsDriverError> {
+        let requires_api_key = !matches!(
+            config.provider_type,
+            ProviderType::LlmSim | ProviderType::External(_)
+        );
+        if requires_api_key && config.api_key.is_none() {
+            return Err(EmbeddingsDriverError::Provider(
+                "API key is required. Configure the API key in provider settings.".to_string(),
+            ));
+        }
+        let descriptor = self.descriptors.get(&config.provider_type).ok_or_else(|| {
+            EmbeddingsDriverError::Provider(format!(
+                "No driver registered for provider '{}'",
+                config.provider_type
+            ))
+        })?;
+        let factory = descriptor.embeddings.as_ref().ok_or_else(|| {
+            EmbeddingsDriverError::Provider(format!(
+                "Provider driver '{}' does not implement the embeddings service.",
+                config.provider_type
+            ))
+        })?;
+        let driver_config = DriverConfig {
+            provider_type: config.provider_type.clone(),
+            api_key: config.api_key.clone(),
+            base_url: config.base_url.clone(),
+            metadata: config.metadata.clone(),
+        };
+        Ok(factory(&driver_config))
     }
 }
 
@@ -2011,6 +2109,7 @@ mod tests {
             services: vec![ServiceKind::Embeddings],
             credential_schema: CredentialFormSchema::empty(),
             chat: None,
+            embeddings: None,
         });
 
         let config = ProviderConfig::new(ProviderType::external("embeddings-only"));

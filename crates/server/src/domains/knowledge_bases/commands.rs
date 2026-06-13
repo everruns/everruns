@@ -171,6 +171,10 @@ pub struct CreateKnowledgeBase {
     #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
+    #[serde(default)]
+    #[schema(value_type = Option<String>)]
+    /// Optional embedding model for hybrid retrieval.
+    pub embedding_model_id: Option<everruns_core::ModelId>,
 }
 
 impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
@@ -178,6 +182,7 @@ impl From<CreateKnowledgeBaseRequest> for CreateKnowledgeBase {
         Self {
             name: request.name,
             description: request.description,
+            embedding_model_id: request.embedding_model_id,
         }
     }
 }
@@ -205,12 +210,24 @@ impl Command for CreateKnowledgeBase {
 
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeBaseResponse, CommandError> {
         let name = validate_name(&self.name)?;
+        let embedding_model_id = if let Some(model_id) = self.embedding_model_id {
+            // Validate the model exists in this org.
+            ctx.db
+                .get_llm_model(ctx.org_id(), model_id.uuid())
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
+            Some(model_id)
+        } else {
+            None
+        };
         let input = CreateKnowledgeBaseRow {
             public_id: KnowledgeBaseId::new().to_string(),
             name,
             description: self.description,
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
+            embedding_model_id,
         };
         let row = ctx
             .db
@@ -317,6 +334,19 @@ impl Command for UpdateKnowledgeBaseCmd {
             .as_deref()
             .map(validate_name)
             .transpose()?;
+        // Validate the embedding model if it's being updated.
+        let embedding_model_id = match self.request.embedding_model_id {
+            UpdateField::Set(model_id) => {
+                ctx.db
+                    .get_llm_model(ctx.org_id(), model_id.uuid())
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
+                Some(UpdateField::Set(model_id))
+            }
+            UpdateField::Clear => Some(UpdateField::Clear),
+            UpdateField::Unchanged => None,
+        };
         let row = ctx
             .db
             .update_knowledge_base(
@@ -330,6 +360,7 @@ impl Command for UpdateKnowledgeBaseCmd {
                         UpdateField::Unchanged => None,
                     },
                     status: None,
+                    embedding_model_id,
                 },
             )
             .await
@@ -757,6 +788,7 @@ mod tests {
         let created = CreateKnowledgeBase {
             name: "Sales Playbook".into(),
             description: Some("Curated sales knowledge".into()),
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -846,6 +878,7 @@ mod tests {
         let kb = CreateKnowledgeBase {
             name: "K".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -898,6 +931,7 @@ mod tests {
         let created = CreateKnowledgeBase {
             name: "Private".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&org_one)
         .await
@@ -924,6 +958,7 @@ mod tests {
         CreateKnowledgeBase {
             name: "Research".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -932,6 +967,7 @@ mod tests {
         let err = CreateKnowledgeBase {
             name: "research".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -951,6 +987,7 @@ mod tests {
         let kb = CreateKnowledgeBase {
             name: "Archive Me".into(),
             description: None,
+            embedding_model_id: None,
         }
         .run(&ctx)
         .await
@@ -1046,6 +1083,7 @@ mod tests {
             request: UpdateKnowledgeBaseRequest {
                 name: Some("Renamed".into()),
                 description: UpdateField::Unchanged,
+                embedding_model_id: UpdateField::Unchanged,
             },
         }
         .run(&ctx)

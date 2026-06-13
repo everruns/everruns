@@ -14897,6 +14897,13 @@
             "description": "Human-readable description. Safe to render in user-facing messages.",
             "example": "Runbooks for the support team"
           },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional embedding model for hybrid retrieval. Omit or null for keyword search only."
+          },
           "name": {
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages.",
@@ -18424,6 +18431,13 @@
             ],
             "description": "Human-readable description. Safe to render in user-facing messages."
           },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional embedding model for hybrid retrieval. `null` = keyword search only."
+          },
           "id": {
             "type": "string",
             "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
@@ -19628,6 +19642,13 @@
                     "null"
                   ],
                   "description": "Human-readable description. Safe to render in user-facing messages."
+                },
+                "embedding_model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional embedding model for hybrid retrieval. `null` = keyword search only."
                 },
                 "id": {
                   "type": "string",
@@ -30026,6 +30047,13 @@
               "null"
             ],
             "description": "Human-readable description. Safe to render in user-facing messages."
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional embedding model for hybrid retrieval. Set to null to clear."
           },
           "name": {
             "type": [
