@@ -2458,6 +2458,30 @@ pub struct UpdateAgentHealthCheckRunRow {
     pub error_message: Option<String>,
 }
 
+/// Org-configurable agent check rule (specs/agent-checks.md, phase 4).
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentCheckRuleRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub rule_id: String,
+    pub kind: String,
+    pub enabled: bool,
+    pub severity_override: Option<String>,
+    pub config: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Upsert input for an agent check rule (keyed by org_id + rule_id).
+#[derive(Debug, Clone)]
+pub struct UpsertAgentCheckRuleRow {
+    pub rule_id: String,
+    pub kind: String,
+    pub enabled: bool,
+    pub severity_override: Option<String>,
+    pub config: Option<serde_json::Value>,
+}
+
 // ============================================================================
 // Observer models (online scoring — see specs/online-evals.md)
 // ============================================================================

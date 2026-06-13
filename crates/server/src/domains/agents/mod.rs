@@ -5,6 +5,7 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod analysis;
+pub mod check_rules;
 pub mod checks;
 pub mod commands;
 pub mod health_check;
