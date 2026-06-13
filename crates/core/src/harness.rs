@@ -286,6 +286,41 @@ mod tests {
     }
 
     #[test]
+    fn merges_embedder_metadata_parent_first_child_wins() {
+        let mut parent = test_harness(1, "Parent.");
+        parent.embedder_metadata = HashMap::from([
+            ("env".to_string(), "production".to_string()),
+            ("team".to_string(), "platform".to_string()),
+        ]);
+
+        let mut child = test_harness(2, "Child.");
+        child.parent_harness_id = Some(parent.id);
+        child.embedder_metadata = HashMap::from([
+            ("team".to_string(), "ai".to_string()), // overrides parent
+            ("experiment".to_string(), "v2".to_string()), // child-only key
+        ]);
+
+        let merged = merge_harness(&parent, &child);
+
+        assert_eq!(
+            merged.embedder_metadata.get("env").map(String::as_str),
+            Some("production")
+        );
+        assert_eq!(
+            merged.embedder_metadata.get("team").map(String::as_str),
+            Some("ai"),
+            "child wins on collision"
+        );
+        assert_eq!(
+            merged
+                .embedder_metadata
+                .get("experiment")
+                .map(String::as_str),
+            Some("v2")
+        );
+    }
+
+    #[test]
     fn merges_chain_root_to_leaf() {
         let root = test_harness(1, "Root");
         let mut middle = test_harness(2, "Middle");

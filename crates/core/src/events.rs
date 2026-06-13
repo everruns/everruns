@@ -1429,7 +1429,8 @@ pub struct LlmRequestOptions {
     /// Provider-specific request options that do not warrant dedicated fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub provider_options: HashMap<String, Value>,
-    /// Embedder-supplied metadata key-values passed to the LLM provider for observability.
+    /// General request metadata passed to the LLM provider for tracking and observability.
+    /// Includes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, String>,
 }

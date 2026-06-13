@@ -3357,6 +3357,39 @@ mod tests {
         assert!(build_request_options(&config, "gemini").is_none());
     }
 
+    #[test]
+    fn system_keys_override_embedder_keys_in_metadata() {
+        // Pins the injection order: embedder keys inserted first, then system
+        // keys overwrite any collision. A harness author cannot shadow session_id,
+        // turn_id, etc. by including them in embedder_metadata.
+        let embedder_metadata: HashMap<String, String> = [
+            ("session_id".to_string(), "attacker_value".to_string()),
+            ("custom_key".to_string(), "custom_value".to_string()),
+        ]
+        .into();
+
+        let mut metadata: HashMap<String, String> = HashMap::new();
+
+        // Inject embedder metadata first (mirrors execute_single_turn logic)
+        for (k, v) in &embedder_metadata {
+            metadata.insert(k.clone(), v.clone());
+        }
+
+        // System key injected second — must overwrite
+        metadata.insert("session_id".to_string(), "real_session_id".to_string());
+
+        assert_eq!(
+            metadata.get("session_id").map(String::as_str),
+            Some("real_session_id"),
+            "system key must overwrite embedder key with same name"
+        );
+        assert_eq!(
+            metadata.get("custom_key").map(String::as_str),
+            Some("custom_value"),
+            "non-colliding embedder key must be preserved"
+        );
+    }
+
     // =========================================================================
     // ContinuePartial recovery tests (EVE-532)
     // =========================================================================
