@@ -1494,7 +1494,7 @@ impl DriverRegistry {
     ) -> std::result::Result<BoxedEmbeddingsDriver, EmbeddingsDriverError> {
         let requires_api_key = !matches!(
             config.provider_type,
-            ProviderType::LlmSim | ProviderType::External(_)
+            DriverId::LlmSim | DriverId::External(_)
         );
         if requires_api_key && config.api_key.is_none() {
             return Err(EmbeddingsDriverError::Provider(

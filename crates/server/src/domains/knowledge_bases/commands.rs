@@ -213,7 +213,7 @@ impl Command for CreateKnowledgeBase {
         let embedding_model_id = if let Some(model_id) = self.embedding_model_id {
             // Validate the model exists in this org.
             ctx.db
-                .get_llm_model(ctx.org_id(), model_id.uuid())
+                .get_model(ctx.org_id(), model_id.uuid())
                 .await
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
@@ -338,7 +338,7 @@ impl Command for UpdateKnowledgeBaseCmd {
         let embedding_model_id = match self.request.embedding_model_id {
             UpdateField::Set(model_id) => {
                 ctx.db
-                    .get_llm_model(ctx.org_id(), model_id.uuid())
+                    .get_model(ctx.org_id(), model_id.uuid())
                     .await
                     .map_err(classify_anyhow)?
                     .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
