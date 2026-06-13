@@ -798,10 +798,10 @@ impl ServerAppBuilder {
             }
         });
         let driver_registry = Arc::new(platform_definition.driver_registry().clone());
-        let provider_resolver = Arc::new(services::ProviderResolverService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        let provider_resolver = Arc::new(
+            services::ProviderResolverService::new(db.clone(), encryption.clone())
+                .with_driver_registry((*driver_registry).clone()),
+        );
         let providers_state = api::providers::AppState::new(
             db.clone(),
             encryption.clone(),

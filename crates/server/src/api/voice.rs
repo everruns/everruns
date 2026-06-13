@@ -30,8 +30,8 @@ use everruns_core::message::ExecutionPhase;
 use everruns_core::traits::LeasedResourceStore;
 use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
-    Caller, ContentPart, Event, FeatureFlags, InputContentPart, LeasedResource, ToolCall,
-    UpsertLeasedResource,
+    Caller, ContentPart, Event, FeatureFlags, InputContentPart, LeasedResource, ServiceKind,
+    ToolCall, UpsertLeasedResource,
 };
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
@@ -51,8 +51,10 @@ use tokio_tungstenite::{
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-const OPENAI_PROVIDER: &str = "openai";
 const VOICE_RESOURCE_TYPE: &str = "voice_connection";
+/// Provider label reported in voice responses. Realtime is OpenAI-only in OSS;
+/// the provider connection itself is selected by service-kind resolution.
+const OPENAI_PROVIDER: &str = "openai";
 const DEFAULT_MODEL: &str = "gpt-realtime-2";
 const DEFAULT_VOICE: &str = "marin";
 const DEFAULT_REASONING_EFFORT: &str = "low";
@@ -323,7 +325,7 @@ pub async fn create_client_secret(
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_openai_credentials(&state, org.org_id).await?;
+    let credentials = resolve_realtime_credentials(&state, org.org_id).await?;
     let voice_connection_id = new_voice_connection_id();
     let lease = upsert_voice_resource(VoiceResourceUpsert {
         state: &state,
@@ -415,7 +417,7 @@ pub async fn attach_call(
         );
     }
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_openai_credentials(&state, org.org_id).await?;
+    let credentials = resolve_realtime_credentials(&state, org.org_id).await?;
     let lease = upsert_voice_resource(VoiceResourceUpsert {
         state: &state,
         session_id,
@@ -563,7 +565,7 @@ async fn bootstrap_call(
         return Err(ErrorResponse::new("Missing SDP").into_response(StatusCode::BAD_REQUEST));
     }
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_openai_credentials(state, org.org_id).await?;
+    let credentials = resolve_realtime_credentials(state, org.org_id).await?;
     let voice_connection_id = new_voice_connection_id();
     let form = multipart::Form::new()
         .part(
@@ -760,16 +762,21 @@ async fn authorize_session(
         })
 }
 
-async fn resolve_openai_credentials(
+/// Resolve the realtime-voice provider connection for an org via service-bound
+/// resolution (specs/providers.md): the active provider whose driver declares
+/// `ServiceKind::Realtime`, fail-closed. Replaces the previous "first active
+/// provider matching the `openai` type string" behavior — only realtime-capable
+/// drivers are eligible now.
+async fn resolve_realtime_credentials(
     state: &AppState,
     org_id: i64,
 ) -> Result<ResolvedProviderCredentials, (StatusCode, Json<ErrorResponse>)> {
     state
         .provider_resolver
-        .resolve_provider_credentials(org_id, OPENAI_PROVIDER)
+        .resolve_service(org_id, ServiceKind::Realtime, None)
         .await
-        .map_err(provider_error)?
-        .ok_or_else(ErrorResponse::bad_gateway)
+        .map(|resolved| resolved.credentials)
+        .map_err(provider_error)
 }
 
 fn parse_session_id(session_id: &str) -> Result<SessionId, (StatusCode, Json<ErrorResponse>)> {

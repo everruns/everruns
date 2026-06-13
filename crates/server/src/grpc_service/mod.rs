@@ -529,7 +529,10 @@ impl WorkerServiceImpl {
             WorkspaceFileService::new(db.clone())
         };
         let provider_resolver_service = provider_resolver_service.unwrap_or_else(|| {
-            Arc::new(ProviderResolverService::new(db.clone(), encryption.clone()))
+            Arc::new(
+                ProviderResolverService::new(db.clone(), encryption.clone())
+                    .with_driver_registry(platform_definition.driver_registry().clone()),
+            )
         });
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),

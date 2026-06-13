@@ -17,6 +17,7 @@
 
 use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
+use everruns_core::{DriverId, DriverRegistry, ServiceKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -139,6 +140,17 @@ pub struct ResolvedProviderCredentials {
     pub base_url: Option<String>,
 }
 
+/// A provider connection resolved for a specific non-chat [`ServiceKind`].
+#[derive(Debug, Clone)]
+pub struct ResolvedServiceProvider {
+    /// Driver/provider type string of the selected provider (e.g. "openai").
+    pub provider_type: String,
+    /// Public id of the selected provider connection.
+    pub provider_id: String,
+    /// Decrypted credentials for the provider connection.
+    pub credentials: ResolvedProviderCredentials,
+}
+
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
 type CacheKey = (i64, Uuid);
 
@@ -146,6 +158,10 @@ pub struct ProviderResolverService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     cache: Cache<CacheKey, Option<ResolvedModel>>,
+    /// Driver registry powering service-bound resolution (`resolve_service`):
+    /// it declares which drivers implement which [`ServiceKind`]. Empty by
+    /// default; the server composition root wires in the platform registry.
+    driver_registry: DriverRegistry,
 }
 
 impl ProviderResolverService {
@@ -158,7 +174,17 @@ impl ProviderResolverService {
             db,
             encryption,
             cache,
+            driver_registry: DriverRegistry::new(),
         }
+    }
+
+    /// Attach the driver registry that powers [`Self::resolve_service`].
+    ///
+    /// Without it, service-bound resolution fails closed (no driver declares
+    /// any service), so the server composition root must call this.
+    pub fn with_driver_registry(mut self, driver_registry: DriverRegistry) -> Self {
+        self.driver_registry = driver_registry;
+        self
     }
 
     /// Resolve a model by ID with decrypted provider credentials.
@@ -238,6 +264,90 @@ impl ProviderResolverService {
         }
 
         Ok(None)
+    }
+
+    /// Service-bound resolution: select a provider connection that serves the
+    /// requested [`ServiceKind`], fail-closed (specs/providers.md).
+    ///
+    /// Selection order:
+    /// 1. An explicit `binding` (a provider public id supplied by the consumer,
+    ///    e.g. a voice connection's provider) wins — but only when that
+    ///    provider's driver declares the service.
+    /// 2. *(org default provider per service — not yet implemented.)*
+    /// 3. Otherwise the first active provider whose driver declares the service.
+    ///
+    /// Returns a structured "no provider configured for {service}" error when
+    /// nothing matches. Like chat resolution, this never falls back to
+    /// environment-only credentials in tenant paths (the fail-closed key
+    /// contract in specs/llm-drivers.md): a provider row without a usable key
+    /// is skipped, not satisfied from the host environment.
+    pub async fn resolve_service(
+        &self,
+        org_id: i64,
+        service: ServiceKind,
+        binding: Option<&str>,
+    ) -> Result<ResolvedServiceProvider> {
+        let providers = self.db.list_providers(org_id).await?;
+
+        // Tier 1: an explicit provider binding wins, but only if its driver
+        // actually declares the requested service.
+        if let Some(binding) = binding {
+            let provider = providers
+                .iter()
+                .find(|provider| provider.id.to_string() == binding)
+                .ok_or_else(|| anyhow::anyhow!("provider {binding} not found for org"))?;
+            if !self.driver_supports(&provider.provider_type, service) {
+                return Err(anyhow::anyhow!(
+                    "provider {binding} does not provide the {service} service"
+                ));
+            }
+            let api_key = self.resolve_api_key(provider)?.ok_or_else(|| {
+                anyhow::anyhow!("no credentials configured for provider {binding}")
+            })?;
+            return Ok(ResolvedServiceProvider {
+                provider_type: provider.provider_type.clone(),
+                provider_id: provider.id.to_string(),
+                credentials: ResolvedProviderCredentials {
+                    api_key,
+                    base_url: provider.base_url.clone(),
+                },
+            });
+        }
+
+        // Tier 2 (org-level default provider per service) is not implemented
+        // yet; no consumer requires it. See specs/providers.md follow-ups.
+
+        // Tier 3: the first active provider whose driver declares the service.
+        for provider in providers
+            .iter()
+            .filter(|provider| provider.status.eq_ignore_ascii_case("active"))
+            .filter(|provider| self.driver_supports(&provider.provider_type, service))
+        {
+            if let Some(api_key) = self.resolve_api_key(provider)? {
+                return Ok(ResolvedServiceProvider {
+                    provider_type: provider.provider_type.clone(),
+                    provider_id: provider.id.to_string(),
+                    credentials: ResolvedProviderCredentials {
+                        api_key,
+                        base_url: provider.base_url.clone(),
+                    },
+                });
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "no provider configured for the {service} service"
+        ))
+    }
+
+    /// Whether the driver behind a provider-type string declares `service`.
+    /// Unknown type strings parse to [`DriverId::External`], which declares no
+    /// services, so they correctly never match.
+    fn driver_supports(&self, provider_type: &str, service: ServiceKind) -> bool {
+        let driver_id: DriverId = provider_type
+            .parse()
+            .unwrap_or_else(|_| DriverId::external(provider_type.to_string()));
+        self.driver_registry.supports(&driver_id, service)
     }
 
     /// Invalidate all cached resolutions for an org.
@@ -947,5 +1057,134 @@ mod tests {
             result.is_none(),
             "default model must not resolve in another org"
         );
+    }
+
+    // --- resolve_service (service-bound resolution) tests ---
+
+    /// Resolver wired with the real OSS driver registry: `openai` declares
+    /// `Realtime`/`Chat`, `openrouter` is chat-only — exactly the asymmetry the
+    /// service-kind selection must respect.
+    fn service_resolver(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+    ) -> ProviderResolverService {
+        ProviderResolverService::new(db, encryption)
+            .with_driver_registry(everruns_worker::create_driver_registry())
+    }
+
+    async fn seed_active_provider(
+        db: &StorageBackend,
+        encryption: &EncryptionService,
+        provider_type: &str,
+    ) -> everruns_core::ProviderId {
+        use crate::storage::models::CreateProviderRow;
+        let encrypted = encryption.encrypt_string("sk-test").unwrap();
+        db.create_provider(
+            DEFAULT_ORG_ID,
+            CreateProviderRow {
+                name: provider_type.to_string(),
+                provider_type: provider_type.to_string(),
+                base_url: None,
+                api_key_encrypted: Some(encrypted),
+                settings: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    #[tokio::test]
+    async fn resolve_service_selects_active_provider_declaring_service() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        seed_active_provider(&db, &encryption, "openai").await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let resolved = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect("openai declares Realtime and has a key");
+        assert_eq!(resolved.provider_type, "openai");
+        assert_eq!(resolved.credentials.api_key, "sk-test");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_fails_closed_when_no_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let resolver = service_resolver(db, Some(test_encryption()));
+
+        let err = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect_err("no provider configured");
+        assert!(
+            err.to_string().contains("no provider configured"),
+            "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_service_skips_driver_without_service() {
+        // OpenRouter is chat-only; it must not satisfy a Realtime request,
+        // but it must still serve Chat.
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        seed_active_provider(&db, &encryption, "openrouter").await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect_err("openrouter does not declare Realtime");
+        assert!(
+            err.to_string().contains("no provider configured"),
+            "got: {err}"
+        );
+
+        resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Chat, None)
+            .await
+            .expect("openrouter declares Chat");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_binding_requires_service_support() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let openrouter = seed_active_provider(&db, &encryption, "openrouter").await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(
+                DEFAULT_ORG_ID,
+                ServiceKind::Realtime,
+                Some(&openrouter.to_string()),
+            )
+            .await
+            .expect_err("bound provider's driver lacks Realtime");
+        assert!(err.to_string().contains("does not provide"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_binding_selects_explicit_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        // Two realtime-capable providers; the binding must pick the named one,
+        // not just the first active match.
+        let first = seed_active_provider(&db, &encryption, "openai").await;
+        let second = seed_active_provider(&db, &encryption, "openai").await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let resolved = resolver
+            .resolve_service(
+                DEFAULT_ORG_ID,
+                ServiceKind::Realtime,
+                Some(&second.to_string()),
+            )
+            .await
+            .expect("explicit binding resolves");
+        assert_eq!(resolved.provider_id, second.to_string());
+        assert_ne!(resolved.provider_id, first.to_string());
     }
 }
