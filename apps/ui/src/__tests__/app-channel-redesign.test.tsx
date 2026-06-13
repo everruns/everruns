@@ -151,7 +151,9 @@ describe("app channel redesign", () => {
     fireEvent.click(trigger);
 
     const runNow = await screen.findByText("Run now");
-    expect(runNow.closest("[aria-disabled]") ?? runNow.closest("[disabled]") ?? runNow).toHaveAttribute("data-disabled");
+    expect(
+      runNow.closest("[aria-disabled]") ?? runNow.closest("[disabled]") ?? runNow,
+    ).toHaveAttribute("data-disabled");
   });
 
   it("enables Run now when onRunNow is provided and channel is runnable", async () => {
