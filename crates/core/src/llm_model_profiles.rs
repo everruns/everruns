@@ -456,7 +456,8 @@ pub fn get_model_profile_key(provider_type: &LlmProviderType, model_id: &str) ->
 pub fn get_model_profile_by_key(key: &str) -> Option<LlmModelProfile> {
     let (vendor_slug, canonical) = key.split_once('/')?;
     let descriptor = REGISTRY.iter().find(|descriptor| {
-        descriptor.vendor.slug() == vendor_slug && descriptor.ids[0].eq_ignore_ascii_case(canonical)
+        descriptor.vendor.slug().eq_ignore_ascii_case(vendor_slug)
+            && descriptor.ids[0].eq_ignore_ascii_case(canonical)
     })?;
     profile_data(descriptor.ids[0])
 }
@@ -3120,6 +3121,8 @@ mod tests {
         // By-key lookup round-trips.
         let profile = get_model_profile_by_key("openai/gpt-5.5").unwrap();
         assert_eq!(profile.name, "GPT-5.5");
+        // Both key segments are matched ASCII case-insensitively.
+        assert!(get_model_profile_by_key("OpenAI/GPT-5.5").is_some());
         assert!(get_model_profile_by_key("openai/not-a-model").is_none());
         assert!(get_model_profile_by_key("no-slash").is_none());
 
