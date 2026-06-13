@@ -9,6 +9,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.12.0] - 2026-06-13
+
+### Highlights
+
+- **Adoptable Guardrail Gallery** - Browse and adopt guardrail configurations from a curated gallery ([#2214](https://github.com/everruns/everruns/pull/2214)).
+- **Plugins Subsystem** - Marketplace of plugins with install management for orgs ([#2150](https://github.com/everruns/everruns/pull/2150)).
+- **OpenRouter Advanced Routing** - Capacity strategies (shared/BYOK-first/BYOK-only), quality routing presets, workspace inspection, and model scout benchmark (EVE-564, EVE-565, EVE-566, [#2204](https://github.com/everruns/everruns/pull/2204), [#2206](https://github.com/everruns/everruns/pull/2206)).
+- **Workspace-Attached Sessions** - Sessions now attach to a shared workspace with unified file I/O and move/copy/download ([#2207](https://github.com/everruns/everruns/pull/2207)).
+- **Config-Driven Guardrails** - Deterministic guardrail capability configurable per workspace ([#2193](https://github.com/everruns/everruns/pull/2193)).
+- **Hosted Tool Search** - `claude_tool_search` available as a hosted capability with name-weighted ranking ([#2166](https://github.com/everruns/everruns/pull/2166)).
+- **Online Session Scoring** - Automatic online scoring of production sessions for quality observability ([#2191](https://github.com/everruns/everruns/pull/2191)).
+
+### What's Changed
+
+- feat(guardrails): adoptable guardrail gallery (EVE-571) ([#2214](https://github.com/everruns/everruns/pull/2214)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): add provider-quality routing presets (EVE-564) by [@chaliy](https://github.com/chaliy)
+- refactor(server): drop dead subagent_name/task columns from spawn handles ([#2209](https://github.com/everruns/everruns/pull/2209)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): service-kind resolution + voice realtime rerouting (phase 4) ([#2210](https://github.com/everruns/everruns/pull/2210)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): address session file browser by the session's workspace_id ([#2212](https://github.com/everruns/everruns/pull/2212)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): add capacity strategy (shared/BYOK-first/BYOK-only) (EVE-565) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): add workspace inspection and policy compatibility tools (EVE-566) by [@chaliy](https://github.com/chaliy)
+- feat(workspace): attach sessions to a shared workspace + re-key I/O ([#2207](https://github.com/everruns/everruns/pull/2207)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): expose optional plugin-style provider capabilities ([#2206](https://github.com/everruns/everruns/pull/2206)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): add model scout benchmark blueprint ([#2204](https://github.com/everruns/everruns/pull/2204)) by [@chaliy](https://github.com/chaliy)
+- refactor(api): rename provider/model routes to /v1/providers,/v1/models ([#2188](https://github.com/everruns/everruns/pull/2188)) by [@chaliy](https://github.com/chaliy)
+- refactor: retire sessions.subagent_* columns for the task registry ([#2202](https://github.com/everruns/everruns/pull/2202)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): config-driven deterministic guardrail capability ([#2193](https://github.com/everruns/everruns/pull/2193)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): on-demand LLM analysis of agent configs (phase 2) ([#2194](https://github.com/everruns/everruns/pull/2194)) by [@chaliy](https://github.com/chaliy)
+- refactor(providers): rename LLM types, modules, and DB tables (phase 2) by [@chaliy](https://github.com/chaliy)
+- feat(providers): add EmbeddingsDriver trait and knowledge-base embedding config (phase 6) by [@chaliy](https://github.com/chaliy)
+- fix(auth): require proxy secret for mTLS endpoint auth (EVE-545) by [@chaliy](https://github.com/chaliy)
+- feat(observers): online scoring of production sessions (Phase 1) ([#2191](https://github.com/everruns/everruns/pull/2191)) by [@chaliy](https://github.com/chaliy)
+- refactor(providers): rename ConnectionProvider → Connector across core, server, and plugin crates (phase 5) by [@chaliy](https://github.com/chaliy)
+- refactor(core): retire legacy per-kind task tools for generic ones ([#2196](https://github.com/everruns/everruns/pull/2196)) by [@chaliy](https://github.com/chaliy)
+- test(policy): enforce SESSION_VIEW on ListSessionFiles and GetSessionFile (EVE-551) by [@chaliy](https://github.com/chaliy)
+- feat(workspace): fs move/copy/download, workspace_id, file rename ([#2189](https://github.com/everruns/everruns/pull/2189)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): nest web_fetch egress transport as a submodule ([#2195](https://github.com/everruns/everruns/pull/2195)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): validate expires_in_days range for personal access tokens by [@chaliy](https://github.com/chaliy)
+- feat(core): configurable multi-scope skills capability ([#2185](https://github.com/everruns/everruns/pull/2185)) by [@chaliy](https://github.com/chaliy)
+- fix(files): encode special chars in workspace filesystem URL paths (EVE-558, EVE-555) by [@chaliy](https://github.com/chaliy)
+- fix(chat): validate MCP card URI, size, and tool provenance before rendering ([#2187](https://github.com/everruns/everruns/pull/2187)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): regroup capabilities into Core and Sandboxes ([#2183](https://github.com/everruns/everruns/pull/2183)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): gate publish/unpublish/archive on app.dangerous ([#2186](https://github.com/everruns/everruns/pull/2186)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp-servers): add custom headers management UI ([#2184](https://github.com/everruns/everruns/pull/2184)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): guard against invalid scheduledAt in formatScheduledDateTime (EVE-559) by [@chaliy](https://github.com/chaliy)
+- fix(mcp-servers): redact header values in API responses (EVE-550) by [@chaliy](https://github.com/chaliy)
+- fix(schedule): fix default cron and add minimum-interval validation by [@chaliy](https://github.com/chaliy)
+- feat(cli): render session task lifecycle events in session follow ([#2177](https://github.com/everruns/everruns/pull/2177)) by [@chaliy](https://github.com/chaliy)
+- fix(authz): add EVAL_VIEW and SESSION_VIEW to GET read commands by [@chaliy](https://github.com/chaliy)
+- fix(security): allowlist raster MIME types in read-file image rendering by [@chaliy](https://github.com/chaliy)
+- fix(core): match profile-key vendor segment case-insensitively ([#2174](https://github.com/everruns/everruns/pull/2174)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): CreateEvalRun requires session permission (EVE-549) by [@chaliy](https://github.com/chaliy)
+- feat(server): seed default everruns plugin marketplace per org ([#2160](https://github.com/everruns/everruns/pull/2160)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): align all built-in capabilities to pub const ID pattern ([#2173](https://github.com/everruns/everruns/pull/2173)) by [@chaliy](https://github.com/chaliy)
+- feat(core): driver descriptors with services and credential schemas ([#2170](https://github.com/everruns/everruns/pull/2170)) by [@chaliy](https://github.com/chaliy)
+- feat(tool-search): add hosted claude_tool_search and wire into auto ([#2166](https://github.com/everruns/everruns/pull/2166)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): rename LlmDriver to ChatDriver ([#2169](https://github.com/everruns/everruns/pull/2169)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): advisory agent config checks (phase 1) ([#2167](https://github.com/everruns/everruns/pull/2167)) by [@chaliy](https://github.com/chaliy)
+- feat(server): reconcile monitors when schedules are canceled ([#2164](https://github.com/everruns/everruns/pull/2164)) by [@chaliy](https://github.com/chaliy)
+- fix(tool-search): preserve deferred schemas across serde ([#2135](https://github.com/everruns/everruns/pull/2135)) by [@chaliy](https://github.com/chaliy)
+- fix(core): ignore empty stream events for stall timeout ([#2132](https://github.com/everruns/everruns/pull/2132)) by [@chaliy](https://github.com/chaliy)
+- feat(core): compact model-facing output after tool output persistence ([#2151](https://github.com/everruns/everruns/pull/2151)) by [@chaliy](https://github.com/chaliy)
+- feat(core): open LLM driver model for embedder-defined providers ([#2161](https://github.com/everruns/everruns/pull/2161)) by [@chaliy](https://github.com/chaliy)
+- feat(workspace): decouple Workspace from Session, add fs API by [@chaliy](https://github.com/chaliy)
+- feat(server): invoke task executors from the session-task API ([#2159](https://github.com/everruns/everruns/pull/2159)) by [@chaliy](https://github.com/chaliy)
+- feat(core): semantic driver errors and error-disclosure capability ([#2147](https://github.com/everruns/everruns/pull/2147)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): re-attach orphaned external_agent tasks ([#2153](https://github.com/everruns/everruns/pull/2153)) by [@chaliy](https://github.com/chaliy)
+- feat: plugins subsystem — marketplaces and installed plugins ([#2150](https://github.com/everruns/everruns/pull/2150)) by [@chaliy](https://github.com/chaliy)
+- feat(worker): gRPC session task reaper and stale-attempt fencing ([#2152](https://github.com/everruns/everruns/pull/2152)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): enforce file API RBAC with RFC 9457-compliant errors ([#2128](https://github.com/everruns/everruns/pull/2128)) by [@chaliy](https://github.com/chaliy)
+- fix(session-tasks): enforce command policies ([#2127](https://github.com/everruns/everruns/pull/2127)) by [@chaliy](https://github.com/chaliy)
+- fix(voice): redact provider error bodies ([#2105](https://github.com/everruns/everruns/pull/2105)) by [@chaliy](https://github.com/chaliy)
+- fix(core): prune background session permits ([#2104](https://github.com/everruns/everruns/pull/2104)) by [@chaliy](https://github.com/chaliy)
+- fix(core): guard OpenAI tool call DONE fallback ([#2134](https://github.com/everruns/everruns/pull/2134)) by [@chaliy](https://github.com/chaliy)
+- fix(lua): avoid multibyte catalog truncation panic ([#2133](https://github.com/everruns/everruns/pull/2133)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add tool_output_distillation capability ([#2148](https://github.com/everruns/everruns/pull/2148)) by [@chaliy](https://github.com/chaliy)
+- feat(core): name-weighted tool_search ranking with top-band reveal ([#2146](https://github.com/everruns/everruns/pull/2146)) by [@chaliy](https://github.com/chaliy)
+- feat: retire session_resources dual-write for work kinds ([#2143](https://github.com/everruns/everruns/pull/2143)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.11.0] - 2026-06-12
 
 ### Highlights
