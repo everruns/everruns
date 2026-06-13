@@ -193,7 +193,7 @@ pub async fn create_api_key_connection(
     let (_, identity_id) = resolve_identity(&state, &org, &identity_id).await?;
 
     let provider = state.connectors.get(&provider_id).ok_or_else(|| {
-        ErrorResponse::new(format!("Unknown connection provider: {provider_id}"))
+        ErrorResponse::new(format!("Unknown connector: {provider_id}"))
             .into_response(StatusCode::NOT_FOUND)
     })?;
 
@@ -337,7 +337,7 @@ pub async fn verify_connection(
     })?;
 
     let provider = state.connectors.get(&provider_id).ok_or_else(|| {
-        ErrorResponse::new(format!("Unknown connection provider: {provider_id}"))
+        ErrorResponse::new(format!("Unknown connector: {provider_id}"))
             .into_response(StatusCode::NOT_FOUND)
     })?;
 

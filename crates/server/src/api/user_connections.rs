@@ -275,10 +275,10 @@ pub async fn list_connections(
     Ok(Json(connections))
 }
 
-/// GET /v1/user/connections/providers — List available connection providers
+/// GET /v1/user/connections/providers — List available connectors
 ///
-/// Returns both hardcoded providers (GitHub/OAuth) and plugin-registered
-/// providers (Daytona/API-key). Frontend uses this to render connection forms.
+/// Returns both hardcoded connectors (GitHub/OAuth) and plugin-registered
+/// connectors (Daytona/API-key). Frontend uses this to render connection forms.
 pub async fn list_connectors(
     State(state): State<AppState>,
     org: ResolvedOrg,
@@ -351,7 +351,7 @@ pub async fn create_api_key_connection(
     let provider = state.connectors.get(&provider_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            format!("Unknown connection provider: {provider_id}"),
+            format!("Unknown connector: {provider_id}"),
         )
     })?;
 
@@ -525,7 +525,7 @@ pub async fn verify_connection(
     let provider = state.connectors.get(&provider_id).ok_or_else(|| {
         (
             StatusCode::NOT_FOUND,
-            format!("Unknown connection provider: {provider_id}"),
+            format!("Unknown connector: {provider_id}"),
         )
     })?;
 

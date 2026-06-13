@@ -46,12 +46,12 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .build()
 }
 
-/// Build the default OSS connection-provider registry.
+/// Build the default OSS connector registry.
 pub fn oss_connector_registry() -> ConnectorRegistry {
     oss_connector_registry_for_grade(DeploymentGrade::from_env())
 }
 
-/// Build the default OSS connection-provider registry for an explicit grade.
+/// Build the default OSS connector registry for an explicit grade.
 pub fn oss_connector_registry_for_grade(grade: DeploymentGrade) -> ConnectorRegistry {
     let mut registry = ConnectorRegistry::new();
 

@@ -231,12 +231,12 @@ impl PlatformDefinition {
         &mut self.driver_registry
     }
 
-    /// Immutable access to the connection-provider registry.
+    /// Immutable access to the connector registry.
     pub fn connectors(&self) -> &ConnectorRegistry {
         &self.connectors
     }
 
-    /// Mutable access to the connection-provider registry.
+    /// Mutable access to the connector registry.
     pub fn connectors_mut(&mut self) -> &mut ConnectorRegistry {
         &mut self.connectors
     }
