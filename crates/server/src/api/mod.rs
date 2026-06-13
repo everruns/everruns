@@ -39,6 +39,7 @@ pub mod memory;
 pub mod memory_files;
 pub mod messages;
 pub mod notifications;
+pub mod observers;
 pub mod org_feature_flags;
 pub mod organizations;
 pub mod payments;

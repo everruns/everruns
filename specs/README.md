@@ -128,6 +128,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/test-cases.md` - Manual test case format
 - `specs/evals.md` - User-facing behavioral evals
 - `specs/agent-checks.md` - Advisory agent config checks (lint, LLM analysis, health checks)
+- `specs/online-evals.md` - Online evals (Observers) over production sessions (proposed)
 - `specs/swe-bench-lite.md` - SWE-bench Lite evaluation harness
 - `specs/reporting.md` - Async reporting
 - `specs/reporting-backends.md` - Phase 3 reference evaluation

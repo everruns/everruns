@@ -19,6 +19,7 @@ mod llm;
 mod mcp_servers;
 mod memory;
 mod notifications;
+mod observers;
 mod org_feature_flags;
 mod organizations;
 mod payments;

@@ -4,6 +4,7 @@ pub mod commands;
 pub mod limits;
 pub mod queries;
 pub mod runner;
+pub mod scoring;
 pub mod service;
 pub mod types;
 

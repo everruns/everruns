@@ -554,7 +554,9 @@ async fn send_message_and_wait(
     }
 }
 
-fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) -> String {
+pub(crate) fn extract_final_assistant_content(
+    events: &[crate::storage::models::EventRow],
+) -> String {
     // Find the last output.message.completed event.
     // Event data format: { "message": { "content": [{ "type": "text", "text": "..." }] } }
     for event in events.iter().rev() {
@@ -579,7 +581,7 @@ fn extract_final_assistant_content(events: &[crate::storage::models::EventRow]) 
     String::new()
 }
 
-fn extract_tool_calls(events: &[crate::storage::models::EventRow]) -> Vec<String> {
+pub(crate) fn extract_tool_calls(events: &[crate::storage::models::EventRow]) -> Vec<String> {
     events
         .iter()
         .filter(|e| e.event_type == "tool.completed")
@@ -651,90 +653,12 @@ async fn run_single_scorer(
     ctx: &EvalRunContext,
     session_uuid: Uuid,
 ) -> Score {
+    if let Some(score) =
+        crate::domains::evals::scoring::score_rule(scorer, final_content, tool_calls, turns)
+    {
+        return score;
+    }
     match scorer {
-        Scorer::Contains { text, .. } => {
-            let pass = final_content.contains(text.as_str());
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("Output contains '{text}'")
-                } else {
-                    format!("Output does not contain '{text}'")
-                },
-            }
-        }
-        Scorer::NotContains { text, .. } => {
-            let pass = !final_content.contains(text.as_str());
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("Output does not contain '{text}'")
-                } else {
-                    format!("Output contains '{text}'")
-                },
-            }
-        }
-        Scorer::Regex { pattern, .. } => {
-            let pass = regex::Regex::new(pattern)
-                .map(|re| re.is_match(final_content))
-                .unwrap_or(false);
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("Output matches pattern '{pattern}'")
-                } else {
-                    format!("Output does not match pattern '{pattern}'")
-                },
-            }
-        }
-        Scorer::ToolCalled { tool, min, .. } => {
-            let count = tool_calls.iter().filter(|t| t == &tool).count() as u32;
-            let pass = count >= *min;
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: format!("Tool '{tool}' called {count} times (min: {min})"),
-            }
-        }
-        Scorer::ToolNotCalled { tool, .. } => {
-            let called = tool_calls.iter().any(|t| t == tool);
-            let pass = !called;
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: if pass {
-                    format!("Tool '{tool}' was not called")
-                } else {
-                    format!("Tool '{tool}' was called")
-                },
-            }
-        }
-        Scorer::ToolCallCount { min, max, .. } => {
-            let count = tool_calls.len() as u32;
-            let pass_min = min.map(|m| count >= m).unwrap_or(true);
-            let pass_max = max.map(|m| count <= m).unwrap_or(true);
-            let pass = pass_min && pass_max;
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: format!(
-                    "Total tool calls: {count} (min: {}, max: {})",
-                    min.map(|v| v.to_string()).unwrap_or("-".into()),
-                    max.map(|v| v.to_string()).unwrap_or("-".into())
-                ),
-            }
-        }
-        Scorer::TurnsWithin { max, .. } => {
-            let pass = turns <= *max;
-            Score {
-                pass,
-                value: if pass { 1.0 } else { 0.0 },
-                reason: format!("Turns: {turns} (max: {max})"),
-            }
-        }
         Scorer::FileContains { path, text, .. } => {
             let file = ctx.db.get_session_file(session_uuid, path).await;
             let pass = match file {
@@ -758,20 +682,8 @@ async fn run_single_scorer(
                 },
             }
         }
-        Scorer::JsonSchema { schema: _, .. } => {
-            // JSON schema validation requires a jsonschema crate dependency.
-            // For now, verify the output is valid JSON.
-            let is_json = serde_json::from_str::<serde_json::Value>(final_content).is_ok();
-            Score {
-                pass: is_json,
-                value: if is_json { 1.0 } else { 0.0 },
-                reason: if is_json {
-                    "Output is valid JSON (full schema validation not yet implemented)".to_string()
-                } else {
-                    "Output is not valid JSON".to_string()
-                },
-            }
-        }
+        // score_rule covers every other variant.
+        _ => unreachable!("score_rule handles all non-file scorer rules"),
     }
 }
 

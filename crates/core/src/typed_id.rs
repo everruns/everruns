@@ -483,6 +483,20 @@ impl IdMarker for EvalResultIdMarker {
     const PREFIX: &'static str = "evalresult";
 }
 
+/// Marker for Observer IDs (online scoring of production sessions — see `specs/online-evals.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ObserverIdMarker;
+impl IdMarker for ObserverIdMarker {
+    const PREFIX: &'static str = "observer";
+}
+
+/// Marker for Trace Score IDs (observer scoring output)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TraceScoreIdMarker;
+impl IdMarker for TraceScoreIdMarker {
+    const PREFIX: &'static str = "score";
+}
+
 /// Marker for Budget IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BudgetIdMarker;
@@ -613,6 +627,10 @@ pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
 /// Eval Case Result ID
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
+/// Observer ID (online scoring — see `specs/online-evals.md`)
+pub type ObserverId = TypedId<ObserverIdMarker>;
+/// Trace Score ID (observer scoring output)
+pub type TraceScoreId = TypedId<TraceScoreIdMarker>;
 /// Budget ID
 pub type BudgetId = TypedId<BudgetIdMarker>;
 /// Payment account ID

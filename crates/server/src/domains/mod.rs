@@ -22,6 +22,7 @@ pub mod mcp_servers;
 pub mod memory;
 pub mod messages;
 pub mod notifications;
+pub mod observers;
 pub mod org_resolver;
 pub mod organizations;
 pub mod payments;
