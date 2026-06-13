@@ -23,7 +23,7 @@ use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use crate::session::Session;
 use crate::traits::{
-    AgentStore, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider, ResolvedImage,
+    AgentStore, HarnessStore, ImageResolver, ProviderStore, ResolvedImage, ResolvedModel,
     SessionFileSystem, SessionStore,
 };
 use crate::typed_id::SessionId;
@@ -40,7 +40,7 @@ use uuid::Uuid;
 ///
 /// THREAT[TM-LLM-023]: this view must stay credential-free. Provider keys and
 /// base URLs live only inside the host implementation; do not add
-/// `ModelWithProvider` or other key-bearing types here.
+/// `ResolvedModel` or other key-bearing types here.
 #[derive(Debug, Clone)]
 pub struct CommandTurnContext {
     /// Session the command is executing against.
@@ -212,7 +212,7 @@ pub struct StoreCommandHost {
     agent_store: Arc<dyn AgentStore>,
     session_store: Arc<dyn SessionStore>,
     message_retriever: Arc<dyn MessageRetriever>,
-    provider_store: Arc<dyn LlmProviderStore>,
+    provider_store: Arc<dyn ProviderStore>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     image_resolver: Option<Arc<dyn ImageResolver>>,
@@ -228,7 +228,7 @@ impl StoreCommandHost {
         agent_store: Arc<dyn AgentStore>,
         session_store: Arc<dyn SessionStore>,
         message_retriever: Arc<dyn MessageRetriever>,
-        provider_store: Arc<dyn LlmProviderStore>,
+        provider_store: Arc<dyn ProviderStore>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
     ) -> Self {
@@ -318,12 +318,12 @@ impl StoreCommandHost {
         &self,
         controls: Option<&Controls>,
         assembled: &AssembledTurnContext,
-    ) -> std::result::Result<ModelWithProvider, SessionCompletionError> {
+    ) -> std::result::Result<ResolvedModel, SessionCompletionError> {
         let requested = controls.and_then(|controls| controls.model_id);
         match requested {
             Some(model_id) if Some(model_id) != assembled.resolved_model_id => self
                 .provider_store
-                .get_model_with_provider(model_id)
+                .get_resolved_model(model_id)
                 .await
                 .map_err(SessionCompletionError::InvalidRequest)?
                 .ok_or_else(|| {
@@ -488,13 +488,13 @@ mod tests {
     use crate::capabilities::TestMathCapability;
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
-        InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore,
-        InMemoryMessageRetriever, InMemorySessionStore,
+        InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
+        InMemorySessionStore,
     };
-    use crate::llm_driver_registry::{LlmStreamEvent, ProviderType};
-    use crate::llm_models::LlmProviderType;
+    use crate::llm_driver_registry::LlmStreamEvent;
     use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
     use crate::message_retriever::InputMessage;
+    use crate::provider::DriverId;
     use crate::session::SessionStatus;
     use crate::typed_id::{AgentId, HarnessId};
     use chrono::Utc;
@@ -644,11 +644,11 @@ mod tests {
             .await
             .unwrap();
 
-        let provider_store = InMemoryLlmProviderStore::new();
+        let provider_store = InMemoryProviderStore::new();
         provider_store
-            .set_default_model(ModelWithProvider {
+            .set_default_model(ResolvedModel {
                 model: "llmsim-model".into(),
-                provider_type: LlmProviderType::LlmSim,
+                provider_type: DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -660,9 +660,7 @@ mod tests {
 
         let mut driver_registry = DriverRegistry::new();
         let driver = LlmSimDriver::new(LlmSimConfig::fixed(response));
-        driver_registry.register(ProviderType::LlmSim, move |_config| {
-            Box::new(driver.clone())
-        });
+        driver_registry.register(DriverId::LlmSim, move |_config| Box::new(driver.clone()));
 
         StoreCommandHost::new(
             session_id,

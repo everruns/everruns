@@ -19,10 +19,9 @@ use everruns_core::credential_schema::CredentialFormSchema;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
-    DriverRegistry, EmbeddingsDriverFactory, LlmCallConfig, LlmMessage, LlmResponseStream,
-    ProviderType, ServiceKind,
+    DriverId, DriverRegistry, EmbeddingsDriverFactory, LlmCallConfig, LlmMessage,
+    LlmResponseStream, ServiceKind,
 };
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::openai_protocol::is_azure_openai_api_url;
 use everruns_core::{CompactRequest, CompactResponse};
 
@@ -190,7 +189,7 @@ impl OpenRouterChatDriver {
                 api_key,
                 OPENROUTER_RESPONSES_URL,
             )
-            .with_provider_type(LlmProviderType::Openrouter),
+            .with_provider_type(DriverId::OpenRouter),
             uses_custom_url: false,
         }
     }
@@ -200,7 +199,7 @@ impl OpenRouterChatDriver {
         let api_url = normalize_api_url(&api_url.into(), "/responses");
         Self {
             inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url)
-                .with_provider_type(LlmProviderType::Openrouter),
+                .with_provider_type(DriverId::OpenRouter),
             uses_custom_url: true,
         }
     }
@@ -211,7 +210,7 @@ impl OpenRouterChatDriver {
     }
 
     /// Get the provider type used for model profile lookup.
-    pub fn provider_type(&self) -> &LlmProviderType {
+    pub fn provider_type(&self) -> &DriverId {
         self.inner.provider_type()
     }
 
@@ -526,10 +525,10 @@ fn apply_models_auth(request: RequestBuilder, api_url: &str, api_key: &str) -> R
 /// Register all OpenAI drivers with the driver registry
 ///
 /// This registers:
-/// - `ProviderType::OpenAI` - Open Responses API (recommended)
-/// - `ProviderType::OpenRouter` - OpenRouter Responses API
-/// - `ProviderType::AzureOpenAI` - Azure OpenAI Responses API
-/// - `ProviderType::OpenAICompletions` - Chat Completions API (backward compatibility)
+/// - `DriverId::OpenAI` - Open Responses API (recommended)
+/// - `DriverId::OpenRouter` - OpenRouter Responses API
+/// - `DriverId::AzureOpenAI` - Azure OpenAI Responses API
+/// - `DriverId::OpenAICompletions` - Chat Completions API (backward compatibility)
 ///
 /// # Example
 ///
@@ -559,7 +558,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
         embeddings: Some(openai_embeddings_factory),
-        ..DriverDescriptor::chat_only(ProviderType::OpenAI, |config| {
+        ..DriverDescriptor::chat_only(DriverId::OpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
@@ -573,7 +572,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).",
         ),
-        ..DriverDescriptor::chat_only(ProviderType::OpenRouter, |config| {
+        ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => OpenRouterChatDriver::with_base_url(api_key, url),
@@ -587,7 +586,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         credential_schema: CredentialFormSchema::api_key(
             "Use an API key for your Azure OpenAI resource and set the resource endpoint as the base URL.",
         ),
-        ..DriverDescriptor::chat_only(ProviderType::AzureOpenAI, |config| {
+        ..DriverDescriptor::chat_only(DriverId::AzureOpenAI, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => OpenAIChatDriver::with_base_url(api_key, url),
@@ -602,7 +601,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key at [platform.openai.com/api-keys](https://platform.openai.com/api-keys).",
         ),
-        ..DriverDescriptor::chat_only(ProviderType::OpenAICompletions, |config| {
+        ..DriverDescriptor::chat_only(DriverId::OpenAICompletions, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => OpenAICompletionsChatDriver::with_base_url(api_key, url),

@@ -10,7 +10,7 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, ImageArtifactStore, ModelWithProvider, ProviderCredentialStore, ResolvedImage,
+    AgentStore, ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
-    GrpcMessageRetriever, GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcSessionFileStore,
+    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
+    GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcProviderStore, GrpcSessionFileStore,
     GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
@@ -188,22 +188,22 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     // LLM Provider Operations
     // =========================================================================
 
-    async fn get_model_with_provider(
+    async fn get_resolved_model(
         &self,
         org_id: i64,
         model_id: Uuid,
-    ) -> Result<Option<ModelWithProvider>> {
-        let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
-        everruns_core::traits::LlmProviderStore::get_model_with_provider(
+    ) -> Result<Option<ResolvedModel>> {
+        let store = GrpcProviderStore::new(self.client.clone(), org_id);
+        everruns_core::traits::ProviderStore::get_resolved_model(
             &store,
             ModelId::from_uuid(model_id),
         )
         .await
     }
 
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
-        let store = GrpcLlmProviderStore::new(self.client.clone(), org_id);
-        everruns_core::traits::LlmProviderStore::get_default_model(&store).await
+    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
+        let store = GrpcProviderStore::new(self.client.clone(), org_id);
+        everruns_core::traits::ProviderStore::get_default_model(&store).await
     }
 
     // =========================================================================

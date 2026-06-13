@@ -28,9 +28,9 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
@@ -453,10 +453,8 @@ impl ChatDriver for AnthropicChatDriver {
         // keep the flag for the header.
         let (wire_model, wants_million_context) = split_million_context(&config.model);
 
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::LlmProviderType::Anthropic,
-            wire_model,
-        );
+        let profile =
+            everruns_core::get_model_profile(&everruns_core::DriverId::Anthropic, wire_model);
 
         // Hosted tool_search (deferred tool loading) is gated on the Anthropic
         // model profile. When a hosted `ToolSearchConfig` is present and the
@@ -1050,7 +1048,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         credential_schema: CredentialFormSchema::api_key(
             "Create an API key in the [Anthropic Console](https://console.anthropic.com/settings/keys).",
         ),
-        ..DriverDescriptor::chat_only(ProviderType::Anthropic, |config| {
+        ..DriverDescriptor::chat_only(DriverId::Anthropic, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
                 Some(url) => AnthropicChatDriver::with_base_url(api_key, url),
@@ -1185,7 +1183,7 @@ struct AnthropicOutputConfig {
 /// Claude families that use adaptive thinking. On Fable 5 and Opus 4.8/4.7
 /// budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it is
 /// deprecated and adaptive is the recommended form. Keep in sync with the
-/// adaptive-thinking profiles in `everruns_core::llm_model_profiles`.
+/// adaptive-thinking profiles in `everruns_core::model_profiles`.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5",
     "claude-opus-4-8",
@@ -1482,7 +1480,7 @@ struct AnthropicModelsResponse {
 /// Individual model info from Anthropic's models API
 ///
 /// Includes structured capabilities and token limits returned by the
-/// `/v1/models` endpoint, used to build `LlmModelProfile` at discovery time.
+/// `/v1/models` endpoint, used to build `ModelProfile` at discovery time.
 #[derive(Debug, Deserialize)]
 struct AnthropicModelInfo {
     /// Model identifier (e.g., "claude-opus-4-5-20251101")
@@ -1581,18 +1579,18 @@ fn normalize_anthropic_id(model_id: &str) -> &str {
 }
 
 impl AnthropicModelInfo {
-    /// Build an `LlmModelProfile` from the API-provided metadata.
+    /// Build an `ModelProfile` from the API-provided metadata.
     ///
     /// This profile contains limits and capability flags discovered from the API.
     /// Cost data is NOT available from the API and remains in hardcoded profiles.
-    fn to_discovered_profile(&self) -> everruns_core::llm_models::LlmModelProfile {
-        use everruns_core::llm_models::*;
+    fn to_discovered_profile(&self) -> everruns_core::model::ModelProfile {
+        use everruns_core::model::*;
 
         let caps = self.capabilities.as_ref();
 
         // Build token limits from API fields
         let limits = match (self.max_input_tokens, self.max_tokens) {
-            (Some(input), Some(output)) => Some(LlmModelLimits {
+            (Some(input), Some(output)) => Some(ModelLimits {
                 context: input as i32,
                 input: None,
                 output: output as i32,
@@ -1619,7 +1617,7 @@ impl AnthropicModelInfo {
             if pdf_input {
                 input_mods.push(Modality::Pdf);
             }
-            Some(LlmModelModalities {
+            Some(ModelModalities {
                 input: input_mods,
                 output: vec![Modality::Text],
             })
@@ -1640,7 +1638,7 @@ impl AnthropicModelInfo {
             .and_then(|c| c.structured_outputs.as_ref())
             .is_some_and(|c| c.supported);
 
-        LlmModelProfile {
+        ModelProfile {
             name: self.display_name.clone(),
             family: normalize_anthropic_id(&self.id).to_string(),
             description: None,
@@ -1670,8 +1668,8 @@ impl AnthropicModelInfo {
     fn build_reasoning_effort(
         &self,
         caps: Option<&AnthropicModelCapabilities>,
-    ) -> Option<everruns_core::llm_models::ReasoningEffortConfig> {
-        use everruns_core::llm_models::*;
+    ) -> Option<everruns_core::model::ReasoningEffortConfig> {
+        use everruns_core::model::*;
 
         let thinking = caps?.thinking.as_ref()?;
         if !thinking.supported {
@@ -1783,7 +1781,7 @@ impl AnthropicModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::llm_models::Modality;
+    use everruns_core::model::Modality;
     use everruns_core::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     // These tests verify that empty text blocks are filtered out to avoid
@@ -2569,7 +2567,7 @@ mod tests {
     fn test_default_max_tokens_from_known_model() {
         // Known Anthropic models should resolve max_tokens from profile
         let profile = everruns_core::get_model_profile(
-            &everruns_core::LlmProviderType::Anthropic,
+            &everruns_core::DriverId::Anthropic,
             "claude-sonnet-4-5-20250514",
         );
         assert!(profile.is_some(), "claude-sonnet-4-5 should have a profile");
@@ -2587,7 +2585,7 @@ mod tests {
     fn test_default_max_tokens_unknown_model_falls_back() {
         // Unknown model should return None (triggering the 16384 fallback)
         let profile = everruns_core::get_model_profile(
-            &everruns_core::LlmProviderType::Anthropic,
+            &everruns_core::DriverId::Anthropic,
             "nonexistent-model-xyz",
         );
         assert!(profile.is_none(), "unknown model should not have a profile");

@@ -54,8 +54,7 @@ use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, LlmProviderStore, ModelWithProvider, PartialStreamStore, ResolvedImage,
-    SessionStore,
+    ImageResolver, PartialStreamStore, ProviderStore, ResolvedImage, ResolvedModel, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};
@@ -575,7 +574,7 @@ pub struct ReasonAtom {
     agent_store: Arc<dyn AgentStore>,
     session_store: Arc<dyn SessionStore>,
     message_retriever: Arc<dyn MessageRetriever>,
-    provider_store: Arc<dyn LlmProviderStore>,
+    provider_store: Arc<dyn ProviderStore>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     event_emitter: Arc<dyn EventEmitter>,
@@ -602,7 +601,7 @@ impl ReasonAtom {
         agent_store: impl AgentStore + 'static,
         session_store: impl SessionStore + 'static,
         message_retriever: impl MessageRetriever + 'static,
-        provider_store: impl LlmProviderStore + 'static,
+        provider_store: impl ProviderStore + 'static,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
         event_emitter: impl EventEmitter + 'static,
@@ -1108,7 +1107,7 @@ impl ReasonAtom {
                 }
                 // Check model profile; if profile exists and reasoning is false, strip it.
                 // Unknown models (no profile) pass through — let the API decide.
-                let profile = crate::llm_model_profiles::get_model_profile(
+                let profile = crate::model_profiles::get_model_profile(
                     &model_with_provider.provider_type,
                     &model_with_provider.model,
                 );
@@ -1403,7 +1402,7 @@ impl ReasonAtom {
         // 13b. Proactive compaction: check token budget BEFORE calling the LLM.
         // This avoids the latency of a RequestTooLarge round-trip.
         if let Some(ref config) = compaction_config {
-            let context_window = crate::llm_model_profiles::get_model_profile(
+            let context_window = crate::model_profiles::get_model_profile(
                 &model_with_provider.provider_type,
                 &model_with_provider.model,
             )
@@ -2357,7 +2356,7 @@ impl ReasonAtom {
             match (meta.prompt_tokens, meta.completion_tokens) {
                 (Some(input), Some(output)) => {
                     let actual_cost_usd = meta.provider_cost_usd;
-                    let estimated_cost_usd = crate::llm_model_profiles::estimate_cost_usd(
+                    let estimated_cost_usd = crate::model_profiles::estimate_cost_usd(
                         &model_with_provider.provider_type,
                         &runtime_agent.model,
                         input,
@@ -2616,7 +2615,7 @@ impl ReasonAtom {
     /// Create LLM driver using the driver registry
     fn create_chat_driver(
         &self,
-        model: &ModelWithProvider,
+        model: &ResolvedModel,
     ) -> Result<crate::llm_driver_registry::BoxedChatDriver> {
         self.driver_registry
             .create_chat_driver(&ProviderConfig::from(model))

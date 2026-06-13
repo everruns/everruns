@@ -24,7 +24,7 @@
 //!
 //! ```ignore
 //! use everruns_core::{
-//!     CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+//!     CapabilityRegistry, DriverRegistry, DriverId, ResolvedModel, PlatformDefinition,
 //! };
 //! use everruns_runtime::InProcessRuntimeBuilder;
 //!
@@ -34,9 +34,9 @@
 //! let platform = PlatformDefinition::new(CapabilityRegistry::new(), drivers);
 //! let runtime = InProcessRuntimeBuilder::new()
 //!     .platform_definition(platform)
-//!     .default_model(ModelWithProvider {
+//!     .default_model(ResolvedModel {
 //!         model: "gpt-5.4-mini".into(),
-//!         provider_type: LlmProviderType::Openai,
+//!         provider_type: DriverId::OpenAI,
 //!         api_key: Some(std::env::var("OPENAI_API_KEY")?),
 //!         base_url: None,
 //!     })

@@ -15,7 +15,7 @@ service WorkerService {
     // === Batched operations (latency optimized) ===
 
     // Get all context needed to start a turn (replaces 4 separate calls)
-    // Combines: GetAgent + GetSession + LoadMessages + GetModelWithProvider
+    // Combines: GetAgent + GetSession + LoadMessages + GetResolvedModel
     rpc GetTurnContext(GetTurnContextRequest) returns (GetTurnContextResponse);
 
     // Stream events to control plane (efficient bulk emission)
@@ -45,7 +45,7 @@ service WorkerService {
     rpc CommitExec(CommitExecRequest) returns (CommitExecResponse);
 
     // LLM Provider operations
-    rpc GetModelWithProvider(GetModelWithProviderRequest) returns (GetModelWithProviderResponse);
+    rpc GetResolvedModel(GetResolvedModelRequest) returns (GetResolvedModelResponse);
     rpc GetDefaultModel(GetDefaultModelRequest) returns (GetDefaultModelResponse);
 
     // Session file operations (virtual filesystem)
@@ -317,7 +317,7 @@ message GetTurnContextResponse {
     Agent agent = 1;
     Session session = 2;
     repeated Message messages = 3;
-    ModelWithProvider model = 4;
+    ResolvedModel model = 4;
     // MCP tool definitions from agent's MCP capabilities
     // These are pre-resolved to avoid MCP capability lookup in worker
     repeated McpToolDef mcp_tool_definitions = 5;
@@ -598,21 +598,21 @@ message CommitExecResponse {
 // LLM Provider types
 // ============================================================================
 
-message ModelWithProvider {
+message ResolvedModel {
     string model = 1;
     string provider_type = 2;
     optional string api_key = 3;  // Decrypted by control plane
     optional string base_url = 4;
 }
 
-message GetModelWithProviderRequest {
+message GetResolvedModelRequest {
     Uuid model_id = 1;
     // Organization ID for resource validation
     int64 org_id = 2;
 }
 
-message GetModelWithProviderResponse {
-    optional ModelWithProvider model = 1;
+message GetResolvedModelResponse {
+    optional ResolvedModel model = 1;
 }
 
 message GetDefaultModelRequest {
@@ -621,7 +621,7 @@ message GetDefaultModelRequest {
 }
 
 message GetDefaultModelResponse {
-    optional ModelWithProvider model = 1;
+    optional ResolvedModel model = 1;
 }
 
 // ============================================================================

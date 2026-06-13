@@ -11,14 +11,14 @@ use everruns_core::error::Result;
 use everruns_core::events::Event;
 use everruns_core::harness::Harness;
 use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMessageRetriever,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+    InMemoryProviderStore,
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::SessionId;
@@ -61,9 +61,9 @@ pub trait RuntimeMessageStore: MessageRetriever + Send + Sync {
 
 /// Provider store contract for runtime lookup and default-model configuration.
 #[async_trait]
-pub trait RuntimeProviderStore: LlmProviderStore + Send + Sync {
+pub trait RuntimeProviderStore: ProviderStore + Send + Sync {
     /// Set the runtime default model.
-    async fn set_default_model(&self, model: ModelWithProvider) -> Result<()>;
+    async fn set_default_model(&self, model: ResolvedModel) -> Result<()>;
 }
 
 /// Event sink that supports emission and optional collection.
@@ -130,7 +130,7 @@ impl RuntimeBackends {
             agent_store: Arc::new(InMemoryAgentStore::new()),
             session_store: Arc::new(InMemorySessionStore::new()),
             message_store: Arc::new(InMemoryMessageRetriever::new()),
-            provider_store: Arc::new(InMemoryLlmProviderStore::new()),
+            provider_store: Arc::new(InMemoryProviderStore::new()),
             event_bus,
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
             connection_resolver: None,
@@ -222,9 +222,9 @@ impl RuntimeMessageStore for InMemoryMessageRetriever {
 }
 
 #[async_trait]
-impl RuntimeProviderStore for InMemoryLlmProviderStore {
-    async fn set_default_model(&self, model: ModelWithProvider) -> Result<()> {
-        InMemoryLlmProviderStore::set_default_model(self, model).await;
+impl RuntimeProviderStore for InMemoryProviderStore {
+    async fn set_default_model(&self, model: ResolvedModel) -> Result<()> {
+        InMemoryProviderStore::set_default_model(self, model).await;
         Ok(())
     }
 }

@@ -13,8 +13,8 @@
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
-use everruns_core::traits::ModelWithProvider;
+use everruns_core::provider::DriverId;
+use everruns_core::traits::ResolvedModel;
 
 const DAD_JOKES_SYSTEM_PROMPT: &str = r#"You are a Dad Jokes Bot - the world's greatest purveyor of groan-worthy humor!
 
@@ -59,9 +59,9 @@ async fn main() -> anyhow::Result<()> {
     everruns_anthropic::register_driver(&mut driver_registry);
 
     // Configure the model
-    let model = ModelWithProvider {
+    let model = ResolvedModel {
         model: "claude-sonnet-4-20250514".to_string(),
-        provider_type: LlmProviderType::Anthropic,
+        provider_type: DriverId::Anthropic,
         api_key: Some(api_key),
         base_url: None,
         provider_metadata: None,

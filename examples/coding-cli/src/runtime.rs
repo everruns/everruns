@@ -23,14 +23,14 @@ use everruns_core::command::CommandDescriptor;
 use everruns_core::error::AgentLoopError;
 use everruns_core::in_memory::InMemoryMessageRetriever;
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::provider::DriverId;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityRegistry, Controls, InputMessage, ModelWithProvider,
-    PlatformDefinition, ReasoningConfig, ScopedMcpServers, SessionFileSystem,
-    SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    AgentCapabilityConfig, CapabilityRegistry, Controls, InputMessage, PlatformDefinition,
+    ReasoningConfig, ResolvedModel, ScopedMcpServers, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext,
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
@@ -594,14 +594,14 @@ impl ProviderChoice {
         }
     }
 
-    pub(crate) fn model_with_provider(&self) -> Result<ModelWithProvider> {
+    pub(crate) fn model_with_provider(&self) -> Result<ResolvedModel> {
         match self {
             ProviderChoice::Anthropic { model } => {
                 let key = std::env::var("ANTHROPIC_API_KEY")
                     .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
-                Ok(ModelWithProvider {
+                Ok(ResolvedModel {
                     model: model.clone(),
-                    provider_type: LlmProviderType::Anthropic,
+                    provider_type: DriverId::Anthropic,
                     api_key: Some(key),
                     base_url: None,
                     provider_metadata: None,
@@ -610,9 +610,9 @@ impl ProviderChoice {
             ProviderChoice::OpenAi { model, .. } => {
                 let key = std::env::var("OPENAI_API_KEY")
                     .map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
-                Ok(ModelWithProvider {
+                Ok(ResolvedModel {
                     model: model.clone(),
-                    provider_type: LlmProviderType::Openai,
+                    provider_type: DriverId::OpenAI,
                     api_key: Some(key),
                     base_url: None,
                     provider_metadata: None,
@@ -621,24 +621,24 @@ impl ProviderChoice {
             ProviderChoice::OpenRouter { model, base_url } => {
                 let key = env_non_empty("OPENROUTER_API_KEY")
                     .ok_or_else(|| anyhow!("OPENROUTER_API_KEY not set"))?;
-                Ok(ModelWithProvider {
+                Ok(ResolvedModel {
                     model: model.clone(),
-                    provider_type: LlmProviderType::Openai,
+                    provider_type: DriverId::OpenAI,
                     api_key: Some(key),
                     base_url: Some(base_url.clone()),
                     provider_metadata: None,
                 })
             }
-            ProviderChoice::Ollama { model, base_url } => Ok(ModelWithProvider {
+            ProviderChoice::Ollama { model, base_url } => Ok(ResolvedModel {
                 model: model.clone(),
-                provider_type: LlmProviderType::Openai,
+                provider_type: DriverId::OpenAI,
                 api_key: Some(env_or_default("OLLAMA_API_KEY", DEFAULT_OLLAMA_API_KEY)),
                 base_url: Some(base_url.clone()),
                 provider_metadata: None,
             }),
-            ProviderChoice::Sim => Ok(ModelWithProvider {
+            ProviderChoice::Sim => Ok(ResolvedModel {
                 model: "llmsim-coding-cli".into(),
-                provider_type: LlmProviderType::LlmSim,
+                provider_type: DriverId::LlmSim,
                 api_key: Some("fake-key".into()),
                 base_url: None,
                 provider_metadata: None,
@@ -893,9 +893,9 @@ pub async fn build(
         | ProviderChoice::OpenAi { .. }
         | ProviderChoice::OpenRouter { .. }
         | ProviderChoice::Ollama { .. } => provider.model_with_provider()?,
-        ProviderChoice::Sim => ModelWithProvider {
+        ProviderChoice::Sim => ResolvedModel {
             model: "llmsim-coding-cli".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,
@@ -1068,7 +1068,7 @@ mod tests {
 
         let model = provider.model_with_provider().unwrap();
 
-        assert_eq!(model.provider_type, LlmProviderType::Openai);
+        assert_eq!(model.provider_type, DriverId::OpenAI);
         assert_eq!(model.api_key, Some(DEFAULT_OLLAMA_API_KEY.to_string()));
         assert_eq!(model.base_url, Some(DEFAULT_OLLAMA_BASE_URL.to_string()));
     }

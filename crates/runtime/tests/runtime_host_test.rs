@@ -9,20 +9,19 @@ use everruns_core::capabilities::{
     collect_capabilities_with_configs,
 };
 use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMessageRetriever,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+    InMemoryProviderStore,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, SessionFileSystem, SessionMutator,
+    AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionMutator,
     SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, EventData, Harness,
-    HarnessStatus, InputMessage, LlmProviderType, ModelWithProvider, Session, SessionStatus,
-    TokenUsage, Tool, ToolCall, ToolExecutionResult, ToolRegistry, ToolResult,
-    inspect_turn_context, user_facing_error_codes,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, EventData, Harness,
+    HarnessStatus, InputMessage, ResolvedModel, Session, SessionStatus, TokenUsage, Tool, ToolCall,
+    ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context, user_facing_error_codes,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
@@ -86,7 +85,7 @@ struct MockHostAdapter {
     agent_store: Arc<InMemoryAgentStore>,
     session_store: Arc<TestSessionStore>,
     message_store: Arc<InMemoryMessageRetriever>,
-    provider_store: Arc<InMemoryLlmProviderStore>,
+    provider_store: Arc<InMemoryProviderStore>,
     event_emitter: Arc<InMemoryEventEmitter>,
     file_store: Arc<InMemorySessionFileStore>,
 }
@@ -165,7 +164,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.session_store.clone()
     }
 
-    fn provider_store(&self, _org_id: i64) -> Arc<dyn LlmProviderStore> {
+    fn provider_store(&self, _org_id: i64) -> Arc<dyn ProviderStore> {
         self.provider_store.clone()
     }
 
@@ -503,7 +502,7 @@ fn mock_host() -> MockHostAdapter {
         agent_store: Arc::new(InMemoryAgentStore::new()),
         session_store: Arc::new(TestSessionStore::default()),
         message_store: Arc::new(InMemoryMessageRetriever::new()),
-        provider_store: Arc::new(InMemoryLlmProviderStore::new()),
+        provider_store: Arc::new(InMemoryProviderStore::new()),
         event_emitter: Arc::new(InMemoryEventEmitter::new()),
         file_store: Arc::new(InMemorySessionFileStore::new()),
     }
@@ -512,9 +511,9 @@ fn mock_host() -> MockHostAdapter {
 async fn set_default_model(adapter: &MockHostAdapter) {
     adapter
         .provider_store
-        .set_default_model(ModelWithProvider {
+        .set_default_model(ResolvedModel {
             model: "llmsim-model".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: None,
             base_url: None,
             provider_metadata: None,

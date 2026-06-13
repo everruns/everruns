@@ -35,7 +35,6 @@ use crate::llm_driver_registry::{
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
     OpenRouterProviderRouting,
 };
-use crate::llm_models::LlmProviderType;
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -43,6 +42,7 @@ use crate::openai_protocol::{
     apply_openai_api_auth, is_openai_model_not_found, is_openai_request_too_large,
 };
 use crate::openresponses_types::{self as types, StreamingEvent};
+use crate::provider::DriverId;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
 
@@ -83,7 +83,7 @@ pub struct OpenResponsesProtocolChatDriver {
     client: Client,
     api_key: String,
     api_url: String,
-    provider_type: LlmProviderType,
+    provider_type: DriverId,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
 }
@@ -95,7 +95,7 @@ impl OpenResponsesProtocolChatDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
-            provider_type: LlmProviderType::Openai,
+            provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
         }
     }
@@ -113,13 +113,13 @@ impl OpenResponsesProtocolChatDriver {
             client: Client::new(),
             api_key: api_key.into(),
             api_url: api_url.into(),
-            provider_type: LlmProviderType::Openai,
+            provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
         }
     }
 
     /// Set the model provider used for provider-specific request features.
-    pub fn with_provider_type(mut self, provider_type: LlmProviderType) -> Self {
+    pub fn with_provider_type(mut self, provider_type: DriverId) -> Self {
         self.provider_type = provider_type;
         self
     }
@@ -146,7 +146,7 @@ impl OpenResponsesProtocolChatDriver {
     }
 
     /// Get the provider type used for model profile lookup.
-    pub fn provider_type(&self) -> &LlmProviderType {
+    pub fn provider_type(&self) -> &DriverId {
         &self.provider_type
     }
 
@@ -720,7 +720,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // metadata without supporting OpenAI-only extensions such as phases or
         // hosted tool_search.
         let model_profile =
-            crate::llm_model_profiles::get_model_profile(&self.provider_type, &config.model);
+            crate::model_profiles::get_model_profile(&self.provider_type, &config.model);
         let supports_phases = model_profile
             .as_ref()
             .is_some_and(|profile| profile.supports_phases);
@@ -783,7 +783,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         };
         let prompt_cache_key =
             Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
-        let openrouter_routing = if self.provider_type == LlmProviderType::Openrouter {
+        let openrouter_routing = if self.provider_type == DriverId::OpenRouter {
             config.openrouter_routing.as_ref()
         } else {
             None
@@ -3012,7 +3012,7 @@ mod tests {
 
         let api_url = format!("{}/v1/responses", server.uri());
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(LlmProviderType::Openrouter);
+            .with_provider_type(DriverId::OpenRouter);
 
         let tools: Vec<ToolDefinition> = (0..16)
             .map(|i| {
@@ -3084,7 +3084,7 @@ mod tests {
 
         let api_url = format!("{}/v1/responses", server.uri());
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(LlmProviderType::Openrouter);
+            .with_provider_type(DriverId::OpenRouter);
 
         let config = LlmCallConfig {
             model: "openai/gpt-5-mini".to_string(),
@@ -3220,7 +3220,7 @@ mod tests {
 
         let api_url = format!("{}/v1/responses", server.uri());
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(LlmProviderType::Openrouter);
+            .with_provider_type(DriverId::OpenRouter);
 
         let mismatch_config = LlmCallConfig {
             model: "openai/gpt-5-mini".to_string(),
