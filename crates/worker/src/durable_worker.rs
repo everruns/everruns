@@ -1655,6 +1655,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,
@@ -1716,6 +1717,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id: SessionId::new(),
                     turn_id: TurnId::new(),
                     input_message_id: MessageId::new(),
@@ -1755,6 +1757,7 @@ mod tests {
             act_input: ActInput {
                 org_id: Some(42),
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,
@@ -1799,6 +1802,7 @@ mod tests {
             act_input: ActInput {
                 org_id: None,
                 context: AtomContext {
+                    workspace_id: None,
                     session_id,
                     turn_id,
                     input_message_id,
