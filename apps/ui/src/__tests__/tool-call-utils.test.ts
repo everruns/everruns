@@ -26,7 +26,7 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
-    expect(extractMcpAppResources(result)).toEqual<McpAppResource[]>([
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual<McpAppResource[]>([
       {
         uri: "ui://everruns/agent/agent_01/card",
         mimeType: "text/html",
@@ -49,7 +49,7 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
-    expect(extractMcpAppResources(result)).toEqual([
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual([
       {
         uri: "ui://everruns/agent/agent_01/card",
         mimeType: "text/html",
@@ -69,7 +69,7 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
-    expect(extractMcpAppResources(result)).toEqual([
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual([
       {
         uri: "ui://everruns/agent/agent_01/card",
         mimeType: "text/html",
@@ -113,7 +113,7 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
-    expect(extractMcpAppResources(result)).toEqual([]);
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual([]);
   });
 
   it("ignores non-ui and non-html resources", () => {
@@ -139,7 +139,7 @@ describe("tool-call-utils MCP App resources", () => {
       },
     ];
 
-    expect(extractMcpAppResources(result)).toEqual([]);
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual([]);
     expect(getFullText(result)).toBe("");
   });
 
@@ -147,6 +147,88 @@ describe("tool-call-utils MCP App resources", () => {
     const text = `${"x".repeat(512 * 1024 + 1)}{"content":[]}`;
 
     expect(getFullText([{ type: "text", text }])).toBe(text);
-    expect(extractMcpAppResources([{ type: "text", text }])).toEqual([]);
+    expect(extractMcpAppResources([{ type: "text", text }], "agent_get_card")).toEqual([]);
+  });
+
+  it("rejects forged ui://everruns card from a non-get_card tool name", () => {
+    const result: ContentPart[] = [
+      {
+        type: "text",
+        text: JSON.stringify({
+          content: [
+            {
+              type: "resource",
+              uri: "ui://everruns/agent/agent_01/card",
+              mime_type: "text/html",
+              text: html,
+            },
+          ],
+        }),
+      },
+    ];
+
+    const expected: McpAppResource[] = [
+      { uri: "ui://everruns/agent/agent_01/card", mimeType: "text/html", html },
+    ];
+
+    // First-party and Everruns-prefixed MCP tools are accepted.
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual(expected);
+    expect(extractMcpAppResources(result, "mcp_everruns__agent_get_card")).toEqual(expected);
+
+    // Generic remote MCP tool or no tool name — must be rejected.
+    expect(extractMcpAppResources(result, "some_remote_tool")).toEqual([]);
+    expect(extractMcpAppResources(result, "get_agent")).toEqual([]);
+    expect(extractMcpAppResources(result, undefined)).toEqual([]);
+    expect(extractMcpAppResources(result)).toEqual([]);
+    // Non-everruns MCP server ending in _get_card is rejected.
+    expect(extractMcpAppResources(result, "mcp_evil__agent_get_card")).toEqual([]);
+    expect(extractMcpAppResources(result, "mcp_other__agent_get_card")).toEqual([]);
+  });
+
+  it("rejects ui://everruns URIs that don't match the strict entity/id/card pattern", () => {
+    const makeResult = (uri: string): ContentPart[] => [
+      {
+        type: "resource",
+        uri,
+        mimeType: "text/html",
+        text: html,
+      },
+    ];
+
+    // Bare prefix only
+    expect(extractMcpAppResources(makeResult("ui://everruns/"), "agent_get_card")).toEqual([]);
+    // Missing /card suffix
+    expect(
+      extractMcpAppResources(makeResult("ui://everruns/agent/agent_01"), "agent_get_card"),
+    ).toEqual([]);
+    // Extra path segments after /card
+    expect(
+      extractMcpAppResources(
+        makeResult("ui://everruns/agent/agent_01/card/extra"),
+        "agent_get_card",
+      ),
+    ).toEqual([]);
+    // ID too short (< 2 chars)
+    expect(
+      extractMcpAppResources(makeResult("ui://everruns/agent/x/card"), "agent_get_card"),
+    ).toEqual([]);
+    // Query string injection
+    expect(
+      extractMcpAppResources(makeResult("ui://everruns/agent/agent_01/card?x=1"), "agent_get_card"),
+    ).toEqual([]);
+  });
+
+  it("rejects HTML exceeding the 64 KiB card size limit", () => {
+    const oversized = "x".repeat(64 * 1024 + 1);
+    const result: ContentPart[] = [
+      {
+        type: "resource",
+        uri: "ui://everruns/agent/agent_01/card",
+        mimeType: "text/html",
+        text: oversized,
+      },
+    ];
+
+    expect(extractMcpAppResources(result, "agent_get_card")).toEqual([]);
   });
 });
