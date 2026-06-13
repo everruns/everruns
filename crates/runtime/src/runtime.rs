@@ -1117,8 +1117,11 @@ async fn seed_runtime_initial_files(
         None => None,
     };
     let overlay = effective_overlay(&harness_chain, agent.as_ref(), session);
+    // Seed into the session's workspace (a shared workspace differs from the
+    // session id; the default 1:1 case is equal).
+    let seed_key = SessionId::from_uuid(session.workspace_id.uuid());
     for file in &overlay.initial_files {
-        file_store.seed_initial_file(session.id, file).await?;
+        file_store.seed_initial_file(seed_key, file).await?;
     }
     Ok(())
 }

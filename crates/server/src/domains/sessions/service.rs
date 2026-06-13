@@ -447,13 +447,16 @@ impl SessionService {
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
-        // Apply capability mounts (harness + agent + session capabilities)
+        // Apply capability mounts (harness + agent + session capabilities) and
+        // seed initial files into the session's workspace. Key by workspace_id
+        // (not session id) so an attached shared workspace receives them; for
+        // the default 1:1 session these are equal.
         self.apply_capability_mounts(
             org_id,
             harness_id.uuid(),
             agent_id.map(|a| a.uuid()),
             &session_capabilities,
-            session.id.uuid(),
+            session.workspace_id.uuid(),
         )
         .await?;
 
@@ -462,7 +465,7 @@ impl SessionService {
             harness_id.uuid(),
             agent_id.map(|a| a.uuid()),
             &req.initial_files,
-            session.id.uuid(),
+            session.workspace_id.uuid(),
         )
         .await?;
 

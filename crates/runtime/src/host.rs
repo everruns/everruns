@@ -381,7 +381,12 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     let prompt_ctx = SystemPromptContext {
         session_id,
         locale: locale.or(session.locale.clone()),
-        file_store: Some(adapter.file_store()),
+        // Pin system-prompt file reads to the session's workspace (the default
+        // 1:1 case is a transparent pass-through).
+        file_store: Some(everruns_core::WorkspaceScopedFileSystem::wrap(
+            adapter.file_store(),
+            session.workspace_id,
+        )),
         model: None,
     };
     let collected = collect_capabilities_with_configs(
