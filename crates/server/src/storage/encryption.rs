@@ -670,27 +670,6 @@ mod tests {
                 }
             }
 
-            // Detect ALTER TABLE <old> RENAME TO <new>  — update any tracked entries
-            if trimmed.starts_with("alter table") && trimmed.contains("rename to")
-                && !trimmed.contains("rename column")
-            {
-                let parts: Vec<&str> = trimmed.split_whitespace().collect();
-                // ["alter", "table", "<old>", "rename", "to", "<new>"]
-                if parts.len() >= 6 && parts[3] == "rename" && parts[4] == "to" {
-                    let old_table = parts[2].to_string();
-                    let new_table = parts[5].trim_end_matches(';').to_string();
-                    let cols: Vec<String> = found
-                        .iter()
-                        .filter(|(t, _)| *t == old_table)
-                        .map(|(_, c)| c.clone())
-                        .collect();
-                    for col in cols {
-                        found.remove(&(old_table.clone(), col.clone()));
-                        found.insert((new_table.clone(), col));
-                    }
-                }
-            }
-
             // Detect ALTER TABLE ... DROP COLUMN [IF EXISTS] ... _encrypted
             if trimmed.starts_with("alter table") && trimmed.contains("drop column") {
                 let parts: Vec<&str> = trimmed.split_whitespace().collect();
