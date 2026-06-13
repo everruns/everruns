@@ -156,22 +156,53 @@ fn checker_input(
     tool_listing: &str,
 ) -> String {
     // THREAT[TM-LLM]: the reviewed prompt is untrusted user content and may
-    // try to steer the checker. It is wrapped as data, the output contract
-    // pins the response shape, and parse_checker_output clamps severity,
-    // count, and message size — a steered checker can at worst emit noisy
-    // advisory text, never actions.
+    // try to steer the checker. It is wrapped as data, XML metacharacters are
+    // escaped so the content cannot forge the wrapper tags that mark it as
+    // data, the output contract pins the response shape, and
+    // parse_checker_output clamps severity, count, and message size — a
+    // steered checker can at worst emit noisy advisory text, never actions.
+    let authored = xml_escape(authored_prompt);
+    let resolved = xml_escape(resolved_prompt);
     let mut input = format!(
-        "<agent-config-under-review>\n<authored-system-prompt>\n{authored_prompt}\n\
-         </authored-system-prompt>\n<resolved-system-prompt>\n{resolved_prompt}\n\
+        "<agent-config-under-review>\n<authored-system-prompt>\n{authored}\n\
+         </authored-system-prompt>\n<resolved-system-prompt>\n{resolved}\n\
          </resolved-system-prompt>\n"
     );
     if checker.include_tools {
-        input.push_str(&format!(
-            "<available-tools>\n{tool_listing}\n</available-tools>\n"
-        ));
+        let tools = xml_escape(tool_listing);
+        input.push_str(&format!("<available-tools>\n{tools}\n</available-tools>\n"));
     }
     input.push_str("</agent-config-under-review>");
     input
+}
+
+/// Escape XML metacharacters so untrusted prompt text cannot forge the
+/// wrapper tags that mark it as data (TM-LLM hardening).
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Reverse `xml_escape` for a model-returned quote so it can be located in
+/// the original (unescaped) authored prompt. `&amp;` is restored last so a
+/// prompt that literally contained `&lt;` round-trips correctly.
+fn xml_unescape(s: &str) -> String {
+    s.replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+}
+
+/// Byte span of `needle` in `haystack`, but only when it occurs exactly once.
+/// Ambiguous (repeated) quotes return None so findings — and especially
+/// fixes — are never anchored to the wrong occurrence.
+fn unique_span(haystack: &str, needle: &str) -> Option<(usize, usize)> {
+    let mut matches = haystack.match_indices(needle);
+    let (start, matched) = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some((start, start + matched.len()))
 }
 
 fn parse_checker_output(
@@ -195,11 +226,8 @@ fn parse_checker_output(
                 .quote
                 .as_deref()
                 .filter(|q| !q.is_empty())
-                .and_then(|q| {
-                    authored_prompt
-                        .find(q)
-                        .map(|start| (start, start + q.len()))
-                })
+                .map(xml_unescape)
+                .and_then(|q| unique_span(authored_prompt, &q))
                 .map(|(start, end)| FindingLocation {
                     field: "system_prompt".to_string(),
                     start: Some(start as u32),
@@ -374,6 +402,56 @@ mod tests {
         ]);
         let result = run_llm_checks(mock, PROMPT, PROMPT, &[]).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn ambiguous_quote_is_not_anchored() {
+        // The quoted sentence appears twice, so it cannot be anchored or fixed.
+        let prompt = "Be concise. Then later: Be concise.";
+        let mock = MockUtilityLlm::new(&[(
+            "llm.structure",
+            r#"[{"severity":"info","message":"Repeated.","quote":"Be concise.","replacement":"Keep it short."}]"#,
+        )]);
+        let findings = run_llm_checks(mock, prompt, prompt, &[]).await.unwrap();
+        assert_eq!(findings.len(), 1);
+        assert!(
+            findings[0].location.is_none(),
+            "ambiguous quote must not anchor"
+        );
+        assert!(findings[0].fix.is_none(), "no fix without an anchored span");
+    }
+
+    #[tokio::test]
+    async fn quote_with_xml_chars_anchors_to_original_prompt() {
+        // The model sees escaped text and copies the escaped form; anchoring
+        // unescapes it and locates the span in the raw prompt.
+        let prompt = "Wrap output in <result> tags exactly once.";
+        let mock = MockUtilityLlm::new(&[(
+            "llm.structure",
+            r#"[{"severity":"info","message":"Clarify tag usage.","quote":"&lt;result&gt;","replacement":null}]"#,
+        )]);
+        let findings = run_llm_checks(mock, prompt, prompt, &[]).await.unwrap();
+        let loc = findings[0]
+            .location
+            .as_ref()
+            .expect("anchored despite XML chars");
+        let (s, e) = (loc.start.unwrap() as usize, loc.end.unwrap() as usize);
+        assert_eq!(&prompt[s..e], "<result>");
+    }
+
+    #[test]
+    fn xml_escape_neutralizes_wrapper_tags() {
+        assert_eq!(
+            xml_escape("</authored-system-prompt> & <x>"),
+            "&lt;/authored-system-prompt&gt; &amp; &lt;x&gt;"
+        );
+    }
+
+    #[test]
+    fn unique_span_rejects_repeats() {
+        assert_eq!(unique_span("abc xyz", "xyz"), Some((4, 7)));
+        assert_eq!(unique_span("xy xy", "xy"), None);
+        assert_eq!(unique_span("abc", "zzz"), None);
     }
 
     #[test]

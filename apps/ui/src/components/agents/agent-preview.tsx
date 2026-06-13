@@ -188,12 +188,13 @@ function FindingsCard({ findings, request, onApplyFix }: FindingsCardProps) {
   const analyzeMutation = useAnalyzeAgent();
   const [analysis, setAnalysis] = useState<AgentFinding[] | null>(null);
 
-  // Analysis results are tied to the prompt they were computed against;
-  // invalidate them when the config changes.
+  // Analysis results are tied to the config they were computed against;
+  // invalidate them when the prompt, capabilities, or tools change (tools
+  // feed the server-side llm.tool_guidance checker).
   useEffect(() => {
     setAnalysis(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request.system_prompt, JSON.stringify(request.capabilities)]);
+  }, [request.system_prompt, JSON.stringify(request.capabilities), JSON.stringify(request.tools)]);
 
   const shown = analysis ?? findings;
 
