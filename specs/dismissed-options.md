@@ -81,7 +81,7 @@ This document records technical options that were considered but dismissed for s
 
 **Status**: Dismissed (implemented then reverted)
 
-**What it was**: Per-provider semaphore-based concurrency limiter wrapping `BoxedLlmDriver`. Each LLM call would acquire a permit from a per-provider `tokio::Semaphore` (default 50 concurrent calls per provider type), held for the full streaming duration. Configured via `LLM_MAX_CONCURRENT_PER_PROVIDER` env var.
+**What it was**: Per-provider semaphore-based concurrency limiter wrapping `BoxedChatDriver`. Each LLM call would acquire a permit from a per-provider `tokio::Semaphore` (default 50 concurrent calls per provider type), held for the full streaming duration. Configured via `LLM_MAX_CONCURRENT_PER_PROVIDER` env var.
 
 **Why considered**: Workers call LLM APIs with no in-process concurrency control. 100 workers simultaneously calling the same provider could burst past rate limits, causing mass 429 errors and wasted tokens on retries.
 

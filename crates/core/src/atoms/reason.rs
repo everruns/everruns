@@ -1088,7 +1088,7 @@ impl ReasonAtom {
             .collect();
 
         // 7. Create LLM driver using factory
-        let llm_driver = self.create_llm_driver(&model_with_provider)?;
+        let chat_driver = self.create_chat_driver(&model_with_provider)?;
 
         // 8. Extract reasoning effort from the last user message's controls,
         //    but only if the model actually supports reasoning (per its profile).
@@ -1545,7 +1545,7 @@ impl ReasonAtom {
             completion_metadata,
             time_to_first_token_ms,
         ) = {
-            let mut stream = match llm_driver
+            let mut stream = match chat_driver
                 .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                 .await
             {
@@ -1602,7 +1602,7 @@ impl ReasonAtom {
                     let run_native = matches!(
                         config.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Native
-                    ) && llm_driver.supports_compact();
+                    ) && chat_driver.supports_compact();
                     let run_summarization = matches!(
                         config.strategy,
                         CompactionStrategy::Auto | CompactionStrategy::Summarization
@@ -1670,7 +1670,7 @@ impl ReasonAtom {
                             },
                         };
 
-                        match llm_driver.compact(compact_request).await {
+                        match chat_driver.compact(compact_request).await {
                             Ok(Some(compact_response)) => {
                                 let (compacted_messages, compaction_items) =
                                     compact_output_to_messages(&compact_response.output);
@@ -1799,7 +1799,7 @@ impl ReasonAtom {
                                 openrouter_routing: None,
                             };
 
-                            match llm_driver
+                            match chat_driver
                                 .chat_completion(summary_messages, &summary_config)
                                 .await
                             {
@@ -1906,7 +1906,7 @@ impl ReasonAtom {
                         "ReasonAtom: compaction cascade completed, retrying LLM call"
                     );
 
-                    llm_driver
+                    chat_driver
                         .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                         .await?
                 }
@@ -2614,12 +2614,12 @@ impl ReasonAtom {
 
     /// Resolve model using priority chain: controls > session > agent > harness > system default
     /// Create LLM driver using the driver registry
-    fn create_llm_driver(
+    fn create_chat_driver(
         &self,
         model: &ModelWithProvider,
-    ) -> Result<crate::llm_driver_registry::BoxedLlmDriver> {
+    ) -> Result<crate::llm_driver_registry::BoxedChatDriver> {
         self.driver_registry
-            .create_driver(&ProviderConfig::from(model))
+            .create_chat_driver(&ProviderConfig::from(model))
     }
 
     /// Resolve image_file references to actual image data

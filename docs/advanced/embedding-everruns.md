@@ -142,7 +142,7 @@ built-in provider slot:
 
 ```rust
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DriverConfig, DriverRegistry,
+    BoxedChatDriver, DriverConfig, DriverRegistry,
 };
 
 fn drivers() -> DriverRegistry {
@@ -156,7 +156,7 @@ fn drivers() -> DriverRegistry {
     //   config.metadata  — ProviderMetadata { refresh_token, account_id, extra }
     // External providers may authenticate via metadata instead of an api_key.
     drivers.register_external("openai-codex", |config: &DriverConfig| {
-        Box::new(MyCodexDriver::new(config)) as BoxedLlmDriver
+        Box::new(MyCodexDriver::new(config)) as BoxedChatDriver
     });
 
     drivers

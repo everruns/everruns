@@ -5,8 +5,8 @@
 //! the model fixed so call sites cannot turn it into a user-selectable model.
 
 use crate::{
-    AgentLoopError, LlmCallConfig, LlmDriver, LlmMessage, LlmResponse, LlmResponseStream,
-    OpenResponsesProtocolLlmDriver, Result,
+    AgentLoopError, ChatDriver, LlmCallConfig, LlmMessage, LlmResponse, LlmResponseStream,
+    OpenResponsesProtocolChatDriver, Result,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -145,7 +145,7 @@ impl UtilityLlmService for DisabledUtilityLlmService {
 
 #[derive(Clone)]
 pub struct OpenAiUtilityLlmService {
-    driver: OpenResponsesProtocolLlmDriver,
+    driver: OpenResponsesProtocolChatDriver,
 }
 
 impl std::fmt::Debug for OpenAiUtilityLlmService {
@@ -162,7 +162,7 @@ impl OpenAiUtilityLlmService {
         // THREAT[TM-LLM-021]: Utility LLM credentials must not become agent- or
         // session-configurable. Keep the key inside this host service.
         Self {
-            driver: OpenResponsesProtocolLlmDriver::new(api_key),
+            driver: OpenResponsesProtocolChatDriver::new(api_key),
         }
     }
 }

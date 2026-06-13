@@ -1,7 +1,7 @@
 //! Google Gemini LLM provider driver for Everruns.
 //!
 //! `everruns-gemini` is part of the [Everruns](https://everruns.com) ecosystem.
-//! It implements the `LlmDriver` contract from `everruns-core`, so the agent
+//! It implements the `ChatDriver` contract from `everruns-core`, so the agent
 //! loop can run against Google's Gemini API, and registers itself through
 //! [`register_driver`].
 //!
@@ -20,7 +20,7 @@
 
 mod driver;
 
-pub use driver::{GeminiLlmDriver, register_driver};
+pub use driver::{GeminiChatDriver, register_driver};
 
 // Re-export core types for convenience
-pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};
+pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};

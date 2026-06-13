@@ -3,7 +3,7 @@
 // Decision: Workers use gRPC adapters for database operations, not direct DB access.
 // This module only contains LLM driver factory helpers.
 
-use everruns_core::{BoxedLlmDriver, DriverRegistry, ProviderConfig, ProviderType, Result};
+use everruns_core::{BoxedChatDriver, DriverRegistry, ProviderConfig, ProviderType, Result};
 
 /// Create and configure the driver registry with all supported LLM providers
 ///
@@ -96,11 +96,11 @@ pub fn create_driver_registry() -> DriverRegistry {
 /// Create an LLM driver based on configuration
 ///
 /// This factory supports all provider types: OpenAI, OpenAI Completions, Anthropic.
-pub fn create_llm_driver(
+pub fn create_chat_driver(
     provider_type: &str,
     api_key: Option<&str>,
     base_url: Option<&str>,
-) -> Result<BoxedLlmDriver> {
+) -> Result<BoxedChatDriver> {
     // Parsing is infallible: unknown ids become External providers.
     let ptype: ProviderType = provider_type.parse().unwrap_or_else(|_| unreachable!());
 
@@ -113,5 +113,5 @@ pub fn create_llm_driver(
     }
 
     let registry = create_driver_registry();
-    registry.create_driver(&config)
+    registry.create_chat_driver(&config)
 }

@@ -2,11 +2,11 @@
 
 > **Domain model note:** the canonical provider domain model (drivers, services,
 > providers, models, model profiles) is [providers.md](providers.md). That
-> refactor is in progress: as its phases land, `LlmDriver` will be renamed
-> `ChatDriver` and the entity/resolution content will move out of this document,
-> leaving this spec as the chat-service wire contract (streaming, error types,
-> retries, thinking, prompt cache, compaction). Until then, this document still
-> describes the current names in code.
+> refactor is in progress: the driver trait is now `ChatDriver` (it implements
+> the chat service of a provider). As later phases land, the entity/resolution
+> content will move out of this document, leaving this spec as the chat-service
+> wire contract (streaming, error types, retries, thinking, prompt cache,
+> compaction).
 
 ## Abstract
 
@@ -17,7 +17,7 @@ LLM drivers provide a provider-agnostic interface for interacting with Large Lan
 ```mermaid
 graph TD
     subgraph Core [everruns-core]
-        LlmDriver[LlmDriver Trait]
+        ChatDriver[ChatDriver Trait]
         Registry[DriverRegistry]
         Errors[AgentLoopError]
     end
@@ -36,9 +36,9 @@ graph TD
         ReasonAtom[ReasonAtom]
     end
 
-    OpenAI -->|implements| LlmDriver
-    Anthropic -->|implements| LlmDriver
-    Gemini -->|implements| LlmDriver
+    OpenAI -->|implements| ChatDriver
+    Anthropic -->|implements| ChatDriver
+    Gemini -->|implements| ChatDriver
     OpenAI -->|registers| Registry
     Anthropic -->|registers| Registry
     Gemini -->|registers| Registry
@@ -51,9 +51,9 @@ graph TD
 
 ## Requirements
 
-### LlmDriver Trait
+### ChatDriver Trait
 
-1. **Trait Definition**: See `crates/core/src/llm_driver_registry.rs` for `LlmDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
+1. **Trait Definition**: See `crates/core/src/llm_driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
@@ -204,7 +204,7 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 ### Realtime Voice Driver
 
-Realtime voice does not use `LlmDriver::chat_completion_stream()` because a
+Realtime voice does not use `ChatDriver::chat_completion_stream()` because a
 voice connection is a long-lived bidirectional provider session, not a bounded
 request/response generation. Voice support adds a separate Realtime provider
 adapter owned by the server voice domain. See [voice.md](voice.md).
@@ -235,7 +235,7 @@ the UI is explicitly rendering a voice-capable picker.
 ```mermaid
 sequenceDiagram
     participant R as ReasonAtom
-    participant D as LlmDriver
+    participant D as ChatDriver
     participant A as API
 
     R->>D: chat_completion_stream()
@@ -270,7 +270,7 @@ sequenceDiagram
 
 | Component | Location |
 |-----------|----------|
-| LlmDriver trait | `crates/core/src/llm_driver_registry.rs` |
+| ChatDriver trait | `crates/core/src/llm_driver_registry.rs` |
 | AgentLoopError | `crates/core/src/error.rs` |
 | OpenAI driver | `crates/openai/src/driver.rs` |
 | Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
@@ -284,20 +284,20 @@ sequenceDiagram
 
 The OpenAI crate provides three driver implementations:
 
-1. **OpenAILlmDriver** (`ProviderType::OpenAI`)
+1. **OpenAIChatDriver** (`ProviderType::OpenAI`)
    - Uses Open Responses API (https://www.openresponses.org/)
    - Recommended for new projects
-   - Wraps `OpenResponsesProtocolLlmDriver`
+   - Wraps `OpenResponsesProtocolChatDriver`
 
-2. **OpenAICompletionsLlmDriver** (`ProviderType::OpenAICompletions`)
+2. **OpenAICompletionsChatDriver** (`ProviderType::OpenAICompletions`)
    - Uses Chat Completions API (`/v1/chat/completions`)
    - For backward compatibility with legacy integrations
-   - Wraps `OpenAIProtocolLlmDriver`
+   - Wraps `OpenAIProtocolChatDriver`
 
-3. **OpenRouterLlmDriver** (`ProviderType::OpenRouter`)
+3. **OpenRouterChatDriver** (`ProviderType::OpenRouter`)
    - Uses OpenRouter's OpenAI-compatible Responses API
    - Defaults to `https://openrouter.ai/api/v1/responses`
-   - Wraps `OpenResponsesProtocolLlmDriver` with the OpenRouter provider profile
+   - Wraps `OpenResponsesProtocolChatDriver` with the OpenRouter provider profile
 
 The Responses drivers share the same base URL handling and can work with
 OpenAI-compatible endpoints while keeping provider-specific request features
@@ -332,7 +332,7 @@ When a request to the OpenAI Responses API sets `previous_response_id`, the prov
 
 Invariant: **a request with `previous_response_id` only carries delta items in `input`** — typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
-`OpenResponsesProtocolLlmDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/core/src/openresponses_protocol.rs`).
+`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/core/src/openresponses_protocol.rs`).
 
 ### Stateless Gateways
 
@@ -405,9 +405,9 @@ The `/v1/responses/compact` endpoint is a context-compression feature for the Op
    - Prior assistant messages, tool calls/results, and encrypted reasoning are replaced by one encrypted **compaction item**
 3. Use the returned `output` array as the `input` for the next `/v1/responses` call
 
-### LlmDriver Compact Methods
+### ChatDriver Compact Methods
 
-The `LlmDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/llm_driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
+The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/llm_driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
 ### Provider Support
 
@@ -446,7 +446,7 @@ Environment variable reads (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_K
 `DEFAULT_*_API_KEY`) remain valid only for explicit standalone/dev entrypoints:
 
 - `InMemoryLlmProviderStore::from_env()` — in-memory dev store used by `just start-dev`
-- `AnthropicLlmDriver::from_env()`, `OpenAIProtocolLlmDriver::from_env()`, etc. — CLI tools
+- `AnthropicChatDriver::from_env()`, `OpenAIProtocolChatDriver::from_env()`, etc. — CLI tools
 
 These constructors must **never** be called from org-scoped agent execution paths.
 

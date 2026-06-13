@@ -193,7 +193,7 @@ struct FlakyStreamDriver {
 }
 
 #[async_trait]
-impl everruns_core::LlmDriver for FlakyStreamDriver {
+impl everruns_core::ChatDriver for FlakyStreamDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<everruns_core::LlmMessage>,
@@ -234,7 +234,7 @@ struct ThinkingLeakDriver {
 }
 
 #[async_trait]
-impl everruns_core::LlmDriver for ThinkingLeakDriver {
+impl everruns_core::ChatDriver for ThinkingLeakDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<everruns_core::LlmMessage>,
@@ -468,7 +468,7 @@ async fn test_reason_atom_with_echo_response() {
 async fn test_reason_atom_with_different_configs() {
     // Test that different LlmSimConfig settings produce different results
     // Note: Sequence responses work within a single driver instance, but each
-    // registry.create_driver() call creates a fresh driver. For registry-based
+    // registry.create_chat_driver() call creates a fresh driver. For registry-based
     // usage, use fixed responses or test sequences at the driver level.
 
     let (
@@ -1113,12 +1113,12 @@ async fn test_driver_registry_integration() {
         .with_api_key("test-key");
 
     let driver = registry
-        .create_driver(&config)
+        .create_chat_driver(&config)
         .expect("Should create LlmSim driver");
 
     // Test the driver
     use everruns_core::llm_driver_registry::{
-        LlmCallConfig, LlmDriver, LlmMessage, LlmMessageRole,
+        ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole,
     };
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
@@ -1465,7 +1465,7 @@ async fn test_llm_call_config_previous_response_id() {
 struct ToolCallsThenErrorDriver;
 
 #[async_trait]
-impl everruns_core::LlmDriver for ToolCallsThenErrorDriver {
+impl everruns_core::ChatDriver for ToolCallsThenErrorDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<everruns_core::LlmMessage>,
@@ -1558,7 +1558,7 @@ async fn test_reason_atom_preserves_tool_calls_on_trailing_stream_error() {
 struct TextThenErrorDriver;
 
 #[async_trait]
-impl everruns_core::LlmDriver for TextThenErrorDriver {
+impl everruns_core::ChatDriver for TextThenErrorDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<everruns_core::LlmMessage>,
@@ -1647,7 +1647,7 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
 struct PureErrorDriver;
 
 #[async_trait]
-impl everruns_core::LlmDriver for PureErrorDriver {
+impl everruns_core::ChatDriver for PureErrorDriver {
     async fn chat_completion_stream(
         &self,
         _messages: Vec<everruns_core::LlmMessage>,
@@ -1951,7 +1951,7 @@ struct SystemPromptCapturingDriver {
 }
 
 #[async_trait]
-impl everruns_core::LlmDriver for SystemPromptCapturingDriver {
+impl everruns_core::ChatDriver for SystemPromptCapturingDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<everruns_core::LlmMessage>,
@@ -1987,7 +1987,7 @@ struct ConversationCapturingDriver {
 }
 
 #[async_trait]
-impl everruns_core::LlmDriver for ConversationCapturingDriver {
+impl everruns_core::ChatDriver for ConversationCapturingDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<everruns_core::LlmMessage>,

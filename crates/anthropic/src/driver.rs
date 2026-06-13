@@ -1,6 +1,6 @@
-// Anthropic Claude LLM Driver
+// Anthropic Claude Chat Driver
 //
-// Implementation of LlmDriver for Anthropic's Claude API.
+// Implementation of ChatDriver for Anthropic's Claude API.
 // Uses the Messages API with streaming support.
 //
 // Rate limit handling: On 429 errors, the driver automatically retries with
@@ -27,9 +27,9 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedLlmDriver, DiscoveredModel, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
-    LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent, LlmMessageRole, LlmResponseStream,
-    LlmStreamEvent, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig,
+    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmResponseStream, LlmStreamEvent, ProviderType,
 };
 use everruns_core::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
@@ -40,9 +40,9 @@ const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
-/// Anthropic Claude LLM Driver
+/// Anthropic Claude Chat Driver
 ///
-/// Implements `LlmDriver` for Anthropic's Messages API.
+/// Implements `ChatDriver` for Anthropic's Messages API.
 /// Supports streaming responses and tool calls.
 ///
 /// Rate limit handling: On 429 errors, automatically retries with exponential
@@ -51,19 +51,19 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// # Example
 ///
 /// ```ignore
-/// use everruns_anthropic::AnthropicLlmDriver;
+/// use everruns_anthropic::AnthropicChatDriver;
 ///
-/// let driver = AnthropicLlmDriver::from_env()?;
+/// let driver = AnthropicChatDriver::from_env()?;
 /// // or
-/// let driver = AnthropicLlmDriver::new("your-api-key");
+/// let driver = AnthropicChatDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let driver = AnthropicLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
+/// let driver = AnthropicChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
 /// // or with custom retry config
-/// let driver = AnthropicLlmDriver::new("your-api-key")
+/// let driver = AnthropicChatDriver::new("your-api-key")
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
-pub struct AnthropicLlmDriver {
+pub struct AnthropicChatDriver {
     client: Client,
     api_key: String,
     api_url: String,
@@ -73,7 +73,7 @@ pub struct AnthropicLlmDriver {
     retry_config: LlmRetryConfig,
 }
 
-impl AnthropicLlmDriver {
+impl AnthropicChatDriver {
     /// Create a new provider with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -366,7 +366,7 @@ impl AnthropicLlmDriver {
 }
 
 #[async_trait]
-impl LlmDriver for AnthropicLlmDriver {
+impl ChatDriver for AnthropicChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -936,9 +936,9 @@ impl LlmDriver for AnthropicLlmDriver {
     }
 }
 
-impl std::fmt::Debug for AnthropicLlmDriver {
+impl std::fmt::Debug for AnthropicChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("AnthropicLlmDriver")
+        f.debug_struct("AnthropicChatDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()
@@ -966,10 +966,10 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register(ProviderType::Anthropic, |config| {
         let api_key = config.api_key.as_deref().unwrap_or("");
         let driver = match config.base_url.as_deref() {
-            Some(url) => AnthropicLlmDriver::with_base_url(api_key, url),
-            None => AnthropicLlmDriver::new(api_key),
+            Some(url) => AnthropicChatDriver::with_base_url(api_key, url),
+            None => AnthropicChatDriver::new(api_key),
         };
-        Box::new(driver) as BoxedLlmDriver
+        Box::new(driver) as BoxedChatDriver
     });
 }
 
@@ -1682,7 +1682,7 @@ mod tests {
     fn test_convert_content_filters_empty_text() {
         // Empty text content should produce empty vec
         let content = LlmMessageContent::Text(String::new());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert!(blocks.is_empty(), "Empty text should be filtered out");
     }
 
@@ -1753,7 +1753,7 @@ mod tests {
             },
         ];
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, true);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true);
         let json = serde_json::to_value(&converted).unwrap();
         let cache_controls = json.to_string().matches("cache_control").count();
 
@@ -1763,7 +1763,7 @@ mod tests {
     #[test]
     fn test_system_prompt_uses_cacheable_block_when_enabled() {
         let system =
-            AnthropicLlmDriver::system_prompt_for_request(Some("System prompt".to_string()), true)
+            AnthropicChatDriver::system_prompt_for_request(Some("System prompt".to_string()), true)
                 .unwrap();
         let json = serde_json::to_value(&system).unwrap();
 
@@ -1788,7 +1788,7 @@ mod tests {
         };
         let tools = vec![make_tool("first"), make_tool("second"), make_tool("third")];
 
-        let converted = AnthropicLlmDriver::convert_tools(&tools, true);
+        let converted = AnthropicChatDriver::convert_tools(&tools, true);
         let json = serde_json::to_value(&converted).unwrap();
         let cache_controls = json.to_string().matches("cache_control").count();
 
@@ -1802,7 +1802,7 @@ mod tests {
     fn test_convert_content_keeps_non_empty_text() {
         // Non-empty text should be kept
         let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Non-empty text should be kept");
     }
 
@@ -1820,7 +1820,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Only non-empty text should be kept");
     }
 
@@ -1835,7 +1835,7 @@ mod tests {
                 url: "https://example.com/image.png".to_string(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Image should be kept, empty text filtered");
     }
 
@@ -1850,7 +1850,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert!(blocks.is_empty(), "All empty text should produce empty vec");
     }
 
@@ -1872,7 +1872,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
 
         assert_eq!(converted.len(), 1);
         // Content should have tool_use block but no empty text block
@@ -1887,7 +1887,7 @@ mod tests {
     fn test_convert_content_whitespace_is_kept() {
         // Whitespace-only text is kept (not empty after is_empty() check)
         let content = LlmMessageContent::Text("   ".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Whitespace-only text is kept");
     }
 
@@ -1897,7 +1897,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Base64 image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1916,7 +1916,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "https://example.com/photo.jpg".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "HTTP image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1935,7 +1935,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Audio {
             url: "data:audio/wav;base64,AAAA".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content);
+        let blocks = AnthropicChatDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Audio should fallback to text note");
         match &blocks[0] {
             AnthropicContentBlock::Text { text, .. } => {
@@ -1969,7 +1969,7 @@ mod tests {
             },
         ];
 
-        let (system, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
+        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false);
 
         assert_eq!(system, Some("You are helpful".to_string()));
         assert_eq!(converted.len(), 1); // Only user message
@@ -1988,7 +1988,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
 
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
@@ -2031,7 +2031,7 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg], false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[msg], false);
 
         assert_eq!(converted.len(), 1);
         assert_eq!(converted[0].role, "user");
@@ -2084,7 +2084,7 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicLlmDriver::convert_messages(&[msg], false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[msg], false);
 
         match &converted[0].content[0] {
             AnthropicContentBlock::ToolResult { content, .. } => match content {

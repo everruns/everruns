@@ -426,7 +426,7 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 OpenAI-specific LLM provider implementation:
 
-1. **Implements Core Traits**: `LlmDriver` trait from `everruns-core`
+1. **Implements Core Traits**: `ChatDriver` trait from `everruns-core`
 2. **OpenAI + Azure OpenAI Support**: Supports OpenAI-hosted and Azure-hosted OpenAI v1 endpoints
 3. **Streaming Support**: Full SSE streaming with tool call support
 4. **Native API Access**: Direct methods for OpenAI-specific functionality
@@ -445,7 +445,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**Driver Selection**: `OpenAILlmDriver` (Responses API, recommended) or `OpenAICompletionsLlmDriver` (Chat Completions). See `crates/openai/src/driver.rs` and the protocol implementations in `crates/core/src/`.
+**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/openai/src/driver.rs` and the protocol implementations in `crates/core/src/`.
 
 ### LlmSim Driver (Testing)
 

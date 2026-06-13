@@ -570,7 +570,7 @@ impl ToolExecutor for FailingToolExecutor {
 
 use crate::events::{Event, EventRequest};
 use crate::llm_driver_registry::{
-    LlmCallConfig, LlmDriver, LlmMessage, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
 use crate::traits::EventEmitter;
 use futures::stream;
@@ -645,7 +645,7 @@ impl MockLlmProvider {
 }
 
 #[async_trait]
-impl LlmDriver for MockLlmProvider {
+impl ChatDriver for MockLlmProvider {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,

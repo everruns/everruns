@@ -1,4 +1,4 @@
-// OpenAI Protocol LLM Driver
+// OpenAI Protocol Chat Driver
 //
 // Base implementation of the OpenAI chat completion protocol.
 // This driver can be used with any OpenAI-compatible API endpoint.
@@ -8,7 +8,7 @@
 // Retry metadata is included in the response for observability.
 //
 // This is the base protocol implementation used in examples.
-// For production use with OpenAI-specific features, use OpenAILlmDriver from everruns-openai.
+// For production use with OpenAI-specific features, use OpenAIChatDriver from everruns-openai.
 //
 // Note: OTel instrumentation is handled via the event-listener pattern.
 // llm.generation events are emitted by ReasonAtom, and OtelEventListener
@@ -24,8 +24,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
@@ -66,33 +66,33 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
         .is_some_and(|host| host == "api.openai.com")
 }
 
-/// OpenAI Protocol LLM Driver
+/// OpenAI Protocol Chat Driver
 ///
-/// Base implementation of `LlmDriver` for OpenAI-compatible APIs.
+/// Base implementation of `ChatDriver` for OpenAI-compatible APIs.
 /// Supports streaming responses and tool calls.
 ///
 /// Rate limit handling: On 429 errors, automatically retries with exponential
 /// backoff, respecting `x-ratelimit-reset-*` and `retry-after` headers.
 ///
 /// This is the base protocol driver used in examples and for OpenAI-compatible endpoints.
-/// For production use with OpenAI, consider using `OpenAILlmDriver` from the `everruns-openai` crate.
+/// For production use with OpenAI, consider using `OpenAIChatDriver` from the `everruns-openai` crate.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::OpenAIProtocolLlmDriver;
+/// use everruns_core::OpenAIProtocolChatDriver;
 ///
-/// let driver = OpenAIProtocolLlmDriver::from_env()?;
+/// let driver = OpenAIProtocolChatDriver::from_env()?;
 /// // or
-/// let driver = OpenAIProtocolLlmDriver::new("your-api-key");
+/// let driver = OpenAIProtocolChatDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let driver = OpenAIProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
+/// let driver = OpenAIProtocolChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/chat/completions");
 /// // or with custom retry config
-/// let driver = OpenAIProtocolLlmDriver::new("your-api-key")
+/// let driver = OpenAIProtocolChatDriver::new("your-api-key")
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
-pub struct OpenAIProtocolLlmDriver {
+pub struct OpenAIProtocolChatDriver {
     client: Client,
     api_key: String,
     api_url: String,
@@ -100,7 +100,7 @@ pub struct OpenAIProtocolLlmDriver {
     retry_config: LlmRetryConfig,
 }
 
-impl OpenAIProtocolLlmDriver {
+impl OpenAIProtocolChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -265,7 +265,7 @@ fn drop_orphaned_tool_messages(messages: &[LlmMessage]) -> Vec<LlmMessage> {
 }
 
 #[async_trait]
-impl LlmDriver for OpenAIProtocolLlmDriver {
+impl ChatDriver for OpenAIProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -570,9 +570,9 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
     }
 }
 
-impl std::fmt::Debug for OpenAIProtocolLlmDriver {
+impl std::fmt::Debug for OpenAIProtocolChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenAIProtocolLlmDriver")
+        f.debug_struct("OpenAIProtocolChatDriver")
             .field("api_url", &self.api_url)
             .field("api_key", &"[REDACTED]")
             .finish()
@@ -957,17 +957,17 @@ mod tests {
 
     #[test]
     fn test_driver_with_api_key() {
-        let driver = OpenAIProtocolLlmDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
+        let driver = OpenAIProtocolChatDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));
     }
 
     #[test]
     fn test_driver_with_base_url() {
-        let driver = OpenAIProtocolLlmDriver::with_base_url(
+        let driver = OpenAIProtocolChatDriver::with_base_url(
             "test-key",
             "https://custom.api.com/v1/completions",
         );
-        assert!(format!("{:?}", driver).contains("OpenAIProtocolLlmDriver"));
+        assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/completions");
     }
 

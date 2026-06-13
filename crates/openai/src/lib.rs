@@ -1,14 +1,14 @@
 //! OpenAI provider drivers for Everruns.
 //!
 //! `everruns-openai` is part of the [Everruns](https://everruns.com)
-//! ecosystem. It implements the [`LlmDriver`] contract from `everruns-core` and
+//! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core` and
 //! registers OpenAI providers into a [`DriverRegistry`].
 //!
 //! The crate exposes three drivers:
 //!
-//! - [`OpenAILlmDriver`], the recommended Responses API driver.
-//! - [`OpenRouterLlmDriver`], the OpenRouter Responses API driver.
-//! - [`OpenAICompletionsLlmDriver`], a Chat Completions compatibility driver.
+//! - [`OpenAIChatDriver`], the recommended Responses API driver.
+//! - [`OpenRouterChatDriver`], the OpenRouter Responses API driver.
+//! - [`OpenAICompletionsChatDriver`], a Chat Completions compatibility driver.
 //!
 //! # Registering the Driver
 //!
@@ -62,7 +62,7 @@ mod types;
 mod tests;
 
 pub use driver::{
-    OpenAICompletionsLlmDriver, OpenAILlmDriver, OpenRouterLlmDriver, register_driver,
+    OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver, register_driver,
 };
 pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{
@@ -70,4 +70,4 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};
+pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};

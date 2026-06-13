@@ -21,15 +21,15 @@ or run with no key at all using the built-in LLM simulator in
 ## Quick Example
 
 ```rust
-use everruns_anthropic::{AnthropicLlmDriver, register_driver};
+use everruns_anthropic::{AnthropicChatDriver, register_driver};
 use everruns_core::DriverRegistry;
 
-let driver = AnthropicLlmDriver::new("your-api-key");
+let driver = AnthropicChatDriver::new("your-api-key");
 
 let mut registry = DriverRegistry::new();
 register_driver(&mut registry);
 
-assert!(format!("{driver:?}").contains("AnthropicLlmDriver"));
+assert!(format!("{driver:?}").contains("AnthropicChatDriver"));
 ```
 
 Register the driver into a platform and drive a full turn with

@@ -1,6 +1,6 @@
 //! AWS Bedrock Runtime provider driver for Everruns.
 //!
-//! `everruns-bedrock` implements the [`LlmDriver`] contract from `everruns-core`
+//! `everruns-bedrock` implements the [`ChatDriver`] contract from `everruns-core`
 //! using the AWS Bedrock Runtime `ConverseStream` API.
 //!
 //! Credentials are encoded as JSON in the `api_key` field:
@@ -12,7 +12,7 @@
 //! # Example
 //!
 //! ```
-//! use everruns_bedrock::{BedrockLlmDriver, register_driver};
+//! use everruns_bedrock::{BedrockChatDriver, register_driver};
 //! use everruns_core::DriverRegistry;
 //!
 //! let mut registry = DriverRegistry::new();
@@ -22,6 +22,6 @@
 mod credential;
 mod driver;
 
-pub use driver::{BedrockLlmDriver, register_driver};
+pub use driver::{BedrockChatDriver, register_driver};
 
-pub use everruns_core::llm_driver_registry::{DriverRegistry, LlmDriver};
+pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};

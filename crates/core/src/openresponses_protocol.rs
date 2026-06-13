@@ -31,8 +31,9 @@ use std::sync::{Arc, Mutex};
 
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_driver_registry::{
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmDriver, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, OpenRouterProviderRouting,
+    ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    OpenRouterProviderRouting,
 };
 use crate::llm_models::LlmProviderType;
 use crate::llm_retry::{
@@ -51,7 +52,7 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 
 /// Open Responses Protocol Driver (OpenAI implementation)
 ///
-/// Implements `LlmDriver` using the Open Responses specification
+/// Implements `ChatDriver` using the Open Responses specification
 /// (<https://www.openresponses.org/>). This driver targets OpenAI's API
 /// but follows the vendor-neutral Open Responses standard.
 ///
@@ -66,19 +67,19 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::OpenResponsesProtocolLlmDriver;
+/// use everruns_core::OpenResponsesProtocolChatDriver;
 ///
-/// let driver = OpenResponsesProtocolLlmDriver::from_env()?;
+/// let driver = OpenResponsesProtocolChatDriver::from_env()?;
 /// // or
-/// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key");
+/// let driver = OpenResponsesProtocolChatDriver::new("your-api-key");
 /// // or with custom endpoint
-/// let driver = OpenResponsesProtocolLlmDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
+/// let driver = OpenResponsesProtocolChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
 /// // or with custom retry config
-/// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key")
+/// let driver = OpenResponsesProtocolChatDriver::new("your-api-key")
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
 #[derive(Clone)]
-pub struct OpenResponsesProtocolLlmDriver {
+pub struct OpenResponsesProtocolChatDriver {
     client: Client,
     api_key: String,
     api_url: String,
@@ -87,7 +88,7 @@ pub struct OpenResponsesProtocolLlmDriver {
     retry_config: LlmRetryConfig,
 }
 
-impl OpenResponsesProtocolLlmDriver {
+impl OpenResponsesProtocolChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
@@ -382,9 +383,9 @@ impl OpenResponsesProtocolLlmDriver {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::{OpenResponsesProtocolLlmDriver, CompactRequest, CompactInputItem, CompactContent};
+    /// use everruns_core::{OpenResponsesProtocolChatDriver, CompactRequest, CompactInputItem, CompactContent};
     ///
-    /// let driver = OpenResponsesProtocolLlmDriver::new("your-api-key");
+    /// let driver = OpenResponsesProtocolChatDriver::new("your-api-key");
     ///
     /// let request = CompactRequest {
     ///     model: "gpt-4o".to_string(),
@@ -708,7 +709,7 @@ fn endpoint_persists_responses(api_url: &str) -> bool {
 }
 
 #[async_trait]
-impl LlmDriver for OpenResponsesProtocolLlmDriver {
+impl ChatDriver for OpenResponsesProtocolChatDriver {
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -1266,7 +1267,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
     fn supports_compact(&self) -> bool {
         // Delegate to the inherent method
-        OpenResponsesProtocolLlmDriver::supports_compact(self)
+        OpenResponsesProtocolChatDriver::supports_compact(self)
     }
 
     async fn compact(
@@ -1275,14 +1276,14 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
     ) -> Result<Option<crate::openresponses_protocol::CompactResponse>> {
         // Delegate to the inherent method and wrap in Some
         Ok(Some(
-            OpenResponsesProtocolLlmDriver::compact(self, request).await?,
+            OpenResponsesProtocolChatDriver::compact(self, request).await?,
         ))
     }
 }
 
-impl std::fmt::Debug for OpenResponsesProtocolLlmDriver {
+impl std::fmt::Debug for OpenResponsesProtocolChatDriver {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("OpenResponsesProtocolLlmDriver")
+        f.debug_struct("OpenResponsesProtocolChatDriver")
             .field("api_url", &self.api_url)
             .field("provider_type", &self.provider_type)
             .field("api_key", &"[REDACTED]")
@@ -1968,17 +1969,17 @@ mod tests {
 
     #[test]
     fn test_driver_with_api_key() {
-        let driver = OpenResponsesProtocolLlmDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolLlmDriver"));
+        let driver = OpenResponsesProtocolChatDriver::new("test-key");
+        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolChatDriver"));
     }
 
     #[test]
     fn test_driver_with_base_url() {
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url(
+        let driver = OpenResponsesProtocolChatDriver::with_base_url(
             "test-key",
             "https://custom.api.com/v1/responses",
         );
-        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolLlmDriver"));
+        assert!(format!("{:?}", driver).contains("OpenResponsesProtocolChatDriver"));
         assert_eq!(driver.api_url(), "https://custom.api.com/v1/responses");
     }
 
@@ -2105,7 +2106,7 @@ mod tests {
             phase: None,
         }];
 
-        let key = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let key = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &config,
             &input,
             &Some("You are helpful".to_string()),
@@ -2149,13 +2150,13 @@ mod tests {
             phase: None,
         }];
 
-        let first = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let first = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &config,
             &first_input,
             &Some("You are helpful".to_string()),
             &None,
         );
-        let second = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let second = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &config,
             &second_input,
             &Some("You are helpful".to_string()),
@@ -2194,13 +2195,13 @@ mod tests {
             phase: None,
         }];
 
-        let first = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let first = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &make_config(first_metadata),
             &input,
             &Some("You are helpful".to_string()),
             &None,
         );
-        let second = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let second = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &make_config(second_metadata),
             &input,
             &Some("You are helpful".to_string()),
@@ -2235,7 +2236,7 @@ mod tests {
             phase: None,
         }];
 
-        let key = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+        let key = OpenResponsesProtocolChatDriver::build_prompt_cache_key(
             &config,
             &input,
             &Some("You are helpful".to_string()),
@@ -2312,7 +2313,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "Hello"),
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         assert_eq!(
             instructions,
@@ -2324,19 +2325,19 @@ mod tests {
     #[test]
     fn test_convert_role() {
         assert_eq!(
-            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::System),
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::System),
             "developer"
         );
         assert_eq!(
-            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::User),
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::User),
             "user"
         );
         assert_eq!(
-            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Assistant),
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Assistant),
             "assistant"
         );
         assert_eq!(
-            OpenResponsesProtocolLlmDriver::convert_role(&LlmMessageRole::Tool),
+            OpenResponsesProtocolChatDriver::convert_role(&LlmMessageRole::Tool),
             "tool"
         );
     }
@@ -2392,7 +2393,7 @@ mod tests {
             },
         ];
 
-        let (instructions, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // System message becomes instructions
         assert_eq!(instructions, Some("You are helpful".to_string()));
@@ -2435,7 +2436,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message, function_call
         assert_eq!(input.len(), 3);
@@ -2504,7 +2505,7 @@ mod tests {
 
         // Build the full transcript the same way the driver does.
         let (instructions, full_input) =
-            OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+            OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Without trimming the full transcript leaks user + assistant + function_call
         // + function_call_output — exactly the bug.
@@ -2911,7 +2912,7 @@ mod tests {
         // server.uri() is a 127.0.0.1 host — not OpenAI/Azure — so it is treated
         // as a stateless gateway.
         let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url);
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
 
         let messages = vec![
             LlmMessage::text(LlmMessageRole::System, "You are helpful"),
@@ -3010,7 +3011,7 @@ mod tests {
             .await;
 
         let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
             .with_provider_type(LlmProviderType::Openrouter);
 
         let tools: Vec<ToolDefinition> = (0..16)
@@ -3082,7 +3083,7 @@ mod tests {
             .await;
 
         let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
             .with_provider_type(LlmProviderType::Openrouter);
 
         let config = LlmCallConfig {
@@ -3171,7 +3172,7 @@ mod tests {
             .await;
 
         let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url);
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
 
         let config = LlmCallConfig {
             model: "gpt-5-mini".to_string(),
@@ -3218,7 +3219,7 @@ mod tests {
             .await;
 
         let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url)
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
             .with_provider_type(LlmProviderType::Openrouter);
 
         let mismatch_config = LlmCallConfig {
@@ -3435,14 +3436,14 @@ mod tests {
 
     #[test]
     fn test_supports_compact_default_url() {
-        let driver = OpenResponsesProtocolLlmDriver::new("test-key");
+        let driver = OpenResponsesProtocolChatDriver::new("test-key");
         // Default URL is OpenAI, should support compact
         assert!(driver.supports_compact());
     }
 
     #[test]
     fn test_supports_compact_custom_url() {
-        let driver = OpenResponsesProtocolLlmDriver::with_base_url(
+        let driver = OpenResponsesProtocolChatDriver::with_base_url(
             "test-key",
             "https://custom.api.com/v1/responses",
         );
@@ -3488,7 +3489,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::User, "What else?"),
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Should have: user message, reasoning item, assistant message, user message
         assert_eq!(input.len(), 4);
@@ -3544,7 +3545,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Should have: user, reasoning, assistant, function_call, function_call_output
         assert_eq!(input.len(), 5);
@@ -3584,7 +3585,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Should have: user message, assistant message (no reasoning item)
         assert_eq!(input.len(), 2);
@@ -3941,7 +3942,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         assert_eq!(input.len(), 2);
         let json = serde_json::to_value(&input[1]).unwrap();
@@ -3975,7 +3976,7 @@ mod tests {
             },
         ];
 
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
 
         // Should have: user, reasoning_1, assistant, user, reasoning_2, assistant
         assert_eq!(input.len(), 6);
@@ -4022,12 +4023,12 @@ mod tests {
         ];
 
         // With supports_phases=true, assistant message should include phase
-        let (_, input) = OpenResponsesProtocolLlmDriver::build_input(&messages, true);
+        let (_, input) = OpenResponsesProtocolChatDriver::build_input(&messages, true);
         let assistant_json = serde_json::to_value(&input[1]).unwrap();
         assert_eq!(assistant_json["phase"], "commentary");
 
         // With supports_phases=false, phase should be absent
-        let (_, input_no_phases) = OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+        let (_, input_no_phases) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
         let assistant_json_no = serde_json::to_value(&input_no_phases[1]).unwrap();
         assert!(assistant_json_no.get("phase").is_none() || assistant_json_no["phase"].is_null());
     }
@@ -4070,7 +4071,7 @@ mod tests {
             .collect();
 
         // threshold=15, only 5 tools → should fall back to standard convert_tools
-        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
         assert_eq!(result.len(), 5);
         // No ToolSearch entry, no namespaces
         let json = serde_json::to_value(&result).unwrap();
@@ -4101,7 +4102,7 @@ mod tests {
             ));
         }
 
-        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
         let json = serde_json::to_value(&result).unwrap();
         let arr = json.as_array().unwrap();
 
@@ -4159,7 +4160,7 @@ mod tests {
             ));
         }
 
-        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
         let json = serde_json::to_value(&result).unwrap();
         let arr = json.as_array().unwrap();
 
@@ -4203,7 +4204,7 @@ mod tests {
             ));
         }
 
-        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
         let json = serde_json::to_value(&result).unwrap();
         let arr = json.as_array().unwrap();
 
@@ -4245,7 +4246,7 @@ mod tests {
         ));
 
         // Exactly at threshold (15 tools, threshold=15)
-        let result = OpenResponsesProtocolLlmDriver::convert_tools_with_search(&tools, 15);
+        let result = OpenResponsesProtocolChatDriver::convert_tools_with_search(&tools, 15);
         let json = serde_json::to_value(&result).unwrap();
         let arr = json.as_array().unwrap();
 
@@ -4384,7 +4385,7 @@ mod tests {
     #[test]
     fn test_sanitize_parameters_adds_missing_properties() {
         let params = json!({"type": "object", "additionalProperties": false});
-        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(
             sanitized,
             json!({"type": "object", "properties": {}, "additionalProperties": false})
@@ -4394,14 +4395,14 @@ mod tests {
     #[test]
     fn test_sanitize_parameters_preserves_existing_properties() {
         let params = json!({"type": "object", "properties": {"x": {"type": "string"}}, "additionalProperties": false});
-        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(sanitized, params);
     }
 
     #[test]
     fn test_sanitize_parameters_ignores_non_object_types() {
         let params = json!({"type": "string"});
-        let sanitized = OpenResponsesProtocolLlmDriver::sanitize_parameters(&params);
+        let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(sanitized, params);
     }
 }

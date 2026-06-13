@@ -110,7 +110,7 @@ impl ModelSyncService {
 
         let driver = self
             .driver_registry
-            .create_driver(&config)
+            .create_chat_driver(&config)
             .map_err(|e| anyhow::anyhow!("Failed to create driver: {}", e))?;
 
         // Call list_models on the driver
