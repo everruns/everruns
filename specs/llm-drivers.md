@@ -340,6 +340,20 @@ routing extensions.
 - **File-reader plugin** (`OpenRouterFilePlugin`): instructs OpenRouter to read and attach
   file contents before the prompt. No options yet.
 
+### OpenRouter Workspace Policy Inspection
+
+The `openrouter_workspace` capability contributes two host-facing tools for reading workspace constraints and detecting incompatibilities before routing decisions are made:
+
+- **`inspect_openrouter_workspace`**: calls OpenRouter's `/api/v1/auth/key` endpoint and returns structured `OpenRouterKeyInfo` (label, usage, limit, tier, rate-limit). The raw API key is never included in the response.
+- **`check_openrouter_policy_compatibility`**: fetches workspace info and compares it against caller-supplied routing parameters (`min_remaining_budget_usd`, `requires_paid_features`), returning a `PolicyCompatibilityReport` with a list of `WorkspacePolicyDrift` entries.
+
+Drift kinds:
+- `budget_exhausted` — workspace spend cap is reached.
+- `budget_below_threshold` — remaining budget is below the requested threshold.
+- `free_tier_restriction` — workspace is on the free tier but paid-tier features were requested.
+
+The check is read-only and does not modify workspace state. Results should be treated as advisory; operators are responsible for acting on detected drifts.
+
 Plugins serialize as a `plugins` array on the wire, each entry carrying an `"id"` field
 (`"web"` or `"file"`) plus any plugin-specific options. The field is omitted entirely for
 non-OpenRouter providers and when no plugins are configured.
