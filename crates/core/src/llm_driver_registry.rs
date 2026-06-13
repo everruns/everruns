@@ -532,11 +532,17 @@ pub struct OpenRouterRoutingConfig {
     /// Provider ordering, policy, and sorting preferences.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider: Option<OpenRouterProviderRouting>,
+    /// Optional plugin activations (web search, file reader).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugins: Option<OpenRouterPluginConfig>,
 }
 
 impl OpenRouterRoutingConfig {
     pub fn is_empty(&self) -> bool {
-        self.models.is_empty() && self.route.is_none() && self.provider.is_none()
+        self.models.is_empty()
+            && self.route.is_none()
+            && self.provider.is_none()
+            && self.plugins.as_ref().is_none_or(|p| p.is_empty())
     }
 
     /// Build an ordered model-fallback routing config.
@@ -547,6 +553,7 @@ impl OpenRouterRoutingConfig {
             models,
             route,
             provider: None,
+            plugins: None,
         }
     }
 
@@ -694,6 +701,51 @@ pub struct OpenRouterMaxPrice {
     pub request: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<f64>,
+}
+
+/// OpenRouter web-search plugin configuration.
+///
+/// Instructs OpenRouter to retrieve and inject web search results before the
+/// model sees the prompt. Only sent when the resolved provider type is
+/// OpenRouter.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterWebSearchPlugin {
+    /// Maximum number of search results to include.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_results: Option<u32>,
+    /// Custom search prompt hint passed to the web-search step.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_prompt: Option<String>,
+}
+
+/// OpenRouter file-reader plugin configuration.
+///
+/// Instructs OpenRouter to read and attach file contents before the model
+/// sees the prompt. Only sent when the resolved provider type is OpenRouter.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterFilePlugin {}
+
+/// OpenRouter plugin configuration bundling optional plugin activations.
+///
+/// Any `None` plugin is omitted from the wire request. When all plugins are
+/// `None`, no `plugins` field is emitted.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterPluginConfig {
+    /// Web-search plugin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub web: Option<OpenRouterWebSearchPlugin>,
+    /// File-reader plugin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file: Option<OpenRouterFilePlugin>,
+}
+
+impl OpenRouterPluginConfig {
+    pub fn is_empty(&self) -> bool {
+        self.web.is_none() && self.file.is_none()
+    }
 }
 
 /// Configuration for an LLM call
@@ -1707,6 +1759,7 @@ mod tests {
                 }),
                 ..Default::default()
             }),
+            ..Default::default()
         };
 
         let json = serde_json::to_value(routing).unwrap();
@@ -2302,5 +2355,61 @@ mod tests {
             }
             _ => panic!("Expected parts content"),
         }
+    }
+
+    #[test]
+    fn test_openrouter_plugin_config_is_empty() {
+        assert!(OpenRouterPluginConfig::default().is_empty());
+        assert!(
+            !OpenRouterPluginConfig {
+                web: Some(OpenRouterWebSearchPlugin::default()),
+                file: None,
+            }
+            .is_empty()
+        );
+        assert!(
+            !OpenRouterPluginConfig {
+                web: None,
+                file: Some(OpenRouterFilePlugin {}),
+            }
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_openrouter_routing_is_empty_with_plugins() {
+        let with_plugins = OpenRouterRoutingConfig {
+            plugins: Some(OpenRouterPluginConfig {
+                web: Some(OpenRouterWebSearchPlugin::default()),
+                file: None,
+            }),
+            ..Default::default()
+        };
+        assert!(!with_plugins.is_empty());
+
+        let empty_plugins = OpenRouterRoutingConfig {
+            plugins: Some(OpenRouterPluginConfig::default()),
+            ..Default::default()
+        };
+        assert!(empty_plugins.is_empty());
+    }
+
+    #[test]
+    fn test_openrouter_web_search_plugin_serialization() {
+        let plugin = OpenRouterWebSearchPlugin {
+            max_results: Some(10),
+            search_prompt: Some("search for Rust crates".to_string()),
+        };
+        let json = serde_json::to_value(&plugin).unwrap();
+        assert_eq!(json["max_results"], 10);
+        assert_eq!(json["search_prompt"], "search for Rust crates");
+    }
+
+    #[test]
+    fn test_openrouter_web_search_plugin_omits_none_fields() {
+        let plugin = OpenRouterWebSearchPlugin::default();
+        let json = serde_json::to_value(&plugin).unwrap();
+        assert!(json.get("max_results").is_none());
+        assert!(json.get("search_prompt").is_none());
     }
 }

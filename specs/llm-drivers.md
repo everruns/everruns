@@ -326,11 +326,23 @@ tell they support reasoning and hides the effort selector. The discovered profil
 is persisted via the model-sync pipeline and surfaces on existing rows on the next
 sync. Cost is left to hardcoded profiles.
 
-OpenRouter-specific routing controls (`models`, `route`, and `provider`) are
-represented as typed `LlmCallConfig` fields. The Open Responses protocol driver
-serializes them only when the resolved provider type is OpenRouter, so ordinary
-OpenAI-compatible requests do not receive non-standard OpenRouter routing
-extensions.
+OpenRouter-specific routing controls (`models`, `route`, `provider`, and `plugins`) are
+represented as typed `LlmCallConfig` fields inside `OpenRouterRoutingConfig`. The Open
+Responses protocol driver serializes them only when the resolved provider type is
+OpenRouter, so ordinary OpenAI-compatible requests do not receive non-standard OpenRouter
+routing extensions.
+
+`OpenRouterRoutingConfig.plugins` exposes optional OpenRouter plugin activations:
+
+- **Web-search plugin** (`OpenRouterWebSearchPlugin`): instructs OpenRouter to retrieve web
+  search results before the model sees the prompt. Accepts `max_results: Option<u32>` and
+  `search_prompt: Option<String>`.
+- **File-reader plugin** (`OpenRouterFilePlugin`): instructs OpenRouter to read and attach
+  file contents before the prompt. No options yet.
+
+Plugins serialize as a `plugins` array on the wire, each entry carrying an `"id"` field
+(`"web"` or `"file"`) plus any plugin-specific options. The field is omitted entirely for
+non-OpenRouter providers and when no plugins are configured.
 
 ### Stateful Continuation Invariant
 
