@@ -47,22 +47,27 @@ Model sees name + description upfront, parameters loaded only when needed. For n
 
 Model emits `tool_search_call` → client responds with `tool_search_output` containing matched tools. Multi-turn handshake.
 
-## Three Capabilities
+## Four Capabilities
 
-There are three capabilities, two mechanisms:
+There are four capabilities, two mechanisms (hosted vs client-side). The two hosted capabilities produce the *same* provider-agnostic `ToolSearchConfig`; the driver that handles the request renders the provider-specific wire format.
 
-- **`openai_tool_search`** — uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on `LlmModelProfile.tool_search`; cleared for unsupported models in `RuntimeAgentBuilder::build()`. Hosted mode only. See `crates/core/src/capabilities/openai_tool_search.rs`.
-- **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Anthropic, Gemini, OpenAI Completions, ...). See `crates/core/src/capabilities/tool_search.rs` and below.
-- **`auto_tool_search`** — model-adaptive: picks the hosted mechanism on models that support it and the generic client-side mechanism everywhere else. This is the right default for a multi-provider harness (it is what the `generic` harness uses). See `crates/core/src/capabilities/auto_tool_search.rs`.
+- **`openai_tool_search`** — uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on the OpenAI `LlmModelProfile.tool_search`. Hosted mode only. See `crates/core/src/capabilities/openai_tool_search.rs`.
+- **`claude_tool_search`** — uses Anthropic's hosted tool_search: each deferrable tool gets `defer_loading: true` and a `tool_search_tool_bm25_20251119` server-tool entry is added (no namespaces — Anthropic defers each tool individually). Gated on the Anthropic `LlmModelProfile.tool_search`. The Anthropic driver renders it; see `crates/anthropic/src/driver.rs::convert_tools_with_search` and `crates/core/src/capabilities/claude_tool_search.rs`.
+- **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Gemini, OpenAI Completions, Claude/GPT reached via a gateway that masks the hosted format, ...). See `crates/core/src/capabilities/tool_search.rs` and below.
+- **`auto_tool_search`** — model-adaptive: picks the matching hosted mechanism on models that support it and the generic client-side mechanism everywhere else. This is the right default for a multi-provider harness (it is what the `generic` harness uses). See `crates/core/src/capabilities/auto_tool_search.rs`.
 
 ### Auto resolution
 
-`auto_tool_search` is a runtime dispatcher, not a third mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability` and a `ToolSearchCapability` and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability — collecting *its* contributions in place of the dispatcher's:
+`auto_tool_search` is a runtime dispatcher, not a separate mechanism. `AutoToolSearchCapability` owns an `OpenAiToolSearchCapability`, a `ClaudeToolSearchCapability`, and a `ToolSearchCapability`, and implements `Capability::resolve_for_model`. The agent's model is carried on `SystemPromptContext::model`, so capability collection knows it and delegates to exactly one inner capability — collecting *its* contributions in place of the dispatcher's:
 
-- **Model supports native tool_search** (`model_supports_native_tool_search`, OpenAI GPT-5.4+): resolves to `openai_tool_search`. Collection sets the hosted `ToolSearchConfig` (keyed on the resolved `effective.id()`); no client-side tool or hook is contributed.
+- **Model has native OpenAI support** (`openai_tool_search::model_supports_native_tool_search`, GPT-5.4+): resolves to `openai_tool_search`.
+- **Model has native Anthropic support** (`claude_tool_search::model_supports_native_tool_search`, Claude Sonnet 4 / Opus 4 / Haiku 4.5 / Fable 5 and newer): resolves to `claude_tool_search`.
+- Either hosted branch makes collection set the hosted `ToolSearchConfig` (keyed on the resolved `effective.id()`, which is one of the two hosted ids); no client-side tool or hook is contributed.
 - **Model lacks native support, or model is unknown:** resolves to the generic `tool_search`. Collection contributes its `DeferSchemaHook` + `tool_search` tool + system-prompt note and sets no hosted config.
 
-Because the mechanism is chosen during collection, `RuntimeAgentBuilder::build()` does no `auto`-specific pruning. There is no `auto` flag on `ToolSearchConfig`: a hosted config present after collection always means "use hosted deferral" (build only clears it if a *directly* configured `openai_tool_search` lands on a model that can't honor it — see below).
+A model id resolves under at most one of the OpenAI/Anthropic profiles, so the order between the two hosted checks is immaterial.
+
+Because the mechanism is chosen during collection, `RuntimeAgentBuilder::build()` does no `auto`-specific pruning. There is no `auto` flag on `ToolSearchConfig`: a hosted config present after collection always means "use hosted deferral" (build only clears it if a *directly* configured `openai_tool_search` / `claude_tool_search` lands on a model that can't honor it — see below). `build()` reconciles by checking the model against **both** hosted providers — `get_model_profile(Openai, …)` and `get_model_profile(Anthropic, …)` — and clears the config only when neither advertises `tool_search`.
 
 The executor (act) path collects without a model and so resolves to the generic mechanism. This registers the `tool_search` tool in the worker registry as a harmless superset: on native models the reason path never shows that tool to the model, so it is never called.
 
@@ -194,18 +199,37 @@ let use_tool_search = profile.tool_search && config.tools.len() >= TOOL_SEARCH_T
 
 ## Model Profile Updates
 
-Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/llm_model_profiles.rs` for current profile definitions.
+Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/llm_model_profiles.rs` for current profile definitions. OpenAI sets the flag per model literal (the `gpt-5.4*` / `gpt-5.5*` families); Anthropic sets it centrally by family in `anthropic_family_supports_tool_search` (Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, Fable 5 — per docs.claude.com), since the support rule is a clean family cutoff.
 
 A model's `tool_search: true` flag must be backed by a verified end-to-end round-trip
 (deferred-load → schema fetch → tool call) against the live provider, not just the
 request-shaping unit tests. The `gpt-5.4*` and `gpt-5.5*` families are covered by
-live OpenAI integration tests in `crates/llm-tests/tests/tool_search_test.rs`.
+live OpenAI integration tests in `crates/llm-tests/tests/tool_search_test.rs`; the
+Claude families are covered by the live Anthropic tests
+`test_anthropic_claude_tool_search_low_threshold` and
+`test_anthropic_auto_tool_search_resolves_to_hosted` in the same file (run against
+Claude Haiku 4.5).
 
-## OpenAI Driver Changes
+### Provider gating (which transports honor the flag)
 
-The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` to handle namespace grouping and defer_loading. See `crates/core/src/openresponses_protocol.rs` for the implementation.
+There are two enforcement points, and they sit at different layers:
 
-Non-OpenAI providers (Anthropic, Gemini) send full tool definitions (current behavior) with `tool_search: false` in their profiles. When providers adopt similar features, flip the flag per model.
+1. **Driver layer (authoritative).** `get_model_profile(provider_type, model)` masks `tool_search` to `false` for every provider type **except** `Openai` and `Anthropic` — the two whose drivers render a hosted format (OpenAI Responses; Anthropic Messages). Each driver looks up the profile for *its own* `provider_type`, so the hosted wire format is only emitted on a transport that implements it:
+   - **OpenRouter** — stateless OpenAI-compatible `/responses` shim that accepts but does not implement the hosted tool_search extension. Masked.
+   - **Bedrock** — ConverseStream; Anthropic's server-side tool search on Bedrock is only available via the InvokeModel API, which we do not use. Masked.
+   - **OpenAI Completions / Gemini** — no hosted tool_search at all. Masked.
+
+2. **Dispatcher layer (`auto_tool_search`).** The dispatcher only sees the **model id** (`SystemPromptContext::model`), *not* the transport, so it cannot consult the transport-masked profile. It checks the bare first-party profiles (`get_model_profile(Openai, …)` / `get_model_profile(Anthropic, …)`). In practice this still routes masked transports to the generic mechanism, because they carry **distinct model ids** (`anthropic.claude-…`, `anthropic/claude-…`, `openai/gpt-…`) that don't resolve to the bare first-party profile.
+
+**Residual edge case.** If a masked transport presents a *bare* first-party id that does resolve (e.g. a `gpt-5.4` served through an OpenAI-compatible gateway), the dispatcher resolves to the hosted capability and sets a hosted config, but the driver (step 1) then suppresses the hosted format for that transport. Because a hosted config is present, the client-side `DeferSchemaHook` is skipped too — so **full schemas are sent with no client-side fallback**. This is a graceful degradation (baseline behavior, no error), not a correctness bug, and it predates Claude support (it applies to `openai_tool_search` + OpenRouter just the same). To force client-side deferral on such a setup, add the generic `tool_search` capability explicitly. Making the dispatcher provider-aware (threading `provider_type` into capability collection) would close the gap but is out of scope here.
+
+## Driver Changes
+
+The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` (namespace grouping + defer_loading + `{"type":"tool_search"}`). See `crates/core/src/openresponses_protocol.rs`.
+
+The Anthropic driver adds an `AnthropicToolEntry` (untagged: a function tool or a `tool_search_tool_bm25_20251119` server tool) and `convert_tools_with_search()`, which marks deferrable tools `defer_loading: true` and prepends the search-tool entry. No namespaces — Anthropic defers each tool individually. The hosted search-tool entry is always non-deferred, which also satisfies Anthropic's "at least one tool must be non-deferred" constraint. No beta header is required. See `crates/anthropic/src/driver.rs`. The streaming parser ignores the server-side `server_tool_use` / `tool_search_tool_result` blocks (parse-or-skip) and captures the model's subsequent normal `tool_use` for the discovered tool.
+
+Remaining providers (Gemini, OpenAI Completions) send full tool definitions with `tool_search: false`. When a provider adopts a hosted feature, set the flag and un-mask the provider type.
 
 ## LlmCallConfig Changes
 

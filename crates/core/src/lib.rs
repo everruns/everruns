@@ -313,8 +313,9 @@ pub use session_sandbox::{
 pub use capabilities::SystemPromptContext;
 pub use capabilities::{
     AUTO_TOOL_SEARCH_CAPABILITY_ID, AddTool, AgentBlueprint, AgentCapabilityConfig,
-    AppliedCapabilities, AutoToolSearchCapability, BlueprintModel, Capability, CapabilityId,
-    CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus, CollectedCapabilities,
+    AppliedCapabilities, AutoToolSearchCapability, BlueprintModel,
+    CLAUDE_TOOL_SEARCH_CAPABILITY_ID, Capability, CapabilityId, CapabilityRegistry,
+    CapabilityRegistryBuilder, CapabilityStatus, ClaudeToolSearchCapability, CollectedCapabilities,
     CurrentTimeCapability, DECLARATIVE_CAPABILITY_PREFIX, DeleteFileTool, DependencyError,
     DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool,
     GetWeatherTool, GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability,

@@ -34,7 +34,7 @@ use everruns_core::llm_driver_registry::{
 use everruns_core::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
-use everruns_core::tool_types::{ToolCall, ToolDefinition};
+use everruns_core::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
@@ -349,19 +349,83 @@ impl AnthropicChatDriver {
         (system_prompt, converted)
     }
 
-    fn convert_tools(tools: &[ToolDefinition], prompt_cache_enabled: bool) -> Vec<AnthropicTool> {
+    fn convert_tools(
+        tools: &[ToolDefinition],
+        prompt_cache_enabled: bool,
+    ) -> Vec<AnthropicToolEntry> {
         let last_index = tools.len().saturating_sub(1);
         tools
             .iter()
             .enumerate()
-            .map(|(index, tool)| AnthropicTool {
+            .map(|(index, tool)| {
+                AnthropicToolEntry::Function(AnthropicTool {
+                    name: tool.name().to_string(),
+                    description: tool.description().to_string(),
+                    input_schema: tool.parameters().clone(),
+                    cache_control: (prompt_cache_enabled && index == last_index)
+                        .then(AnthropicCacheControl::ephemeral),
+                    defer_loading: None,
+                })
+            })
+            .collect()
+    }
+
+    /// Convert tools with Anthropic's hosted tool_search: mark deferrable tools
+    /// `defer_loading: true` and prepend a `tool_search_tool_bm25_20251119` server
+    /// tool entry. The model sees names + descriptions for deferred tools and
+    /// loads their full schemas on demand via a natural-language search query.
+    ///
+    /// See `crates/anthropic/src/driver.rs` callers and
+    /// docs.claude.com/.../tool-search-tool for the wire format. Mirrors the
+    /// OpenAI Responses `convert_tools_with_search`, minus namespaces (Anthropic
+    /// defers each tool individually).
+    ///
+    /// `DeferrablePolicy::Never` tools keep full schemas (hot-path tools the model
+    /// shouldn't have to search for). The search-tool entry is always
+    /// non-deferred, which also satisfies Anthropic's "at least one tool must be
+    /// non-deferred" constraint even when every function tool is deferrable.
+    ///
+    /// When deferral is active (above threshold), per-tool prompt-cache
+    /// breakpoints are skipped: deferred tools are not part of the cached prefix,
+    /// so a `cache_control` marker on them is pointless (system-prompt caching
+    /// still applies via `mark_last_text_block_for_cache`). Below threshold this
+    /// delegates to the standard `convert_tools`, so `prompt_cache_enabled` is
+    /// threaded through — hardcoding it would silently drop the tools-list cache
+    /// breakpoint whenever tool_search is configured but inactive.
+    fn convert_tools_with_search(
+        tools: &[ToolDefinition],
+        threshold: usize,
+        prompt_cache_enabled: bool,
+    ) -> Vec<AnthropicToolEntry> {
+        // Below threshold the full schemas fit comfortably; don't defer, and keep
+        // the standard cache behavior.
+        if tools.len() < threshold {
+            return Self::convert_tools(tools, prompt_cache_enabled);
+        }
+
+        let mut entries: Vec<AnthropicToolEntry> = Vec::with_capacity(tools.len() + 1);
+
+        // The hosted search tool — natural-language (BM25) variant. Never deferred.
+        entries.push(AnthropicToolEntry::Search(AnthropicToolSearchTool {
+            r#type: "tool_search_tool_bm25_20251119".to_string(),
+            name: "tool_search_tool_bm25".to_string(),
+        }));
+
+        for tool in tools {
+            let should_defer = match tool.deferrable() {
+                DeferrablePolicy::Never => false,
+                DeferrablePolicy::Automatic | DeferrablePolicy::Always => true,
+            };
+            entries.push(AnthropicToolEntry::Function(AnthropicTool {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
                 input_schema: tool.parameters().clone(),
-                cache_control: (prompt_cache_enabled && index == last_index)
-                    .then(AnthropicCacheControl::ephemeral),
-            })
-            .collect()
+                cache_control: None,
+                defer_loading: should_defer.then_some(true),
+            }));
+        }
+
+        entries
     }
 }
 
@@ -380,12 +444,6 @@ impl ChatDriver for AnthropicChatDriver {
             Self::convert_messages(&messages, prompt_cache_enabled);
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
-        let tools = if config.tools.is_empty() {
-            None
-        } else {
-            Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
-        };
-
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
         // large-context twins of the 200K base models. Anthropic's wire `model`
         // field only accepts the bare id; the 1M window is requested via the
@@ -398,6 +456,30 @@ impl ChatDriver for AnthropicChatDriver {
             &everruns_core::LlmProviderType::Anthropic,
             wire_model,
         );
+
+        // Hosted tool_search (deferred tool loading) is gated on the Anthropic
+        // model profile. When a hosted `ToolSearchConfig` is present and the
+        // model supports it, defer tool schemas server-side via
+        // `tool_search_tool_bm25_20251119` + per-tool `defer_loading`; otherwise
+        // send full schemas. The config is provider-agnostic — set by the
+        // `claude_tool_search` / `auto_tool_search` capability — and reaches here
+        // on `config.tool_search`.
+        let supports_tool_search = profile.as_ref().is_some_and(|p| p.tool_search);
+        let tools = if config.tools.is_empty() {
+            None
+        } else if let Some(ref ts_config) = config.tool_search {
+            if ts_config.enabled && supports_tool_search {
+                Some(Self::convert_tools_with_search(
+                    &config.tools,
+                    ts_config.threshold,
+                    prompt_cache_enabled,
+                ))
+            } else {
+                Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
+            }
+        } else {
+            Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
+        };
 
         // Sampling parameters are removed on Fable 5 and Opus 4.8/4.7 —
         // sending `temperature` returns 400 ("`temperature` is deprecated for
@@ -1010,7 +1092,7 @@ struct AnthropicRequest {
     system: Option<AnthropicSystem>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tools: Option<Vec<AnthropicTool>>,
+    tools: Option<Vec<AnthropicToolEntry>>,
     /// Extended thinking configuration (for Claude models that support it)
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<AnthropicThinking>,
@@ -1237,6 +1319,25 @@ enum AnthropicImageSource {
     Url { url: String },
 }
 
+/// A tools-array entry: either a regular function tool or the hosted
+/// `tool_search_tool_*_20251119` server tool. Untagged so each variant
+/// serializes to its own object shape (the server tool has only `type`/`name`,
+/// no `input_schema`).
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum AnthropicToolEntry {
+    Search(AnthropicToolSearchTool),
+    Function(AnthropicTool),
+}
+
+/// The hosted tool-search server tool, e.g.
+/// `{"type": "tool_search_tool_bm25_20251119", "name": "tool_search_tool_bm25"}`.
+#[derive(Debug, Serialize)]
+struct AnthropicToolSearchTool {
+    r#type: String,
+    name: String,
+}
+
 #[derive(Debug, Serialize)]
 struct AnthropicTool {
     name: String,
@@ -1244,6 +1345,10 @@ struct AnthropicTool {
     input_schema: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     cache_control: Option<AnthropicCacheControl>,
+    /// When `Some(true)`, the tool's schema is loaded on demand via hosted
+    /// tool_search instead of being sent in the prefix. Omitted otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    defer_loading: Option<bool>,
 }
 
 // Streaming response types
@@ -1796,6 +1901,89 @@ mod tests {
         assert!(json[0].get("cache_control").is_none());
         assert!(json[1].get("cache_control").is_none());
         assert_eq!(json[2]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_defers_and_adds_search_tool() {
+        let make_tool = |name: &str, deferrable: DeferrablePolicy| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: "test tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable,
+                hints: ToolHints::default(),
+                full_parameters: None,
+            })
+        };
+        // 3 deferrable tools + 1 hot-path (Never) tool, threshold 3 → active.
+        let tools = vec![
+            make_tool("alpha", DeferrablePolicy::Automatic),
+            make_tool("bravo", DeferrablePolicy::Automatic),
+            make_tool("charlie", DeferrablePolicy::Automatic),
+            make_tool("write_todos", DeferrablePolicy::Never),
+        ];
+
+        let converted = AnthropicLlmDriver::convert_tools_with_search(&tools, 3, false);
+        let json = serde_json::to_value(&converted).unwrap();
+        let arr = json.as_array().unwrap();
+
+        // First entry is the hosted BM25 search tool (no input_schema).
+        assert_eq!(arr[0]["type"], "tool_search_tool_bm25_20251119");
+        assert_eq!(arr[0]["name"], "tool_search_tool_bm25");
+        assert!(arr[0].get("input_schema").is_none());
+
+        let by_name = |name: &str| {
+            arr.iter()
+                .find(|e| e["name"] == name)
+                .unwrap_or_else(|| panic!("missing {name}"))
+        };
+        // Deferrable tools carry defer_loading: true.
+        assert_eq!(by_name("alpha")["defer_loading"], json!(true));
+        assert_eq!(by_name("charlie")["defer_loading"], json!(true));
+        // The Never tool stays non-deferred (no defer_loading field).
+        assert!(by_name("write_todos").get("defer_loading").is_none());
+    }
+
+    #[test]
+    fn test_convert_tools_with_search_below_threshold_sends_full_schemas() {
+        let make_tool = |name: &str| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: "test tool".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::Automatic,
+                hints: ToolHints::default(),
+                full_parameters: None,
+            })
+        };
+        let tools = vec![make_tool("one"), make_tool("two")];
+        let converted = AnthropicLlmDriver::convert_tools_with_search(&tools, 3, false);
+        let json = serde_json::to_value(&converted).unwrap();
+        let arr = json.as_array().unwrap();
+        // Below threshold: no search tool, no deferral.
+        assert_eq!(arr.len(), 2);
+        assert!(arr.iter().all(|e| e.get("defer_loading").is_none()));
+        assert!(
+            arr.iter()
+                .all(|e| e["type"] != "tool_search_tool_bm25_20251119")
+        );
+
+        // Below threshold must preserve the standard prompt-cache behavior:
+        // `prompt_cache_enabled` is threaded through, so the last tool still gets
+        // a cache breakpoint (regression guard for the dropped-marker bug).
+        let cached = AnthropicLlmDriver::convert_tools_with_search(
+            &tools, 3, /* prompt_cache_enabled */ true,
+        );
+        let cached_json = serde_json::to_value(&cached).unwrap();
+        let cached_arr = cached_json.as_array().unwrap();
+        assert!(cached_arr[0].get("cache_control").is_none());
+        assert_eq!(cached_arr[1]["cache_control"]["type"], "ephemeral");
     }
 
     #[test]

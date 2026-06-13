@@ -93,6 +93,7 @@ mod background_execution;
 mod bashkit_shell;
 mod btw;
 mod budgeting;
+mod claude_tool_search;
 pub mod compaction;
 mod current_time;
 mod data_knowledge;
@@ -167,6 +168,7 @@ pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapabil
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::BudgetingCapability;
+pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
     CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
@@ -1115,6 +1117,8 @@ impl CapabilityRegistry {
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
+        // Claude (Anthropic) tool_search (hosted deferred tool loading)
+        registry.register(ClaudeToolSearchCapability::new());
         // Generic, provider-agnostic tool_search (client-side deferred loading)
         registry.register(ToolSearchCapability::new());
         // Model-adaptive tool_search (hosted on capable models, generic elsewhere)
@@ -2098,11 +2102,16 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect the hosted tool_search mechanism. `auto_tool_search` resolves
-            // to `openai_tool_search` (this id) only on models with native support;
-            // on every other model it resolves to the generic `tool_search`, which
-            // sets no hosted config and instead contributes the hook + tool above.
-            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID {
+            // Detect a hosted tool_search mechanism (OpenAI or Anthropic). Both
+            // hosted capabilities produce the same provider-agnostic
+            // `ToolSearchConfig`; the driver that handles the request picks the
+            // wire format. `auto_tool_search` resolves to one of these ids only on
+            // models with native support; on every other model it resolves to the
+            // generic `tool_search`, which sets no hosted config and instead
+            // contributes the hook + tool above.
+            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
+                || effective_id == CLAUDE_TOOL_SEARCH_CAPABILITY_ID
+            {
                 // Parse threshold from config, fall back to default
                 let threshold = cap_config
                     .config
@@ -2363,6 +2372,7 @@ mod tests {
             "memory",
             "message_metadata",
             "openai_tool_search",
+            "claude_tool_search",
             "tool_search",
             "auto_tool_search",
             "prompt_caching",
@@ -4448,9 +4458,10 @@ mod tests {
             },
         ];
 
-        // No native support → resolves to the generic client-side mechanism: no
-        // hosted config, but the tool_search tool + DeferSchemaHook are collected.
-        let ctx = test_ctx().with_model("claude-sonnet-4-5-20250514");
+        // No native support (pre-4 Claude) → resolves to the generic client-side
+        // mechanism: no hosted config, but the tool_search tool + DeferSchemaHook
+        // are collected.
+        let ctx = test_ctx().with_model("claude-3-5-haiku");
         let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
 
         assert!(
@@ -4503,6 +4514,39 @@ mod tests {
             .expect("auto_tool_search must set a hosted config on a native model");
         assert!(ts.enabled);
         assert_eq!(ts.threshold, 7);
+        assert!(
+            !collected
+                .tools
+                .iter()
+                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
+            "hosted mechanism must not contribute the client-side tool_search tool"
+        );
+        assert!(
+            collected.tool_definition_hooks.is_empty(),
+            "hosted mechanism must not contribute a client-side deferral hook"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_anthropic() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("auto_tool_search"),
+            config: serde_json::json!({"threshold": 9}),
+        }];
+
+        // Native Claude support → resolves to the hosted Anthropic mechanism: a
+        // hosted config (honoring the threshold) and no client-side tool/hook.
+        let ctx = test_ctx().with_model("claude-opus-4-8");
+        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
+
+        let ts = collected
+            .tool_search
+            .as_ref()
+            .expect("auto_tool_search must set a hosted config on a native Claude model");
+        assert!(ts.enabled);
+        assert_eq!(ts.threshold, 9);
         assert!(
             !collected
                 .tools

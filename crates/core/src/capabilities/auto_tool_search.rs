@@ -1,26 +1,38 @@
 // Auto Tool Search Capability
 //
-// A model-adaptive dispatcher over the two real tool-search mechanisms:
+// A model-adaptive dispatcher over the three real tool-search mechanisms:
 //
-//   - `openai_tool_search` (hosted): on models with native tool_search support
-//     (OpenAI GPT-5.4+), the LLM driver hides parameter schemas server-side via
+//   - `openai_tool_search` (hosted): on models with native OpenAI tool_search
+//     support (GPT-5.4+), the LLM driver hides parameter schemas server-side via
 //     namespaces + defer_loading. No client-side tool is added.
-//   - `tool_search` (generic, client-side): on every other model (Anthropic,
-//     Gemini, OpenAI Completions, ...), a `DeferSchemaHook` strips schemas and a
-//     `tool_search` tool loads them back on demand.
+//   - `claude_tool_search` (hosted): on Claude models with native Anthropic
+//     tool_search support (Sonnet 4 / Opus 4 / Haiku 4.5 / Fable 5 and newer),
+//     the Anthropic driver marks tools `defer_loading: true` and adds a hosted
+//     `tool_search_tool_*_20251119` entry. No client-side tool is added.
+//   - `tool_search` (generic, client-side): on every other model (Gemini, OpenAI
+//     Completions, Claude/GPT reached via a gateway that masks the hosted format,
+//     ...), a `DeferSchemaHook` strips schemas and a `tool_search` tool loads
+//     them back on demand.
 //
 // Unlike picking one of those capabilities by hand, this one chooses at runtime.
-// It OWNS an `OpenAiToolSearchCapability` and a `ToolSearchCapability` and
-// implements `Capability::resolve_for_model`: capability collection knows the
-// agent's model (via `SystemPromptContext::model`) and delegates to whichever
-// inner capability fits. Only that one capability's contributions are collected —
-// the hosted config for the OpenAI one, or the hook + tool + system prompt for
-// the generic one. No "contribute both, prune later" step is needed.
+// It OWNS the two hosted capabilities and the generic one and implements
+// `Capability::resolve_for_model`: capability collection knows the agent's model
+// (via `SystemPromptContext::model`) and delegates to whichever inner capability
+// fits. Only that one capability's contributions are collected — the hosted
+// config for a hosted one, or the hook + tool + system prompt for the generic
+// one. No "contribute both, prune later" step is needed.
 //
-// Use this instead of `openai_tool_search` or `tool_search` when a harness must
-// work well across providers.
+// Use this instead of the individual capabilities when a harness must work well
+// across providers.
 
-use super::openai_tool_search::{OpenAiToolSearchCapability, model_supports_native_tool_search};
+use super::claude_tool_search::{
+    ClaudeToolSearchCapability,
+    model_supports_native_tool_search as model_supports_native_claude_tool_search,
+};
+use super::openai_tool_search::{
+    OpenAiToolSearchCapability,
+    model_supports_native_tool_search as model_supports_native_openai_tool_search,
+};
 use super::tool_search::ToolSearchCapability;
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
@@ -31,11 +43,12 @@ pub const AUTO_TOOL_SEARCH_CAPABILITY_ID: &str = "auto_tool_search";
 
 /// Auto Tool Search capability.
 ///
-/// Holds the two real tool-search capabilities and dispatches to one of them
+/// Holds the three real tool-search capabilities and dispatches to one of them
 /// based on the agent's model. `threshold` (minimum number of tools before
-/// deferral activates) is shared by both and forwarded at construction.
+/// deferral activates) is shared by all and forwarded at construction.
 pub struct AutoToolSearchCapability {
     openai: OpenAiToolSearchCapability,
+    claude: ClaudeToolSearchCapability,
     generic: ToolSearchCapability,
 }
 
@@ -47,6 +60,7 @@ impl AutoToolSearchCapability {
     pub fn with_threshold(threshold: usize) -> Self {
         Self {
             openai: OpenAiToolSearchCapability::with_threshold(threshold),
+            claude: ClaudeToolSearchCapability::with_threshold(threshold),
             generic: ToolSearchCapability::with_threshold(threshold),
         }
     }
@@ -81,17 +95,18 @@ impl Capability for AutoToolSearchCapability {
     }
 
     fn description(&self) -> &str {
-        "Model-adaptive deferred tool loading. Uses OpenAI's hosted tool_search \
-         on models that support it (GPT-5.4 and newer) and a provider-agnostic \
-         client-side fallback on every other model. Reduces token usage for \
-         agents with many tools, regardless of provider."
+        "Model-adaptive deferred tool loading. Uses the provider's hosted \
+         tool_search on models that support it (OpenAI GPT-5.4+ and Claude \
+         Sonnet 4 / Opus 4 / Haiku 4.5 / Fable 5 and newer) and a \
+         provider-agnostic client-side fallback on every other model. Reduces \
+         token usage for agents with many tools, regardless of provider."
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
         vec![CapabilityLocalization::text(
             "uk",
             "Автоматичний пошук інструментів",
-            "Відкладене завантаження інструментів, що адаптується до моделі. Використовує хостований tool_search від OpenAI на моделях, які його підтримують (GPT-5.4 і новіші), та незалежний від провайдера клієнтський резервний механізм на всіх інших моделях. Зменшує використання токенів для агентів із багатьма інструментами незалежно від провайдера.",
+            "Відкладене завантаження інструментів, що адаптується до моделі. Використовує хостований tool_search провайдера на моделях, які його підтримують (OpenAI GPT-5.4+ та Claude Sonnet 4 / Opus 4 / Haiku 4.5 / Fable 5 і новіші), та незалежний від провайдера клієнтський резервний механізм на всіх інших моделях. Зменшує використання токенів для агентів із багатьма інструментами незалежно від провайдера.",
         )]
     }
 
@@ -105,14 +120,16 @@ impl Capability for AutoToolSearchCapability {
 
     // The dispatch itself: capability collection calls this with the agent's
     // model and collects the resolved capability's contributions in place of this
-    // one's. Models with native support get the hosted OpenAI mechanism (no
-    // client-side tool or hook); everything else — including an unknown model —
-    // gets the provider-agnostic client-side mechanism, which is safe everywhere.
+    // one's. Models with native OpenAI or Anthropic support get the matching
+    // hosted mechanism (no client-side tool or hook); everything else — including
+    // an unknown model — gets the provider-agnostic client-side mechanism, which
+    // is safe everywhere. OpenAI and Anthropic profiles never both claim the same
+    // model id, so the order between the two hosted checks is immaterial.
     fn resolve_for_model(&self, model: Option<&str>) -> Option<&dyn Capability> {
-        if model.is_some_and(model_supports_native_tool_search) {
-            Some(&self.openai)
-        } else {
-            Some(&self.generic)
+        match model {
+            Some(m) if model_supports_native_openai_tool_search(m) => Some(&self.openai),
+            Some(m) if model_supports_native_claude_tool_search(m) => Some(&self.claude),
+            _ => Some(&self.generic),
         }
     }
 }
@@ -121,7 +138,8 @@ impl Capability for AutoToolSearchCapability {
 mod tests {
     use super::*;
     use crate::capabilities::{
-        CapabilityRegistry, OPENAI_TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_CAPABILITY_ID,
+        CLAUDE_TOOL_SEARCH_CAPABILITY_ID, CapabilityRegistry, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
+        TOOL_SEARCH_CAPABILITY_ID,
     };
 
     #[test]
@@ -145,19 +163,33 @@ mod tests {
 
     #[test]
     fn test_resolves_to_generic_on_non_native_model() {
+        // A model with no hosted tool_search support on either provider (here a
+        // pre-4 Claude) falls back to the safe client-side mechanism.
         let cap = AutoToolSearchCapability::new();
         let resolved = cap
-            .resolve_for_model(Some("claude-sonnet-4-5-20250514"))
+            .resolve_for_model(Some("claude-3-5-haiku"))
             .expect("dispatches");
         assert_eq!(resolved.id(), TOOL_SEARCH_CAPABILITY_ID);
     }
 
     #[test]
-    fn test_resolves_to_hosted_on_native_model() {
+    fn test_resolves_to_hosted_on_native_openai_model() {
         let cap = AutoToolSearchCapability::new();
         let resolved = cap.resolve_for_model(Some("gpt-5.4")).expect("dispatches");
         assert_eq!(resolved.id(), OPENAI_TOOL_SEARCH_CAPABILITY_ID);
         // The hosted mechanism contributes no client-side tool or hook.
+        assert!(resolved.tools().is_empty());
+        assert!(resolved.tool_definition_hooks().is_empty());
+    }
+
+    #[test]
+    fn test_resolves_to_hosted_on_native_claude_model() {
+        let cap = AutoToolSearchCapability::new();
+        let resolved = cap
+            .resolve_for_model(Some("claude-opus-4-8"))
+            .expect("dispatches");
+        assert_eq!(resolved.id(), CLAUDE_TOOL_SEARCH_CAPABILITY_ID);
+        // Hosted: no client-side tool or hook contributed.
         assert!(resolved.tools().is_empty());
         assert!(resolved.tool_definition_hooks().is_empty());
     }
