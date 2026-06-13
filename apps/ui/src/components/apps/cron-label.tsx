@@ -42,16 +42,16 @@ export function isSupportedCronExpression(expression: string): boolean {
 // Mirror of the server-side SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS default.
 export const CRON_MIN_INTERVAL_SECONDS = 300;
 
-/** Returns the interval in seconds between the next two consecutive runs, or
- *  null when the expression is invalid or produces no future runs. */
+/** Returns the minimum interval in seconds across the next 8 runs, or null when
+ *  the expression is invalid. Mirrors the server's min-interval check. */
 export function getCronIntervalSeconds(expression: string): number | null {
   try {
     const parserExpression = previewExpression(expression);
     if (!parserExpression) return null;
-    const interval = CronExpressionParser.parse(parserExpression, { tz: "UTC" });
-    const t1 = interval.next().getTime();
-    const t2 = interval.next().getTime();
-    return Math.round((t2 - t1) / 1000);
+    const iter = CronExpressionParser.parse(parserExpression, { tz: "UTC" });
+    const times = Array.from({ length: 9 }, () => iter.next().getTime());
+    const deltas = times.slice(1).map((t, i) => Math.round((t - times[i]) / 1000));
+    return Math.min(...deltas);
   } catch {
     return null;
   }

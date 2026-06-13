@@ -40,6 +40,7 @@ import { generateChannelToken } from "@/lib/channel-tokens";
 import {
   CRON_MIN_INTERVAL_SECONDS,
   getCronIntervalSeconds,
+  isSupportedCronExpression,
 } from "@/components/apps/cron-label";
 
 export default function NewAppPage() {
@@ -122,9 +123,10 @@ export default function NewAppPage() {
           ? !!slackSigningSecret && !!slackBotToken
           : channelType === "schedule"
             ? !!scheduleCronExpression &&
-              !!channelMessage &&
+              !!channelMessage.trim() &&
+              isSupportedCronExpression(scheduleCronExpression) &&
               (getCronIntervalSeconds(scheduleCronExpression) ?? 0) >= CRON_MIN_INTERVAL_SECONDS
-            : !!webhookToken && !!channelMessage;
+            : !!webhookToken && !!channelMessage.trim();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,11 +396,11 @@ export default function NewAppPage() {
                       placeholder="0 */5 * * * * *"
                     />
                     {scheduleCronExpression &&
+                      isSupportedCronExpression(scheduleCronExpression) &&
                       (getCronIntervalSeconds(scheduleCronExpression) ?? 0) <
                         CRON_MIN_INTERVAL_SECONDS && (
                         <p className="text-xs text-destructive">
-                          Minimum interval is{" "}
-                          {Math.floor(CRON_MIN_INTERVAL_SECONDS / 60)} minutes.
+                          Minimum interval is {Math.floor(CRON_MIN_INTERVAL_SECONDS / 60)} minutes.
                         </p>
                       )}
                   </div>

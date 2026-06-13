@@ -27,6 +27,14 @@ describe("getCronIntervalSeconds", () => {
     expect(getCronIntervalSeconds("*/5 * * * *")).toBe(300);
   });
 
+  it("returns the minimum gap for a minute-list with uneven spacing (0,4 -> 240s, 56s)", () => {
+    // Minutes 0 and 4 of every hour: gaps are 4 min (240s) and 56 min (3360s).
+    // The minimum is 240s, which is below CRON_MIN_INTERVAL_SECONDS (300s).
+    const secs = getCronIntervalSeconds("0,4 * * * *");
+    expect(secs).not.toBeNull();
+    expect(secs!).toBeLessThan(CRON_MIN_INTERVAL_SECONDS);
+  });
+
   it("returns null for an invalid expression", () => {
     expect(getCronIntervalSeconds("not a cron")).toBeNull();
   });
