@@ -4092,6 +4092,7 @@ impl WorkerService for WorkerServiceImpl {
                 icon: c.icon.clone(),
                 is_mcp: c.is_mcp,
                 is_skill: c.is_skill,
+                is_guardrail: c.is_guardrail,
                 tool_count: c.tool_definitions.len() as u32,
                 tool_names: c
                     .tool_definitions

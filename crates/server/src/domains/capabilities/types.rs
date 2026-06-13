@@ -79,6 +79,68 @@ pub struct CreateDeclarativeCapabilityRequest {
     pub definition: DeclarativeCapabilityDefinition,
 }
 
+/// Request body for the `dry_run_guardrails` operation: evaluate a
+/// guardrails capability config against sample content without a session.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct GuardrailsDryRunRequest {
+    /// The `guardrails` capability config to evaluate (same shape persisted
+    /// in `AgentCapabilityConfig.config`).
+    #[schema(value_type = Object, example = json!({
+        "mode": "advisory",
+        "checks": [
+            {"id": "profanity", "stage": "output", "type": "blocklist", "words": ["darn"]}
+        ]
+    }))]
+    pub config: serde_json::Value,
+    /// Pipeline stage to evaluate.
+    pub stage: everruns_core::GuardrailStage,
+    /// Sample content: model output, serialized tool arguments, or tool
+    /// output, depending on `stage`.
+    #[schema(example = "the model said something darn surprising")]
+    pub text: String,
+    /// Tool name for `tool_use` stage checks (`tool_pattern` rules).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "bashkit_exec")]
+    pub tool_name: Option<String>,
+}
+
+/// One triggered check from a guardrails dry run.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GuardrailsDryRunHit {
+    /// Index of the check in the config's `checks` array.
+    pub check_index: u32,
+    /// The check's `id`, or `"<type>#<index>"` when none was set.
+    #[schema(example = "profanity")]
+    pub check_id: String,
+    /// Stage the check ran in.
+    pub stage: everruns_core::GuardrailStage,
+    /// Rule type: regex, blocklist, or tool_pattern.
+    #[schema(example = "blocklist")]
+    pub rule_type: String,
+    /// Effective action (advisory mode downgrades block to log).
+    pub action: everruns_core::GuardrailAction,
+    /// Stable machine-readable code, `guardrail.<rule_type>`.
+    #[schema(example = "guardrail.blocklist")]
+    pub reason_code: String,
+    /// The check's custom replacement text, if configured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replacement: Option<String>,
+    /// Bounded excerpt of what matched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "darn")]
+    pub matched: Option<String>,
+}
+
+/// Response for the `dry_run_guardrails` operation.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct GuardrailsDryRunResponse {
+    /// All triggered checks, in config order.
+    pub hits: Vec<GuardrailsDryRunHit>,
+    /// Whether any hit would block (i.e. the content would be suppressed
+    /// or the tool call refused when this config runs active).
+    pub blocked: bool,
+}
+
 /// Request body for the `update_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityRequest {

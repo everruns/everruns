@@ -7,13 +7,14 @@
 use super::queries as q;
 use super::types::{
     CapabilityInfo, CreateDeclarativeCapabilityRequest, CreateDeclarativeCapabilityRow,
-    DeclarativeCapability, UpdateDeclarativeCapability, UpdateDeclarativeCapabilityRequest,
+    DeclarativeCapability, GuardrailsDryRunHit, GuardrailsDryRunRequest, GuardrailsDryRunResponse,
+    UpdateDeclarativeCapability, UpdateDeclarativeCapabilityRequest,
 };
 use super::{CAPABILITY_DANGEROUS, CAPABILITY_MANAGE, CAPABILITY_VIEW};
 use crate::domains::common::*;
 use everruns_core::{
-    CapabilityId, DeclarativeCapabilityDefinition, DeclarativeCapabilityId, Policy,
-    validate_declarative_capability_definition,
+    CapabilityId, DeclarativeCapabilityDefinition, DeclarativeCapabilityId, GuardrailsConfig,
+    Policy, validate_declarative_capability_definition,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -478,6 +479,78 @@ fn parse_declarative_public_id(id: &str) -> Result<DeclarativeCapabilityId, Comm
     })
 }
 
+// ============================================================================
+// DryRunGuardrails
+// ============================================================================
+
+/// TM-DOS: bound dry-run input so check evaluation stays cheap.
+const MAX_DRY_RUN_TEXT_BYTES: usize = 64 * 1024;
+
+/// Evaluate a guardrails capability config against sample content without a
+/// session. This is how checks are tuned (especially in advisory mode)
+/// before being attached to an agent. Pure computation — nothing persisted.
+#[derive(Debug, Deserialize)]
+pub struct DryRunGuardrails(pub GuardrailsDryRunRequest);
+
+impl CommandSchema for DryRunGuardrails {
+    fn param_schema() -> serde_json::Value {
+        delegated_param_schema::<GuardrailsDryRunRequest>()
+    }
+}
+
+impl Command for DryRunGuardrails {
+    type Output = GuardrailsDryRunResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "dry_run_guardrails",
+            category: "capabilities",
+            description: "Evaluate a guardrails capability config against sample text without a session. Returns triggered checks and whether the content would be blocked.",
+            method: "POST",
+            path: "/v1/capabilities/guardrails/dry-run",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&CAPABILITY_VIEW)
+    }
+
+    async fn execute(self, _ctx: &Ctx) -> Result<GuardrailsDryRunResponse, CommandError> {
+        let req = self.0;
+        // TM-DOS-017: bound input and let compile enforce regex/entry limits
+        // so an authenticated caller cannot wedge the request with a
+        // pathological pattern or oversized config.
+        if req.text.len() > MAX_DRY_RUN_TEXT_BYTES {
+            return Err(CommandError::bad_request(format!(
+                "text exceeds {MAX_DRY_RUN_TEXT_BYTES} bytes"
+            )));
+        }
+        let compiled = GuardrailsConfig::from_value(&req.config)
+            .and_then(|config| config.compile())
+            .map_err(CommandError::bad_request)?;
+        let hits: Vec<GuardrailsDryRunHit> = compiled
+            .evaluate(req.stage, &req.text, req.tool_name.as_deref(), &|_| false)
+            .into_iter()
+            .map(|hit| GuardrailsDryRunHit {
+                check_index: hit.check_index as u32,
+                check_id: hit.check_label,
+                stage: hit.stage,
+                rule_type: hit.rule_type.to_string(),
+                action: hit.action,
+                reason_code: hit.reason_code,
+                replacement: hit.replacement,
+                matched: hit.matched,
+            })
+            .collect();
+        let blocked = hits
+            .iter()
+            .any(|hit| hit.action == everruns_core::GuardrailAction::Block);
+        Ok(GuardrailsDryRunResponse { hits, blocked })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<DryRunGuardrails>() }
+
 async fn get_declarative_capability_by_public_id(
     ctx: &Ctx,
     id: &str,
@@ -514,5 +587,29 @@ mod tests {
             serde_json::from_value(json!({ "limit": 5, "offset": 10 })).unwrap();
         assert_eq!(cmd.limit, Some(5));
         assert_eq!(cmd.offset, Some(10));
+    }
+
+    #[test]
+    fn dry_run_guardrails_request_deserializes() {
+        let cmd: DryRunGuardrails = serde_json::from_value(json!({
+            "config": {
+                "checks": [
+                    {"stage": "output", "type": "blocklist", "words": ["x"]}
+                ]
+            },
+            "stage": "output",
+            "text": "x marks the spot"
+        }))
+        .unwrap();
+        assert_eq!(cmd.0.stage, everruns_core::GuardrailStage::Output);
+        assert_eq!(cmd.0.text, "x marks the spot");
+        assert!(cmd.0.tool_name.is_none());
+        // Sanity: the embedded config compiles and matches via the core engine.
+        let compiled = GuardrailsConfig::from_value(&cmd.0.config)
+            .unwrap()
+            .compile()
+            .unwrap();
+        let hits = compiled.evaluate(cmd.0.stage, &cmd.0.text, None, &|_| false);
+        assert_eq!(hits.len(), 1);
     }
 }

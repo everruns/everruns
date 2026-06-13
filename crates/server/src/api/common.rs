@@ -1096,6 +1096,7 @@ fn looks_like_capability(map: &serde_json::Map<String, Value>) -> bool {
             .is_some_and(|value| matches!(value, "builtin" | "mcp_server" | "skill"))
         || map.contains_key("is_mcp")
         || map.contains_key("is_skill")
+        || map.contains_key("is_guardrail")
 }
 
 /// Trait for resources that can have `url` and `view_url` generated.

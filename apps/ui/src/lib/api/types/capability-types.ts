@@ -19,6 +19,8 @@ export interface Capability {
   tool_definitions?: ToolDefinition[];
   /** Whether this is an MCP server capability */
   is_mcp?: boolean;
+  /** Whether this capability is a guardrail (constrains agent behavior) */
+  is_guardrail?: boolean;
   /** IDs of capabilities that this capability depends on */
   dependencies?: CapabilityId[];
   /** UI feature strings this capability contributes to */

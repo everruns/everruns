@@ -100,6 +100,7 @@ use utoipa::OpenApi;
         api::capabilities::update_declarative_capability,
         api::capabilities::delete_declarative_capability,
         api::capabilities::destroy_declarative_capability,
+        api::capabilities::dry_run_guardrails,
         api::users::list_users,
         // Session filesystem routes (under /v1/sessions/{session_id}/fs)
         // are intentionally omitted from the OpenAPI doc. They remain wired
@@ -366,6 +367,11 @@ use utoipa::OpenApi;
             api::models::UpdateModelRequest,
             CapabilityInfo,
             ListResponse<CapabilityInfo>,
+            domains::capabilities::types::GuardrailsDryRunRequest,
+            domains::capabilities::types::GuardrailsDryRunHit,
+            domains::capabilities::types::GuardrailsDryRunResponse,
+            everruns_core::GuardrailStage,
+            everruns_core::GuardrailAction,
             // Harness types
             everruns_core::Harness, everruns_core::HarnessStatus, everruns_core::ResourceConfigResponse,
             domains::harnesses::types::CreateHarnessRequest,

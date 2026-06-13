@@ -104,6 +104,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+mod guardrails;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
@@ -216,6 +217,7 @@ pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
 };
+pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
@@ -543,6 +545,14 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Whether this capability is a guardrail — a constraint on agent
+    /// behavior (content checks, tool restrictions) rather than a grant of
+    /// new abilities. Structural marker for UI sections and catalog
+    /// filtering; carries no runtime semantics. See specs/guardrails.md.
+    fn is_guardrail(&self) -> bool {
+        false
+    }
+
     /// Model-adaptive dispatch: delegate this capability's contributions to a
     /// different underlying capability based on the agent's model.
     ///
@@ -768,6 +778,17 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns pre-tool execution hooks adapted to per-capability config.
+    ///
+    /// Default delegates to `pre_tool_use_hooks()`. Capabilities whose hook
+    /// behavior depends on config (e.g. `guardrails`) override this.
+    fn pre_tool_use_hooks_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn crate::atoms::PreToolUseHook>> {
+        self.pre_tool_use_hooks()
+    }
+
     /// Returns post-tool execution hooks provided by this capability.
     ///
     /// These hooks run after each individual tool completes execution.
@@ -777,6 +798,17 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no hooks).
     fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn crate::atoms::PostToolExecHook>> {
         vec![]
+    }
+
+    /// Returns post-tool execution hooks adapted to per-capability config.
+    ///
+    /// Default delegates to `post_tool_exec_hooks()`. Capabilities whose hook
+    /// behavior depends on config (e.g. `guardrails`) override this.
+    fn post_tool_exec_hooks_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn crate::atoms::PostToolExecHook>> {
+        self.post_tool_exec_hooks()
     }
 
     /// Returns tool definition hooks provided by this capability.
@@ -1180,6 +1212,10 @@ impl CapabilityRegistry {
         // Prompt canary guardrail: replace assistant output if it leaks the
         // first sentence of the system prompt. Streaming-output guardrail.
         registry.register(PromptCanaryGuardrailCapability);
+
+        // Declarative guardrails (specs/guardrails.md): config-driven
+        // deterministic checks over model output and tool calls.
+        registry.register(GuardrailsCapability);
 
         // OpenUI/A2UI prompt helpers are product features, not required by embedders.
         #[cfg(feature = "ui-capabilities")]
@@ -2413,6 +2449,7 @@ mod tests {
             "loop_detection",
             "error_disclosure",
             "prompt_canary_guardrail",
+            "guardrails",
             "user_hooks",
         ]
         .into_iter()

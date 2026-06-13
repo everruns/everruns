@@ -2492,6 +2492,47 @@
         }
       }
     },
+    "/v1/capabilities/guardrails/dry-run": {
+      "post": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "POST /v1/capabilities/guardrails/dry-run - Evaluate guardrail checks against sample text.",
+        "operationId": "dry_run_guardrails",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GuardrailsDryRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Triggered checks for the sample content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GuardrailsDryRunResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid guardrails config, stage, or oversized text",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/capabilities/{capability_id}": {
       "get": {
         "tags": [
@@ -13707,6 +13748,11 @@
             "description": "Unique capability identifier",
             "example": "session_file_system"
           },
+          "is_guardrail": {
+            "type": "boolean",
+            "description": "Whether this capability is a guardrail (constrains agent behavior\nrather than granting abilities). Used for UI grouping and filtering.",
+            "example": false
+          },
           "is_mcp": {
             "type": "boolean",
             "description": "Whether this is an MCP server capability (for UI badge)",
@@ -17809,6 +17855,136 @@
           }
         }
       },
+      "GuardrailAction": {
+        "type": "string",
+        "description": "Effective action of a hit after applying the config mode.",
+        "enum": [
+          "block",
+          "log"
+        ],
+        "example": "block"
+      },
+      "GuardrailStage": {
+        "type": "string",
+        "description": "Pipeline stage a check applies to.",
+        "enum": [
+          "output",
+          "tool_use",
+          "tool_output"
+        ],
+        "example": "output"
+      },
+      "GuardrailsDryRunHit": {
+        "type": "object",
+        "description": "One triggered check from a guardrails dry run.",
+        "required": [
+          "check_index",
+          "check_id",
+          "stage",
+          "rule_type",
+          "action",
+          "reason_code"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/GuardrailAction",
+            "description": "Effective action (advisory mode downgrades block to log)."
+          },
+          "check_id": {
+            "type": "string",
+            "description": "The check's `id`, or `\"<type>#<index>\"` when none was set.",
+            "example": "profanity"
+          },
+          "check_index": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Index of the check in the config's `checks` array.",
+            "minimum": 0
+          },
+          "matched": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Bounded excerpt of what matched.",
+            "example": "darn"
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Stable machine-readable code, `guardrail.<rule_type>`.",
+            "example": "guardrail.blocklist"
+          },
+          "replacement": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The check's custom replacement text, if configured."
+          },
+          "rule_type": {
+            "type": "string",
+            "description": "Rule type: regex, blocklist, or tool_pattern.",
+            "example": "blocklist"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/GuardrailStage",
+            "description": "Stage the check ran in."
+          }
+        }
+      },
+      "GuardrailsDryRunRequest": {
+        "type": "object",
+        "description": "Request body for the `dry_run_guardrails` operation: evaluate a\nguardrails capability config against sample content without a session.",
+        "required": [
+          "config",
+          "stage",
+          "text"
+        ],
+        "properties": {
+          "config": {
+            "type": "object",
+            "description": "The `guardrails` capability config to evaluate (same shape persisted\nin `AgentCapabilityConfig.config`)."
+          },
+          "stage": {
+            "$ref": "#/components/schemas/GuardrailStage",
+            "description": "Pipeline stage to evaluate."
+          },
+          "text": {
+            "type": "string",
+            "description": "Sample content: model output, serialized tool arguments, or tool\noutput, depending on `stage`.",
+            "example": "the model said something darn surprising"
+          },
+          "tool_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool name for `tool_use` stage checks (`tool_pattern` rules).",
+            "example": "bashkit_exec"
+          }
+        }
+      },
+      "GuardrailsDryRunResponse": {
+        "type": "object",
+        "description": "Response for the `dry_run_guardrails` operation.",
+        "required": [
+          "hits",
+          "blocked"
+        ],
+        "properties": {
+          "blocked": {
+            "type": "boolean",
+            "description": "Whether any hit would block (i.e. the content would be suppressed\nor the tool call refused when this config runs active)."
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GuardrailsDryRunHit"
+            },
+            "description": "All triggered checks, in config order."
+          }
+        }
+      },
       "Harness": {
         "type": "object",
         "description": "Harness configuration for sessions.\nA harness defines the base behavior and capabilities that apply to all sessions.",
@@ -19139,6 +19315,11 @@
                   "type": "string",
                   "description": "Unique capability identifier",
                   "example": "session_file_system"
+                },
+                "is_guardrail": {
+                  "type": "boolean",
+                  "description": "Whether this capability is a guardrail (constrains agent behavior\nrather than granting abilities). Used for UI grouping and filtering.",
+                  "example": false
                 },
                 "is_mcp": {
                   "type": "boolean",
@@ -24269,6 +24450,11 @@
                       "type": "string",
                       "description": "Unique capability identifier",
                       "example": "session_file_system"
+                    },
+                    "is_guardrail": {
+                      "type": "boolean",
+                      "description": "Whether this capability is a guardrail (constrains agent behavior\nrather than granting abilities). Used for UI grouping and filtering.",
+                      "example": false
                     },
                     "is_mcp": {
                       "type": "boolean",
@@ -31862,6 +32048,11 @@
                 "type": "string",
                 "description": "Unique capability identifier",
                 "example": "session_file_system"
+              },
+              "is_guardrail": {
+                "type": "boolean",
+                "description": "Whether this capability is a guardrail (constrains agent behavior\nrather than granting abilities). Used for UI grouping and filtering.",
+                "example": false
               },
               "is_mcp": {
                 "type": "boolean",

@@ -32,6 +32,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/tool-output-distillation.md` - Content-aware distillation of large non-exec tool results at capture time
 - `specs/capabilities.md` - Agent capabilities system
+- `specs/guardrails.md` - Guardrails (capability-based output/tool-call checks)
 - `specs/background-execution.md` - `background_execution` capability and cross-cutting / auto-activation contract
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
