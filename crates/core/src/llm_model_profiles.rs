@@ -14,6 +14,7 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
+use crate::llm_driver_registry::ServiceKind;
 use crate::llm_models::{
     CostTier, LlmModelCost, LlmModelLimits, LlmModelModalities, LlmModelProfile, LlmProviderType,
     Modality, ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
@@ -176,6 +177,9 @@ struct ModelDescriptor {
     vendor: ModelVendor,
     /// Provider types (API surfaces) this model is offered under.
     surfaces: &'static [LlmProviderType],
+    /// Which provider service this model belongs to (specs/providers.md).
+    /// Pickers filter on it: chat pickers never list realtime models.
+    service: ServiceKind,
 }
 
 const fn md(
@@ -187,6 +191,21 @@ const fn md(
         ids,
         vendor,
         surfaces,
+        service: ServiceKind::Chat,
+    }
+}
+
+const fn md_service(
+    ids: &'static [&'static str],
+    vendor: ModelVendor,
+    surfaces: &'static [LlmProviderType],
+    service: ServiceKind,
+) -> ModelDescriptor {
+    ModelDescriptor {
+        ids,
+        vendor,
+        surfaces,
+        service,
     }
 }
 
@@ -211,7 +230,12 @@ const LLMSIM: &[LlmProviderType] = &[LlmProviderType::LlmSim];
 
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
-    md(&["gpt-realtime-2"], ModelVendor::OpenAi, OPENAI),
+    md_service(
+        &["gpt-realtime-2"],
+        ModelVendor::OpenAi,
+        OPENAI,
+        ServiceKind::Realtime,
+    ),
     md(&["gpt-4o"], ModelVendor::OpenAi, OPENAI),
     md(&["gpt-4o-mini"], ModelVendor::OpenAi, OPENAI),
     md(&["o1"], ModelVendor::OpenAi, OPENAI),
@@ -411,6 +435,39 @@ pub fn estimate_cost_usd(
 /// (or not offered under the given provider type).
 pub fn get_model_vendor(provider_type: &LlmProviderType, model_id: &str) -> Option<ModelVendor> {
     resolve_descriptor(provider_type, model_id).map(|descriptor| descriptor.vendor)
+}
+
+/// Stable public profile key: `"{vendor}/{canonical_id}"` (specs/providers.md).
+///
+/// The key identifies the model's identity independent of which provider
+/// serves it: `("anthropic", "claude-sonnet-4-5-20250929")` and a gateway
+/// alias of the same model both map to `"anthropic/claude-sonnet-4-5"`.
+pub fn get_model_profile_key(provider_type: &LlmProviderType, model_id: &str) -> Option<String> {
+    resolve_descriptor(provider_type, model_id)
+        .map(|descriptor| format!("{}/{}", descriptor.vendor.slug(), descriptor.ids[0]))
+}
+
+/// Look up a profile by its stable key (`"{vendor}/{canonical_id}"`).
+///
+/// Key lookup is provider-independent, so the returned profile is the base
+/// payload without provider-surface masking (`supports_phases`/`tool_search`
+/// stay as authored). Use [`get_model_profile`] when resolving for a concrete
+/// provider.
+pub fn get_model_profile_by_key(key: &str) -> Option<LlmModelProfile> {
+    let (vendor_slug, canonical) = key.split_once('/')?;
+    let descriptor = REGISTRY.iter().find(|descriptor| {
+        descriptor.vendor.slug().eq_ignore_ascii_case(vendor_slug)
+            && descriptor.ids[0].eq_ignore_ascii_case(canonical)
+    })?;
+    profile_data(descriptor.ids[0])
+}
+
+/// Which provider service a model belongs to. Unknown models default to
+/// [`ServiceKind::Chat`].
+pub fn get_model_service_kind(provider_type: &LlmProviderType, model_id: &str) -> ServiceKind {
+    resolve_descriptor(provider_type, model_id)
+        .map(|descriptor| descriptor.service)
+        .unwrap_or(ServiceKind::Chat)
 }
 
 /// Profile payload keyed by canonical model id. Pure value store: provider
@@ -3037,6 +3094,52 @@ mod tests {
         resolve_descriptor(&LlmProviderType::Gemini, id)
             .map(|d| d.ids[0])
             .unwrap_or("")
+    }
+
+    #[test]
+    fn test_profile_keys_and_service_kinds() {
+        // Canonical key from a dated wire id (version-suffix normalization).
+        assert_eq!(
+            get_model_profile_key(&LlmProviderType::Anthropic, "claude-sonnet-4-5-20250929")
+                .as_deref(),
+            Some("anthropic/claude-sonnet-4-5")
+        );
+        // Gateway alias and bare id share one key (same model identity).
+        assert_eq!(
+            get_model_profile_key(
+                &LlmProviderType::Openrouter,
+                "nvidia/nemotron-3-super-120b-a12b"
+            ),
+            get_model_profile_key(&LlmProviderType::Openai, "nemotron-3-super-120b-a12b"),
+        );
+        // Unknown models have no key.
+        assert_eq!(
+            get_model_profile_key(&LlmProviderType::Openai, "not-a-model"),
+            None
+        );
+
+        // By-key lookup round-trips.
+        let profile = get_model_profile_by_key("openai/gpt-5.5").unwrap();
+        assert_eq!(profile.name, "GPT-5.5");
+        // Both key segments are matched ASCII case-insensitively.
+        assert!(get_model_profile_by_key("OpenAI/GPT-5.5").is_some());
+        assert!(get_model_profile_by_key("openai/not-a-model").is_none());
+        assert!(get_model_profile_by_key("no-slash").is_none());
+
+        // Service kinds: realtime models are not chat models.
+        assert_eq!(
+            get_model_service_kind(&LlmProviderType::Openai, "gpt-realtime-2"),
+            ServiceKind::Realtime
+        );
+        assert_eq!(
+            get_model_service_kind(&LlmProviderType::Openai, "gpt-5.5"),
+            ServiceKind::Chat
+        );
+        // Unknown models default to chat.
+        assert_eq!(
+            get_model_service_kind(&LlmProviderType::Openai, "not-a-model"),
+            ServiceKind::Chat
+        );
     }
 
     #[test]

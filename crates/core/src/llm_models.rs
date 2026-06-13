@@ -417,6 +417,26 @@ pub enum ModelVendor {
     LlmSim,
 }
 
+impl ModelVendor {
+    /// Stable lowercase slug, the first segment of a model-profile key
+    /// (`"{vendor}/{canonical_id}"`, see specs/providers.md). Matches the
+    /// serde `lowercase` representation.
+    pub fn slug(&self) -> &'static str {
+        match self {
+            ModelVendor::OpenAi => "openai",
+            ModelVendor::Anthropic => "anthropic",
+            ModelVendor::Google => "google",
+            ModelVendor::Nvidia => "nvidia",
+            ModelVendor::Qwen => "qwen",
+            ModelVendor::Microsoft => "microsoft",
+            ModelVendor::MiniMax => "minimax",
+            ModelVendor::Moonshot => "moonshot",
+            ModelVendor::XAi => "xai",
+            ModelVendor::LlmSim => "llmsim",
+        }
+    }
+}
+
 /// LLM Model Profile describing model capabilities
 /// Based on models.dev structure (<https://models.dev/api.json>)
 ///
