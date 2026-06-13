@@ -628,15 +628,17 @@ mod tests {
         }
 
         // Read all .sql files
-        let entries = fs::read_dir(&migrations_dir).expect("Failed to read migrations directory");
+        let mut paths: Vec<_> = fs::read_dir(&migrations_dir)
+            .expect("Failed to read migrations directory")
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|ext| ext == "sql"))
+            .collect();
+        paths.sort();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "sql") {
-                let content = fs::read_to_string(&path).expect("Failed to read migration file");
-                // Parse CREATE TABLE statements
-                parse_encrypted_columns(&content, &mut found);
-            }
+        for path in paths {
+            let content = fs::read_to_string(&path).expect("Failed to read migration file");
+            parse_encrypted_columns(&content, &mut found);
         }
 
         found
@@ -681,6 +683,30 @@ mod tests {
                     let col_name = parts[col_idx].trim_end_matches(';');
                     if col_name.ends_with("_encrypted") {
                         found.remove(&(parts[2].to_string(), col_name.to_string()));
+                    }
+                }
+            }
+
+            // Detect ALTER TABLE <old> RENAME TO <new>
+            // When a table is renamed, move all tracked encrypted columns to the new name.
+            if trimmed.starts_with("alter table")
+                && trimmed.contains("rename to")
+                && !trimmed.contains("rename constraint")
+                && !trimmed.contains("rename column")
+            {
+                let parts: Vec<&str> = trimmed.split_whitespace().collect();
+                // ["alter", "table", "<old>", "rename", "to", "<new>"]
+                if parts.len() >= 6 && parts[3] == "rename" && parts[4] == "to" {
+                    let old_name = parts[2].to_string();
+                    let new_name = parts[5].trim_end_matches(';').to_string();
+                    let old_entries: Vec<_> = found
+                        .iter()
+                        .filter(|(t, _)| *t == old_name)
+                        .cloned()
+                        .collect();
+                    for (_, col) in old_entries {
+                        found.remove(&(old_name.clone(), col.clone()));
+                        found.insert((new_name.clone(), col));
                     }
                 }
             }
