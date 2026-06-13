@@ -1315,8 +1315,10 @@ pub struct DriverDescriptor {
 }
 
 impl DriverDescriptor {
-    /// Descriptor for a chat-only driver with the standard API-key credential
-    /// schema and a display name derived from the driver id.
+    /// Descriptor for a chat-only driver with the default credential schema
+    /// for the driver id (a single required `api_key` field for real
+    /// providers; empty for `LlmSim` and `External`, which may authenticate
+    /// via [`ProviderMetadata`]) and a display name derived from the id.
     pub fn chat_only<F>(id: impl Into<ProviderType>, factory: F) -> Self
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,

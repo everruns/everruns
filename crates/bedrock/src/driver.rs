@@ -97,9 +97,11 @@ pub fn register_driver(registry: &mut DriverRegistry) {
                     name: "region".to_string(),
                     label: "Region".to_string(),
                     field_type: FieldType::Text,
-                    required: true,
+                    // Optional to match BedrockCredential::from_api_key, which
+                    // defaults the region to us-east-1 when omitted.
+                    required: false,
                     placeholder: Some("us-east-1".to_string()),
-                    help_text: None,
+                    help_text: Some("Defaults to us-east-1.".to_string()),
                 },
                 FormField {
                     name: "session_token".to_string(),
@@ -663,14 +665,15 @@ mod tests {
                 "session_token"
             ]
         );
-        // Session token is the only optional field.
-        assert!(
-            descriptor
-                .credential_schema
-                .fields
-                .iter()
-                .all(|f| f.required != (f.name == "session_token"))
-        );
+        // Region (defaulted to us-east-1 at parse time) and session token are
+        // optional; the key pair is required.
+        let required: Vec<bool> = descriptor
+            .credential_schema
+            .fields
+            .iter()
+            .map(|f| f.required)
+            .collect();
+        assert_eq!(required, [true, true, false, false]);
     }
 
     use super::*;
