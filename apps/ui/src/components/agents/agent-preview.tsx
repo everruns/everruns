@@ -9,11 +9,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { InitialFilesPreview } from "@/components/files/initial-files-preview";
 import type {
   AgentCapabilityConfig,
+  AgentFinding,
   AgentPreviewResponse,
+  FindingSeverity,
   InitialFile,
   ToolDefinition,
 } from "@/lib/api/types";
-import { Wrench, FileText, AlertCircle } from "lucide-react";
+import { Wrench, FileText, AlertCircle, ShieldCheck } from "lucide-react";
 
 interface AgentPreviewProps {
   systemPrompt: string;
@@ -96,6 +98,8 @@ export function AgentPreview({
 
   return (
     <div className="space-y-6">
+      <FindingsCard findings={preview.findings ?? []} />
+
       {/* System Prompt Preview */}
       <Card>
         <CardHeader>
@@ -143,6 +147,50 @@ export function AgentPreview({
 
       <InitialFilesPreview files={initialFiles} />
     </div>
+  );
+}
+
+const SEVERITY_STYLES: Record<FindingSeverity, string> = {
+  warning: "border-amber-500/50 text-amber-600 dark:text-amber-400",
+  info: "border-sky-500/50 text-sky-600 dark:text-sky-400",
+  suggestion: "border-muted-foreground/50 text-muted-foreground",
+};
+
+function FindingsCard({ findings }: { findings: AgentFinding[] }) {
+  if (findings.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <ShieldCheck className="w-5 h-5" />
+          Checks
+          <Badge variant="secondary" className="ml-2">
+            {findings.length}
+          </Badge>
+        </CardTitle>
+        <CardDescription>
+          Advisory findings about this configuration. They never block saving.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ul className="space-y-3">
+          {findings.map((finding, index) => (
+            <li key={`${finding.rule_id}-${index}`} className="flex items-start gap-3">
+              <Badge variant="outline" className={`text-xs ${SEVERITY_STYLES[finding.severity]}`}>
+                {finding.severity}
+              </Badge>
+              <div className="space-y-0.5">
+                <p className="text-sm">{finding.message}</p>
+                <p className="text-xs text-muted-foreground font-mono">{finding.rule_id}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 

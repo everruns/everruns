@@ -163,12 +163,40 @@ export interface PreviewAgentRequest {
   tools?: ToolDefinition[];
 }
 
+export type FindingSeverity = "warning" | "info" | "suggestion";
+
+export type FindingCategory = "structure" | "completeness" | "effectiveness" | "safety" | "cost";
+
+export type FindingSource = "builtin" | "llm" | "health_check";
+
+/** Pointer to the config field (and optional byte span) a finding refers to */
+export interface FindingLocation {
+  field: string;
+  start?: number;
+  end?: number;
+}
+
+/** Advisory finding from agent config checks (specs/agent-checks.md) */
+export interface AgentFinding {
+  /** Stable rule identifier, e.g. "prompt.duplicate_paragraphs" */
+  rule_id: string;
+  severity: FindingSeverity;
+  category: FindingCategory;
+  message: string;
+  location?: FindingLocation;
+  /** Proposed replacement text (phase 2+) */
+  fix?: string;
+  source: FindingSource;
+}
+
 /** Response showing the final agent shape after applying capabilities */
 export interface AgentPreviewResponse {
   /** The full system prompt with capability additions prepended */
   system_prompt: string;
   /** All tool definitions from capabilities */
   tools: ToolDefinition[];
+  /** Advisory findings from built-in checks (absent on harness preview) */
+  findings?: AgentFinding[];
 }
 
 // ============================================

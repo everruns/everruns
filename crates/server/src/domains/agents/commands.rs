@@ -1506,6 +1506,8 @@ pub struct PreviewAgent {
 pub struct AgentPreview {
     pub system_prompt: String,
     pub tools: Vec<ToolDefinition>,
+    /// Advisory tier-1 findings about the previewed config (specs/agent-checks.md).
+    pub findings: Vec<super::checks::Finding>,
 }
 
 impl Command for PreviewAgent {
@@ -1532,13 +1534,10 @@ impl Command for PreviewAgent {
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
         crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;
+        let authored_prompt = self.system_prompt.unwrap_or_default();
         let (prompt, mut tools) = ctx
             .capability_service
-            .preview(
-                ctx.org_id(),
-                &self.system_prompt.unwrap_or_default(),
-                &self.capabilities,
-            )
+            .preview(ctx.org_id(), &authored_prompt, &self.capabilities)
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
@@ -1552,9 +1551,16 @@ impl Command for PreviewAgent {
             .map_err(classify_anyhow)?,
         );
         tools.extend(self.tools);
+        let findings = super::checks::run_builtin_checks(
+            &authored_prompt,
+            &prompt,
+            &self.capabilities,
+            &tools,
+        );
         Ok(AgentPreview {
             system_prompt: prompt,
             tools,
+            findings,
         })
     }
 }

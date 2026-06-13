@@ -1306,6 +1306,7 @@ pub async fn preview_agent(
     Ok(Json(AgentPreviewResponse {
         system_prompt: result.system_prompt,
         tools: result.tools,
+        findings: result.findings,
     }))
 }
 
