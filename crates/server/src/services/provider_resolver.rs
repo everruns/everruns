@@ -17,7 +17,7 @@
 
 use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
-use everruns_core::{DriverId, DriverRegistry, ServiceKind};
+use everruns_core::{DriverId, DriverRegistry, ProviderId, ServiceKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -292,9 +292,12 @@ impl ProviderResolverService {
         // Tier 1: an explicit provider binding wins, but only if its driver
         // actually declares the requested service.
         if let Some(binding) = binding {
+            let binding_id: ProviderId = binding
+                .parse()
+                .map_err(|_| anyhow::anyhow!("malformed provider binding: {binding}"))?;
             let provider = providers
                 .iter()
-                .find(|provider| provider.id.to_string() == binding)
+                .find(|provider| provider.id == binding_id)
                 .ok_or_else(|| anyhow::anyhow!("provider {binding} not found for org"))?;
             if !self.driver_supports(&provider.provider_type, service) {
                 return Err(anyhow::anyhow!(
@@ -341,12 +344,16 @@ impl ProviderResolverService {
     }
 
     /// Whether the driver behind a provider-type string declares `service`.
-    /// Unknown type strings parse to [`DriverId::External`], which declares no
-    /// services, so they correctly never match.
+    ///
+    /// The registry is the source of truth: a type string maps to a [`DriverId`]
+    /// ([`DriverId::from_str`] is infallible — unknown strings become
+    /// [`DriverId::External`]), and `supports` returns `true` only when that id
+    /// is registered *and* its descriptor declares the service. An unregistered
+    /// id (external or otherwise) therefore never matches.
     fn driver_supports(&self, provider_type: &str, service: ServiceKind) -> bool {
         let driver_id: DriverId = provider_type
             .parse()
-            .unwrap_or_else(|_| DriverId::external(provider_type.to_string()));
+            .expect("DriverId::from_str is infallible");
         self.driver_registry.supports(&driver_id, service)
     }
 

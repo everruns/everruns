@@ -135,7 +135,7 @@ Consumers and their paths:
 | Consumer | Path |
 |---|---|
 | Agent chat turns | Model-bound resolution (above) |
-| Voice realtime | `resolve_service(org, Realtime, voice_connection.provider_id)` |
+| Voice realtime | `resolve_service(org, Realtime, None)` today (single realtime-capable provider); passes `voice_connection.provider_id` once per-connection provider selection is plumbed |
 | Knowledge-base embeddings (future) | `resolve_service` with an embedding model selection |
 | Model sync | Per-provider, via the driver's `list_models` with the provider's connection |
 | Utility LLM | **Not a provider consumer.** Stays system-owned and env-configured by design (`specs/utility-llm.md`) |
