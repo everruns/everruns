@@ -63,19 +63,19 @@ fn map_move_or_copy_error(error: anyhow::Error) -> CommandError {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct ListSessionFiles {
+pub struct ListWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(default)]
     pub recursive: bool,
 }
 
-impl Command for ListSessionFiles {
+impl Command for ListWorkspaceFiles {
     type Output = GetResponse;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "list_session_files",
+            name: "list_workspace_files",
             category: "files",
             description: "Get the root directory listing of session files.",
             method: "GET",
@@ -110,10 +110,10 @@ impl Command for ListSessionFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<ListSessionFiles>() }
+inventory::submit! { CommandDescriptor::of::<ListWorkspaceFiles>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct GetSessionFile {
+pub struct GetWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
@@ -121,12 +121,12 @@ pub struct GetSessionFile {
     pub recursive: bool,
 }
 
-impl Command for GetSessionFile {
+impl Command for GetWorkspaceFile {
     type Output = GetResponse;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "get_session_file",
+            name: "get_workspace_file",
             category: "files",
             description: "Get a file or directory at a path in the session filesystem.",
             method: "GET",
@@ -176,10 +176,10 @@ impl Command for GetSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GetSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<GetWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateSessionFile {
+pub struct CreateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
@@ -187,12 +187,12 @@ pub struct CreateSessionFile {
     pub req: CreateFileRequest,
 }
 
-impl Command for CreateSessionFile {
+impl Command for CreateWorkspaceFile {
     type Output = SessionFile;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "create_session_file",
+            name: "create_workspace_file",
             category: "files",
             description: "Create a file or directory in the session filesystem.",
             method: "POST",
@@ -269,10 +269,10 @@ impl Command for CreateSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CreateSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<CreateWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateSessionFile {
+pub struct UpdateWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
@@ -280,12 +280,12 @@ pub struct UpdateSessionFile {
     pub req: UpdateFileRequest,
 }
 
-impl Command for UpdateSessionFile {
+impl Command for UpdateWorkspaceFile {
     type Output = SessionFile;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "update_session_file",
+            name: "update_workspace_file",
             category: "files",
             description: "Update a file in the session filesystem.",
             method: "PUT",
@@ -341,10 +341,10 @@ impl Command for UpdateSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<UpdateSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<UpdateWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct DeleteSessionFile {
+pub struct DeleteWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
@@ -352,12 +352,12 @@ pub struct DeleteSessionFile {
     pub recursive: bool,
 }
 
-impl Command for DeleteSessionFile {
+impl Command for DeleteWorkspaceFile {
     type Output = DeleteResponse;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "delete_session_file",
+            name: "delete_workspace_file",
             category: "files",
             description: "Delete a file or directory in the session filesystem.",
             method: "DELETE",
@@ -381,22 +381,22 @@ impl Command for DeleteSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<DeleteSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<DeleteWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct MoveSessionFile {
+pub struct MoveWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: MoveFileRequest,
 }
 
-impl Command for MoveSessionFile {
+impl Command for MoveWorkspaceFile {
     type Output = SessionFile;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "move_session_file",
+            name: "move_workspace_file",
             category: "files",
             description: "Move or rename a file in the session filesystem.",
             method: "POST",
@@ -425,22 +425,22 @@ impl Command for MoveSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<MoveSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<MoveWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CopySessionFile {
+pub struct CopyWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: CopyFileRequest,
 }
 
-impl Command for CopySessionFile {
+impl Command for CopyWorkspaceFile {
     type Output = SessionFile;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "copy_session_file",
+            name: "copy_workspace_file",
             category: "files",
             description: "Copy a file in the session filesystem.",
             method: "POST",
@@ -469,22 +469,22 @@ impl Command for CopySessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<CopySessionFile>() }
+inventory::submit! { CommandDescriptor::of::<CopyWorkspaceFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct GrepSessionFiles {
+pub struct GrepWorkspaceFiles {
     /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: GrepRequest,
 }
 
-impl Command for GrepSessionFiles {
+impl Command for GrepWorkspaceFiles {
     type Output = Vec<GrepResult>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "grep_session_files",
+            name: "grep_workspace_files",
             category: "files",
             description: "Search files in the session filesystem.",
             method: "POST",
@@ -523,22 +523,22 @@ impl Command for GrepSessionFiles {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<GrepSessionFiles>() }
+inventory::submit! { CommandDescriptor::of::<GrepWorkspaceFiles>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct StatSessionFile {
+pub struct StatWorkspaceFile {
     /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: StatRequest,
 }
 
-impl Command for StatSessionFile {
+impl Command for StatWorkspaceFile {
     type Output = FileStat;
 
     fn meta() -> CommandMeta {
         CommandMeta {
-            name: "stat_session_file",
+            name: "stat_workspace_file",
             category: "files",
             description: "Get file metadata in the session filesystem.",
             method: "POST",
@@ -566,4 +566,4 @@ impl Command for StatSessionFile {
     }
 }
 
-inventory::submit! { CommandDescriptor::of::<StatSessionFile>() }
+inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }

@@ -433,8 +433,8 @@ const ALLOWED_PUBLIC: &[&str] = &[
 /// POST-style helpers intentionally available through MCP `query`.
 /// They do not persist state and each still declares a view policy.
 const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
-    "grep_session_files",
+    "grep_workspace_files",
     "preview_agent",
     "preview_harness",
-    "stat_session_file",
+    "stat_workspace_file",
 ];

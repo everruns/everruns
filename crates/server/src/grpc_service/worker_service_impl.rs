@@ -858,7 +858,7 @@ impl WorkerService for WorkerServiceImpl {
     }
 
     // ========================================================================
-    // Session file operations (via SessionFileService)
+    // Session file operations (via WorkspaceFileService)
     // ========================================================================
 
     async fn session_read_file(
@@ -868,7 +868,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Read file via SessionFileService
+        // Read file via WorkspaceFileService
         let file = self
             .session_file_service
             .read_file(session_id, &req.path)
@@ -1023,7 +1023,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Delete via SessionFileService
+        // Delete via WorkspaceFileService
         let deleted = self
             .session_file_service
             .delete(session_id, &req.path, req.recursive)
@@ -1043,7 +1043,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // List directory via SessionFileService
+        // List directory via WorkspaceFileService
         let files = self
             .session_file_service
             .list_directory(session_id, &req.path)
@@ -1088,7 +1088,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Get file stat via SessionFileService
+        // Get file stat via WorkspaceFileService
         let stat = self
             .session_file_service
             .stat(session_id, &req.path)
@@ -1120,7 +1120,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Grep via SessionFileService
+        // Grep via WorkspaceFileService
         let grep_input = GrepInput {
             pattern: req.pattern.clone(),
             path_pattern: req.path_pattern.clone(),
@@ -1163,7 +1163,7 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Create directory via SessionFileService
+        // Create directory via WorkspaceFileService
         let create = CreateDirectoryInput {
             path: req.path.clone(),
         };

@@ -222,8 +222,11 @@ use utoipa::OpenApi;
         api::workspace_files::create_path,
         api::workspace_files::update_path,
         api::workspace_files::delete_path,
+        api::workspace_files::move_file,
+        api::workspace_files::copy_file,
         api::workspace_files::stat_file,
         api::workspace_files::grep_files,
+        api::workspace_files::download_path,
         // Memory
         api::memory::create_memory,
         api::memory::list_memories,
@@ -438,6 +441,8 @@ use utoipa::OpenApi;
             // Workspace virtual filesystem (reuses session_files request/response types).
             api::session_files::CreateFileRequest,
             api::session_files::UpdateFileRequest,
+            api::session_files::MoveFileRequest,
+            api::session_files::CopyFileRequest,
             api::session_files::GrepRequest,
             api::session_files::StatRequest,
             api::session_files::GetQuery,

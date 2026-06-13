@@ -356,7 +356,7 @@ Code references:
 | TM-FS-005 | Readonly file modification or deletion | Medium | `is_readonly` flag enforced; readonly files cannot be modified or deleted; recursive directory deletion blocked if subtree contains readonly files | MITIGATED |
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
-| TM-FS-008 | Large file storage abuse | Medium | Per-session and per-file byte quotas enforced in `SessionFileService` and `DirectWorkerAdapters`; configurable via `SESSION_FILE_MAX_BYTES` / `SESSION_FILE_SINGLE_MAX_BYTES` env vars (defaults: 500 MB/session, 100 MB/file) | MITIGATED |
+| TM-FS-008 | Large file storage abuse | Medium | Per-session and per-file byte quotas enforced in `WorkspaceFileService` and `DirectWorkerAdapters`; configurable via `SESSION_FILE_MAX_BYTES` / `SESSION_FILE_SINGLE_MAX_BYTES` env vars (defaults: 500 MB/session, 100 MB/file) | MITIGATED |
 | TM-FS-009 | CLI `initial_files` hidden-path exfiltration | High | Three-layer policy in `crates/cli/src/commands/agents.rs`: hard-deny floor (`DENIED_DOT_ENTRIES`) blocks `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, etc. unconditionally; built-in `ALLOWED_DOT_ENTRIES` permits common dev assets (`.github`, `.vscode`, `.claude`, `.mcp.json`, etc.); per-agent `initial_files_allow_hidden` manifest field extends the allowlist but cannot bypass the hard-deny floor. Skipped paths emit a stderr warning. See `specs/cli.md` (Initial Files Hidden Path Policy). | MITIGATED |
 
 ### Mitigation Details
@@ -368,7 +368,7 @@ Path validated at three layers:
 3. **Unique constraint:** `(session_id, path)` prevents collision
 
 **TM-FS-008 — Storage Quota:**
-Per-session and per-file byte quotas are enforced at the application layer in both the HTTP API path (`SessionFileService::create_file` / `update_file`) and the agent tool path (`DirectWorkerAdapters::write_file`). Limits are configurable via env:
+Per-session and per-file byte quotas are enforced at the application layer in both the HTTP API path (`WorkspaceFileService::create_file` / `update_file`) and the agent tool path (`DirectWorkerAdapters::write_file`). Limits are configurable via env:
 - `SESSION_FILE_MAX_BYTES` — total bytes per session (default 500 MB)
 - `SESSION_FILE_SINGLE_MAX_BYTES` — per-file ceiling (default 100 MB)
 
@@ -1366,7 +1366,7 @@ The capability that agents execute is the compiled `definition` JSONB persisted 
 | ~~TM-DOS-008~~ | ~~ReDoS via file grep endpoint~~ | ~~Medium~~ | Mitigated: pattern length capped at 1 000 chars; NFA compiled size capped at 512 KB via `RegexBuilder::size_limit`; per-file scan skipped above 512 KB; total scan aborted above 5 MB per request (`grep_session_files`, `service.rs`) |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
-| ~~TM-FS-008~~ | ~~No session storage quota~~ | ~~Medium~~ | Mitigated: per-session (500 MB) and per-file (100 MB) byte quotas enforced in `SessionFileService` and `DirectWorkerAdapters`; env-configurable (EVE-510) |
+| ~~TM-FS-008~~ | ~~No session storage quota~~ | ~~Medium~~ | Mitigated: per-session (500 MB) and per-file (100 MB) byte quotas enforced in `WorkspaceFileService` and `DirectWorkerAdapters`; env-configurable (EVE-510) |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | ~~TM-TOOL-009~~ | ~~No tool rate limiting~~ | ~~Medium~~ | Mitigated: per-org 1000 RPM via `OutboundToolRateLimiter` in `ActAtom` (EVE-514) |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |

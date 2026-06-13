@@ -265,7 +265,7 @@ The runtime forwards the resolved filesystem into every `ToolContext` and
 automatically.
 
 Server HTTP/API session-file management is a control-plane surface and remains
-wired through `SessionFileService`. The platform factory selects the filesystem
+wired through `WorkspaceFileService`. The platform factory selects the filesystem
 used by runtime/tool execution, not a replacement for those management
 endpoints.
 

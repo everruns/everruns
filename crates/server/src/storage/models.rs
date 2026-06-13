@@ -556,6 +556,11 @@ pub struct CreateHarnessCapabilityRow {
 pub struct SessionRow {
     pub id: SessionId,
     pub org_id: i64,
+    /// Workspace this session is attached to (owns the virtual filesystem).
+    /// `#[sqlx(default)]` so projections that don't select it (e.g. stats) still
+    /// decode; all session-detail/list queries select it explicitly.
+    #[sqlx(default)]
+    pub workspace_id: Uuid,
     #[sqlx(default)]
     pub app_id: Option<Uuid>,
     #[sqlx(default)]

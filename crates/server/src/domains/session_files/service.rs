@@ -84,21 +84,21 @@ impl SessionFileSystemFactory for StorageSessionFileSystemFactory {
             match context
                 .get::<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>(
                 ) {
-                Some(registry) => SessionFileService::new(db).with_virtual_registry(registry),
-                None => SessionFileService::new(db),
+                Some(registry) => WorkspaceFileService::new(db).with_virtual_registry(registry),
+                None => WorkspaceFileService::new(db),
             };
         Ok(Arc::new(service))
     }
 }
 
-pub struct SessionFileService {
+pub struct WorkspaceFileService {
     db: Arc<StorageBackend>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     quota: QuotaLimits,
 }
 
-impl SessionFileService {
+impl WorkspaceFileService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             db,
@@ -1101,7 +1101,7 @@ fn file_system_display_error(error: impl std::fmt::Display) -> AgentLoopError {
 }
 
 #[async_trait]
-impl SessionFileSystem for SessionFileService {
+impl SessionFileSystem for WorkspaceFileService {
     async fn seed_initial_file(
         &self,
         session_id: SessionId,
@@ -1164,7 +1164,7 @@ impl SessionFileSystem for SessionFileService {
         session_id: SessionId,
         path: &str,
     ) -> everruns_core::Result<Option<SessionFile>> {
-        SessionFileService::read_file(self, session_id.uuid(), path)
+        WorkspaceFileService::read_file(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
     }
@@ -1177,7 +1177,7 @@ impl SessionFileSystem for SessionFileService {
         encoding: &str,
     ) -> everruns_core::Result<SessionFile> {
         let session_id_uuid = session_id.uuid();
-        if SessionFileService::read_file(self, session_id_uuid, path)
+        if WorkspaceFileService::read_file(self, session_id_uuid, path)
             .await
             .map_err(file_system_error)?
             .is_some()
@@ -1264,7 +1264,7 @@ impl SessionFileSystem for SessionFileService {
         session_id: SessionId,
         path: &str,
     ) -> everruns_core::Result<Vec<FileInfo>> {
-        SessionFileService::list_directory(self, session_id.uuid(), path)
+        WorkspaceFileService::list_directory(self, session_id.uuid(), path)
             .await
             .map_err(file_system_error)
     }
@@ -1306,7 +1306,7 @@ impl SessionFileSystem for SessionFileService {
         session_id: SessionId,
         path: &str,
     ) -> everruns_core::Result<FileInfo> {
-        SessionFileService::create_directory(
+        WorkspaceFileService::create_directory(
             self,
             session_id.uuid(),
             CreateDirectoryInput {
@@ -1342,7 +1342,7 @@ fn build_grep_regex(pattern: &str) -> Result<Regex> {
 
 /// Search session files using grep-like regex pattern matching.
 ///
-/// Shared logic used by both `SessionFileService::grep` and
+/// Shared logic used by both `WorkspaceFileService::grep` and
 /// `DirectWorkerAdapters::grep_files`. Enforces TM-DOS-008 bounds.
 pub async fn grep_session_files(
     db: &StorageBackend,
@@ -1534,7 +1534,7 @@ mod tests {
     async fn create_duplicate_file_returns_already_exists_error() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db.clone()));
+        let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         let input = CreateFileInput {
             path: "/test.txt".to_string(),
@@ -1644,7 +1644,7 @@ mod tests {
     async fn update_file_if_content_matches_updates_when_snapshot_matches() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db.clone()));
+        let svc = WorkspaceFileService::new(Arc::new(db.clone()));
         seed_file(&db, sid, "/notes.txt", "hello").await;
 
         let updated = svc
@@ -1660,7 +1660,7 @@ mod tests {
     async fn update_file_if_content_matches_rejects_stale_snapshot() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db.clone()));
+        let svc = WorkspaceFileService::new(Arc::new(db.clone()));
         seed_file(&db, sid, "/notes.txt", "hello").await;
 
         let updated = svc
@@ -1676,10 +1676,10 @@ mod tests {
     use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
     use everruns_core::capability_types::VirtualFileTree;
 
-    fn make_virtual_svc() -> (SessionFileService, Arc<VirtualMountRegistry>, Uuid) {
+    fn make_virtual_svc() -> (WorkspaceFileService, Arc<VirtualMountRegistry>, Uuid) {
         let db = StorageBackend::in_memory();
         let registry = Arc::new(VirtualMountRegistry::new());
-        let svc = SessionFileService::new(Arc::new(db)).with_virtual_registry(registry.clone());
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_virtual_registry(registry.clone());
         let sid = Uuid::new_v4();
         (svc, registry, sid)
     }
@@ -1901,7 +1901,7 @@ mod tests {
     async fn create_file_under_readonly_directory_rejected() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db.clone()));
+        let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
             sid,
@@ -1941,7 +1941,7 @@ mod tests {
     async fn create_directory_under_readonly_directory_rejected() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db.clone()));
+        let svc = WorkspaceFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
             sid,
@@ -1980,7 +1980,7 @@ mod tests {
     async fn create_file_enforces_per_file_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
         });
@@ -2007,7 +2007,7 @@ mod tests {
     async fn create_file_enforces_session_total_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,
         });
@@ -2048,7 +2048,7 @@ mod tests {
     async fn update_file_enforces_per_file_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
         });
@@ -2087,7 +2087,7 @@ mod tests {
     async fn copy_file_enforces_session_total_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,
         });
@@ -2124,7 +2124,7 @@ mod tests {
     async fn update_file_if_content_matches_enforces_per_file_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 10,
             per_session_bytes: 500 * 1024 * 1024,
         });
@@ -2155,7 +2155,7 @@ mod tests {
     async fn update_file_if_content_matches_enforces_session_total_limit() {
         let db = StorageBackend::in_memory();
         let sid = Uuid::new_v4();
-        let svc = SessionFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
+        let svc = WorkspaceFileService::new(Arc::new(db)).with_quota_limits(QuotaLimits {
             per_file_bytes: 15,
             per_session_bytes: 20,
         });

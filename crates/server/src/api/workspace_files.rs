@@ -3,7 +3,7 @@
 // Mounted on /v1/workspaces/{workspace_id}/fs/*. The migration that renamed
 // `session_files` to `workspace_files` (054) and the equality invariant
 // `workspace.id == session.id` for default 1:1 sessions mean
-// SessionFileService is already keyed by workspace UUID — these handlers just
+// WorkspaceFileService is already keyed by workspace UUID — these handlers just
 // resolve the public `wsp_<32-hex>` ID to that UUID and delegate.
 //
 // This is the canonical filesystem surface. The legacy
@@ -11,12 +11,14 @@
 // the published OpenAPI spec (see crates/server/src/openapi.rs).
 
 use crate::api::session_files::{
-    CreateFileRequest, DeleteQuery, DeleteResponse, GetQuery, GetResponse, GrepRequest,
-    StatRequest, UpdateFileRequest,
+    CopyFileRequest, CreateFileRequest, DeleteQuery, DeleteResponse, GetQuery, GetResponse,
+    GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, raw_file_response,
+    wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_files::{
-    CreateDirectoryInput, CreateFileInput, GrepInput, SessionFileService, UpdateFileInput,
+    CopyFileInput, CreateDirectoryInput, CreateFileInput, GrepInput, MoveFileInput,
+    UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::workspaces::{WORKSPACE_MANAGE, WORKSPACE_VIEW};
 use crate::storage::StorageBackend;
@@ -24,7 +26,8 @@ use crate::storage::models::WorkspaceRow;
 use axum::{
     Json, Router,
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use everruns_core::typed_id::WorkspaceId;
@@ -36,7 +39,7 @@ use super::common::{ApiPolicyResultExt, ListResponse, impl_auth_state};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub file_service: Arc<SessionFileService>,
+    pub file_service: Arc<WorkspaceFileService>,
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
 }
@@ -44,7 +47,7 @@ pub struct AppState {
 impl AppState {
     pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
         Self {
-            file_service: Arc::new(SessionFileService::new(db.clone())),
+            file_service: Arc::new(WorkspaceFileService::new(db.clone())),
             db,
             auth,
         }
@@ -55,7 +58,7 @@ impl AppState {
         registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.file_service =
-            Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+            Arc::new(WorkspaceFileService::new(self.db.clone()).with_virtual_registry(registry));
         self
     }
 }
@@ -64,8 +67,14 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/workspaces/{workspace_id}/fs/_/move", post(move_file))
+        .route("/v1/workspaces/{workspace_id}/fs/_/copy", post(copy_file))
         .route("/v1/workspaces/{workspace_id}/fs/_/grep", post(grep_files))
         .route("/v1/workspaces/{workspace_id}/fs/_/stat", post(stat_file))
+        .route(
+            "/v1/workspaces/{workspace_id}/fs/_/download/{*path}",
+            get(download_path),
+        )
         .route(
             "/v1/workspaces/{workspace_id}/fs",
             get(get_root).post(create_root).delete(delete_root),
@@ -232,7 +241,7 @@ pub async fn get_root(
     path = "/v1/workspaces/{workspace_id}/fs/{path}",
     params(
         ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
-        ("path" = String, Path, description = "File or directory path"),
+        ("path" = String, Path, description = "File or directory path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
         ("recursive" = Option<bool>, Query, description = "List recursively"),
     ),
     responses(
@@ -246,8 +255,9 @@ pub async fn get_path(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((workspace_id, path)): Path<(String, String)>,
+    headers: HeaderMap,
     Query(query): Query<GetQuery>,
-) -> Result<Json<GetResponse>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let uuid =
         resolve_for_read(&state, &org, &workspace_id, "authorize read workspace file").await?;
     let path = normalize_path(&path);
@@ -264,7 +274,7 @@ pub async fn get_path(
             state.file_service.list_directory(uuid, &path).await
         }
         .map_err(service_error)?;
-        Ok(Json(GetResponse::Listing(ListResponse::new(files))))
+        Ok(Json(GetResponse::Listing(ListResponse::new(files))).into_response())
     } else {
         let file = state
             .file_service
@@ -272,7 +282,10 @@ pub async fn get_path(
             .await
             .map_err(service_error)?
             .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
-        Ok(Json(GetResponse::File(file)))
+        if wants_raw_file(&headers) {
+            return raw_file_response(file, false);
+        }
+        Ok(Json(GetResponse::File(file)).into_response())
     }
 }
 
@@ -531,4 +544,134 @@ pub async fn grep_files(
         .await
         .map_err(service_error)?;
     Ok(Json(ListResponse::new(results)))
+}
+
+/// POST /v1/workspaces/{workspace_id}/fs/_/move - Move/rename a file or directory
+#[utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fs/_/move",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
+    ),
+    request_body = MoveFileRequest,
+    responses(
+        (status = 200, description = "Moved", body = SessionFile),
+        (status = 400, description = "Invalid request"),
+        (status = 404, description = "Source not found"),
+        (status = 409, description = "Destination exists"),
+        (status = 500, description = "Internal server error"),
+    ),
+    tag = "workspace-filesystem"
+)]
+pub async fn move_file(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(workspace_id): Path<String>,
+    Json(req): Json<MoveFileRequest>,
+) -> Result<Json<SessionFile>, (StatusCode, String)> {
+    let uuid =
+        resolve_for_write(&state, &org, &workspace_id, "authorize move workspace file").await?;
+    let file = state
+        .file_service
+        .move_file(
+            uuid,
+            MoveFileInput {
+                src_path: req.src_path,
+                dst_path: req.dst_path,
+            },
+        )
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Source not found".to_string()))?;
+    Ok(Json(file))
+}
+
+/// POST /v1/workspaces/{workspace_id}/fs/_/copy - Copy a file
+#[utoipa::path(
+    post,
+    path = "/v1/workspaces/{workspace_id}/fs/_/copy",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
+    ),
+    request_body = CopyFileRequest,
+    responses(
+        (status = 201, description = "Copied", body = SessionFile),
+        (status = 400, description = "Invalid request or cannot copy directories"),
+        (status = 404, description = "Source not found"),
+        (status = 409, description = "Destination exists"),
+        (status = 500, description = "Internal server error"),
+    ),
+    tag = "workspace-filesystem"
+)]
+pub async fn copy_file(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(workspace_id): Path<String>,
+    Json(req): Json<CopyFileRequest>,
+) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
+    let uuid =
+        resolve_for_write(&state, &org, &workspace_id, "authorize copy workspace file").await?;
+    let file = state
+        .file_service
+        .copy_file(
+            uuid,
+            CopyFileInput {
+                src_path: req.src_path,
+                dst_path: req.dst_path,
+            },
+        )
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Source not found".to_string()))?;
+    Ok((StatusCode::CREATED, Json(file)))
+}
+
+/// GET /v1/workspaces/{workspace_id}/fs/_/download/{path} - Download raw file bytes
+#[utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fs/_/download/{path}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
+        ("path" = String, Path, description = "File path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
+    ),
+    responses(
+        (status = 200, description = "Raw file bytes", content_type = "application/octet-stream"),
+        (status = 400, description = "Path points to a directory"),
+        (status = 404, description = "File not found"),
+        (status = 500, description = "Internal server error"),
+    ),
+    tag = "workspace-filesystem"
+)]
+pub async fn download_path(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((workspace_id, path)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, String)> {
+    let uuid = resolve_for_read(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize download workspace file",
+    )
+    .await?;
+    let path = normalize_path(&path);
+    let stat = state
+        .file_service
+        .stat(uuid, &path)
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
+    if stat.is_directory {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot download a directory".to_string(),
+        ));
+    }
+    let file = state
+        .file_service
+        .read_file(uuid, &path)
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
+    raw_file_response(file, true)
 }

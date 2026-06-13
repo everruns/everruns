@@ -362,6 +362,9 @@ impl TestServer {
             event_service.clone(),
             auth_state.clone(),
         );
+        let workspaces_state = api::workspaces::AppState::new(db.clone(), auth_state.clone());
+        let workspace_files_state =
+            api::workspace_files::AppState::new(db.clone(), auth_state.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
         let session_storage_state =
             api::session_storage::AppState::new(db.clone(), None, auth_state.clone());
@@ -532,6 +535,10 @@ impl TestServer {
             .merge(api::commands::routes(commands_state))
             .merge(api::session_files::routes(
                 session_files_state.with_virtual_registry(virtual_registry.clone()),
+            ))
+            .merge(api::workspaces::routes(workspaces_state))
+            .merge(api::workspace_files::routes(
+                workspace_files_state.with_virtual_registry(virtual_registry.clone()),
             ))
             .merge(api::session_git::routes(session_git_state))
             .merge(api::session_storage::routes(session_storage_state))

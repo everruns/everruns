@@ -167,6 +167,7 @@ async fn main() -> anyhow::Result<()> {
     // Create a session in the store
     let session = Session {
         id: session_id.into(),
+        workspace_id: everruns_core::WorkspaceId::from_uuid(session_id),
         organization_id: "default".to_string(),
         harness_id,
         agent_id: Some(AgentId::from_uuid(agent_id)),

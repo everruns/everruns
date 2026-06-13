@@ -383,6 +383,7 @@ impl InMemoryAgenticLoopBuilder {
         let session_id = SessionId::new();
         let session = Session {
             id: session_id,
+            workspace_id: crate::WorkspaceId::from_uuid((session_id).uuid()),
             organization_id: crate::DEFAULT_ORG_PUBLIC_ID.to_string(),
             harness_id,
             agent_id: Some(agent_id),

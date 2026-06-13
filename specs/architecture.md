@@ -574,7 +574,7 @@ The control-plane follows a strict layered architecture:
 │  │ AgentService │ │ SessionService│ │ EventService   │ │
 │  └──────────────┘ └───────────────┘ └────────────────┘ │
 │  ┌──────────────────┐ ┌─────────────────────────────┐  │
-│  │SessionFileService│ │ LlmResolverService          │  │
+│  │WorkspaceFileService│ │ LlmResolverService          │  │
 │  └──────────────────┘ └─────────────────────────────┘  │
 │                    (Business Logic)                      │
 └────────────────────────────┬────────────────────────────┘

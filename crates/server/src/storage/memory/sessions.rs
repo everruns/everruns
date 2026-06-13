@@ -44,6 +44,7 @@ impl InMemoryDatabase {
         let row = SessionRow {
             id,
             org_id: input.org_id,
+            workspace_id: session_uuid,
             app_id: input.app_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,

@@ -463,7 +463,7 @@ pub use typed_id::{
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
     PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
-    SessionId, SkillId, TurnId, TypedId,
+    SessionId, SkillId, TurnId, TypedId, WorkspaceId,
 };
 
 // Audit logging re-exports

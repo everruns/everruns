@@ -401,6 +401,7 @@ fn harness(harness_id: HarnessId) -> Harness {
 fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
     Session {
         id: session_id,
+        workspace_id: everruns_core::WorkspaceId::from_uuid((session_id).uuid()),
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: None,

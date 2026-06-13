@@ -529,6 +529,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             Session {
                 id: r.id,
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
+                workspace_id: everruns_core::WorkspaceId::from_uuid(r.workspace_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
                 agent_version_id: r.agent_version_id,
@@ -2242,6 +2243,7 @@ impl DirectPlatformStore {
         Session {
             id: row.id,
             organization_id: everruns_core::org_public_id_from_internal(self.org_id),
+            workspace_id: everruns_core::WorkspaceId::from_uuid(row.workspace_id),
             harness_id: row.harness_id.or(fallback_harness).unwrap_or_else(|| {
                 panic!(
                     "session {} has no harness_id and no fallback was provided; \

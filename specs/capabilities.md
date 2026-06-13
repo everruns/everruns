@@ -898,7 +898,7 @@ Key concepts:
 Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `VirtualFileTree` without writing rows to the `session_files` table. Content is typically embedded at compile time via `include_dir!` and shared across sessions via `Arc`. Virtual mounts are always read-only.
 
 - **Registration**: During `apply_capability_mounts()`, virtual mounts are registered in the `VirtualMountRegistry` (per-session, in-memory) instead of being written to the database.
-- **Read path**: `SessionFileService`, `DirectWorkerAdapters`, and the bashkit shell all check the virtual registry before querying the database. Virtual files win on path conflicts.
+- **Read path**: `WorkspaceFileService`, `DirectWorkerAdapters`, and the bashkit shell all check the virtual registry before querying the database. Virtual files win on path conflicts.
 - **Merge semantics**: `list_directory` merges virtual and DB entries (virtual wins on name conflict, sorted dirs-first then by path). `grep` searches both sources and concatenates results.
 - **Write protection**: Writes/deletes to virtual paths return a readonly error.
 - **Eviction**: Virtual mount entries for a session are evicted from the registry on session delete.
