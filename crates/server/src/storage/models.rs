@@ -697,6 +697,11 @@ pub struct CreateSessionRow {
     pub blueprint_config: Option<serde_json::Value>,
     /// Parent session ID for subagent nesting guard (set by spawn_subagent).
     pub parent_session_id: Option<everruns_core::SessionId>,
+    /// Internal id of an existing workspace to attach this session to. When
+    /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
+    /// equals the new session id (the equality invariant). When `Some`, the
+    /// session attaches to that workspace and no new workspace is created.
+    pub workspace_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Default)]

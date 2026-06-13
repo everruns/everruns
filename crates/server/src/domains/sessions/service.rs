@@ -371,6 +371,28 @@ impl SessionService {
             }
         };
 
+        // Optional attach to an existing shared workspace. When absent, the
+        // storage layer auto-creates a default 1:1 workspace (see
+        // specs/workspace.md, "Default Workspace per Session").
+        let workspace_id = match req.workspace_id {
+            Some(public_id) => {
+                let workspace = self
+                    .db
+                    .get_workspace(org_id, public_id)
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("Workspace"))?;
+                if workspace.status != "active" {
+                    return Err(BadRequestError::new(format!(
+                        "Workspace {public_id} is {} and cannot accept new sessions",
+                        workspace.status
+                    ))
+                    .into());
+                }
+                Some(workspace.id)
+            }
+            None => None,
+        };
+
         let input = CreateSessionRow {
             org_id,
             app_id,
@@ -397,6 +419,7 @@ impl SessionService {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
+            workspace_id,
         };
         let row = self.db.create_session(input).await?;
         let row = if let Some(version) = resolved_agent_version.as_ref() {
@@ -516,6 +539,7 @@ impl SessionService {
             .await?;
 
         let input = CreateSessionRow {
+            workspace_id: None,
             org_id,
             app_id: None,
             harness_id: Some(harness_id),
@@ -1142,6 +1166,7 @@ impl SessionService {
         // Create a new chat session
         let harness_id_typed = HarnessId::from_uuid(harness_id);
         let input = CreateSessionRow {
+            workspace_id: None,
             org_id,
             app_id: None,
             harness_id: Some(harness_id_typed),
@@ -1880,6 +1905,7 @@ mod tests {
         model_id: Option<ModelId>,
     ) -> CreateSessionRequest {
         CreateSessionRequest {
+            workspace_id: None,
             harness_id: Some(harness_id),
             harness_name: None,
             agent_id,
@@ -2481,6 +2507,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
+                workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
                 harness_id: Some(other_harness.id),
@@ -2746,6 +2773,7 @@ mod tests {
 
         let session_row = db
             .create_session(CreateSessionRow {
+                workspace_id: None,
                 org_id: caller.org_id,
                 app_id: None,
                 harness_id: None,

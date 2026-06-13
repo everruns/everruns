@@ -18,7 +18,9 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
+use everruns_core::typed_id::{
+    AgentId, AgentIdentityId, HarnessId, ModelId, SessionId, WorkspaceId,
+};
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
     Session, SessionContextReport, ToolDefinition, evaluate_policies_with,
@@ -120,6 +122,13 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
     pub parent_session_id: Option<SessionId>,
+    /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
+    /// instead of auto-creating a default per-session workspace. The workspace
+    /// must exist in the caller's org and be `active`. Lets multiple sessions
+    /// share one working filesystem. Omit for the default 1:1 behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "wsp_01933b5a00007000800000000000001")]
+    pub workspace_id: Option<WorkspaceId>,
 }
 
 // Trust boundary (client-side tools deprecation rollout): the `tools` field

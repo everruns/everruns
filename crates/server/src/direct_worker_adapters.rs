@@ -3185,6 +3185,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         db.create_session(CreateSessionRow {
+            workspace_id: None,
             org_id,
             app_id: None,
             harness_id: Some(harness_id),
@@ -4006,6 +4007,7 @@ mod tests {
         let row = adapters
             .db
             .create_session(CreateSessionRow {
+                workspace_id: None,
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 app_id: None,
                 agent_id: Some(AgentId::from_uuid(agent_id)),

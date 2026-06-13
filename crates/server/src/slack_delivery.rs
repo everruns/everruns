@@ -1393,6 +1393,7 @@ mod tests {
 
             let session = db
                 .create_session(CreateSessionRow {
+                    workspace_id: None,
                     org_id,
                     app_id,
                     harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),

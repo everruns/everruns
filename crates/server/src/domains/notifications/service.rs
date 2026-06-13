@@ -267,6 +267,7 @@ mod tests {
 
         let session = db
             .create_session(CreateSessionRow {
+                workspace_id: None,
                 org_id: 1,
                 app_id: None,
                 harness_id: None,

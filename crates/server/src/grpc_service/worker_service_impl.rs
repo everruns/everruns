@@ -3719,6 +3719,7 @@ impl WorkerService for WorkerServiceImpl {
             .and_then(|s| serde_json::from_str(s).ok());
 
         let create_req = crate::api::sessions::CreateSessionRequest {
+            workspace_id: None,
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             harness_name: None,
             agent_id: agent_public_id,

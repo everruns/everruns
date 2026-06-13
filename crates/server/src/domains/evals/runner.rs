@@ -291,6 +291,7 @@ async fn execute_case_inner(
             agent_id,
             agent_id.map(everruns_core::typed_id::AgentId::from_uuid),
             CreateSessionRequest {
+                workspace_id: None,
                 harness_id: None, // Already resolved
                 harness_name: None,
                 agent_id: None,

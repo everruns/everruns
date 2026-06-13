@@ -638,6 +638,7 @@ async fn process_slack_message(
             );
             let title = build_session_title(slack_config, event);
             let req = CreateSessionRequest {
+                workspace_id: None,
                 harness_id: Some(app.harness_id),
                 harness_name: None,
                 agent_id: app.agent_id,
@@ -2413,6 +2414,7 @@ mod tests {
         use crate::storage::models::CreateSessionRow;
 
         let row = CreateSessionRow {
+            workspace_id: None,
             org_id: 1,
             app_id: None,
             harness_id: Some(everruns_core::typed_id::HarnessId::from_uuid(

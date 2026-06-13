@@ -668,6 +668,7 @@ async fn resolve_session(
             app.owner_principal_id,
             app.resolved_owner_user_id,
             CreateSessionRequest {
+                workspace_id: None,
                 harness_id: Some(app.harness_id),
                 harness_name: None,
                 agent_id: app.agent_id,
