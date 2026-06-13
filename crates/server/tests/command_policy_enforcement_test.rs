@@ -30,6 +30,7 @@ use everruns_server::domains::common::{
 use everruns_server::domains::evals::{CreateEvalRun, ListEvals};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
+use everruns_server::domains::session_files::{GetSessionFile, ListSessionFiles};
 use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
 };
@@ -422,6 +423,35 @@ async fn eval_manage_without_session_permission_still_allows_list() {
     .run(&ctx)
     .await
     .expect("ListEvals must be allowed with only OrgAgentsManage");
+}
+
+// ============================================================================
+// EVE-551: ListSessionFiles and GetSessionFile must enforce SESSION_VIEW.
+// A resolver denying OrgSessionsManage must get 403 before any file lookup.
+// ============================================================================
+
+#[tokio::test]
+async fn session_file_read_commands_enforce_session_view_policy() {
+    let ctx = make_ctx(caller_with_role(OrgRole::Owner), Arc::new(DenyAllResolver));
+
+    let list_err = ListSessionFiles {
+        session_id: "session_00000000000000000000000000000001".to_string(),
+        recursive: false,
+    }
+    .run(&ctx)
+    .await
+    .expect_err("ListSessionFiles must require SESSION_VIEW");
+    assert_forbidden(list_err);
+
+    let get_err = GetSessionFile {
+        session_id: "session_00000000000000000000000000000001".to_string(),
+        path: "/".to_string(),
+        recursive: false,
+    }
+    .run(&ctx)
+    .await
+    .expect_err("GetSessionFile must require SESSION_VIEW");
+    assert_forbidden(get_err);
 }
 
 /// Commands intentionally exposed without a policy (public reads, probes).
