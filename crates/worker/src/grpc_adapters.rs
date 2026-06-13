@@ -17,9 +17,8 @@ use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
-    LeasedResourceStore, ProviderStore, ResolvedModel, ProviderCredentialStore,
-    ProviderCredentials, ResolvedImage, SessionFileSystem, SessionStore, StoredImage,
-    StoredImageInfo,
+    LeasedResourceStore, ProviderCredentialStore, ProviderCredentials, ProviderStore,
+    ResolvedImage, ResolvedModel, SessionFileSystem, SessionStore, StoredImage, StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
@@ -1375,10 +1374,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
 
 #[async_trait]
 impl ProviderStore for GrpcOrgAdapter {
-    async fn get_resolved_model(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::GetResolvedModelRequest {
@@ -1454,9 +1450,7 @@ impl ProviderCredentialStore for GrpcOrgAdapter {
     }
 }
 
-fn proto_model_with_provider_to_model(
-    proto: proto::ResolvedModel,
-) -> Result<ResolvedModel> {
+fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<ResolvedModel> {
     // An empty provider_type is a corrupt/missing proto field; fail fast with
     // a clear store error rather than parsing it into an unusable External("").
     if proto.provider_type.trim().is_empty() {

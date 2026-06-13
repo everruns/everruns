@@ -35,7 +35,6 @@ use crate::llm_driver_registry::{
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
     OpenRouterProviderRouting,
 };
-use crate::provider::DriverId;
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -43,6 +42,7 @@ use crate::openai_protocol::{
     apply_openai_api_auth, is_openai_model_not_found, is_openai_request_too_large,
 };
 use crate::openresponses_types::{self as types, StreamingEvent};
+use crate::provider::DriverId;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
 

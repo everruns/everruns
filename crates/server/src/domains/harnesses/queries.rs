@@ -167,7 +167,7 @@ pub async fn validate_model_id(
     let Some(model_id) = model_id else {
         return Ok(None);
     };
-    db.get_llm_model(org_id, model_id.uuid())
+    db.get_model(org_id, model_id.uuid())
         .await?
         .ok_or_else(|| crate::errors::ResourceNotFoundError::new("Model"))?;
     Ok(Some(model_id))

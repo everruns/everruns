@@ -6,8 +6,7 @@ mod driver_tests {
         DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver,
         register_driver,
     };
-    use everruns_core::llm_driver_registry::{ChatDriver, ProviderConfig, DriverId};
-    use everruns_core::provider::DriverId;
+    use everruns_core::llm_driver_registry::{ChatDriver, DriverId, ProviderConfig};
 
     #[test]
     fn test_driver_with_api_key() {
@@ -122,8 +121,7 @@ mod driver_tests {
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
 
-        let openrouter_config =
-            ProviderConfig::new(DriverId::OpenRouter).with_api_key("test-key");
+        let openrouter_config = ProviderConfig::new(DriverId::OpenRouter).with_api_key("test-key");
         let openrouter_driver = registry.create_chat_driver(&openrouter_config);
         assert!(openrouter_driver.is_ok());
 
@@ -236,7 +234,7 @@ mod provider_tests {
 #[cfg(test)]
 mod descriptor_tests {
     use crate::register_driver;
-    use everruns_core::llm_driver_registry::{DriverRegistry, DriverId, ServiceKind};
+    use everruns_core::llm_driver_registry::{DriverId, DriverRegistry, ServiceKind};
 
     #[test]
     fn registered_descriptors_declare_services_and_credentials() {

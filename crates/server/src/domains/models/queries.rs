@@ -4,7 +4,7 @@ use everruns_core::typed_id::{ModelId, ProviderId};
 use std::sync::Arc;
 
 pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<ModelService> {
-    ctx.llm_model_service
+    ctx.model_service
         .clone()
         .unwrap_or_else(|| Arc::new(ModelService::new(ctx.db.clone())))
 }

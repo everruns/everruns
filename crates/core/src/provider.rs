@@ -176,4 +176,3 @@ pub struct Provider {
     /// Timestamp when this provider was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
-

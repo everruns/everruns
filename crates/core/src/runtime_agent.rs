@@ -429,12 +429,13 @@ impl RuntimeAgentBuilder {
         // renders the hosted format advertises tool_search for this model:
         // OpenAI (Responses) and Anthropic (Messages). A model id resolves under
         // at most one of these provider profiles, so the other lookup is None.
-        let model_supports_native = [DriverId::OpenAI, DriverId::Anthropic]
-            .iter()
-            .any(|provider| {
-                get_model_profile(provider, &self.runtime_agent.model)
-                    .is_some_and(|p| p.tool_search)
-            });
+        let model_supports_native =
+            [DriverId::OpenAI, DriverId::Anthropic]
+                .iter()
+                .any(|provider| {
+                    get_model_profile(provider, &self.runtime_agent.model)
+                        .is_some_and(|p| p.tool_search)
+                });
 
         // Hosted (native) deferral hides schemas server-side, so client-side
         // opt-out hooks (DeferSchemaHook) must be skipped while a hosted config

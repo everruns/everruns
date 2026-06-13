@@ -23,7 +23,7 @@ use everruns_core::events::{
     ToolCompletedData,
 };
 use everruns_core::harness::Harness;
-use everruns_core::llm_driver_registry::{DriverRegistry, DriverId};
+use everruns_core::llm_driver_registry::{DriverId, DriverRegistry};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
@@ -404,9 +404,7 @@ impl InProcessRuntimeBuilder {
             // built-in LlmSim driver, and the builder's config takes precedence.
             self.platform_definition
                 .driver_registry_mut()
-                .register_or_replace(DriverId::LlmSim, move |_config| {
-                    Box::new(driver.clone())
-                });
+                .register_or_replace(DriverId::LlmSim, move |_config| Box::new(driver.clone()));
 
             if self.default_model.is_none() {
                 self.default_model = Some(ResolvedModel {

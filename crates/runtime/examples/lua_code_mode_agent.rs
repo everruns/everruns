@@ -35,8 +35,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use everruns_core::llm_driver_registry::DriverRegistry;
     use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
     use everruns_core::{
-        AgentId, CapabilityRegistry, HarnessId, DriverId, ResolvedModel,
-        PlatformDefinition, SessionId,
+        AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
+        SessionId,
     };
     use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 

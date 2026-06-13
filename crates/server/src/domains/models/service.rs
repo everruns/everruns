@@ -11,8 +11,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    Caller, Model, ModelProfile, ModelSource, ModelWithProvider, DriverId,
-    Permission, Policy, ProviderId, Rule, get_model_profile,
+    Caller, DriverId, Model, ModelProfile, ModelSource, ModelWithProvider, Permission, Policy,
+    ProviderId, Rule, get_model_profile,
 };
 use std::sync::Arc;
 use tracing::error;
@@ -21,11 +21,11 @@ use uuid::Uuid;
 use crate::api::models::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
-    id: "llm_model.view",
+    id: "model.view",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_MODEL_MANAGE: Policy = Policy {
-    id: "llm_model.manage",
+    id: "model.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };
 
@@ -77,7 +77,7 @@ impl ModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.create_llm_model(caller.org_id, input).await?;
+        let row = self.db.create_model(caller.org_id, input).await?;
         self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_model(&row))
     }
@@ -92,7 +92,7 @@ impl ModelService {
         // through MCP as `internal: <message>`. Error still propagates.
         let row = self
             .db
-            .get_llm_model_with_provider(caller.org_id, id)
+            .get_model_with_provider(caller.org_id, id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -112,7 +112,7 @@ impl ModelService {
     ) -> Result<Vec<Model>> {
         let rows = self
             .db
-            .list_llm_models_for_provider(caller.org_id, provider_id)
+            .list_models_for_provider(caller.org_id, provider_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -128,7 +128,7 @@ impl ModelService {
     pub async fn list_all(&self, caller: &Caller) -> Result<Vec<ModelWithProvider>> {
         let rows = self
             .db
-            .list_all_llm_models(caller.org_id)
+            .list_all_models(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -151,7 +151,7 @@ impl ModelService {
         // EVE-417: same diagnostic logging as `list_all`/`list_for_provider`.
         let rows = self
             .db
-            .list_all_llm_models(caller.org_id)
+            .list_all_models(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -164,7 +164,7 @@ impl ModelService {
         // Get provider last_synced_at timestamps for stale detection
         let providers = self
             .db
-            .list_llm_providers(caller.org_id)
+            .list_providers(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -186,8 +186,7 @@ impl ModelService {
             .filter(|row| {
                 // Filter by source
                 if let Some(ref filter_source) = source {
-                    let row_source: ModelSource =
-                        row.source.parse().unwrap_or(ModelSource::Manual);
+                    let row_source: ModelSource = row.source.parse().unwrap_or(ModelSource::Manual);
                     if row_source != *filter_source {
                         return false;
                     }
@@ -259,7 +258,7 @@ impl ModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.update_llm_model(caller.org_id, id, input).await?;
+        let row = self.db.update_model(caller.org_id, id, input).await?;
 
         // If disabling a model, check if it was the org default and elect a new one
         if req.enabled == Some(false)
@@ -277,7 +276,7 @@ impl ModelService {
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         // Before deleting, check if this was the org default
         let was_default = self.is_org_default(caller.org_id, id).await?;
-        let deleted = self.db.delete_llm_model(caller.org_id, id).await?;
+        let deleted = self.db.delete_model(caller.org_id, id).await?;
         if deleted {
             if was_default {
                 self.elect_new_default(caller.org_id).await?;
@@ -289,7 +288,7 @@ impl ModelService {
 
     /// Get the default model
     pub async fn get_default(&self, caller: &Caller) -> Result<Option<ModelWithProvider>> {
-        let row = self.db.get_default_llm_model(caller.org_id).await?;
+        let row = self.db.get_default_model(caller.org_id).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
@@ -322,7 +321,7 @@ impl ModelService {
 
     /// Elect a new default model from enabled models
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
-        let all_models = self.db.list_all_llm_models(org_id).await?;
+        let all_models = self.db.list_all_models(org_id).await?;
         let new_default = all_models.iter().find(|m| m.enabled);
 
         let new_default_id = new_default.map(|m| m.id.uuid());
@@ -335,7 +334,7 @@ impl ModelService {
 
     async fn validate_provider_id(&self, org_id: i64, provider_id: Uuid) -> Result<Uuid> {
         self.db
-            .get_llm_provider(org_id, provider_id)
+            .get_provider(org_id, provider_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Provider"))?;
 
@@ -362,8 +361,7 @@ impl ModelService {
     fn row_to_model_with_provider(row: &ModelWithProviderRow) -> ModelWithProvider {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-        let provider_type: DriverId =
-            row.provider_type.parse().unwrap_or(DriverId::OpenAI);
+        let provider_type: DriverId = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
 
         // Look up hardcoded profile, then try discovered profile from provider_metadata.
         // Hardcoded profiles take precedence; discovered provider catalog data fills gaps.
@@ -452,7 +450,7 @@ impl ModelService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{CreateProviderRow, CreateOrganizationRow};
+    use crate::storage::{CreateOrganizationRow, CreateProviderRow};
     use everruns_core::DEFAULT_ORG_ID;
 
     fn build_create_request() -> CreateModelRequest {
@@ -481,7 +479,7 @@ mod tests {
     }
 
     async fn create_provider(db: &StorageBackend, org_id: i64) -> everruns_core::ProviderId {
-        db.create_llm_provider(
+        db.create_provider(
             org_id,
             CreateProviderRow {
                 name: format!("Provider {org_id}"),

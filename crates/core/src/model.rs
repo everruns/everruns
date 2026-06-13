@@ -359,7 +359,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_llm_provider_type_serialization() {
+    fn test_provider_type_serialization() {
         // Verify all provider types serialize correctly
         assert_eq!(
             serde_json::to_string(&DriverId::OpenAI).unwrap(),
@@ -392,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_provider_type_deserialization() {
+    fn test_provider_type_deserialization() {
         // Verify all provider types deserialize correctly
         assert!(matches!(
             serde_json::from_str::<DriverId>("\"openai\"").unwrap(),
@@ -425,7 +425,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_provider_type_from_str() {
+    fn test_provider_type_from_str() {
         // Verify FromStr works correctly
         assert!(matches!(
             "openai".parse::<DriverId>().unwrap(),
@@ -458,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_model_limits_input_omitted_when_none() {
+    fn test_model_limits_input_omitted_when_none() {
         let limits = ModelLimits {
             context: 200_000,
             input: None,
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_model_limits_input_included_when_some() {
+    fn test_model_limits_input_included_when_some() {
         let limits = ModelLimits {
             context: 200_000,
             input: Some(150_000),
@@ -482,7 +482,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_model_limits_deserialize_without_input() {
+    fn test_model_limits_deserialize_without_input() {
         let json = r#"{"context": 200000, "output": 64000}"#;
         let limits: ModelLimits = serde_json::from_str(json).unwrap();
         assert_eq!(limits.context, 200_000);
@@ -491,7 +491,7 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_provider_type_display() {
+    fn test_provider_type_display() {
         // Verify Display works correctly
         assert_eq!(DriverId::OpenAI.to_string(), "openai");
         assert_eq!(DriverId::OpenRouter.to_string(), "openrouter");

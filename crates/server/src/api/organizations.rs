@@ -459,7 +459,7 @@ pub async fn update_organization(
         // Verify the model exists and is enabled
         let model = state
             .db
-            .get_llm_model_with_provider(org_row.org_id, model_id.uuid())
+            .get_model_with_provider(org_row.org_id, model_id.uuid())
             .await
             .log_internal_error_json("resolve default model")?
             .ok_or_else(|| {

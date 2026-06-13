@@ -23,9 +23,9 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, DriverId,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
@@ -306,18 +306,15 @@ impl ChatDriver for GeminiChatDriver {
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
             generation_config.max_output_tokens = Some(
-                everruns_core::get_model_profile(
-                    &everruns_core::DriverId::Gemini,
-                    &config.model,
-                )
-                .and_then(|p| {
-                    p.limits.and_then(|l| {
-                        u32::try_from(l.output)
-                            .ok()
-                            .and_then(|v| if v > 0 { Some(v) } else { None })
+                everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, &config.model)
+                    .and_then(|p| {
+                        p.limits.and_then(|l| {
+                            u32::try_from(l.output)
+                                .ok()
+                                .and_then(|v| if v > 0 { Some(v) } else { None })
+                        })
                     })
-                })
-                .unwrap_or(8_192),
+                    .unwrap_or(8_192),
             );
         }
 
@@ -1446,10 +1443,8 @@ mod tests {
     #[test]
     fn test_default_max_tokens_from_known_model() {
         // Known Gemini models should resolve max_tokens from profile
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::DriverId::Gemini,
-            "gemini-1.5-pro",
-        );
+        let profile =
+            everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, "gemini-1.5-pro");
         assert!(profile.is_some(), "gemini-1.5-pro should have a profile");
         let limits = profile.unwrap().limits.expect("profile should have limits");
         assert!(limits.output > 0, "output limit should be positive");

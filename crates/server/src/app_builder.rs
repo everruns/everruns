@@ -783,14 +783,14 @@ impl ServerAppBuilder {
             db.clone(),
             encryption.clone(),
         ));
-        let llm_providers_state = api::providers::AppState::new(
+        let providers_state = api::providers::AppState::new(
             db.clone(),
             encryption.clone(),
             driver_registry.clone(),
             auth_state.clone(),
             Some(provider_resolver.clone()),
         );
-        let llm_models_state = api::models::AppState::new(
+        let models_state = api::models::AppState::new(
             db.clone(),
             auth_state.clone(),
             Some(provider_resolver.clone()),
@@ -1149,8 +1149,8 @@ impl ServerAppBuilder {
             .merge(api::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
-            .merge(api::models::routes(llm_models_state))
-            .merge(api::providers::routes(llm_providers_state))
+            .merge(api::models::routes(models_state))
+            .merge(api::providers::routes(providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::plugins::routes(plugins_state))
             .merge(api::capabilities::routes(capabilities_state))

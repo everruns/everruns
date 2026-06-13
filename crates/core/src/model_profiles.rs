@@ -16,8 +16,8 @@
 
 use crate::llm_driver_registry::ServiceKind;
 use crate::model::{
-    CostTier, ModelCost, ModelLimits, ModelModalities, ModelProfile, DriverId,
-    Modality, ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    CostTier, DriverId, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile,
+    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -381,10 +381,7 @@ fn resolve_descriptor(
 /// Get a model profile by matching provider_type and model_id.
 /// Returns None if the id is not in the registry or is not offered under the
 /// given provider type.
-pub fn get_model_profile(
-    provider_type: &DriverId,
-    model_id: &str,
-) -> Option<ModelProfile> {
+pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<ModelProfile> {
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
     // Native execution phases are an OpenAI Responses-only feature. OpenRouter
@@ -402,10 +399,7 @@ pub fn get_model_profile(
     //     only on the InvokeModel API, which this driver does not use.
     //   - OpenAI Completions / Gemini: no hosted tool_search at all.
     // So mask the flag for everything except the two first-party providers.
-    if !matches!(
-        provider_type,
-        DriverId::OpenAI | DriverId::Anthropic
-    ) {
+    if !matches!(provider_type, DriverId::OpenAI | DriverId::Anthropic) {
         profile.tool_search = false;
     }
     Some(profile)
@@ -1850,42 +1844,40 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
     match model_id.to_ascii_lowercase().as_str() {
         // NVIDIA Nemotron 3 Super — flagship Nemotron reasoning model.
         // Source: models.dev (nvidia provider).
-        "nemotron-3-super-120b-a12b" | "nvidia/nemotron-3-super-120b-a12b" => {
-            Some(ModelProfile {
-                name: "Nemotron 3 Super".into(),
-                family: "nemotron-3-super".into(),
-                description: None,
-                release_date: Some("2026-03-11".into()),
-                last_updated: Some("2026-03-11".into()),
-                attachment: false,
-                reasoning: true,
-                temperature: true,
-                knowledge: Some("2024-04-01".into()),
-                tool_call: true,
-                structured_output: false,
-                open_weights: true,
-                cost: Some(ModelCost {
-                    input: 0.20,
-                    output: 0.80,
-                    cache_read: None,
-                    cost_tiers: vec![],
-                }),
-                limits: Some(ModelLimits {
-                    context: 262_144,
-                    input: None,
-                    output: 262_144,
-                    max_media: None,
-                }),
-                modalities: Some(ModelModalities {
-                    input: vec![Modality::Text],
-                    output: vec![Modality::Text],
-                }),
-                reasoning_effort: None,
-                tool_search: false,
-                supported_parameters: Vec::new(),
-                supports_phases: false,
-            })
-        }
+        "nemotron-3-super-120b-a12b" | "nvidia/nemotron-3-super-120b-a12b" => Some(ModelProfile {
+            name: "Nemotron 3 Super".into(),
+            family: "nemotron-3-super".into(),
+            description: None,
+            release_date: Some("2026-03-11".into()),
+            last_updated: Some("2026-03-11".into()),
+            attachment: false,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2024-04-01".into()),
+            tool_call: true,
+            structured_output: false,
+            open_weights: true,
+            cost: Some(ModelCost {
+                input: 0.20,
+                output: 0.80,
+                cache_read: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 262_144,
+                input: None,
+                output: 262_144,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
 
         // Alibaba Qwen3.7 Max — flagship Qwen model.
         // Source: models.dev (alibaba provider). Knowledge cutoff not published.
@@ -3100,16 +3092,12 @@ mod tests {
     fn test_profile_keys_and_service_kinds() {
         // Canonical key from a dated wire id (version-suffix normalization).
         assert_eq!(
-            get_model_profile_key(&DriverId::Anthropic, "claude-sonnet-4-5-20250929")
-                .as_deref(),
+            get_model_profile_key(&DriverId::Anthropic, "claude-sonnet-4-5-20250929").as_deref(),
             Some("anthropic/claude-sonnet-4-5")
         );
         // Gateway alias and bare id share one key (same model identity).
         assert_eq!(
-            get_model_profile_key(
-                &DriverId::OpenRouter,
-                "nvidia/nemotron-3-super-120b-a12b"
-            ),
+            get_model_profile_key(&DriverId::OpenRouter, "nvidia/nemotron-3-super-120b-a12b"),
             get_model_profile_key(&DriverId::OpenAI, "nemotron-3-super-120b-a12b"),
         );
         // Unknown models have no key.
@@ -3622,8 +3610,7 @@ mod tests {
 
     #[test]
     fn test_gpt54_mini_versioned() {
-        let profile =
-            get_model_profile(&DriverId::OpenAI, "gpt-5.4-mini-2026-03-17").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.4-mini-2026-03-17").unwrap();
         assert_eq!(profile.name, "GPT-5.4 mini");
     }
 
@@ -3816,8 +3803,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_47_versioned() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-opus-4-7-20260416").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-7-20260416").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.7");
     }
 
@@ -3832,8 +3818,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_45_profile() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-opus-4-5-20251101").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-5-20251101").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.5");
         assert!(profile.reasoning);
         assert!(profile.tool_call);
@@ -3849,8 +3834,7 @@ mod tests {
 
     #[test]
     fn test_claude_haiku_45_profile() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-haiku-4-5-20251001").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-haiku-4-5-20251001").unwrap();
         assert_eq!(profile.name, "Claude Haiku 4.5");
         assert!(profile.reasoning);
     }
@@ -3859,8 +3843,7 @@ mod tests {
 
     #[test]
     fn test_claude_opus_41_profile() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-opus-4-1-20250805").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-1-20250805").unwrap();
         assert_eq!(profile.name, "Claude Opus 4.1");
         assert_eq!(profile.family, "claude-opus-4-1");
         assert!(profile.reasoning);
@@ -3879,8 +3862,7 @@ mod tests {
 
     #[test]
     fn test_claude_sonnet_4_output_limit() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514").unwrap();
+        let profile = get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514").unwrap();
         assert_eq!(profile.name, "Claude Sonnet 4");
         let limits = profile.limits.unwrap();
         assert_eq!(limits.output, 64_000);
@@ -4118,8 +4100,7 @@ mod tests {
 
     #[test]
     fn test_gemini_3_1_pro_preview_profile() {
-        let profile =
-            get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview").unwrap();
+        let profile = get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview").unwrap();
         assert_eq!(profile.name, "Gemini 3.1 Pro Preview");
         assert!(profile.reasoning);
         // >200K-token pricing tier.
@@ -4131,8 +4112,7 @@ mod tests {
 
     #[test]
     fn test_gemini_3_1_pro_preview_normalizes_dated_suffix() {
-        let profile =
-            get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview-02-19").unwrap();
+        let profile = get_model_profile(&DriverId::Gemini, "gemini-3.1-pro-preview-02-19").unwrap();
         assert_eq!(profile.family, "gemini-3.1-pro-preview");
     }
 
@@ -4167,8 +4147,7 @@ mod tests {
     #[test]
     fn test_mai_preview_has_no_cost_or_limits() {
         // Microsoft never published pricing/limits for MAI-1-preview.
-        let profile =
-            get_model_profile(&DriverId::OpenAICompletions, "MAI-1-preview").unwrap();
+        let profile = get_model_profile(&DriverId::OpenAICompletions, "MAI-1-preview").unwrap();
         assert!(profile.cost.is_none());
         assert!(profile.limits.is_none());
         assert!(!profile.reasoning);
@@ -4210,8 +4189,7 @@ mod tests {
         }
         // Native phases / tool_search are advertised only on the Responses
         // surface, never on Chat Completions.
-        let grok_completions =
-            get_model_profile(&DriverId::OpenAICompletions, "grok-4.3").unwrap();
+        let grok_completions = get_model_profile(&DriverId::OpenAICompletions, "grok-4.3").unwrap();
         assert!(!grok_completions.supports_phases);
         assert!(!grok_completions.tool_search);
 
@@ -4227,8 +4205,7 @@ mod tests {
         assert!(responses.supports_phases);
         assert!(responses.tool_search);
         // ...but not when reached via Chat Completions or Azure.
-        let completions =
-            get_model_profile(&DriverId::OpenAICompletions, "gpt-5.4").unwrap();
+        let completions = get_model_profile(&DriverId::OpenAICompletions, "gpt-5.4").unwrap();
         assert!(!completions.supports_phases);
         assert!(!completions.tool_search);
     }

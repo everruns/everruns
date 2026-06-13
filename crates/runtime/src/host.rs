@@ -18,10 +18,9 @@ use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
-    LeasedResourceStore, ProviderStore, ResolvedModel, PaymentAuthority,
-    ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionResourceRegistry,
-    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
-    UserConnectionResolver,
+    LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
+    SessionFileSystem, SessionMutator, SessionResourceRegistry, SessionScheduleStore,
+    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{

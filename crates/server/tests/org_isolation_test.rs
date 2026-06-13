@@ -11,9 +11,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use everruns_server::storage::{
-    CreateImageRow, CreateModelRow, CreateProviderRow, CreateMcpServerRow,
-    CreateOrganizationRow, CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateModel,
-    UpdateProvider, UpdateMcpServer,
+    CreateImageRow, CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
+    CreateSessionRow, InMemoryDatabase, StorageBackend, UpdateMcpServer, UpdateModel,
+    UpdateProvider,
 };
 
 use everruns_server::api::common::verify_session_ownership;
@@ -165,11 +165,11 @@ async fn test_mcp_server_negative_cross_org() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_provider_positive_own_org() {
+async fn test_provider_positive_own_org() {
     let db = InMemoryDatabase::default();
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "My Provider".to_string(),
@@ -183,15 +183,15 @@ async fn test_llm_provider_positive_own_org() {
         .unwrap();
     // Positive: own org can get, list, update, delete
     assert!(
-        db.get_llm_provider(ORG1, provider.id.uuid())
+        db.get_provider(ORG1, provider.id.uuid())
             .await
             .unwrap()
             .is_some()
     );
-    assert_eq!(db.list_llm_providers(ORG1).await.unwrap().len(), 1);
+    assert_eq!(db.list_providers(ORG1).await.unwrap().len(), 1);
 
     let updated = db
-        .update_llm_provider(
+        .update_provider(
             ORG1,
             provider.id.uuid(),
             UpdateProvider {
@@ -208,20 +208,16 @@ async fn test_llm_provider_positive_own_org() {
     assert!(updated.is_some());
     assert_eq!(updated.unwrap().name, "Renamed Provider");
 
-    assert!(
-        db.delete_llm_provider(ORG1, provider.id.uuid())
-            .await
-            .unwrap()
-    );
+    assert!(db.delete_provider(ORG1, provider.id.uuid()).await.unwrap());
 }
 
 #[tokio::test]
-async fn test_llm_provider_negative_cross_org() {
+async fn test_provider_negative_cross_org() {
     let db = InMemoryDatabase::default();
     let org2 = create_second_org(&db).await;
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Org1 Provider".to_string(),
@@ -236,14 +232,14 @@ async fn test_llm_provider_negative_cross_org() {
 
     // Negative: other org cannot see, update, or delete
     assert!(
-        db.get_llm_provider(org2, provider.id.uuid())
+        db.get_provider(org2, provider.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
-    assert!(db.list_llm_providers(org2).await.unwrap().is_empty());
+    assert!(db.list_providers(org2).await.unwrap().is_empty());
     assert!(
-        db.update_llm_provider(
+        db.update_provider(
             org2,
             provider.id.uuid(),
             UpdateProvider {
@@ -259,15 +255,11 @@ async fn test_llm_provider_negative_cross_org() {
         .unwrap()
         .is_none()
     );
-    assert!(
-        !db.delete_llm_provider(org2, provider.id.uuid())
-            .await
-            .unwrap()
-    );
+    assert!(!db.delete_provider(org2, provider.id.uuid()).await.unwrap());
 
     // Verify original is untouched
     let original = db
-        .get_llm_provider(ORG1, provider.id.uuid())
+        .get_provider(ORG1, provider.id.uuid())
         .await
         .unwrap()
         .unwrap();
@@ -279,11 +271,11 @@ async fn test_llm_provider_negative_cross_org() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_model_positive_own_org() {
+async fn test_model_positive_own_org() {
     let db = InMemoryDatabase::default();
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Provider".to_string(),
@@ -296,14 +288,14 @@ async fn test_llm_model_positive_own_org() {
         .await
         .unwrap();
     let model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
                 capabilities: vec![],
-                // Enabled — `get_llm_model` filters disabled rows on the
+                // Enabled — `get_model` filters disabled rows on the
                 // resolution path; this test focuses on org isolation.
                 enabled: true,
                 is_favorite: false,
@@ -315,29 +307,24 @@ async fn test_llm_model_positive_own_org() {
         .unwrap();
 
     // Positive: own org can get, list, update, delete
+    assert!(db.get_model(ORG1, model.id.uuid()).await.unwrap().is_some());
     assert!(
-        db.get_llm_model(ORG1, model.id.uuid())
-            .await
-            .unwrap()
-            .is_some()
-    );
-    assert!(
-        db.get_llm_model_with_provider(ORG1, model.id.uuid())
+        db.get_model_with_provider(ORG1, model.id.uuid())
             .await
             .unwrap()
             .is_some()
     );
     assert_eq!(
-        db.list_llm_models_for_provider(ORG1, provider.id.uuid())
+        db.list_models_for_provider(ORG1, provider.id.uuid())
             .await
             .unwrap()
             .len(),
         1
     );
-    assert_eq!(db.list_all_llm_models(ORG1).await.unwrap().len(), 1);
+    assert_eq!(db.list_all_models(ORG1).await.unwrap().len(), 1);
 
     let updated = db
-        .update_llm_model(
+        .update_model(
             ORG1,
             model.id.uuid(),
             UpdateModel {
@@ -350,16 +337,16 @@ async fn test_llm_model_positive_own_org() {
     assert!(updated.is_some());
     assert_eq!(updated.unwrap().display_name, "GPT-4 Turbo");
 
-    assert!(db.delete_llm_model(ORG1, model.id.uuid()).await.unwrap());
+    assert!(db.delete_model(ORG1, model.id.uuid()).await.unwrap());
 }
 
 #[tokio::test]
-async fn test_llm_model_negative_cross_org() {
+async fn test_model_negative_cross_org() {
     let db = InMemoryDatabase::default();
     let org2 = create_second_org(&db).await;
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Provider".to_string(),
@@ -372,7 +359,7 @@ async fn test_llm_model_negative_cross_org() {
         .await
         .unwrap();
     let foreign_provider = db
-        .create_llm_provider(
+        .create_provider(
             org2,
             CreateProviderRow {
                 name: "Foreign Provider".to_string(),
@@ -386,14 +373,14 @@ async fn test_llm_model_negative_cross_org() {
         .unwrap();
 
     let model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
                 capabilities: vec![],
-                // Enabled — `get_llm_model` filters disabled rows on the
+                // Enabled — `get_model` filters disabled rows on the
                 // resolution path; this test focuses on cross-org isolation.
                 enabled: true,
                 is_favorite: false,
@@ -405,27 +392,22 @@ async fn test_llm_model_negative_cross_org() {
         .unwrap();
 
     // Negative: other org cannot see, update, or delete
+    assert!(db.get_model(org2, model.id.uuid()).await.unwrap().is_none());
     assert!(
-        db.get_llm_model(org2, model.id.uuid())
+        db.get_model_with_provider(org2, model.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
-        db.get_llm_model_with_provider(org2, model.id.uuid())
-            .await
-            .unwrap()
-            .is_none()
-    );
-    assert!(
-        db.list_llm_models_for_provider(org2, provider.id.uuid())
+        db.list_models_for_provider(org2, provider.id.uuid())
             .await
             .unwrap()
             .is_empty()
     );
-    assert!(db.list_all_llm_models(org2).await.unwrap().is_empty());
+    assert!(db.list_all_models(org2).await.unwrap().is_empty());
     assert!(
-        db.update_llm_model(
+        db.update_model(
             org2,
             model.id.uuid(),
             UpdateModel {
@@ -438,7 +420,7 @@ async fn test_llm_model_negative_cross_org() {
         .is_none()
     );
     assert!(
-        db.update_llm_model(
+        db.update_model(
             ORG1,
             model.id.uuid(),
             UpdateModel {
@@ -450,25 +432,21 @@ async fn test_llm_model_negative_cross_org() {
         .unwrap()
         .is_none()
     );
-    assert!(!db.delete_llm_model(org2, model.id.uuid()).await.unwrap());
+    assert!(!db.delete_model(org2, model.id.uuid()).await.unwrap());
 
     // Verify original is untouched
-    let original = db
-        .get_llm_model(ORG1, model.id.uuid())
-        .await
-        .unwrap()
-        .unwrap();
+    let original = db.get_model(ORG1, model.id.uuid()).await.unwrap().unwrap();
     assert_eq!(original.display_name, "GPT-4");
     assert_eq!(original.provider_id, provider.id);
 }
 
 #[tokio::test]
-async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_reference() {
+async fn test_model_provider_reads_fail_closed_for_corrupt_cross_org_reference() {
     let db = InMemoryDatabase::default();
     let org2 = create_second_org(&db).await;
 
     let foreign_provider = db
-        .create_llm_provider(
+        .create_provider(
             org2,
             CreateProviderRow {
                 name: "Org2 Provider".to_string(),
@@ -482,7 +460,7 @@ async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_referen
         .unwrap();
 
     let corrupt_model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: foreign_provider.id,
@@ -499,24 +477,24 @@ async fn test_llm_model_provider_reads_fail_closed_for_corrupt_cross_org_referen
         .unwrap();
 
     assert!(
-        db.get_llm_model(ORG1, corrupt_model.id.uuid())
+        db.get_model(ORG1, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_some()
     );
     assert!(
-        db.get_llm_model_with_provider(ORG1, corrupt_model.id.uuid())
+        db.get_model_with_provider(ORG1, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
-        db.get_llm_model_by_model_id(ORG1, "cross-org-provider-model")
+        db.get_model_by_model_id(ORG1, "cross-org-provider-model")
             .await
             .unwrap()
             .is_none()
     );
-    assert!(db.list_all_llm_models(ORG1).await.unwrap().is_empty());
+    assert!(db.list_all_models(ORG1).await.unwrap().is_empty());
 }
 
 // ============================================
@@ -604,7 +582,7 @@ async fn test_multi_org_full_isolation() {
 
     // Create resources in org1
     let org1_provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Org1 Provider".to_string(),
@@ -618,7 +596,7 @@ async fn test_multi_org_full_isolation() {
         .unwrap();
 
     let org1_model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: org1_provider.id,
@@ -669,7 +647,7 @@ async fn test_multi_org_full_isolation() {
 
     // Create resources in org2
     let org2_provider = db
-        .create_llm_provider(
+        .create_provider(
             org2,
             CreateProviderRow {
                 name: "Org2 Provider".to_string(),
@@ -683,7 +661,7 @@ async fn test_multi_org_full_isolation() {
         .unwrap();
 
     let org2_model = db
-        .create_llm_model(
+        .create_model(
             org2,
             CreateModelRow {
                 provider_id: org2_provider.id,
@@ -716,11 +694,11 @@ async fn test_multi_org_full_isolation() {
         .unwrap();
 
     // Verify org1 sees only its own resources
-    let org1_providers = db.list_llm_providers(ORG1).await.unwrap();
+    let org1_providers = db.list_providers(ORG1).await.unwrap();
     assert_eq!(org1_providers.len(), 1);
     assert_eq!(org1_providers[0].name, "Org1 Provider");
 
-    let org1_models = db.list_all_llm_models(ORG1).await.unwrap();
+    let org1_models = db.list_all_models(ORG1).await.unwrap();
     assert_eq!(org1_models.len(), 1);
     assert_eq!(org1_models[0].model_id, "gpt-4");
 
@@ -733,11 +711,11 @@ async fn test_multi_org_full_isolation() {
     assert_eq!(org1_images[0].filename, "org1.png");
 
     // Verify org2 sees only its own resources
-    let org2_providers = db.list_llm_providers(org2).await.unwrap();
+    let org2_providers = db.list_providers(org2).await.unwrap();
     assert_eq!(org2_providers.len(), 1);
     assert_eq!(org2_providers[0].name, "Org2 Provider");
 
-    let org2_models = db.list_all_llm_models(org2).await.unwrap();
+    let org2_models = db.list_all_models(org2).await.unwrap();
     assert_eq!(org2_models.len(), 1);
     assert_eq!(org2_models[0].model_id, "claude-3");
 
@@ -747,13 +725,13 @@ async fn test_multi_org_full_isolation() {
 
     // Verify cross-org access is denied for all entity types
     assert!(
-        db.get_llm_provider(org2, org1_provider.id.uuid())
+        db.get_provider(org2, org1_provider.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
-        db.get_llm_model(org2, org1_model.id.uuid())
+        db.get_model(org2, org1_model.id.uuid())
             .await
             .unwrap()
             .is_none()
@@ -772,13 +750,13 @@ async fn test_multi_org_full_isolation() {
     );
 
     assert!(
-        db.get_llm_provider(ORG1, org2_provider.id.uuid())
+        db.get_provider(ORG1, org2_provider.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
-        db.get_llm_model(ORG1, org2_model.id.uuid())
+        db.get_model(ORG1, org2_model.id.uuid())
             .await
             .unwrap()
             .is_none()
@@ -801,7 +779,7 @@ async fn test_default_model_org_isolation() {
     let org2 = create_second_org(&db).await;
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Provider".to_string(),
@@ -816,7 +794,7 @@ async fn test_default_model_org_isolation() {
 
     // Create a model in org1 and register it as the org's default
     let model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: provider.id,
@@ -836,19 +814,19 @@ async fn test_default_model_org_isolation() {
         .unwrap();
 
     // Positive: org1 has a default model
-    assert!(db.get_default_llm_model(ORG1).await.unwrap().is_some());
+    assert!(db.get_default_model(ORG1).await.unwrap().is_some());
 
     // Negative: org2 does not see org1's default model
-    assert!(db.get_default_llm_model(org2).await.unwrap().is_none());
+    assert!(db.get_default_model(org2).await.unwrap().is_none());
 }
 
 #[tokio::test]
-async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() {
+async fn test_default_model_fails_closed_for_cross_org_provider_reference() {
     let db = InMemoryDatabase::default();
     let org2 = create_second_org(&db).await;
 
     let foreign_provider = db
-        .create_llm_provider(
+        .create_provider(
             org2,
             CreateProviderRow {
                 name: "Org2 Provider".to_string(),
@@ -862,7 +840,7 @@ async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() 
         .unwrap();
 
     let corrupt_model = db
-        .create_llm_model(
+        .create_model(
             ORG1,
             CreateModelRow {
                 provider_id: foreign_provider.id,
@@ -882,7 +860,7 @@ async fn test_default_llm_model_fails_closed_for_cross_org_provider_reference() 
         .await
         .unwrap();
 
-    assert!(db.get_default_llm_model(ORG1).await.unwrap().is_none());
+    assert!(db.get_default_model(ORG1).await.unwrap().is_none());
 }
 
 // ============================================
@@ -1095,7 +1073,7 @@ async fn test_provider_last_synced_cross_org() {
     let org2 = create_second_org(&db).await;
 
     let provider = db
-        .create_llm_provider(
+        .create_provider(
             ORG1,
             CreateProviderRow {
                 name: "Provider".to_string(),
@@ -1115,7 +1093,7 @@ async fn test_provider_last_synced_cross_org() {
 
     // Verify original last_synced_at is still None
     let original = db
-        .get_llm_provider(ORG1, provider.id.uuid())
+        .get_provider(ORG1, provider.id.uuid())
         .await
         .unwrap()
         .unwrap();

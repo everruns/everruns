@@ -19,8 +19,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    Caller, Model, ModelSource, ModelWithProvider, ResourceConfigResponse,
-    evaluate_policies_with,
+    Caller, Model, ModelSource, ModelWithProvider, ResourceConfigResponse, evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -60,7 +59,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_llm_model_service(self.service.clone())
+        .with_model_service(self.service.clone())
     }
 }
 
@@ -317,7 +316,7 @@ pub async fn delete_model(
     ),
     tag = "llm-models"
 )]
-pub async fn llm_model_config(
+pub async fn model_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
 ) -> Json<ResourceConfigResponse> {
@@ -332,7 +331,7 @@ pub async fn llm_model_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-models/config", get(llm_model_config))
+        .route("/v1/llm-models/config", get(model_config))
         .route(
             "/v1/llm-providers/{provider_id}/models",
             post(create_model).get(list_provider_models),

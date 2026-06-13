@@ -9,11 +9,11 @@ use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
 use everruns_core::provider::Provider;
 use everruns_core::{
-    Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, Event,
-    EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, Model,
-    ModelWithProvider, ProviderStatus, DriverId, McpServer, McpServerStatus,
-    McpServerTransportType, Session, SessionContextReport, SessionFile, SessionStatus, Skill,
-    SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
+    Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId,
+    Event, EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource,
+    McpServer, McpServerStatus, McpServerTransportType, Model, ModelWithProvider, ProviderStatus,
+    Session, SessionContextReport, SessionFile, SessionStatus, Skill, SkillContent, SkillFileEntry,
+    SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -184,8 +184,8 @@ use utoipa::OpenApi;
         api::agents::diff_agent_versions,
         // LLM Providers - additional
         api::providers::sync_models,
-        api::providers::llm_provider_config,
-        api::models::llm_model_config,
+        api::providers::provider_config,
+        api::models::model_config,
         api::mcp_servers::mcp_server_config,
         // Users - additional
         api::users::switch_org,

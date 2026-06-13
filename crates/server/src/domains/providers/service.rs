@@ -11,7 +11,7 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use everruns_core::provider::Provider;
 use everruns_core::url_validation::validate_safe_url;
-use everruns_core::{Caller, ProviderStatus, DriverId, Permission, Policy, Rule};
+use everruns_core::{Caller, DriverId, Permission, Policy, ProviderStatus, Rule};
 use reqwest::Url;
 use std::sync::Arc;
 use tracing::error;
@@ -20,11 +20,11 @@ use uuid::Uuid;
 use crate::api::providers::{CreateProviderRequest, UpdateProviderRequest};
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
-    id: "llm_provider.view",
+    id: "provider.view",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
-    id: "llm_provider.manage",
+    id: "provider.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };
 
@@ -62,11 +62,7 @@ impl ProviderService {
         }
     }
 
-    pub async fn create(
-        &self,
-        caller: &Caller,
-        req: CreateProviderRequest,
-    ) -> Result<Provider> {
+    pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
 
         // Encrypt API key if provided
@@ -88,7 +84,7 @@ impl ProviderService {
             settings: None,
         };
 
-        let row = self.db.create_llm_provider(caller.org_id, input).await?;
+        let row = self.db.create_provider(caller.org_id, input).await?;
         self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_provider(&row))
     }
@@ -100,7 +96,7 @@ impl ProviderService {
         // an opaque `callback failed`). The error still propagates unchanged.
         let row = self
             .db
-            .get_llm_provider(caller.org_id, id)
+            .get_provider(caller.org_id, id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -118,7 +114,7 @@ impl ProviderService {
         // the most common path for org-scoped MCP read regressions.
         let rows = self
             .db
-            .list_llm_providers(caller.org_id)
+            .list_providers(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -136,17 +132,15 @@ impl ProviderService {
         id: Uuid,
         req: UpdateProviderRequest,
     ) -> Result<Option<Provider>> {
-        let existing = match self.db.get_llm_provider(caller.org_id, id).await? {
+        let existing = match self.db.get_provider(caller.org_id, id).await? {
             Some(row) => row,
             None => return Ok(None),
         };
 
-        let provider_type = req.provider_type.clone().unwrap_or_else(|| {
-            existing
-                .provider_type
-                .parse()
-                .unwrap_or(DriverId::OpenAI)
-        });
+        let provider_type = req
+            .provider_type
+            .clone()
+            .unwrap_or_else(|| existing.provider_type.parse().unwrap_or(DriverId::OpenAI));
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
 
@@ -173,10 +167,7 @@ impl ProviderService {
             settings: None,
         };
 
-        let row = self
-            .db
-            .update_llm_provider(caller.org_id, id, input)
-            .await?;
+        let row = self.db.update_provider(caller.org_id, id, input).await?;
         if row.is_some() {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
@@ -184,7 +175,7 @@ impl ProviderService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        let deleted = self.db.delete_llm_provider(caller.org_id, id).await?;
+        let deleted = self.db.delete_provider(caller.org_id, id).await?;
         if deleted {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
@@ -219,10 +210,7 @@ impl ProviderService {
     }
 }
 
-fn validate_provider_base_url(
-    provider_type: DriverId,
-    base_url: Option<&str>,
-) -> Result<()> {
+fn validate_provider_base_url(provider_type: DriverId, base_url: Option<&str>) -> Result<()> {
     let parsed = match base_url {
         Some(url) => Some(validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?),
         None => None,
@@ -324,11 +312,9 @@ mod tests {
 
     #[test]
     fn azure_openai_rejects_non_azure_hosts() {
-        let err = validate_provider_base_url(
-            DriverId::AzureOpenAI,
-            Some("https://api.openai.com/v1"),
-        )
-        .unwrap_err();
+        let err =
+            validate_provider_base_url(DriverId::AzureOpenAI, Some("https://api.openai.com/v1"))
+                .unwrap_err();
         assert!(err.to_string().contains("*.openai.azure.com"));
     }
 

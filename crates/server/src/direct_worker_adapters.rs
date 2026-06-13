@@ -14,13 +14,14 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, CreateStoredImage, ImageArtifactStore, ResolvedModel, PaymentAuthority,
-    ProviderCredentialStore, ProviderCredentials, ResolvedImage, StoredImage, StoredImageInfo,
+    BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
+    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel, StoredImage,
+    StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EgressService, EventData, Harness,
-    HarnessStatus, DriverId, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressService, EventData,
+    Harness, HarnessStatus, Message, MessageRole, Session, SessionStatus, ToolDefinition,
     ToolResultContentPart, UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -1395,16 +1396,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
-            self.get_resolved_model(org_id, model_id.uuid())
-                .await?
+            self.get_resolved_model(org_id, model_id.uuid()).await?
         } else if let Some(ref a) = agent {
             if let Some(model_id) = a.default_model_id {
-                self.get_resolved_model(org_id, model_id.uuid())
-                    .await?
+                self.get_resolved_model(org_id, model_id.uuid()).await?
             } else if let Some(ref h) = harness {
                 if let Some(model_id) = h.default_model_id {
-                    self.get_resolved_model(org_id, model_id.uuid())
-                        .await?
+                    self.get_resolved_model(org_id, model_id.uuid()).await?
                 } else {
                     self.get_default_model(org_id).await?
                 }
@@ -1413,8 +1411,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             }
         } else if let Some(ref h) = harness {
             if let Some(model_id) = h.default_model_id {
-                self.get_resolved_model(org_id, model_id.uuid())
-                    .await?
+                self.get_resolved_model(org_id, model_id.uuid()).await?
             } else {
                 self.get_default_model(org_id).await?
             }
@@ -3045,7 +3042,10 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(
+            db.clone(),
+            None,
+        ));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             None,
@@ -3630,7 +3630,10 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(
+            db.clone(),
+            None,
+        ));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             Some(encryption),

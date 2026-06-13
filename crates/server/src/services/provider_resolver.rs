@@ -207,7 +207,7 @@ impl ProviderResolverService {
         org_id: i64,
         provider_type: &str,
     ) -> Result<Option<ResolvedProviderCredentials>> {
-        let providers = self.db.list_llm_providers(org_id).await?;
+        let providers = self.db.list_providers(org_id).await?;
         let provider_type_lower = provider_type.to_lowercase();
 
         let matching: Vec<_> = providers
@@ -255,7 +255,7 @@ impl ProviderResolverService {
         org_id: i64,
         model_id: Uuid,
     ) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_llm_model(org_id, model_id).await?;
+        let model_row = self.db.get_model(org_id, model_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -264,7 +264,7 @@ impl ProviderResolverService {
 
         let provider_row = self
             .db
-            .get_llm_provider(org_id, model_row.provider_id.uuid())
+            .get_provider(org_id, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {
@@ -284,7 +284,7 @@ impl ProviderResolverService {
 
     /// Uncached default model resolution.
     async fn resolve_default_model_uncached(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_default_llm_model(org_id).await?;
+        let model_row = self.db.get_default_model(org_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -293,7 +293,7 @@ impl ProviderResolverService {
 
         let provider_row = self
             .db
-            .get_llm_provider(org_id, model_row.provider_id.uuid())
+            .get_provider(org_id, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {
@@ -441,7 +441,7 @@ mod tests {
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
                 CreateProviderRow {
                     name: "Test OpenAI".to_string(),
@@ -455,7 +455,7 @@ mod tests {
             .unwrap();
 
         let model_row = db
-            .create_llm_model(
+            .create_model(
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
@@ -559,7 +559,7 @@ mod tests {
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
                 CreateProviderRow {
                     name: "Anthropic".to_string(),
@@ -573,7 +573,7 @@ mod tests {
             .unwrap();
 
         let model_a = db
-            .create_llm_model(
+            .create_model(
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
@@ -591,7 +591,7 @@ mod tests {
             .unwrap();
 
         let model_b = db
-            .create_llm_model(
+            .create_model(
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
@@ -631,7 +631,7 @@ mod tests {
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -645,7 +645,7 @@ mod tests {
             .unwrap();
 
         let model = db
-            .create_llm_model(
+            .create_model(
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,
@@ -738,7 +738,7 @@ mod tests {
 
         let encrypted = encryption.encrypt_string("sk-from-db").unwrap();
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -760,7 +760,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -783,7 +783,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "Anthropic".to_string(),
@@ -809,7 +809,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -896,7 +896,7 @@ mod tests {
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -910,7 +910,7 @@ mod tests {
             .unwrap();
 
         let model = db
-            .create_llm_model(
+            .create_model(
                 org_id,
                 CreateModelRow {
                     provider_id: provider_row.id,

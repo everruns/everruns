@@ -10,7 +10,7 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    AgentStore, ImageArtifactStore, ResolvedModel, ProviderCredentialStore, ResolvedImage,
+    AgentStore, ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -25,8 +25,8 @@ use uuid::Uuid;
 
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
-    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcProviderStore,
-    GrpcMessageRetriever, GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcSessionFileStore,
+    GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
+    GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcProviderStore, GrpcSessionFileStore,
     GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;

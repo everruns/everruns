@@ -253,7 +253,7 @@ async fn test_openapi_spec() {
 }
 
 #[tokio::test]
-async fn test_llm_provider_and_model_workflow() {
+async fn test_provider_and_model_workflow() {
     let client = reqwest::Client::new();
 
     println!("Testing LLM Provider and Model workflow...");
@@ -330,7 +330,7 @@ async fn test_llm_provider_and_model_workflow() {
 }
 
 #[tokio::test]
-async fn test_llm_model_profile() {
+async fn test_model_profile() {
     let client = reqwest::Client::new();
 
     println!("Testing LLM Model Profile...");

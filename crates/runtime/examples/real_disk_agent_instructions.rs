@@ -18,8 +18,8 @@ use everruns_core::capabilities::AgentInstructionsCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    DriverId, ResolvedModel, PlatformDefinition, Session, SessionStatus,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness,
+    HarnessStatus, PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use everruns_runtime::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use tempfile::TempDir;

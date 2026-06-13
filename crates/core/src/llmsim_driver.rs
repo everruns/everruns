@@ -18,8 +18,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::{AgentLoopError, Result};
 use crate::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmMessage,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, DriverId,
+    BoxedChatDriver, ChatDriver, DriverId, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
+    LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};

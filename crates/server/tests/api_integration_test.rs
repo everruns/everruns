@@ -21,8 +21,7 @@ use test_harness::TestServer;
 use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{
-    Agent, DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport,
-    SessionFile,
+    Agent, DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport, SessionFile,
 };
 use everruns_durable::UpdateField;
 use everruns_server::storage::models::{
@@ -1319,7 +1318,7 @@ async fn test_list_events_since_id_filters_old_events() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_provider_crud() {
+async fn test_provider_crud() {
     let server = TestServer::new().await;
 
     // Create a provider
@@ -1353,7 +1352,7 @@ async fn test_llm_provider_crud() {
 }
 
 #[tokio::test]
-async fn test_llm_model_crud() {
+async fn test_model_crud() {
     let server = TestServer::new().await;
 
     // Create a provider first
@@ -1404,7 +1403,7 @@ async fn test_llm_model_crud() {
 }
 
 #[tokio::test]
-async fn test_create_llm_model_missing_provider_returns_not_found() {
+async fn test_create_model_missing_provider_returns_not_found() {
     let server = TestServer::in_memory().await;
 
     server

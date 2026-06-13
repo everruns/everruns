@@ -11,8 +11,8 @@ use everruns_core::error::Result;
 use everruns_core::events::Event;
 use everruns_core::harness::Harness;
 use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryProviderStore,
-    InMemoryMessageRetriever,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+    InMemoryProviderStore,
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};

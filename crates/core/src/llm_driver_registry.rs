@@ -1132,7 +1132,7 @@ pub struct DriverConfig {
 impl From<&crate::traits::ResolvedModel> for ProviderConfig {
     fn from(model: &crate::traits::ResolvedModel) -> Self {
         Self {
-            provider_type: model.provider_type.clone().into(),
+            provider_type: model.provider_type.clone(),
             api_key: model.api_key.clone(),
             base_url: model.base_url.clone(),
             metadata: model.provider_metadata.clone().unwrap_or_default(),
@@ -1642,10 +1642,7 @@ mod tests {
 
     #[test]
     fn test_provider_type_parsing() {
-        assert_eq!(
-            "openai".parse::<DriverId>().unwrap(),
-            DriverId::OpenAI
-        );
+        assert_eq!("openai".parse::<DriverId>().unwrap(), DriverId::OpenAI);
         assert_eq!(
             "openrouter".parse::<DriverId>().unwrap(),
             DriverId::OpenRouter
@@ -1662,10 +1659,7 @@ mod tests {
             "anthropic".parse::<DriverId>().unwrap(),
             DriverId::Anthropic
         );
-        assert_eq!(
-            "gemini".parse::<DriverId>().unwrap(),
-            DriverId::Gemini
-        );
+        assert_eq!("gemini".parse::<DriverId>().unwrap(), DriverId::Gemini);
         // Unknown ids parse to External rather than erroring.
         assert_eq!(
             "ollama".parse::<DriverId>().unwrap(),
@@ -1681,18 +1675,12 @@ mod tests {
     fn test_external_provider_id_is_case_insensitive() {
         // Built-in matching and external normalization are both case-folding,
         // so the same id in different casing resolves to one provider.
-        assert_eq!(
-            "OpenAI".parse::<DriverId>().unwrap(),
-            DriverId::OpenAI
-        );
+        assert_eq!("OpenAI".parse::<DriverId>().unwrap(), DriverId::OpenAI);
         assert_eq!(
             "Ollama".parse::<DriverId>().unwrap(),
             "ollama".parse::<DriverId>().unwrap()
         );
-        assert_eq!(
-            DriverId::external("OpenAI-Codex").as_str(),
-            "openai-codex"
-        );
+        assert_eq!(DriverId::external("OpenAI-Codex").as_str(), "openai-codex");
         // Registration and parsed lookup agree regardless of casing.
         assert_eq!(
             DriverId::external("MyProvider"),

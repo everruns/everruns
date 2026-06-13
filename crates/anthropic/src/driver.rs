@@ -28,9 +28,9 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent, DriverId,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
+    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
@@ -453,10 +453,8 @@ impl ChatDriver for AnthropicChatDriver {
         // keep the flag for the header.
         let (wire_model, wants_million_context) = split_million_context(&config.model);
 
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::DriverId::Anthropic,
-            wire_model,
-        );
+        let profile =
+            everruns_core::get_model_profile(&everruns_core::DriverId::Anthropic, wire_model);
 
         // Hosted tool_search (deferred tool loading) is gated on the Anthropic
         // model profile. When a hosted `ToolSearchConfig` is present and the
@@ -1185,7 +1183,7 @@ struct AnthropicOutputConfig {
 /// Claude families that use adaptive thinking. On Fable 5 and Opus 4.8/4.7
 /// budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it is
 /// deprecated and adaptive is the recommended form. Keep in sync with the
-/// adaptive-thinking profiles in `everruns_core::llm_model_profiles`.
+/// adaptive-thinking profiles in `everruns_core::model_profiles`.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5",
     "claude-opus-4-8",

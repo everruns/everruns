@@ -18,8 +18,8 @@ use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::credential_schema::CredentialFormSchema;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
-    LlmMessage, LlmResponseStream, DriverId, ServiceKind,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
+    LlmCallConfig, LlmMessage, LlmResponseStream, ServiceKind,
 };
 use everruns_core::openai_protocol::is_azure_openai_api_url;
 use everruns_core::{CompactRequest, CompactResponse};

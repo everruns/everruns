@@ -21,8 +21,8 @@ use everruns_core::traits::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{Agent, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness};
 use everruns_worker::worker_adapters::{
-    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterProviderStore,
-    AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
+    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
+    AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore,
 };
 use std::collections::HashSet;
 use std::sync::Arc;

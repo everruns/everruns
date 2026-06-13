@@ -1348,44 +1348,44 @@ impl StorageBackend {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(
+    pub async fn create_provider(
         &self,
         org_id: i64,
         input: CreateProviderRow,
     ) -> Result<ProviderRow> {
-        dispatch!(self, create_llm_provider, org_id, input)
+        dispatch!(self, create_provider, org_id, input)
     }
 
     /// Create a provider with a specific ID (for seeding)
     /// Returns None if provider already exists (idempotent)
-    pub async fn create_llm_provider_with_id(
+    pub async fn create_provider_with_id(
         &self,
         org_id: i64,
         id: Uuid,
         input: CreateProviderRow,
     ) -> Result<Option<ProviderRow>> {
-        dispatch!(self, create_llm_provider_with_id, org_id, id, input)
+        dispatch!(self, create_provider_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
-        dispatch!(self, get_llm_provider, org_id, id)
+    pub async fn get_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
+        dispatch!(self, get_provider, org_id, id)
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
-        dispatch!(self, list_llm_providers, org_id)
+    pub async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
+        dispatch!(self, list_providers, org_id)
     }
 
-    pub async fn update_llm_provider(
+    pub async fn update_provider(
         &self,
         org_id: i64,
         id: Uuid,
         input: UpdateProvider,
     ) -> Result<Option<ProviderRow>> {
-        dispatch!(self, update_llm_provider, org_id, id, input)
+        dispatch!(self, update_provider, org_id, id, input)
     }
 
-    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_llm_provider, org_id, id)
+    pub async fn delete_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_provider, org_id, id)
     }
 
     /// Update provider's last_synced_at timestamp
@@ -1421,11 +1421,8 @@ impl StorageBackend {
     // LLM Models
     // ============================================
 
-    pub async fn get_default_llm_model(
-        &self,
-        org_id: i64,
-    ) -> Result<Option<ModelWithProviderRow>> {
-        dispatch!(self, get_default_llm_model, org_id)
+    pub async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProviderRow>> {
+        dispatch!(self, get_default_model, org_id)
     }
 
     pub async fn get_organization_settings(
@@ -1466,68 +1463,64 @@ impl StorageBackend {
         dispatch!(self, replace_org_feature_flags, org_id, flags)
     }
 
-    pub async fn create_llm_model(
-        &self,
-        org_id: i64,
-        input: CreateModelRow,
-    ) -> Result<ModelRow> {
-        dispatch!(self, create_llm_model, org_id, input)
+    pub async fn create_model(&self, org_id: i64, input: CreateModelRow) -> Result<ModelRow> {
+        dispatch!(self, create_model, org_id, input)
     }
 
     /// Create a model with a specific ID (for seeding)
     /// Returns None if model already exists (idempotent)
-    pub async fn create_llm_model_with_id(
+    pub async fn create_model_with_id(
         &self,
         org_id: i64,
         id: Uuid,
         input: CreateModelRow,
     ) -> Result<Option<ModelRow>> {
-        dispatch!(self, create_llm_model_with_id, org_id, id, input)
+        dispatch!(self, create_model_with_id, org_id, id, input)
     }
 
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
-        dispatch!(self, get_llm_model, org_id, id)
+    pub async fn get_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
+        dispatch!(self, get_model, org_id, id)
     }
 
-    pub async fn get_llm_model_with_provider(
+    pub async fn get_model_with_provider(
         &self,
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<ModelWithProviderRow>> {
-        dispatch!(self, get_llm_model_with_provider, org_id, id)
+        dispatch!(self, get_model_with_provider, org_id, id)
     }
 
-    pub async fn list_llm_models_for_provider(
+    pub async fn list_models_for_provider(
         &self,
         org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<ModelRow>> {
-        dispatch!(self, list_llm_models_for_provider, org_id, provider_id)
+        dispatch!(self, list_models_for_provider, org_id, provider_id)
     }
 
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
-        dispatch!(self, list_all_llm_models, org_id)
+    pub async fn list_all_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
+        dispatch!(self, list_all_models, org_id)
     }
 
-    pub async fn update_llm_model(
+    pub async fn update_model(
         &self,
         org_id: i64,
         id: Uuid,
         input: UpdateModel,
     ) -> Result<Option<ModelRow>> {
-        dispatch!(self, update_llm_model, org_id, id, input)
+        dispatch!(self, update_model, org_id, id, input)
     }
 
-    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_llm_model, org_id, id)
+    pub async fn delete_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_model, org_id, id)
     }
 
-    pub async fn get_llm_model_by_model_id(
+    pub async fn get_model_by_model_id(
         &self,
         org_id: i64,
         model_id: &str,
     ) -> Result<Option<ModelWithProviderRow>> {
-        dispatch!(self, get_llm_model_by_model_id, org_id, model_id)
+        dispatch!(self, get_model_by_model_id, org_id, model_id)
     }
 
     // ============================================

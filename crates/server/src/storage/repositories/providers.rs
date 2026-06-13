@@ -12,7 +12,7 @@ impl Database {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(
+    pub async fn create_provider(
         &self,
         org_id: i64,
         input: CreateProviderRow,
@@ -22,7 +22,7 @@ impl Database {
 
         let row = sqlx::query_as::<_, ProviderRow>(
             r#"
-            INSERT INTO llm_providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            INSERT INTO providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             "#,
@@ -45,7 +45,7 @@ impl Database {
     /// Returns None if provider already exists
     /// Create or update LLM provider with a specific ID (for seeding).
     /// Returns Some(row) if created or updated, None if unchanged.
-    pub async fn create_llm_provider_with_id(
+    pub async fn create_provider_with_id(
         &self,
         org_id: i64,
         id: Uuid,
@@ -56,15 +56,15 @@ impl Database {
 
         let row = sqlx::query_as::<_, ProviderRow>(
             r#"
-            INSERT INTO llm_providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
+            INSERT INTO providers (id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 provider_type = EXCLUDED.provider_type,
                 updated_at = NOW()
             WHERE
-                llm_providers.name IS DISTINCT FROM EXCLUDED.name
-                OR llm_providers.provider_type IS DISTINCT FROM EXCLUDED.provider_type
+                providers.name IS DISTINCT FROM EXCLUDED.name
+                OR providers.provider_type IS DISTINCT FROM EXCLUDED.provider_type
             RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
             "#,
         )
@@ -82,11 +82,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
+    pub async fn get_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
         let row = sqlx::query_as::<_, ProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
-            FROM llm_providers
+            FROM providers
             WHERE org_id = $1 AND id = $2
             "#,
         )
@@ -98,11 +98,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
+    pub async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
         let rows = sqlx::query_as::<_, ProviderRow>(
             r#"
             SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
-            FROM llm_providers
+            FROM providers
             WHERE org_id = $1
             ORDER BY created_at DESC
             "#,
@@ -114,7 +114,7 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn update_llm_provider(
+    pub async fn update_provider(
         &self,
         org_id: i64,
         id: Uuid,
@@ -125,7 +125,7 @@ impl Database {
 
         let row = sqlx::query_as::<_, ProviderRow>(
             r#"
-            UPDATE llm_providers
+            UPDATE providers
             SET
                 name = COALESCE($3, name),
                 provider_type = COALESCE($4, provider_type),
@@ -154,8 +154,8 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM llm_providers WHERE org_id = $1 AND id = $2")
+    pub async fn delete_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM providers WHERE org_id = $1 AND id = $2")
             .bind(org_id)
             .bind(id)
             .execute(&self.pool)
@@ -172,7 +172,7 @@ impl Database {
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         sqlx::query(
-            "UPDATE llm_providers SET last_synced_at = $3, updated_at = NOW() WHERE org_id = $1 AND id = $2",
+            "UPDATE providers SET last_synced_at = $3, updated_at = NOW() WHERE org_id = $1 AND id = $2",
         )
         .bind(org_id)
         .bind(id)
@@ -192,17 +192,14 @@ impl Database {
     /// resolution. The provider's API-key state is *not* gated here; readiness
     /// is surfaced via the derived `healthy` field on `ModelWithProvider`,
     /// and downstream LLM calls fail loudly if the key is missing.
-    pub async fn get_default_llm_model(
-        &self,
-        org_id: i64,
-    ) -> Result<Option<ModelWithProviderRow>> {
+    pub async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProviderRow>> {
         let row = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM organization_settings os
-            JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
-            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
+            JOIN models m ON m.id = os.default_model_id AND m.org_id = os.org_id
+            JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE os.org_id = $1 AND p.status = 'active' AND m.enabled = TRUE
             "#,
         )
@@ -217,16 +214,12 @@ impl Database {
     // LLM Models
     // ============================================
 
-    pub async fn create_llm_model(
-        &self,
-        org_id: i64,
-        input: CreateModelRow,
-    ) -> Result<ModelRow> {
+    pub async fn create_model(&self, org_id: i64, input: CreateModelRow) -> Result<ModelRow> {
         let capabilities_json = serde_json::to_value(&input.capabilities)?;
 
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
-            INSERT INTO llm_models (org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
+            INSERT INTO models (org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
@@ -248,7 +241,7 @@ impl Database {
 
     /// Create or update a model with a specific ID (for seeding).
     /// Returns Some(row) if created or updated, None if unchanged.
-    pub async fn create_llm_model_with_id(
+    pub async fn create_model_with_id(
         &self,
         org_id: i64,
         id: Uuid,
@@ -258,7 +251,7 @@ impl Database {
 
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
-            INSERT INTO llm_models (id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
+            INSERT INTO models (id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             ON CONFLICT (id) DO UPDATE SET
                 display_name = EXCLUDED.display_name,
@@ -266,9 +259,9 @@ impl Database {
                 enabled = EXCLUDED.enabled,
                 updated_at = NOW()
             WHERE
-                llm_models.display_name IS DISTINCT FROM EXCLUDED.display_name
-                OR llm_models.is_favorite IS DISTINCT FROM EXCLUDED.is_favorite
-                OR llm_models.enabled IS DISTINCT FROM EXCLUDED.enabled
+                models.display_name IS DISTINCT FROM EXCLUDED.display_name
+                OR models.is_favorite IS DISTINCT FROM EXCLUDED.is_favorite
+                OR models.enabled IS DISTINCT FROM EXCLUDED.enabled
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
@@ -293,13 +286,13 @@ impl Database {
     /// Disabled models are filtered out: callers on this path must not be able
     /// to resolve a model that an administrator has disabled. Admin code that
     /// needs to read disabled rows (e.g. the management UI, update/delete by id)
-    /// uses `get_llm_model_with_provider` or operates via `update_llm_model` /
-    /// `delete_llm_model` directly.
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
+    /// uses `get_model_with_provider` or operates via `update_model` /
+    /// `delete_model` directly.
+    pub async fn get_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
-            FROM llm_models
+            FROM models
             WHERE org_id = $1 AND id = $2 AND enabled = TRUE
             "#,
         )
@@ -311,7 +304,7 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_llm_model_with_provider(
+    pub async fn get_model_with_provider(
         &self,
         org_id: i64,
         id: Uuid,
@@ -320,8 +313,8 @@ impl Database {
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
-            FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.org_id = $1 AND m.id = $2
             "#,
         )
@@ -333,7 +326,7 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn list_llm_models_for_provider(
+    pub async fn list_models_for_provider(
         &self,
         org_id: i64,
         provider_id: Uuid,
@@ -341,7 +334,7 @@ impl Database {
         let rows = sqlx::query_as::<_, ModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
-            FROM llm_models
+            FROM models
             WHERE org_id = $1 AND provider_id = $2
             ORDER BY display_name ASC
             "#,
@@ -358,15 +351,15 @@ impl Database {
     ///
     /// Admin/management surface. Used by the models management UI which must show
     /// disabled models so administrators can re-enable them. Resolution paths
-    /// (`get_default_llm_model`, `get_llm_model_by_model_id`, `get_llm_model`)
+    /// (`get_default_model`, `get_model_by_model_id`, `get_model`)
     /// enforce `enabled = TRUE`; this listing intentionally does not.
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
+    pub async fn list_all_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, ModelWithProviderRow>(
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
-            FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE p.status = 'active' AND m.org_id = $1
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
@@ -378,7 +371,7 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn update_llm_model(
+    pub async fn update_model(
         &self,
         org_id: i64,
         id: Uuid,
@@ -391,7 +384,7 @@ impl Database {
 
         let row = sqlx::query_as::<_, ModelRow>(
             r#"
-            UPDATE llm_models
+            UPDATE models
             SET
                 provider_id = COALESCE($3, provider_id),
                 model_id = COALESCE($4, model_id),
@@ -406,7 +399,7 @@ impl Database {
               AND (
                   $3::uuid IS NULL
                   OR EXISTS (
-                      SELECT 1 FROM llm_providers p
+                      SELECT 1 FROM providers p
                       WHERE p.org_id = $1 AND p.id = $3
                   )
               )
@@ -429,8 +422,8 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM llm_models WHERE org_id = $1 AND id = $2")
+    pub async fn delete_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM models WHERE org_id = $1 AND id = $2")
             .bind(org_id)
             .bind(id)
             .execute(&self.pool)
@@ -440,7 +433,7 @@ impl Database {
     }
 
     /// Get model by model_id string (for resolving agent model references)
-    pub async fn get_llm_model_by_model_id(
+    pub async fn get_model_by_model_id(
         &self,
         org_id: i64,
         model_id: &str,
@@ -449,8 +442,8 @@ impl Database {
             r#"
             SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
-            FROM llm_models m
-            JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
+            FROM models m
+            JOIN providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2 AND m.enabled = TRUE
             "#,
         )

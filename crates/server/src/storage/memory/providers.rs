@@ -12,7 +12,7 @@ impl InMemoryDatabase {
     // LLM Providers
     // ============================================
 
-    pub async fn create_llm_provider(
+    pub async fn create_provider(
         &self,
         org_id: i64,
         input: CreateProviderRow,
@@ -34,7 +34,7 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
-        self.llm_providers.write().insert(id, row.clone());
+        self.providers.write().insert(id, row.clone());
         Ok(row)
     }
 
@@ -42,14 +42,14 @@ impl InMemoryDatabase {
     /// Returns None if provider already exists (idempotent)
     /// Create or update LLM provider with a specific ID (for seeding).
     /// Returns Some(row) if created or updated, None if unchanged.
-    pub async fn create_llm_provider_with_id(
+    pub async fn create_provider_with_id(
         &self,
         org_id: i64,
         id: Uuid,
         input: CreateProviderRow,
     ) -> Result<Option<ProviderRow>> {
         let id = ProviderId::from_uuid(id);
-        let mut providers = self.llm_providers.write();
+        let mut providers = self.providers.write();
         let now = Self::now();
 
         if let Some(existing) = providers.get(&id) {
@@ -85,17 +85,17 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
-    pub async fn get_llm_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
+    pub async fn get_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
         Ok(self
-            .llm_providers
+            .providers
             .read()
             .get(&ProviderId::from_uuid(id))
             .filter(|p| p.org_id == org_id)
             .cloned())
     }
 
-    pub async fn list_llm_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
-        let providers = self.llm_providers.read();
+    pub async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
+        let providers = self.providers.read();
         let mut result: Vec<_> = providers
             .values()
             .filter(|p| p.org_id == org_id)
@@ -105,14 +105,14 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn update_llm_provider(
+    pub async fn update_provider(
         &self,
         org_id: i64,
         id: Uuid,
         input: UpdateProvider,
     ) -> Result<Option<ProviderRow>> {
         let id = ProviderId::from_uuid(id);
-        let mut providers = self.llm_providers.write();
+        let mut providers = self.providers.write();
         if let Some(provider) = providers.get_mut(&id) {
             if provider.org_id != org_id {
                 return Ok(None);
@@ -139,11 +139,11 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn delete_llm_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let id = ProviderId::from_uuid(id);
         // Check org_id before deletion
         {
-            let providers = self.llm_providers.read();
+            let providers = self.providers.read();
             if let Some(provider) = providers.get(&id) {
                 if provider.org_id != org_id {
                     return Ok(false);
@@ -154,7 +154,7 @@ impl InMemoryDatabase {
         }
         // Delete models first
         {
-            let mut models = self.llm_models.write();
+            let mut models = self.models.write();
             let to_remove: Vec<ModelId> = models
                 .iter()
                 .filter(|(_, m)| m.provider_id == id)
@@ -164,7 +164,7 @@ impl InMemoryDatabase {
                 models.remove(&mid);
             }
         }
-        Ok(self.llm_providers.write().remove(&id).is_some())
+        Ok(self.providers.write().remove(&id).is_some())
     }
 
     /// Update provider's last_synced_at timestamp
@@ -175,7 +175,7 @@ impl InMemoryDatabase {
         last_synced_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         let id = ProviderId::from_uuid(id);
-        if let Some(provider) = self.llm_providers.write().get_mut(&id) {
+        if let Some(provider) = self.providers.write().get_mut(&id) {
             if provider.org_id != org_id {
                 return Ok(());
             }
@@ -215,18 +215,15 @@ impl InMemoryDatabase {
     // LLM Models
     // ============================================
 
-    pub async fn get_default_llm_model(
-        &self,
-        org_id: i64,
-    ) -> Result<Option<ModelWithProviderRow>> {
+    pub async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProviderRow>> {
         let org_settings = self.org_settings.read();
         let default_model_id = org_settings.get(&org_id).and_then(|s| s.default_model_id);
         let default_model_id = match default_model_id {
             Some(id) => id,
             None => return Ok(None),
         };
-        let models = self.llm_models.read();
-        let providers = self.llm_providers.read();
+        let models = self.models.read();
+        let providers = self.providers.read();
 
         if let Some(model) = models.get(&default_model_id)
             && model.org_id == org_id
@@ -262,11 +259,7 @@ impl InMemoryDatabase {
     // LLM Models (continued)
     // ============================================
 
-    pub async fn create_llm_model(
-        &self,
-        org_id: i64,
-        input: CreateModelRow,
-    ) -> Result<ModelRow> {
+    pub async fn create_model(&self, org_id: i64, input: CreateModelRow) -> Result<ModelRow> {
         let now = Self::now();
         let id = ModelId::new();
         let row = ModelRow {
@@ -284,20 +277,20 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
-        self.llm_models.write().insert(id, row.clone());
+        self.models.write().insert(id, row.clone());
         Ok(row)
     }
 
     /// Create or update a model with a specific ID (for seeding).
     /// Returns Some(row) if created or updated, None if unchanged.
-    pub async fn create_llm_model_with_id(
+    pub async fn create_model_with_id(
         &self,
         org_id: i64,
         id: Uuid,
         input: CreateModelRow,
     ) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
-        let mut models = self.llm_models.write();
+        let mut models = self.models.write();
         let now = Self::now();
 
         if let Some(existing) = models.get(&id).cloned() {
@@ -341,24 +334,24 @@ impl InMemoryDatabase {
     /// Resolve an LLM model by UUID for use. Mirrors the SQL backend: disabled
     /// models are filtered out so resolution paths cannot reach a model the
     /// administrator has disabled.
-    pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
+    pub async fn get_model(&self, org_id: i64, id: Uuid) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
         Ok(self
-            .llm_models
+            .models
             .read()
             .get(&id)
             .filter(|m| m.org_id == org_id && m.enabled)
             .cloned())
     }
 
-    pub async fn get_llm_model_with_provider(
+    pub async fn get_model_with_provider(
         &self,
         org_id: i64,
         id: Uuid,
     ) -> Result<Option<ModelWithProviderRow>> {
         let id = ModelId::from_uuid(id);
-        let models = self.llm_models.read();
-        let providers = self.llm_providers.read();
+        let models = self.models.read();
+        let providers = self.providers.read();
 
         if let Some(model) = models.get(&id)
             && model.org_id == org_id
@@ -388,13 +381,13 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
-    pub async fn list_llm_models_for_provider(
+    pub async fn list_models_for_provider(
         &self,
         org_id: i64,
         provider_id: Uuid,
     ) -> Result<Vec<ModelRow>> {
         let provider_id = ProviderId::from_uuid(provider_id);
-        let models = self.llm_models.read();
+        let models = self.models.read();
         let mut result: Vec<_> = models
             .values()
             .filter(|m| m.provider_id == provider_id && m.org_id == org_id)
@@ -406,13 +399,13 @@ impl InMemoryDatabase {
 
     /// List all LLM models for the org, including disabled ones (admin surface).
     ///
-    /// Mirrors `Database::list_all_llm_models`: this listing intentionally returns
+    /// Mirrors `Database::list_all_models`: this listing intentionally returns
     /// disabled models so the management UI can show them. Resolution paths use
-    /// `get_default_llm_model`, `get_llm_model_by_model_id`, and `get_llm_model`
+    /// `get_default_model`, `get_model_by_model_id`, and `get_model`
     /// which all enforce `enabled = TRUE`.
-    pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
-        let models = self.llm_models.read();
-        let providers = self.llm_providers.read();
+    pub async fn list_all_models(&self, org_id: i64) -> Result<Vec<ModelWithProviderRow>> {
+        let models = self.models.read();
+        let providers = self.providers.read();
 
         let mut result: Vec<_> = models
             .values()
@@ -452,7 +445,7 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    pub async fn update_llm_model(
+    pub async fn update_model(
         &self,
         org_id: i64,
         id: Uuid,
@@ -460,7 +453,7 @@ impl InMemoryDatabase {
     ) -> Result<Option<ModelRow>> {
         let id = ModelId::from_uuid(id);
         if let Some(provider_id) = input.provider_id {
-            let providers = self.llm_providers.read();
+            let providers = self.providers.read();
             if providers
                 .get(&provider_id)
                 .is_none_or(|provider| provider.org_id != org_id)
@@ -468,7 +461,7 @@ impl InMemoryDatabase {
                 return Ok(None);
             }
         }
-        let mut models = self.llm_models.write();
+        let mut models = self.models.write();
         // Check existence and org ownership
         if models.get(&id).is_none_or(|m| m.org_id != org_id) {
             return Ok(None);
@@ -502,9 +495,9 @@ impl InMemoryDatabase {
         Ok(Some(model.clone()))
     }
 
-    pub async fn delete_llm_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
+    pub async fn delete_model(&self, org_id: i64, id: Uuid) -> Result<bool> {
         let id = ModelId::from_uuid(id);
-        let mut models = self.llm_models.write();
+        let mut models = self.models.write();
         if let Some(model) = models.get(&id) {
             if model.org_id != org_id {
                 return Ok(false);
@@ -515,13 +508,13 @@ impl InMemoryDatabase {
         Ok(models.remove(&id).is_some())
     }
 
-    pub async fn get_llm_model_by_model_id(
+    pub async fn get_model_by_model_id(
         &self,
         org_id: i64,
         model_id: &str,
     ) -> Result<Option<ModelWithProviderRow>> {
-        let models = self.llm_models.read();
-        let providers = self.llm_providers.read();
+        let models = self.models.read();
+        let providers = self.providers.read();
 
         for model in models.values() {
             if model.model_id == model_id

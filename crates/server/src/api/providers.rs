@@ -7,7 +7,7 @@ use crate::domains::providers::{
     CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
     ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
 };
-use crate::services::{ProviderResolverService, ModelSyncService};
+use crate::services::{ModelSyncService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -17,7 +17,7 @@ use axum::{
 };
 use everruns_core::provider::Provider;
 use everruns_core::{
-    Caller, DriverRegistry, ProviderStatus, DriverId, ResourceConfigResponse,
+    Caller, DriverId, DriverRegistry, ProviderStatus, ResourceConfigResponse,
     evaluate_policies_with,
 };
 use serde::{Deserialize, Serialize};
@@ -65,7 +65,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_llm_provider_service(self.service.clone())
+        .with_provider_service(self.service.clone())
         .with_model_sync_service(self.sync_service.clone())
     }
 }
@@ -298,7 +298,7 @@ pub async fn sync_models(
     ),
     tag = "llm-providers"
 )]
-pub async fn llm_provider_config(
+pub async fn provider_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
 ) -> Json<ResourceConfigResponse> {
@@ -313,7 +313,7 @@ pub async fn llm_provider_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-providers/config", get(llm_provider_config))
+        .route("/v1/llm-providers/config", get(provider_config))
         .route(
             "/v1/llm-providers",
             post(create_provider).get(list_providers),

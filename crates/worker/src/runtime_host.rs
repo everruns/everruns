@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, ProviderStore,
-    PaymentAuthority, ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionStore,
+    AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
+    ProviderCredentialStore, ProviderStore, SessionFileSystem, SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
@@ -22,8 +22,8 @@ use uuid::Uuid;
 
 use crate::worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
-    AdapterProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
-    AdapterSessionMutator, AdapterSessionStore, WorkerAdapters,
+    AdapterMessageRetriever, AdapterProviderStore, AdapterSessionFileStore, AdapterSessionMutator,
+    AdapterSessionStore, WorkerAdapters,
 };
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control

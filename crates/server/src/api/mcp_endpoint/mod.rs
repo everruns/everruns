@@ -1764,8 +1764,8 @@ mod resources_read_policy_tests {
 
         let err = result.expect_err("denying resolver must block list_providers");
         assert!(
-            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("llm_provider.view")),
-            "expected Forbidden(llm_provider.view), got {err:?}"
+            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("provider.view")),
+            "expected Forbidden(provider.view), got {err:?}"
         );
     }
 

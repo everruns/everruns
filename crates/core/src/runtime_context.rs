@@ -384,8 +384,7 @@ mod tests {
     };
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
-        InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore,
-        InMemoryMessageRetriever,
+        InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     };
     use crate::message::Controls;
     use crate::message_retriever::InputMessage;

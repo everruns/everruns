@@ -13,10 +13,10 @@ pub use commands::*;
 pub use service::*;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
-    id: "llm_provider.view",
+    id: "provider.view",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
-    id: "llm_provider.manage",
+    id: "provider.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };

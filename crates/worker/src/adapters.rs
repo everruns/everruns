@@ -3,7 +3,7 @@
 // Decision: Workers use gRPC adapters for database operations, not direct DB access.
 // This module only contains LLM driver factory helpers.
 
-use everruns_core::{BoxedChatDriver, DriverRegistry, ProviderConfig, DriverId, Result};
+use everruns_core::{BoxedChatDriver, DriverId, DriverRegistry, ProviderConfig, Result};
 
 /// Create and configure the driver registry with all supported LLM providers
 ///

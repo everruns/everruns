@@ -528,8 +528,9 @@ impl WorkerServiceImpl {
         } else {
             SessionFileService::new(db.clone())
         };
-        let provider_resolver_service = provider_resolver_service
-            .unwrap_or_else(|| Arc::new(ProviderResolverService::new(db.clone(), encryption.clone())));
+        let provider_resolver_service = provider_resolver_service.unwrap_or_else(|| {
+            Arc::new(ProviderResolverService::new(db.clone(), encryption.clone()))
+        });
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),
             encryption.clone(),
@@ -793,9 +794,7 @@ impl WorkerServiceImpl {
     }
 
     /// Convert ResolvedModel to proto ResolvedModel
-    fn resolved_model_to_proto(
-        resolved: crate::services::ResolvedModel,
-    ) -> proto::ResolvedModel {
+    fn resolved_model_to_proto(resolved: crate::services::ResolvedModel) -> proto::ResolvedModel {
         proto::ResolvedModel {
             model: resolved.model_id,
             provider_type: resolved.provider_type,

@@ -18,8 +18,8 @@ use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, CapabilityRegistry, Harness, DriverId, ResolvedModel, PlatformDefinition,
-    Session, ToolCall,
+    Agent, CapabilityRegistry, DriverId, Harness, PlatformDefinition, ResolvedModel, Session,
+    ToolCall,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use serde_json::{Value, json};

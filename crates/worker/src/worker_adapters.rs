@@ -15,8 +15,8 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, ResolvedModel,
-    PaymentAuthority, ProviderCredentialStore, ResolvedImage,
+    BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, PaymentAuthority,
+    ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -508,10 +508,7 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> 
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::ProviderStore for OrgAdapter<A> {
-    async fn get_resolved_model(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         self.adapters
             .get_resolved_model(self.org_id, model_id.uuid())
             .await

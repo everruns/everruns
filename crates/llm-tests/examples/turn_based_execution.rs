@@ -31,8 +31,8 @@ use everruns_core::{
     },
     capabilities::CapabilityRegistry,
     in_memory::{
-        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryProviderStore,
-        InMemoryMessageRetriever, InMemorySessionStore,
+        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+        InMemoryProviderStore, InMemorySessionStore,
     },
     llm_driver_registry::DriverRegistry,
     session::{Session, SessionStatus},

@@ -44,14 +44,11 @@ impl DbProviderStore {
 
 #[async_trait]
 impl ProviderStore for DbProviderStore {
-    async fn get_resolved_model(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         // Look up the model
         let model_row = self
             .db
-            .get_llm_model(self.org_id, model_id.uuid())
+            .get_model(self.org_id, model_id.uuid())
             .await
             .store_err()?;
 
@@ -63,7 +60,7 @@ impl ProviderStore for DbProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(self.org_id, model_row.provider_id.uuid())
+            .get_provider(self.org_id, model_row.provider_id.uuid())
             .await
             .store_err()?;
 
@@ -92,11 +89,7 @@ impl ProviderStore for DbProviderStore {
 
     async fn get_default_model(&self) -> Result<Option<ResolvedModel>> {
         // Look up the default model via organization settings
-        let model_row = self
-            .db
-            .get_default_llm_model(self.org_id)
-            .await
-            .store_err()?;
+        let model_row = self.db.get_default_model(self.org_id).await.store_err()?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -106,7 +99,7 @@ impl ProviderStore for DbProviderStore {
         // Look up the provider
         let provider_row = self
             .db
-            .get_llm_provider(self.org_id, model_row.provider_id.uuid())
+            .get_provider(self.org_id, model_row.provider_id.uuid())
             .await
             .store_err()?;
 

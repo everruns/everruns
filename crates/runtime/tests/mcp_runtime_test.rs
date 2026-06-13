@@ -11,9 +11,9 @@ use async_trait::async_trait;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
-    CapabilityRegistry, EgressRequest, EgressResponse, EgressResult, EgressService,
-    EgressStreamResponse, DriverId, ResolvedModel, PlatformDefinition, ScopedMcpServer,
-    ScopedMcpServers, ToolCall,
+    CapabilityRegistry, DriverId, EgressRequest, EgressResponse, EgressResult, EgressService,
+    EgressStreamResponse, PlatformDefinition, ResolvedModel, ScopedMcpServer, ScopedMcpServers,
+    ToolCall,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use serde_json::{Value, json};

@@ -370,7 +370,7 @@ mod tests {
                 .is_ok()
         );
         assert!(
-            cap.validate_config(&serde_json::json!({"fields": ["llm_model"]}))
+            cap.validate_config(&serde_json::json!({"fields": ["model"]}))
                 .is_err(),
             "unknown metadata fields are rejected until implemented"
         );

@@ -3,7 +3,7 @@ use super::types::SyncModelsResponse;
 use super::{LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW};
 use crate::domains::common::*;
 use everruns_core::provider::Provider;
-use everruns_core::{ProviderStatus, DriverId, Policy};
+use everruns_core::{DriverId, Policy, ProviderStatus};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -35,7 +35,7 @@ impl Command for CreateProvider {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "create_provider",
-            category: "llm_providers",
+            category: "providers",
             description: "Create a new LLM provider.",
             method: "POST",
             path: "/v1/llm-providers",
@@ -73,7 +73,7 @@ impl Command for ListProviders {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "list_providers",
-            category: "llm_providers",
+            category: "providers",
             description: "List all LLM providers.",
             method: "GET",
             path: "/v1/llm-providers",
@@ -106,7 +106,7 @@ impl Command for GetProvider {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "get_provider",
-            category: "llm_providers",
+            category: "providers",
             description: "Get a specific LLM provider.",
             method: "GET",
             path: "/v1/llm-providers/{id}",
@@ -152,7 +152,7 @@ impl Command for UpdateProvider {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "update_provider",
-            category: "llm_providers",
+            category: "providers",
             description: "Update an LLM provider.",
             method: "PATCH",
             path: "/v1/llm-providers/{id}",
@@ -197,7 +197,7 @@ impl Command for DeleteProvider {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "delete_provider",
-            category: "llm_providers",
+            category: "providers",
             description: "Delete an LLM provider.",
             method: "DELETE",
             path: "/v1/llm-providers/{id}",
@@ -239,7 +239,7 @@ impl Command for SyncProviderModels {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "sync_provider_models",
-            category: "llm_providers",
+            category: "providers",
             description: "Discover and sync models from a provider.",
             method: "POST",
             path: "/v1/llm-providers/{id}/sync-models",

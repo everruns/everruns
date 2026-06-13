@@ -13,15 +13,15 @@ use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::in_memory::{
-    InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore, InMemoryMessageRetriever,
+    InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     InMemorySessionStore,
 };
 use everruns_core::llm_driver_registry::LlmCallConfigBuilder;
-use everruns_core::llm_driver_registry::{DriverRegistry, DriverId};
+use everruns_core::llm_driver_registry::{DriverId, DriverRegistry};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
-use everruns_core::traits::{ResolvedModel, NoopEventEmitter};
+use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
 use everruns_core::{Message, ToolCall};
 use futures::stream;
@@ -1594,9 +1594,7 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
         .await;
 
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(DriverId::LlmSim, |_config| {
-        Box::new(TextThenErrorDriver)
-    });
+    driver_registry.register(DriverId::LlmSim, |_config| Box::new(TextThenErrorDriver));
 
     let event_emitter = InMemoryEventEmitter::new();
 

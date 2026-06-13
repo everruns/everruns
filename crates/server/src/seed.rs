@@ -11,7 +11,7 @@ use crate::org_init;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{
-        CreateModelRow, CreateProviderRow, CreateMcpServerRow, CreateOrganizationRow,
+        CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
         CreateUserRow, UpdateProvider,
     },
     password::hash_password,
@@ -1449,7 +1449,7 @@ async fn seed_providers_with_platform_definition(
         };
 
         match db
-            .create_llm_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .create_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
             Some(row) => {
@@ -1576,7 +1576,7 @@ where
             continue;
         };
 
-        let Some(provider) = db.get_llm_provider(DEFAULT_ORG_ID, seed.id).await? else {
+        let Some(provider) = db.get_provider(DEFAULT_ORG_ID, seed.id).await? else {
             // Provider row not seeded (driver not registered for this grade).
             continue;
         };
@@ -1588,7 +1588,7 @@ where
         }
 
         let encrypted = encryption.encrypt_string(&env_key)?;
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed.id,
             UpdateProvider {
@@ -2185,7 +2185,7 @@ async fn seed_models_with_platform_definition(
         };
 
         match db
-            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .create_model_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
             Some(row) => {
@@ -2634,9 +2634,7 @@ pub async fn seed_all_with_platform_definition(
 mod tests {
     use super::*;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
-        UpdateHarness, UpdateModel, UpdateProvider, UpdateMcpServer,
-    };
+    use crate::storage::models::{UpdateHarness, UpdateMcpServer, UpdateModel, UpdateProvider};
 
     fn make_db() -> StorageBackend {
         StorageBackend::in_memory()
@@ -2804,7 +2802,7 @@ mod tests {
 
         // The key round-trips through the same decrypt path the resolver uses.
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .expect("openai provider seeded");
@@ -2830,7 +2828,7 @@ mod tests {
 
         // User configures their own key.
         let user_key = encryption.encrypt_string("sk-user-set").unwrap();
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
             UpdateProvider {
@@ -2854,7 +2852,7 @@ mod tests {
         assert_eq!(result.unchanged, 1);
 
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .unwrap();
@@ -2888,7 +2886,7 @@ mod tests {
         assert_eq!(result.updated, 0);
 
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .unwrap();
@@ -3398,7 +3396,7 @@ mod tests {
             .unwrap();
 
         // Mutate model display_name via public API
-        db.update_llm_model(
+        db.update_model(
             DEFAULT_ORG_ID,
             seed_ids::GPT_5_2,
             UpdateModel {
@@ -3428,7 +3426,7 @@ mod tests {
             .unwrap();
 
         // Mutate provider name via public API
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
             UpdateProvider {

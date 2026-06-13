@@ -1,7 +1,7 @@
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::{CapabilityRegistry, DriverId, ResolvedModel, PlatformDefinition};
+use everruns_core::{CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel};
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
 #[tokio::main]

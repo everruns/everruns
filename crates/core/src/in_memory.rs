@@ -403,10 +403,7 @@ impl InMemoryProviderStore {
 
 #[async_trait]
 impl ProviderStore for InMemoryProviderStore {
-    async fn get_resolved_model(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         Ok(self.models.read().await.get(&model_id).cloned())
     }
 

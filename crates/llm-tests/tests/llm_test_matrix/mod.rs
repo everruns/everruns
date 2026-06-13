@@ -8,6 +8,7 @@
 #![allow(dead_code)] // Not all test binaries use every constant.
 
 use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
 
 // ============================================================================
@@ -72,11 +73,8 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
-pub const ANTHROPIC_FABLE: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Anthropic,
-    "claude-fable-5",
-    "ANTHROPIC_API_KEY",
-);
+pub const ANTHROPIC_FABLE: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5", "ANTHROPIC_API_KEY");
 
 pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
@@ -85,11 +83,8 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Bare alias — the API does not serve a dated id for Opus 4.7.
-pub const ANTHROPIC_OPUS: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Anthropic,
-    "claude-opus-4-7",
-    "ANTHROPIC_API_KEY",
-);
+pub const ANTHROPIC_OPUS: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-4-7", "ANTHROPIC_API_KEY");
 
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
@@ -109,11 +104,8 @@ pub const OPENAI_GPT54: ProviderModelConfig =
 pub const OPENAI_GPT55: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY");
 
-pub const GEMINI_FLASH: ProviderModelConfig = ProviderModelConfig::new(
-    DriverId::Gemini,
-    "gemini-2.0-flash",
-    "GEMINI_API_KEY",
-);
+pub const GEMINI_FLASH: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Gemini, "gemini-2.0-flash", "GEMINI_API_KEY");
 
 // Bedrock: credentials are JSON in the env var, not a plain API key.
 // Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.

@@ -4,12 +4,9 @@ use everruns_core::typed_id::ProviderId;
 use std::sync::Arc;
 
 pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<ProviderService> {
-    ctx.llm_provider_service.clone().unwrap_or_else(|| {
-        Arc::new(ProviderService::new(
-            ctx.db.clone(),
-            ctx.encryption.clone(),
-        ))
-    })
+    ctx.provider_service
+        .clone()
+        .unwrap_or_else(|| Arc::new(ProviderService::new(ctx.db.clone(), ctx.encryption.clone())))
 }
 
 pub fn parse_provider_id(input: &str) -> Result<uuid::Uuid, CommandError> {

@@ -874,10 +874,10 @@ pub struct ModelWithProviderRow {
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,
     pub provider_type: String,
-    /// Joined from `llm_providers.api_key_set`. Used to derive `healthy` on
+    /// Joined from `providers.api_key_set`. Used to derive `healthy` on
     /// the public model shape; stays internal to the storage layer.
     pub provider_api_key_set: bool,
-    /// Joined from `llm_providers.status`.
+    /// Joined from `providers.status`.
     pub provider_status: String,
 }
 

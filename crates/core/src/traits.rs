@@ -152,8 +152,7 @@ pub trait ProviderStore: Send + Sync {
     ///
     /// Returns the model string ID, provider type, decrypted API key, and base URL
     /// needed to create an LLM provider via the factory.
-    async fn get_resolved_model(&self, model_id: ModelId)
-    -> Result<Option<ResolvedModel>>;
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>>;
 
     /// Get the default model with provider info
     ///
@@ -163,10 +162,7 @@ pub trait ProviderStore: Send + Sync {
 
 #[async_trait]
 impl<T: ProviderStore + ?Sized> ProviderStore for std::sync::Arc<T> {
-    async fn get_resolved_model(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ResolvedModel>> {
+    async fn get_resolved_model(&self, model_id: ModelId) -> Result<Option<ResolvedModel>> {
         (**self).get_resolved_model(model_id).await
     }
 

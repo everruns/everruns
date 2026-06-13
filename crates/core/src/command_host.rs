@@ -23,7 +23,7 @@ use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::{AssembledTurnContext, inspect_turn_context};
 use crate::session::Session;
 use crate::traits::{
-    AgentStore, HarnessStore, ImageResolver, ProviderStore, ResolvedModel, ResolvedImage,
+    AgentStore, HarnessStore, ImageResolver, ProviderStore, ResolvedImage, ResolvedModel,
     SessionFileSystem, SessionStore,
 };
 use crate::typed_id::SessionId;
@@ -488,13 +488,13 @@ mod tests {
     use crate::capabilities::TestMathCapability;
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
-        InMemoryAgentStore, InMemoryHarnessStore, InMemoryProviderStore,
-        InMemoryMessageRetriever, InMemorySessionStore,
+        InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
+        InMemorySessionStore,
     };
-    use crate::llm_driver_registry::{LlmStreamEvent, DriverId};
-    use crate::provider::DriverId;
+    use crate::llm_driver_registry::LlmStreamEvent;
     use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
     use crate::message_retriever::InputMessage;
+    use crate::provider::DriverId;
     use crate::session::SessionStatus;
     use crate::typed_id::{AgentId, HarnessId};
     use chrono::Utc;
@@ -659,9 +659,7 @@ mod tests {
 
         let mut driver_registry = DriverRegistry::new();
         let driver = LlmSimDriver::new(LlmSimConfig::fixed(response));
-        driver_registry.register(DriverId::LlmSim, move |_config| {
-            Box::new(driver.clone())
-        });
+        driver_registry.register(DriverId::LlmSim, move |_config| Box::new(driver.clone()));
 
         StoreCommandHost::new(
             session_id,

@@ -22,10 +22,10 @@ use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry}
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
 use crate::in_memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryProviderStore,
-    InMemoryMessageRetriever, InMemorySessionStore,
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+    InMemoryProviderStore, InMemorySessionStore,
 };
-use crate::llm_driver_registry::{DriverRegistry, DriverId};
+use crate::llm_driver_registry::{DriverId, DriverRegistry};
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
@@ -451,9 +451,7 @@ impl InMemoryAgenticLoopBuilder {
                 // because the Arc counters are shared.
                 let driver = LlmSimDriver::new(config);
                 let mut registry = DriverRegistry::new();
-                registry.register(DriverId::LlmSim, move |_config| {
-                    Box::new(driver.clone())
-                });
+                registry.register(DriverId::LlmSim, move |_config| Box::new(driver.clone()));
                 registry
             };
 

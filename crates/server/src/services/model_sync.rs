@@ -15,8 +15,7 @@ use crate::storage::{
 use anyhow::{Context, Result};
 use chrono::Utc;
 use everruns_core::{
-    DiscoveredModel, DriverRegistry, DriverId, ProviderConfig, ProviderId,
-    get_model_profile,
+    DiscoveredModel, DriverId, DriverRegistry, ProviderConfig, ProviderId, get_model_profile,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -65,7 +64,7 @@ impl ModelSyncService {
         // Get the provider
         let provider_row = self
             .db
-            .get_llm_provider(org_id, provider_id)
+            .get_provider(org_id, provider_id)
             .await?
             .context("Provider not found")?;
 
@@ -95,7 +94,7 @@ impl ModelSyncService {
 
         // Create driver for the provider; the open conversion handles built-in
         // and External providers uniformly.
-        let driver_type: DriverId = provider_type.into();
+        let driver_type: DriverId = provider_type;
         // LlmSim is a test-only provider with no models to sync.
         if driver_type == DriverId::LlmSim {
             return Ok(SyncResult::NotSupported);
@@ -158,7 +157,7 @@ impl ModelSyncService {
         let mut results = Vec::new();
 
         for org in &orgs {
-            let providers = self.db.list_llm_providers(org.org_id).await?;
+            let providers = self.db.list_providers(org.org_id).await?;
             for provider in providers {
                 let result = self
                     .sync_provider(provider.org_id, provider.id.uuid())
@@ -184,15 +183,12 @@ impl ModelSyncService {
         let mut updated = 0;
 
         // Parse provider type for profile lookup
-        let provider_type: DriverId = provider
-            .provider_type
-            .parse()
-            .unwrap_or(DriverId::OpenAI);
+        let provider_type: DriverId = provider.provider_type.parse().unwrap_or(DriverId::OpenAI);
 
         // Get existing models for this provider
         let existing = self
             .db
-            .list_llm_models_for_provider(provider.org_id, provider.id.uuid())
+            .list_models_for_provider(provider.org_id, provider.id.uuid())
             .await?;
         let existing_ids: std::collections::HashSet<_> =
             existing.iter().map(|m| m.model_id.as_str()).collect();
@@ -222,7 +218,7 @@ impl ModelSyncService {
                         ..Default::default()
                     };
                     self.db
-                        .update_llm_model(provider.org_id, existing_model.id.uuid(), update)
+                        .update_model(provider.org_id, existing_model.id.uuid(), update)
                         .await?;
                     updated += 1;
                 }
@@ -245,7 +241,7 @@ impl ModelSyncService {
                     provider_metadata: Some(metadata),
                 };
 
-                self.db.create_llm_model(provider.org_id, input).await?;
+                self.db.create_model(provider.org_id, input).await?;
                 created += 1;
             }
         }
@@ -287,7 +283,7 @@ fn supports_sync_with_base_url(provider_type: &DriverId) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateProviderRow, CreateOrganizationRow};
+    use crate::storage::models::{CreateOrganizationRow, CreateProviderRow};
 
     #[test]
     fn test_sync_result_success_serialization() {
@@ -334,9 +330,7 @@ mod tests {
         assert!(supports_sync_with_base_url(&DriverId::AzureOpenAI));
         assert!(supports_sync_with_base_url(&DriverId::OpenAI));
         assert!(supports_sync_with_base_url(&DriverId::OpenRouter));
-        assert!(supports_sync_with_base_url(
-            &DriverId::OpenAICompletions
-        ));
+        assert!(supports_sync_with_base_url(&DriverId::OpenAICompletions));
         assert!(!supports_sync_with_base_url(&DriverId::Anthropic));
     }
 
@@ -377,7 +371,7 @@ mod tests {
         let encrypted_key = encryption.encrypt_string("sk-secret-from-db").unwrap();
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -404,7 +398,7 @@ mod tests {
         let service = ModelSyncService::new(db.clone(), registry, None);
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),
@@ -431,7 +425,7 @@ mod tests {
         let service = ModelSyncService::new(db.clone(), registry, None);
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "Anthropic".to_string(),
@@ -475,7 +469,7 @@ mod tests {
 
         // Create providers in each org
         let _p1 = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI Org1".to_string(),
@@ -489,7 +483,7 @@ mod tests {
             .unwrap();
 
         let _p2 = db
-            .create_llm_provider(
+            .create_provider(
                 org2.org_id,
                 CreateProviderRow {
                     name: "Anthropic Org2".to_string(),
@@ -566,7 +560,7 @@ mod tests {
         let enc_key2 = encryption.encrypt_string("sk-org2-key").unwrap();
 
         let p1 = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI Org1".to_string(),
@@ -580,7 +574,7 @@ mod tests {
             .unwrap();
 
         let p2 = db
-            .create_llm_provider(
+            .create_provider(
                 org2.org_id,
                 CreateProviderRow {
                     name: "Anthropic Org2".to_string(),
@@ -621,7 +615,7 @@ mod tests {
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, Some(encryption));
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "Corrupt Provider".to_string(),
@@ -658,7 +652,7 @@ mod tests {
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, Some(enc_v2));
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "Wrong Key Provider".to_string(),
@@ -683,7 +677,7 @@ mod tests {
         let registry = Arc::new(DriverRegistry::new());
         let service = ModelSyncService::new(db.clone(), registry, None);
         let _p1 = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
                 CreateProviderRow {
                     name: "OpenAI".to_string(),

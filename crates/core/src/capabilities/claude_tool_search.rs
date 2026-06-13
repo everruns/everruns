@@ -69,11 +69,8 @@ impl ClaudeToolSearchCapability {
 /// is otherwise routed (a Claude model reached via OpenRouter/Bedrock has the
 /// flag masked off in `get_model_profile` and falls back to client-side search).
 pub fn model_supports_native_tool_search(model: &str) -> bool {
-    crate::model_profiles::get_model_profile(
-        &crate::provider::DriverId::Anthropic,
-        model,
-    )
-    .is_some_and(|profile| profile.tool_search)
+    crate::model_profiles::get_model_profile(&crate::provider::DriverId::Anthropic, model)
+        .is_some_and(|profile| profile.tool_search)
 }
 
 impl Default for ClaudeToolSearchCapability {

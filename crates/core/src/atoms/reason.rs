@@ -54,8 +54,7 @@ use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, ProviderStore, ResolvedModel, PartialStreamStore, ResolvedImage,
-    SessionStore,
+    ImageResolver, PartialStreamStore, ProviderStore, ResolvedImage, ResolvedModel, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};

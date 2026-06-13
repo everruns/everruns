@@ -1,7 +1,7 @@
 // Unit tests for Anthropic driver
 
 use crate::{DriverRegistry, register_driver};
-use everruns_core::llm_driver_registry::{ProviderConfig, DriverId};
+use everruns_core::llm_driver_registry::{DriverId, ProviderConfig};
 
 #[test]
 fn test_register_driver() {
