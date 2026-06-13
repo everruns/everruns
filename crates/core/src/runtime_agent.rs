@@ -21,8 +21,8 @@ use crate::capabilities::{
 use crate::config_layer::AgentConfigOverlay;
 use crate::harness::Harness;
 use crate::llm_driver_registry::{PromptCacheConfig, ToolSearchConfig};
-use crate::llm_model_profiles::get_model_profile;
-use crate::llm_models::LlmProviderType;
+use crate::model_profiles::get_model_profile;
+use crate::provider::DriverId;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 
@@ -429,12 +429,13 @@ impl RuntimeAgentBuilder {
         // renders the hosted format advertises tool_search for this model:
         // OpenAI (Responses) and Anthropic (Messages). A model id resolves under
         // at most one of these provider profiles, so the other lookup is None.
-        let model_supports_native = [LlmProviderType::Openai, LlmProviderType::Anthropic]
-            .iter()
-            .any(|provider| {
-                get_model_profile(provider, &self.runtime_agent.model)
-                    .is_some_and(|p| p.tool_search)
-            });
+        let model_supports_native =
+            [DriverId::OpenAI, DriverId::Anthropic]
+                .iter()
+                .any(|provider| {
+                    get_model_profile(provider, &self.runtime_agent.model)
+                        .is_some_and(|p| p.tool_search)
+                });
 
         // Hosted (native) deferral hides schemas server-side, so client-side
         // opt-out hooks (DeferSchemaHook) must be skipped while a hosted config

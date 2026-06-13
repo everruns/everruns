@@ -1,8 +1,8 @@
 use crate::capabilities::{CapabilityRegistry, SystemPromptContext};
 use crate::events::{LlmGenerationData, TokenUsage, ToolDefinitionSummary};
-use crate::llm_model_profiles::get_model_profile;
 use crate::mcp_server::parse_mcp_tool_name;
 use crate::message::{ContentPart, Message, MessageRole};
+use crate::model_profiles::get_model_profile;
 use crate::runtime_context::AssembledTurnContext;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};

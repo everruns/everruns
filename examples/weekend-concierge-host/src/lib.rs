@@ -2,14 +2,13 @@ use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
 use everruns_core::llm_driver_registry::DriverRegistry;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::session_file::InitialFile;
 use everruns_core::tool_types::{ToolCall, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus, Message,
-    ModelWithProvider, PlatformDefinition, Session, SessionStatus,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness, HarnessStatus,
+    Message, PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -361,9 +360,9 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
             ])
             .with_model("llmsim-weekend-concierge"),
         )
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-weekend-concierge".into(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".into()),
             base_url: None,
             provider_metadata: None,

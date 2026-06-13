@@ -93,7 +93,7 @@ pub struct DiscoveredModel {
     pub owned_by: Option<String>,
     /// Structured profile built from provider API metadata (capabilities, limits).
     /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
-    pub discovered_profile: Option<crate::llm_models::LlmModelProfile>,
+    pub discovered_profile: Option<crate::model::ModelProfile>,
 }
 
 /// Metadata about LLM completion
@@ -1051,102 +1051,11 @@ impl LlmMessage {
 // Driver Factory Types
 // ============================================================================
 
-/// Provider type enumeration matching the database/contracts.
-///
-/// Built-in variants are compiled into everruns. [`ProviderType::External`]
-/// (or [`ProviderType::external`]) identifies providers an embedder defines and
-/// registers itself, keyed by their canonical wire id.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum ProviderType {
-    /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
-    /// This is the recommended API for new projects.
-    OpenAI,
-    /// OpenRouter using the OpenAI-compatible Responses API.
-    OpenRouter,
-    /// Azure OpenAI using the Azure-hosted OpenAI v1 API.
-    AzureOpenAI,
-    /// OpenAI using Chat Completions API (for backward compatibility)
-    /// Use this if you need the legacy /v1/chat/completions endpoint.
-    OpenAICompletions,
-    Anthropic,
-    /// Google Gemini API
-    Gemini,
-    /// LLM simulator for testing (uses llmsim crate)
-    LlmSim,
-    /// AWS Bedrock Runtime (ConverseStream API)
-    Bedrock,
-    /// Embedder-defined provider identified by its canonical wire id.
-    External(Arc<str>),
-}
-
-impl ProviderType {
-    /// Construct an external provider type from its canonical id.
-    ///
-    /// The id is normalized to lowercase so registration and lookup match
-    /// case-insensitively, consistent with built-in parsing.
-    ///
-    /// ```
-    /// use everruns_core::llm_driver_registry::ProviderType;
-    /// let p = ProviderType::external("OpenAI-Codex");
-    /// assert_eq!(p.as_str(), "openai-codex");
-    /// ```
-    pub fn external(id: impl Into<Arc<str>>) -> Self {
-        let id: Arc<str> = id.into();
-        // Avoid reallocating when the id is already lowercase.
-        if id.bytes().any(|b| b.is_ascii_uppercase()) {
-            ProviderType::External(Arc::from(id.to_lowercase().as_str()))
-        } else {
-            ProviderType::External(id)
-        }
-    }
-
-    /// Canonical string identifier for this provider.
-    pub fn as_str(&self) -> &str {
-        match self {
-            ProviderType::OpenAI => "openai",
-            ProviderType::OpenRouter => "openrouter",
-            ProviderType::AzureOpenAI => "azure_openai",
-            ProviderType::OpenAICompletions => "openai_completions",
-            ProviderType::Anthropic => "anthropic",
-            ProviderType::Gemini => "gemini",
-            ProviderType::LlmSim => "llmsim",
-            ProviderType::Bedrock => "bedrock",
-            ProviderType::External(id) => id.as_ref(),
-        }
-    }
-}
-
-impl std::str::FromStr for ProviderType {
-    // Parsing never fails: unknown ids become `External`.
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        // Normalize once: built-in matching and the External id share the same
-        // lowercased form so casing variance never produces duplicate externals.
-        let lower = s.to_lowercase();
-        Ok(match lower.as_str() {
-            "openai" => ProviderType::OpenAI,
-            "openrouter" => ProviderType::OpenRouter,
-            "azure_openai" => ProviderType::AzureOpenAI,
-            "openai_completions" => ProviderType::OpenAICompletions,
-            "anthropic" => ProviderType::Anthropic,
-            "gemini" => ProviderType::Gemini,
-            "llmsim" => ProviderType::LlmSim,
-            "bedrock" => ProviderType::Bedrock,
-            _ => ProviderType::External(Arc::from(lower.as_str())),
-        })
-    }
-}
-
-impl std::fmt::Display for ProviderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
+pub use crate::provider::DriverId;
 
 /// Extra provider-specific authentication/metadata beyond an API key.
 ///
-/// Built-in providers ignore this; embedder-defined ([`ProviderType::External`])
+/// Built-in providers ignore this; embedder-defined ([`DriverId::External`])
 /// providers use it to carry OAuth tokens, account ids, or arbitrary extras
 /// their driver factory needs.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -1163,7 +1072,7 @@ pub struct ProviderMetadata {
 #[derive(Debug, Clone)]
 pub struct ProviderConfig {
     /// Type of provider
-    pub provider_type: ProviderType,
+    pub provider_type: DriverId,
     /// API key for authentication
     pub api_key: Option<String>,
     /// Base URL override (optional)
@@ -1174,7 +1083,7 @@ pub struct ProviderConfig {
 
 impl ProviderConfig {
     /// Create a new provider config
-    pub fn new(provider_type: ProviderType) -> Self {
+    pub fn new(provider_type: DriverId) -> Self {
         Self {
             provider_type,
             api_key: None,
@@ -1210,7 +1119,7 @@ impl ProviderConfig {
 #[derive(Debug, Clone)]
 pub struct DriverConfig {
     /// Provider type being created.
-    pub provider_type: ProviderType,
+    pub provider_type: DriverId,
     /// API key, when one is configured. `None` for keyless providers (LlmSim,
     /// or external providers that authenticate via [`ProviderMetadata`]).
     pub api_key: Option<String>,
@@ -1220,27 +1129,10 @@ pub struct DriverConfig {
     pub metadata: ProviderMetadata,
 }
 
-impl From<crate::llm_models::LlmProviderType> for ProviderType {
-    fn from(provider_type: crate::llm_models::LlmProviderType) -> Self {
-        use crate::llm_models::LlmProviderType;
-        match provider_type {
-            LlmProviderType::Openai => ProviderType::OpenAI,
-            LlmProviderType::Openrouter => ProviderType::OpenRouter,
-            LlmProviderType::AzureOpenai => ProviderType::AzureOpenAI,
-            LlmProviderType::OpenaiCompletions => ProviderType::OpenAICompletions,
-            LlmProviderType::Anthropic => ProviderType::Anthropic,
-            LlmProviderType::Gemini => ProviderType::Gemini,
-            LlmProviderType::LlmSim => ProviderType::LlmSim,
-            LlmProviderType::Bedrock => ProviderType::Bedrock,
-            LlmProviderType::External(id) => ProviderType::External(id),
-        }
-    }
-}
-
-impl From<&crate::traits::ModelWithProvider> for ProviderConfig {
-    fn from(model: &crate::traits::ModelWithProvider) -> Self {
+impl From<&crate::traits::ResolvedModel> for ProviderConfig {
+    fn from(model: &crate::traits::ResolvedModel) -> Self {
         Self {
-            provider_type: model.provider_type.clone().into(),
+            provider_type: model.provider_type.clone(),
             api_key: model.api_key.clone(),
             base_url: model.base_url.clone(),
             metadata: model.provider_metadata.clone().unwrap_or_default(),
@@ -1356,7 +1248,7 @@ impl std::fmt::Display for ServiceKind {
 #[derive(Clone)]
 pub struct DriverDescriptor {
     /// Driver id (also the registry key).
-    pub id: ProviderType,
+    pub id: DriverId,
     /// Human-readable driver name (e.g. "OpenAI", "AWS Bedrock").
     pub display_name: String,
     /// Services this driver's providers can power. Declared, not stored.
@@ -1374,7 +1266,7 @@ impl DriverDescriptor {
     /// for the driver id (a single required `api_key` field for real
     /// providers; empty for `LlmSim` and `External`, which may authenticate
     /// via [`ProviderMetadata`]) and a display name derived from the id.
-    pub fn chat_only<F>(id: impl Into<ProviderType>, factory: F) -> Self
+    pub fn chat_only<F>(id: impl Into<DriverId>, factory: F) -> Self
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
@@ -1407,24 +1299,24 @@ impl std::fmt::Debug for DriverDescriptor {
     }
 }
 
-fn default_display_name(id: &ProviderType) -> String {
+fn default_display_name(id: &DriverId) -> String {
     match id {
-        ProviderType::OpenAI => "OpenAI".to_string(),
-        ProviderType::OpenRouter => "OpenRouter".to_string(),
-        ProviderType::AzureOpenAI => "Azure OpenAI".to_string(),
-        ProviderType::OpenAICompletions => "OpenAI (Chat Completions)".to_string(),
-        ProviderType::Anthropic => "Anthropic".to_string(),
-        ProviderType::Gemini => "Google Gemini".to_string(),
-        ProviderType::Bedrock => "AWS Bedrock".to_string(),
-        ProviderType::LlmSim => "LLM Simulator".to_string(),
-        ProviderType::External(id) => id.to_string(),
+        DriverId::OpenAI => "OpenAI".to_string(),
+        DriverId::OpenRouter => "OpenRouter".to_string(),
+        DriverId::AzureOpenAI => "Azure OpenAI".to_string(),
+        DriverId::OpenAICompletions => "OpenAI (Chat Completions)".to_string(),
+        DriverId::Anthropic => "Anthropic".to_string(),
+        DriverId::Gemini => "Google Gemini".to_string(),
+        DriverId::Bedrock => "AWS Bedrock".to_string(),
+        DriverId::LlmSim => "LLM Simulator".to_string(),
+        DriverId::External(id) => id.to_string(),
     }
 }
 
-fn default_credential_schema(id: &ProviderType) -> CredentialFormSchema {
+fn default_credential_schema(id: &DriverId) -> CredentialFormSchema {
     match id {
         // Keyless: simulator always; external drivers may auth via metadata.
-        ProviderType::LlmSim | ProviderType::External(_) => CredentialFormSchema::empty(),
+        DriverId::LlmSim | DriverId::External(_) => CredentialFormSchema::empty(),
         _ => CredentialFormSchema::api_key(String::new()),
     }
 }
@@ -1437,7 +1329,7 @@ fn default_credential_schema(id: &ProviderType) -> CredentialFormSchema {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::{DriverRegistry, ProviderType};
+/// use everruns_core::{DriverRegistry, DriverId};
 /// use everruns_anthropic::register_driver;
 /// use everruns_openai::register_driver as register_openai;
 ///
@@ -1450,7 +1342,7 @@ fn default_credential_schema(id: &ProviderType) -> CredentialFormSchema {
 /// ```
 #[derive(Clone, Default)]
 pub struct DriverRegistry {
-    descriptors: HashMap<ProviderType, DriverDescriptor>,
+    descriptors: HashMap<DriverId, DriverDescriptor>,
 }
 
 impl DriverRegistry {
@@ -1487,7 +1379,7 @@ impl DriverRegistry {
     /// Panics if a factory is already registered for `provider_type` — silent
     /// overwrites hide double-registration bugs. Use
     /// [`Self::register_or_replace`] to overwrite intentionally.
-    pub fn register<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
+    pub fn register<F>(&mut self, provider_type: impl Into<DriverId>, factory: F)
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
@@ -1498,7 +1390,7 @@ impl DriverRegistry {
     ///
     /// Use when overwriting is intentional (e.g. swapping in an `LlmSim` driver
     /// for tests). Prefer [`Self::register`] otherwise so duplicates surface.
-    pub fn register_or_replace<F>(&mut self, provider_type: impl Into<ProviderType>, factory: F)
+    pub fn register_or_replace<F>(&mut self, provider_type: impl Into<DriverId>, factory: F)
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
@@ -1507,13 +1399,13 @@ impl DriverRegistry {
 
     /// Register a driver factory for an embedder-defined external provider,
     /// keyed by its canonical id. The id is normalized to lowercase (via
-    /// [`ProviderType::external`]) so it matches parsed lookups regardless of
+    /// [`DriverId::external`]) so it matches parsed lookups regardless of
     /// the casing stored in the database or sent on the wire.
     pub fn register_external<F>(&mut self, id: impl Into<Arc<str>>, factory: F)
     where
         F: Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync + 'static,
     {
-        self.register(ProviderType::external(id), factory);
+        self.register(DriverId::external(id), factory);
     }
 
     /// Create an LLM driver based on configuration
@@ -1529,7 +1421,7 @@ impl DriverRegistry {
         // (testing) or External providers (which may use metadata-based auth).
         let requires_api_key = !matches!(
             config.provider_type,
-            ProviderType::LlmSim | ProviderType::External(_)
+            DriverId::LlmSim | DriverId::External(_)
         );
         if requires_api_key && config.api_key.is_none() {
             return Err(AgentLoopError::llm(
@@ -1559,24 +1451,24 @@ impl DriverRegistry {
     }
 
     /// Check if a driver is registered for a provider type
-    pub fn has_driver(&self, provider_type: &ProviderType) -> bool {
+    pub fn has_driver(&self, provider_type: &DriverId) -> bool {
         self.descriptors.contains_key(provider_type)
     }
 
     /// Get the registered descriptor for a provider type.
-    pub fn descriptor(&self, provider_type: &ProviderType) -> Option<&DriverDescriptor> {
+    pub fn descriptor(&self, provider_type: &DriverId) -> Option<&DriverDescriptor> {
         self.descriptors.get(provider_type)
     }
 
     /// Whether the registered driver declares the given service.
-    pub fn supports(&self, provider_type: &ProviderType, service: ServiceKind) -> bool {
+    pub fn supports(&self, provider_type: &DriverId, service: ServiceKind) -> bool {
         self.descriptors
             .get(provider_type)
             .is_some_and(|d| d.supports(service))
     }
 
     /// Driver ids whose descriptors declare the given service.
-    pub fn providers_for(&self, service: ServiceKind) -> Vec<ProviderType> {
+    pub fn providers_for(&self, service: ServiceKind) -> Vec<DriverId> {
         self.descriptors
             .values()
             .filter(|d| d.supports(service))
@@ -1585,7 +1477,7 @@ impl DriverRegistry {
     }
 
     /// Get the list of registered provider types
-    pub fn registered_providers(&self) -> Vec<ProviderType> {
+    pub fn registered_providers(&self) -> Vec<DriverId> {
         self.descriptors.keys().cloned().collect()
     }
 
@@ -1602,7 +1494,7 @@ impl DriverRegistry {
     ) -> std::result::Result<BoxedEmbeddingsDriver, EmbeddingsDriverError> {
         let requires_api_key = !matches!(
             config.provider_type,
-            ProviderType::LlmSim | ProviderType::External(_)
+            DriverId::LlmSim | DriverId::External(_)
         );
         if requires_api_key && config.api_key.is_none() {
             return Err(EmbeddingsDriverError::Provider(
@@ -1848,38 +1740,32 @@ mod tests {
 
     #[test]
     fn test_provider_type_parsing() {
+        assert_eq!("openai".parse::<DriverId>().unwrap(), DriverId::OpenAI);
         assert_eq!(
-            "openai".parse::<ProviderType>().unwrap(),
-            ProviderType::OpenAI
+            "openrouter".parse::<DriverId>().unwrap(),
+            DriverId::OpenRouter
         );
         assert_eq!(
-            "openrouter".parse::<ProviderType>().unwrap(),
-            ProviderType::OpenRouter
+            "openai_completions".parse::<DriverId>().unwrap(),
+            DriverId::OpenAICompletions
         );
         assert_eq!(
-            "openai_completions".parse::<ProviderType>().unwrap(),
-            ProviderType::OpenAICompletions
+            "azure_openai".parse::<DriverId>().unwrap(),
+            DriverId::AzureOpenAI
         );
         assert_eq!(
-            "azure_openai".parse::<ProviderType>().unwrap(),
-            ProviderType::AzureOpenAI
+            "anthropic".parse::<DriverId>().unwrap(),
+            DriverId::Anthropic
         );
-        assert_eq!(
-            "anthropic".parse::<ProviderType>().unwrap(),
-            ProviderType::Anthropic
-        );
-        assert_eq!(
-            "gemini".parse::<ProviderType>().unwrap(),
-            ProviderType::Gemini
-        );
+        assert_eq!("gemini".parse::<DriverId>().unwrap(), DriverId::Gemini);
         // Unknown ids parse to External rather than erroring.
         assert_eq!(
-            "ollama".parse::<ProviderType>().unwrap(),
-            ProviderType::external("ollama")
+            "ollama".parse::<DriverId>().unwrap(),
+            DriverId::external("ollama")
         );
         assert_eq!(
-            "custom".parse::<ProviderType>().unwrap(),
-            ProviderType::external("custom")
+            "custom".parse::<DriverId>().unwrap(),
+            DriverId::external("custom")
         );
     }
 
@@ -1887,45 +1773,39 @@ mod tests {
     fn test_external_provider_id_is_case_insensitive() {
         // Built-in matching and external normalization are both case-folding,
         // so the same id in different casing resolves to one provider.
+        assert_eq!("OpenAI".parse::<DriverId>().unwrap(), DriverId::OpenAI);
         assert_eq!(
-            "OpenAI".parse::<ProviderType>().unwrap(),
-            ProviderType::OpenAI
+            "Ollama".parse::<DriverId>().unwrap(),
+            "ollama".parse::<DriverId>().unwrap()
         );
-        assert_eq!(
-            "Ollama".parse::<ProviderType>().unwrap(),
-            "ollama".parse::<ProviderType>().unwrap()
-        );
-        assert_eq!(
-            ProviderType::external("OpenAI-Codex").as_str(),
-            "openai-codex"
-        );
+        assert_eq!(DriverId::external("OpenAI-Codex").as_str(), "openai-codex");
         // Registration and parsed lookup agree regardless of casing.
         assert_eq!(
-            ProviderType::external("MyProvider"),
-            "myprovider".parse::<ProviderType>().unwrap()
+            DriverId::external("MyProvider"),
+            "myprovider".parse::<DriverId>().unwrap()
         );
     }
 
     #[test]
     fn test_provider_type_display() {
-        assert_eq!(ProviderType::OpenAI.to_string(), "openai");
-        assert_eq!(ProviderType::OpenRouter.to_string(), "openrouter");
-        assert_eq!(ProviderType::AzureOpenAI.to_string(), "azure_openai");
+        assert_eq!(DriverId::OpenAI.to_string(), "openai");
+        assert_eq!(DriverId::OpenRouter.to_string(), "openrouter");
+        assert_eq!(DriverId::AzureOpenAI.to_string(), "azure_openai");
         assert_eq!(
-            ProviderType::OpenAICompletions.to_string(),
+            DriverId::OpenAICompletions.to_string(),
             "openai_completions"
         );
-        assert_eq!(ProviderType::Anthropic.to_string(), "anthropic");
-        assert_eq!(ProviderType::Gemini.to_string(), "gemini");
+        assert_eq!(DriverId::Anthropic.to_string(), "anthropic");
+        assert_eq!(DriverId::Gemini.to_string(), "gemini");
     }
 
     #[test]
     fn test_provider_config_builder() {
-        let config = ProviderConfig::new(ProviderType::Anthropic)
+        let config = ProviderConfig::new(DriverId::Anthropic)
             .with_api_key("test-key")
             .with_base_url("https://custom.api.com");
 
-        assert_eq!(config.provider_type, ProviderType::Anthropic);
+        assert_eq!(config.provider_type, DriverId::Anthropic);
         assert_eq!(config.api_key, Some("test-key".to_string()));
         assert_eq!(config.base_url, Some("https://custom.api.com".to_string()));
     }
@@ -1934,7 +1814,7 @@ mod tests {
     fn test_driver_registry_requires_api_key() {
         // Register a mock factory
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::OpenAI, |_config| {
+        registry.register(DriverId::OpenAI, |_config| {
             // Return a mock driver - just need something that compiles
             struct MockDriver;
             #[async_trait]
@@ -1951,12 +1831,12 @@ mod tests {
         });
 
         // Driver without API key should fail
-        let config = ProviderConfig::new(ProviderType::OpenAI);
+        let config = ProviderConfig::new(DriverId::OpenAI);
         let result = registry.create_chat_driver(&config);
         assert!(result.is_err());
 
         // Driver with API key should succeed
-        let config_with_key = ProviderConfig::new(ProviderType::OpenAI).with_api_key("test-key");
+        let config_with_key = ProviderConfig::new(DriverId::OpenAI).with_api_key("test-key");
         let result = registry.create_chat_driver(&config_with_key);
         assert!(result.is_ok());
     }
@@ -1964,7 +1844,7 @@ mod tests {
     #[test]
     fn test_driver_registry_returns_error_for_unregistered_provider() {
         let registry = DriverRegistry::new();
-        let config = ProviderConfig::new(ProviderType::Anthropic).with_api_key("test-key");
+        let config = ProviderConfig::new(DriverId::Anthropic).with_api_key("test-key");
 
         let result = registry.create_chat_driver(&config);
 
@@ -1980,10 +1860,10 @@ mod tests {
     fn test_driver_registry_registration() {
         let mut registry = DriverRegistry::new();
 
-        assert!(!registry.has_driver(&ProviderType::OpenAI));
-        assert!(!registry.has_driver(&ProviderType::Anthropic));
+        assert!(!registry.has_driver(&DriverId::OpenAI));
+        assert!(!registry.has_driver(&DriverId::Anthropic));
 
-        registry.register(ProviderType::OpenAI, |_config| {
+        registry.register(DriverId::OpenAI, |_config| {
             struct MockDriver;
             #[async_trait]
             impl ChatDriver for MockDriver {
@@ -1998,8 +1878,8 @@ mod tests {
             Box::new(MockDriver)
         });
 
-        assert!(registry.has_driver(&ProviderType::OpenAI));
-        assert!(!registry.has_driver(&ProviderType::Anthropic));
+        assert!(registry.has_driver(&DriverId::OpenAI));
+        assert!(!registry.has_driver(&DriverId::Anthropic));
     }
 
     #[test]
@@ -2019,14 +1899,14 @@ mod tests {
         let mut registry = DriverRegistry::new();
         registry.register_external("openai-codex", |config| {
             // External providers may authenticate via metadata, not an api_key.
-            assert_eq!(config.provider_type, ProviderType::external("openai-codex"));
+            assert_eq!(config.provider_type, DriverId::external("openai-codex"));
             Box::new(MockDriver)
         });
 
-        assert!(registry.has_driver(&ProviderType::external("openai-codex")));
+        assert!(registry.has_driver(&DriverId::external("openai-codex")));
 
         // No api_key required for external providers.
-        let config = ProviderConfig::new(ProviderType::external("openai-codex")).with_metadata(
+        let config = ProviderConfig::new(DriverId::external("openai-codex")).with_metadata(
             ProviderMetadata {
                 refresh_token: Some("rt".into()),
                 ..Default::default()
@@ -2050,9 +1930,9 @@ mod tests {
         }
 
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::Anthropic, |_config| Box::new(MockDriver));
+        registry.register(DriverId::Anthropic, |_config| Box::new(MockDriver));
 
-        let descriptor = registry.descriptor(&ProviderType::Anthropic).unwrap();
+        let descriptor = registry.descriptor(&DriverId::Anthropic).unwrap();
         assert_eq!(descriptor.display_name, "Anthropic");
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert!(descriptor.chat.is_some());
@@ -2062,8 +1942,8 @@ mod tests {
         assert!(descriptor.credential_schema.fields[0].required);
 
         // Keyless drivers default to an empty schema.
-        registry.register(ProviderType::LlmSim, |_config| Box::new(MockDriver));
-        let sim = registry.descriptor(&ProviderType::LlmSim).unwrap();
+        registry.register(DriverId::LlmSim, |_config| Box::new(MockDriver));
+        let sim = registry.descriptor(&DriverId::LlmSim).unwrap();
         assert!(sim.credential_schema.fields.is_empty());
     }
 
@@ -2084,27 +1964,27 @@ mod tests {
         let mut registry = DriverRegistry::new();
         registry.register_descriptor(DriverDescriptor {
             services: vec![ServiceKind::Chat, ServiceKind::Realtime],
-            ..DriverDescriptor::chat_only(ProviderType::OpenAI, |_config| Box::new(MockDriver))
+            ..DriverDescriptor::chat_only(DriverId::OpenAI, |_config| Box::new(MockDriver))
         });
-        registry.register(ProviderType::Anthropic, |_config| Box::new(MockDriver));
+        registry.register(DriverId::Anthropic, |_config| Box::new(MockDriver));
 
-        assert!(registry.supports(&ProviderType::OpenAI, ServiceKind::Chat));
-        assert!(registry.supports(&ProviderType::OpenAI, ServiceKind::Realtime));
-        assert!(!registry.supports(&ProviderType::Anthropic, ServiceKind::Realtime));
-        assert!(!registry.supports(&ProviderType::Gemini, ServiceKind::Chat));
+        assert!(registry.supports(&DriverId::OpenAI, ServiceKind::Chat));
+        assert!(registry.supports(&DriverId::OpenAI, ServiceKind::Realtime));
+        assert!(!registry.supports(&DriverId::Anthropic, ServiceKind::Realtime));
+        assert!(!registry.supports(&DriverId::Gemini, ServiceKind::Chat));
 
         let realtime = registry.providers_for(ServiceKind::Realtime);
-        assert_eq!(realtime, vec![ProviderType::OpenAI]);
+        assert_eq!(realtime, vec![DriverId::OpenAI]);
         let mut chat = registry.providers_for(ServiceKind::Chat);
         chat.sort_by_key(|p| p.to_string());
-        assert_eq!(chat, vec![ProviderType::Anthropic, ProviderType::OpenAI]);
+        assert_eq!(chat, vec![DriverId::Anthropic, DriverId::OpenAI]);
     }
 
     #[test]
     fn test_create_chat_driver_fails_without_chat_factory() {
         let mut registry = DriverRegistry::new();
         registry.register_descriptor(DriverDescriptor {
-            id: ProviderType::external("embeddings-only"),
+            id: DriverId::external("embeddings-only"),
             display_name: "Embeddings Only".to_string(),
             services: vec![ServiceKind::Embeddings],
             credential_schema: CredentialFormSchema::empty(),
@@ -2112,7 +1992,7 @@ mod tests {
             embeddings: None,
         });
 
-        let config = ProviderConfig::new(ProviderType::external("embeddings-only"));
+        let config = ProviderConfig::new(DriverId::external("embeddings-only"));
         let err = match registry.create_chat_driver(&config) {
             Ok(_) => panic!("expected error for missing chat factory"),
             Err(err) => err,
@@ -2140,9 +2020,9 @@ mod tests {
         }
 
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::OpenAI, |_config| Box::new(MockDriver));
+        registry.register(DriverId::OpenAI, |_config| Box::new(MockDriver));
         // Second registration for the same provider must panic.
-        registry.register(ProviderType::OpenAI, |_config| Box::new(MockDriver));
+        registry.register(DriverId::OpenAI, |_config| Box::new(MockDriver));
     }
 
     #[test]
@@ -2160,10 +2040,10 @@ mod tests {
         }
 
         let mut registry = DriverRegistry::new();
-        registry.register(ProviderType::LlmSim, |_config| Box::new(MockDriver));
+        registry.register(DriverId::LlmSim, |_config| Box::new(MockDriver));
         // Replacing intentionally must not panic.
-        registry.register_or_replace(ProviderType::LlmSim, |_config| Box::new(MockDriver));
-        assert!(registry.has_driver(&ProviderType::LlmSim));
+        registry.register_or_replace(DriverId::LlmSim, |_config| Box::new(MockDriver));
+        assert!(registry.has_driver(&DriverId::LlmSim));
     }
 
     // ========================================================================

@@ -11,8 +11,8 @@ use crate::org_init;
 use crate::storage::{
     EncryptionService, StorageBackend,
     models::{
-        CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-        CreateUserRow, UpdateLlmProvider,
+        CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreateProviderRow,
+        CreateUserRow, UpdateProvider,
     },
     password::hash_password,
 };
@@ -1442,7 +1442,7 @@ async fn seed_providers_with_platform_definition(
             );
             continue;
         }
-        let input = CreateLlmProviderRow {
+        let input = CreateProviderRow {
             name: seed.name.to_string(),
             provider_type: seed.provider_type.to_string(),
             base_url: None,
@@ -1451,7 +1451,7 @@ async fn seed_providers_with_platform_definition(
         };
 
         match db
-            .create_llm_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .create_provider_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
             Some(row) => {
@@ -1550,7 +1550,7 @@ async fn seed_default_provider_keys_from_env(
     platform_definition: &PlatformDefinition,
 ) -> anyhow::Result<SeedResult> {
     seed_default_provider_keys_with_lookup(db, encryption, platform_definition, |provider_type| {
-        crate::services::llm_resolver::get_default_api_key_from_env(provider_type)
+        crate::services::provider_resolver::get_default_api_key_from_env(provider_type)
     })
     .await
 }
@@ -1578,7 +1578,7 @@ where
             continue;
         };
 
-        let Some(provider) = db.get_llm_provider(DEFAULT_ORG_ID, seed.id).await? else {
+        let Some(provider) = db.get_provider(DEFAULT_ORG_ID, seed.id).await? else {
             // Provider row not seeded (driver not registered for this grade).
             continue;
         };
@@ -1590,10 +1590,10 @@ where
         }
 
         let encrypted = encryption.encrypt_string(&env_key)?;
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed.id,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: None,
                 provider_type: None,
                 base_url: None,
@@ -2175,7 +2175,7 @@ async fn seed_models_with_platform_definition(
             );
             continue;
         }
-        let input = CreateLlmModelRow {
+        let input = CreateModelRow {
             provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
@@ -2187,7 +2187,7 @@ async fn seed_models_with_platform_definition(
         };
 
         match db
-            .create_llm_model_with_id(DEFAULT_ORG_ID, seed.id, input)
+            .create_model_with_id(DEFAULT_ORG_ID, seed.id, input)
             .await?
         {
             Some(row) => {
@@ -2636,9 +2636,7 @@ pub async fn seed_all_with_platform_definition(
 mod tests {
     use super::*;
     use crate::storage::StorageBackend;
-    use crate::storage::models::{
-        UpdateHarness, UpdateLlmModel, UpdateLlmProvider, UpdateMcpServer,
-    };
+    use crate::storage::models::{UpdateHarness, UpdateMcpServer, UpdateModel, UpdateProvider};
 
     fn make_db() -> StorageBackend {
         StorageBackend::in_memory()
@@ -2806,12 +2804,12 @@ mod tests {
 
         // The key round-trips through the same decrypt path the resolver uses.
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .expect("openai provider seeded");
         assert!(provider.api_key_set);
-        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
             &db,
             Some(&encryption),
             &provider,
@@ -2832,10 +2830,10 @@ mod tests {
 
         // User configures their own key.
         let user_key = encryption.encrypt_string("sk-user-set").unwrap();
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: None,
                 provider_type: None,
                 base_url: None,
@@ -2856,11 +2854,11 @@ mod tests {
         assert_eq!(result.unchanged, 1);
 
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .unwrap();
-        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+        let resolved = crate::services::provider_resolver::resolve_provider_api_key(
             &db,
             Some(&encryption),
             &provider,
@@ -2890,7 +2888,7 @@ mod tests {
         assert_eq!(result.updated, 0);
 
         let provider = db
-            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .get_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
             .await
             .unwrap()
             .unwrap();
@@ -3419,10 +3417,10 @@ mod tests {
             .unwrap();
 
         // Mutate model display_name via public API
-        db.update_llm_model(
+        db.update_model(
             DEFAULT_ORG_ID,
             seed_ids::GPT_5_2,
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("STALE".to_string()),
                 ..Default::default()
             },
@@ -3449,10 +3447,10 @@ mod tests {
             .unwrap();
 
         // Mutate provider name via public API
-        db.update_llm_provider(
+        db.update_provider(
             DEFAULT_ORG_ID,
             seed_ids::OPENAI_PROVIDER,
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("STALE".to_string()),
                 provider_type: None,
                 base_url: None,

@@ -13,12 +13,12 @@
 
 mod llm_test_matrix;
 
+use everruns_core::provider::DriverId;
 use llm_test_matrix::*;
 use rstest::rstest;
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::llm_models::LlmProviderType;
 use everruns_core::message::{ContentPart, Controls, MessageRole, ReasoningConfig};
 use everruns_core::message_retriever::InputMessage;
 
@@ -101,7 +101,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     // - Anthropic: cryptographic signature (always present with thinking)
     // - OpenAI o-series: encrypted_content (present when model uses encrypted reasoning)
     // - OpenAI GPT-5.x: not used (reasoning summary is readable, not encrypted)
-    if matches!(config.provider_type, LlmProviderType::Anthropic) {
+    if matches!(config.provider_type, DriverId::Anthropic) {
         assert!(
             assistant_msg.thinking_signature.is_some(),
             "Anthropic should have thinking_signature for multi-turn"

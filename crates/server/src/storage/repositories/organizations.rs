@@ -88,12 +88,12 @@ impl Database {
     /// Get a provider with its decrypted API key from database.
     ///
     /// Note: Environment variable fallback (DEFAULT_*_API_KEY) is handled
-    /// at the service layer (LlmResolverService), not here.
+    /// at the service layer (ProviderResolverService), not here.
     pub fn get_provider_with_api_key(
         &self,
-        provider: &LlmProviderRow,
+        provider: &ProviderRow,
         encryption: &super::super::EncryptionService,
-    ) -> Result<LlmProviderWithApiKey> {
+    ) -> Result<ProviderWithApiKey> {
         let api_key = if let Some(ref encrypted) = provider.api_key_encrypted {
             Some(encryption.decrypt_to_string(encrypted)?)
         } else {
@@ -104,7 +104,7 @@ impl Database {
         let settings: serde_json::Value =
             serde_json::from_str(&provider.settings.to_string()).unwrap_or_default();
 
-        Ok(LlmProviderWithApiKey {
+        Ok(ProviderWithApiKey {
             id: provider.id,
             name: provider.name.clone(),
             provider_type: provider.provider_type.clone(),

@@ -26,7 +26,7 @@
 //!
 //! ```ignore
 //! use everruns_core::{
-//!     CapabilityRegistry, DriverRegistry, InputMessage, LlmProviderType, ModelWithProvider,
+//!     CapabilityRegistry, DriverRegistry, InputMessage, DriverId, ResolvedModel,
 //!     PlatformDefinition,
 //! };
 //! use everruns_core::capabilities::TestMathCapability;
@@ -49,9 +49,9 @@
 //!             .session_title("Math Session")
 //!     })
 //!     .llm_sim(everruns_core::llmsim_driver::LlmSimConfig::fixed("4"))
-//!     .default_model(ModelWithProvider {
+//!     .default_model(ResolvedModel {
 //!         model: "llmsim-model".into(),
-//!         provider_type: LlmProviderType::LlmSim,
+//!         provider_type: DriverId::LlmSim,
 //!         api_key: Some("fake-key".into()),
 //!         base_url: None,
 //!     })

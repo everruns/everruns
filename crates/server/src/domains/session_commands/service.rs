@@ -9,7 +9,7 @@
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
-use crate::services::{EventService, LlmResolverService};
+use crate::services::{EventService, ProviderResolverService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use everruns_core::command::{
@@ -21,8 +21,8 @@ use everruns_core::traits::{AgentStore, HarnessStore, SessionStore};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{Agent, AgentLoopError, Caller, CapabilityRegistry, DriverRegistry, Harness};
 use everruns_worker::worker_adapters::{
-    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
-    AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
+    AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterMessageRetriever,
+    AdapterProviderStore, AdapterSessionFileStore, AdapterSessionStore,
 };
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -30,7 +30,7 @@ use std::sync::Arc;
 pub struct SessionCommandService {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
-    llm_resolver: Arc<LlmResolverService>,
+    provider_resolver: Arc<ProviderResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
@@ -44,7 +44,7 @@ impl SessionCommandService {
     pub fn new(
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
-        llm_resolver: Arc<LlmResolverService>,
+        provider_resolver: Arc<ProviderResolverService>,
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
@@ -53,7 +53,7 @@ impl SessionCommandService {
         Self {
             db,
             event_service,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             capability_registry,
             driver_registry,
@@ -158,7 +158,7 @@ impl SessionCommandService {
         let mut adapters = DirectWorkerAdapters::new(
             self.db.clone(),
             self.event_service.clone(),
-            self.llm_resolver.clone(),
+            self.provider_resolver.clone(),
             self.mcp_server_service.clone(),
             self.capability_registry.clone(),
             self.driver_registry.clone(),
@@ -178,7 +178,7 @@ impl SessionCommandService {
             Arc::new(AdapterAgentStore::new(adapters.clone(), org_id)),
             Arc::new(AdapterSessionStore::new(adapters.clone(), org_id)),
             Arc::new(AdapterMessageRetriever::new(adapters.clone())),
-            Arc::new(AdapterLlmProviderStore::new(adapters.clone(), org_id)),
+            Arc::new(AdapterProviderStore::new(adapters.clone(), org_id)),
             self.capability_registry.clone(),
             self.driver_registry.clone(),
         )

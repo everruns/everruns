@@ -12,10 +12,10 @@
 // 2. None — fail closed; no environment variable fallback in the tenant path.
 //
 // The env-var helpers (get_default_api_key_from_env) remain available for
-// explicit standalone/dev entrypoints (CLI, InMemoryLlmProviderStore) but must
+// explicit standalone/dev entrypoints (CLI, InMemoryProviderStore) but must
 // NOT be called from any org-scoped execution path.
 
-use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
+use crate::storage::{EncryptionService, StorageBackend, models::ProviderRow};
 use anyhow::Result;
 use moka::future::Cache;
 use std::sync::Arc;
@@ -85,7 +85,7 @@ where
 
 /// Resolve API key for a provider (fail-closed).
 ///
-/// Shared logic used by both LlmResolverService and ModelSyncService.
+/// Shared logic used by both ProviderResolverService and ModelSyncService.
 ///
 /// Resolution order:
 /// 1. Decrypt from database if encryption is available and key is set
@@ -96,7 +96,7 @@ where
 pub fn resolve_provider_api_key(
     db: &StorageBackend,
     encryption: Option<&EncryptionService>,
-    provider: &LlmProviderRow,
+    provider: &ProviderRow,
 ) -> Result<Option<String>> {
     if provider.api_key_encrypted.is_some() {
         if let Some(encryption) = encryption {
@@ -142,13 +142,13 @@ pub struct ResolvedProviderCredentials {
 /// Cache key: (org_id, model_uuid). Default-model lookups use DEFAULT_MODEL_SENTINEL.
 type CacheKey = (i64, Uuid);
 
-pub struct LlmResolverService {
+pub struct ProviderResolverService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
     cache: Cache<CacheKey, Option<ResolvedModel>>,
 }
 
-impl LlmResolverService {
+impl ProviderResolverService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         let cache = Cache::builder()
             .max_capacity(CACHE_MAX_ENTRIES)
@@ -207,7 +207,7 @@ impl LlmResolverService {
         org_id: i64,
         provider_type: &str,
     ) -> Result<Option<ResolvedProviderCredentials>> {
-        let providers = self.db.list_llm_providers(org_id).await?;
+        let providers = self.db.list_providers(org_id).await?;
         let provider_type_lower = provider_type.to_lowercase();
 
         let matching: Vec<_> = providers
@@ -255,7 +255,7 @@ impl LlmResolverService {
         org_id: i64,
         model_id: Uuid,
     ) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_llm_model(org_id, model_id).await?;
+        let model_row = self.db.get_model(org_id, model_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -264,7 +264,7 @@ impl LlmResolverService {
 
         let provider_row = self
             .db
-            .get_llm_provider(org_id, model_row.provider_id.uuid())
+            .get_provider(org_id, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {
@@ -284,7 +284,7 @@ impl LlmResolverService {
 
     /// Uncached default model resolution.
     async fn resolve_default_model_uncached(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
-        let model_row = self.db.get_default_llm_model(org_id).await?;
+        let model_row = self.db.get_default_model(org_id).await?;
 
         let model_row = match model_row {
             Some(row) => row,
@@ -293,7 +293,7 @@ impl LlmResolverService {
 
         let provider_row = self
             .db
-            .get_llm_provider(org_id, model_row.provider_id.uuid())
+            .get_provider(org_id, model_row.provider_id.uuid())
             .await?;
 
         let provider_row = match provider_row {
@@ -312,7 +312,7 @@ impl LlmResolverService {
     }
 
     /// Resolve API key for a provider (delegates to shared helper).
-    fn resolve_api_key(&self, provider: &LlmProviderRow) -> Result<Option<String>> {
+    fn resolve_api_key(&self, provider: &ProviderRow) -> Result<Option<String>> {
         resolve_provider_api_key(&self.db, self.encryption.as_deref(), provider)
     }
 
@@ -431,19 +431,19 @@ mod tests {
     // --- Integration tests with in-memory storage ---
 
     use crate::storage::StorageBackend;
-    use crate::storage::models::{CreateLlmModelRow, CreateLlmProviderRow};
+    use crate::storage::models::{CreateModelRow, CreateProviderRow};
 
     /// Helper: create resolver with in-memory storage and seed a provider + model.
     /// Returns (resolver, model_uuid).
-    async fn setup_resolver_with_model() -> (LlmResolverService, Uuid) {
+    async fn setup_resolver_with_model() -> (ProviderResolverService, Uuid) {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Test OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -455,9 +455,9 @@ mod tests {
             .unwrap();
 
         let model_row = db
-            .create_llm_model(
+            .create_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
@@ -512,7 +512,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_model_not_found_is_cached() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db, None);
+        let resolver = ProviderResolverService::new(db, None);
 
         let missing_id = Uuid::new_v4();
 
@@ -555,13 +555,13 @@ mod tests {
     #[tokio::test]
     async fn test_different_models_cached_independently() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Anthropic".to_string(),
                     provider_type: "anthropic".to_string(),
                     base_url: None,
@@ -573,9 +573,9 @@ mod tests {
             .unwrap();
 
         let model_a = db
-            .create_llm_model(
+            .create_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "claude-3-opus".to_string(),
                     display_name: "Claude 3 Opus".to_string(),
@@ -591,9 +591,9 @@ mod tests {
             .unwrap();
 
         let model_b = db
-            .create_llm_model(
+            .create_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "claude-3-sonnet".to_string(),
                     display_name: "Claude 3 Sonnet".to_string(),
@@ -627,13 +627,13 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_default_model_cached() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -645,9 +645,9 @@ mod tests {
             .unwrap();
 
         let model = db
-            .create_llm_model(
+            .create_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
@@ -689,7 +689,7 @@ mod tests {
     #[tokio::test]
     async fn test_invalidation_forces_fresh_resolution() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         // Resolve a missing model -> cached as None
@@ -738,9 +738,9 @@ mod tests {
 
         let encrypted = encryption.encrypt_string("sk-from-db").unwrap();
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -760,9 +760,9 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -783,9 +783,9 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "Anthropic".to_string(),
                     provider_type: "anthropic".to_string(),
                     base_url: None,
@@ -809,9 +809,9 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 DEFAULT_ORG_ID,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -845,7 +845,7 @@ mod tests {
     #[tokio::test]
     async fn resolve_provider_credentials_env_key_set_does_not_leak() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
 
         // No provider configured for this org at all.
         // Safety: test-only env mutation, same rationale as above.
@@ -892,13 +892,13 @@ mod tests {
     #[tokio::test]
     async fn resolve_default_model_scoped_to_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let resolver = LlmResolverService::new(db.clone(), None);
+        let resolver = ProviderResolverService::new(db.clone(), None);
         let org_id = DEFAULT_ORG_ID;
 
         let provider_row = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: "OpenAI".to_string(),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -910,9 +910,9 @@ mod tests {
             .unwrap();
 
         let model = db
-            .create_llm_model(
+            .create_model(
                 org_id,
-                CreateLlmModelRow {
+                CreateModelRow {
                     provider_id: provider_row.id,
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),

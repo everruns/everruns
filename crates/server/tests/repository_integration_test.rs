@@ -22,11 +22,11 @@ use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateDeclarativeCapabilityRow,
-    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow,
-    CreateMcpServerRow, CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow,
+    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateMcpServerRow, CreateModelRow,
+    CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionFileRow,
     CreateSessionRow, CreateSessionScheduleRow, CreateUserConnectionRow, CreateUserRow, Database,
-    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateLlmModel, UpdateLlmProvider,
-    UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
+    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateModel, UpdateOrganization,
+    UpdateOrganizationSettings, UpdateProvider, UpdateSession, UpdateSessionFile,
     UpdateSessionScheduleRow,
 };
 use test_harness::get_database_url;
@@ -1195,14 +1195,14 @@ async fn test_event_filter_types() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_provider_crud() {
+async fn test_provider_crud() {
     let backend = create_test_backend().await;
 
     // Create provider
     let provider = backend
-        .create_llm_provider(
+        .create_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Test Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: Some("https://api.openai.com/v1".to_string()),
@@ -1217,7 +1217,7 @@ async fn test_llm_provider_crud() {
 
     // Get provider
     let fetched = backend
-        .get_llm_provider(TEST_ORG_ID, provider.id.into())
+        .get_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to get provider")
         .expect("Provider not found");
@@ -1225,10 +1225,10 @@ async fn test_llm_provider_crud() {
 
     // Update provider
     let updated = backend
-        .update_llm_provider(
+        .update_provider(
             TEST_ORG_ID,
             provider.id.into(),
-            UpdateLlmProvider {
+            UpdateProvider {
                 name: Some("Updated Provider".to_string()),
                 provider_type: None,
                 base_url: None,
@@ -1244,14 +1244,14 @@ async fn test_llm_provider_crud() {
 
     // List providers
     let providers = backend
-        .list_llm_providers(TEST_ORG_ID)
+        .list_providers(TEST_ORG_ID)
         .await
         .expect("Failed to list providers");
     assert!(providers.iter().any(|p| p.id == provider.id));
 
     // Delete provider
     let deleted = backend
-        .delete_llm_provider(TEST_ORG_ID, provider.id.into())
+        .delete_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to delete provider");
     assert!(deleted);
@@ -1262,14 +1262,14 @@ async fn test_llm_provider_crud() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_model_crud() {
+async fn test_model_crud() {
     let backend = create_test_backend().await;
 
     // Create provider first
     let provider = backend
-        .create_llm_provider(
+        .create_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: "Model Test Provider".to_string(),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -1280,12 +1280,12 @@ async fn test_llm_model_crud() {
         .await
         .expect("Failed to create provider");
 
-    // Create model (enabled — `get_llm_model` filters disabled rows on the
+    // Create model (enabled — `get_model` filters disabled rows on the
     // resolution path and is exercised below).
     let model = backend
-        .create_llm_model(
+        .create_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: "gpt-4-test".to_string(),
                 display_name: "GPT-4 Test".to_string(),
@@ -1303,7 +1303,7 @@ async fn test_llm_model_crud() {
 
     // Get model
     let fetched = backend
-        .get_llm_model(TEST_ORG_ID, model.id.into())
+        .get_model(TEST_ORG_ID, model.id.into())
         .await
         .expect("Failed to get model")
         .expect("Model not found");
@@ -1311,7 +1311,7 @@ async fn test_llm_model_crud() {
 
     // Get model with provider
     let with_provider = backend
-        .get_llm_model_with_provider(TEST_ORG_ID, model.id.into())
+        .get_model_with_provider(TEST_ORG_ID, model.id.into())
         .await
         .expect("Failed to get model with provider")
         .expect("Model not found");
@@ -1319,10 +1319,10 @@ async fn test_llm_model_crud() {
 
     // Update model
     let updated = backend
-        .update_llm_model(
+        .update_model(
             TEST_ORG_ID,
             model.id.into(),
-            UpdateLlmModel {
+            UpdateModel {
                 display_name: Some("Updated GPT-4".to_string()),
                 ..Default::default()
             },
@@ -1334,18 +1334,18 @@ async fn test_llm_model_crud() {
 
     // List models for provider
     let models = backend
-        .list_llm_models_for_provider(TEST_ORG_ID, provider.id.into())
+        .list_models_for_provider(TEST_ORG_ID, provider.id.into())
         .await
         .expect("Failed to list models");
     assert!(models.iter().any(|m| m.id == model.id));
 
     // Cleanup
     backend
-        .delete_llm_model(TEST_ORG_ID, model.id.into())
+        .delete_model(TEST_ORG_ID, model.id.into())
         .await
         .unwrap();
     backend
-        .delete_llm_provider(TEST_ORG_ID, provider.id.into())
+        .delete_provider(TEST_ORG_ID, provider.id.into())
         .await
         .unwrap();
 }
@@ -2131,14 +2131,14 @@ async fn test_mcp_server_org_isolation_postgres() {
 }
 
 #[tokio::test]
-async fn test_llm_provider_org_isolation_postgres() {
+async fn test_provider_org_isolation_postgres() {
     let backend = create_test_backend().await;
     let org2 = create_test_org(&backend, "Provider Isolation Org").await;
 
     let provider = backend
-        .create_llm_provider(
+        .create_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Provider-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2152,7 +2152,7 @@ async fn test_llm_provider_org_isolation_postgres() {
     // Positive
     assert!(
         backend
-            .get_llm_provider(TEST_ORG_ID, provider.id.uuid())
+            .get_provider(TEST_ORG_ID, provider.id.uuid())
             .await
             .unwrap()
             .is_some()
@@ -2161,14 +2161,14 @@ async fn test_llm_provider_org_isolation_postgres() {
     // Negative
     assert!(
         backend
-            .get_llm_provider(org2, provider.id.uuid())
+            .get_provider(org2, provider.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
         !backend
-            .list_llm_providers(org2)
+            .list_providers(org2)
             .await
             .unwrap()
             .iter()
@@ -2176,27 +2176,27 @@ async fn test_llm_provider_org_isolation_postgres() {
     );
     assert!(
         !backend
-            .delete_llm_provider(org2, provider.id.uuid())
+            .delete_provider(org2, provider.id.uuid())
             .await
             .unwrap()
     );
 
     // Cleanup
     backend
-        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .delete_provider(TEST_ORG_ID, provider.id.uuid())
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn test_llm_model_org_isolation_postgres() {
+async fn test_model_org_isolation_postgres() {
     let backend = create_test_backend().await;
     let org2 = create_test_org(&backend, "Model Isolation Org").await;
 
     let provider = backend
-        .create_llm_provider(
+        .create_provider(
             TEST_ORG_ID,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2208,14 +2208,14 @@ async fn test_llm_model_org_isolation_postgres() {
         .expect("create provider");
 
     let model = backend
-        .create_llm_model(
+        .create_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: format!("model-{}", Uuid::now_v7()),
                 display_name: "Test Model".to_string(),
                 capabilities: vec![],
-                // Enabled — `get_llm_model` enforces enabled = TRUE on the
+                // Enabled — `get_model` enforces enabled = TRUE on the
                 // resolution path; this test focuses on org isolation.
                 enabled: true,
                 is_favorite: false,
@@ -2229,14 +2229,14 @@ async fn test_llm_model_org_isolation_postgres() {
     // Positive
     assert!(
         backend
-            .get_llm_model(TEST_ORG_ID, model.id.uuid())
+            .get_model(TEST_ORG_ID, model.id.uuid())
             .await
             .unwrap()
             .is_some()
     );
     assert!(
         backend
-            .get_llm_model_with_provider(TEST_ORG_ID, model.id.uuid())
+            .get_model_with_provider(TEST_ORG_ID, model.id.uuid())
             .await
             .unwrap()
             .is_some()
@@ -2245,52 +2245,47 @@ async fn test_llm_model_org_isolation_postgres() {
     // Negative
     assert!(
         backend
-            .get_llm_model(org2, model.id.uuid())
+            .get_model(org2, model.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
         backend
-            .get_llm_model_with_provider(org2, model.id.uuid())
+            .get_model_with_provider(org2, model.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
         backend
-            .list_llm_models_for_provider(org2, provider.id.uuid())
+            .list_models_for_provider(org2, provider.id.uuid())
             .await
             .unwrap()
             .is_empty()
     );
-    assert!(
-        !backend
-            .delete_llm_model(org2, model.id.uuid())
-            .await
-            .unwrap()
-    );
+    assert!(!backend.delete_model(org2, model.id.uuid()).await.unwrap());
 
     // Cleanup
     backend
-        .delete_llm_model(TEST_ORG_ID, model.id.uuid())
+        .delete_model(TEST_ORG_ID, model.id.uuid())
         .await
         .unwrap();
     backend
-        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .delete_provider(TEST_ORG_ID, provider.id.uuid())
         .await
         .unwrap();
 }
 
 #[tokio::test]
-async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgres() {
+async fn test_model_provider_reads_fail_closed_on_cross_org_provider_postgres() {
     let backend = create_test_backend().await;
     let org2 = create_test_org(&backend, "Cross-org Provider Isolation Org").await;
 
     let foreign_provider = backend
-        .create_llm_provider(
+        .create_provider(
             org2,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2302,9 +2297,9 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
         .expect("create foreign provider");
 
     let corrupt_model = backend
-        .create_llm_model(
+        .create_model(
             TEST_ORG_ID,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: foreign_provider.id,
                 model_id: format!("cross-org-model-{}", Uuid::now_v7()),
                 display_name: "Corrupt Model".to_string(),
@@ -2325,21 +2320,21 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
 
     assert!(
         backend
-            .get_llm_model(TEST_ORG_ID, corrupt_model.id.uuid())
+            .get_model(TEST_ORG_ID, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_some()
     );
     assert!(
         backend
-            .get_llm_model_with_provider(TEST_ORG_ID, corrupt_model.id.uuid())
+            .get_model_with_provider(TEST_ORG_ID, corrupt_model.id.uuid())
             .await
             .unwrap()
             .is_none()
     );
     assert!(
         backend
-            .list_all_llm_models(TEST_ORG_ID)
+            .list_all_models(TEST_ORG_ID)
             .await
             .unwrap()
             .into_iter()
@@ -2347,25 +2342,25 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
     );
     assert!(
         backend
-            .get_llm_model_by_model_id(TEST_ORG_ID, &corrupt_model.model_id)
+            .get_model_by_model_id(TEST_ORG_ID, &corrupt_model.model_id)
             .await
             .unwrap()
             .is_none()
     );
     assert!(
         backend
-            .get_default_llm_model(TEST_ORG_ID)
+            .get_default_model(TEST_ORG_ID)
             .await
             .unwrap()
             .is_none()
     );
 
     backend
-        .delete_llm_model(TEST_ORG_ID, corrupt_model.id.uuid())
+        .delete_model(TEST_ORG_ID, corrupt_model.id.uuid())
         .await
         .unwrap();
     backend
-        .delete_llm_provider(org2, foreign_provider.id.uuid())
+        .delete_provider(org2, foreign_provider.id.uuid())
         .await
         .unwrap();
 }
@@ -2376,9 +2371,9 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     let org_id = create_test_org(&backend, "Disabled Model Resolution Org").await;
 
     let provider = backend
-        .create_llm_provider(
+        .create_provider(
             org_id,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -2390,9 +2385,9 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
         .expect("create provider");
 
     let disabled_model = backend
-        .create_llm_model(
+        .create_model(
             org_id,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: format!("disabled-model-{}", Uuid::now_v7()),
                 display_name: "Disabled Model".to_string(),
@@ -2413,16 +2408,12 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
 
     // Resolution paths must fail closed for disabled models.
     assert!(
-        backend
-            .get_default_llm_model(org_id)
-            .await
-            .unwrap()
-            .is_none(),
+        backend.get_default_model(org_id).await.unwrap().is_none(),
         "default resolution must not return a disabled model"
     );
     assert!(
         backend
-            .get_llm_model_by_model_id(org_id, &disabled_model.model_id)
+            .get_model_by_model_id(org_id, &disabled_model.model_id)
             .await
             .unwrap()
             .is_none(),
@@ -2430,7 +2421,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     );
     assert!(
         backend
-            .get_llm_model(org_id, disabled_model.id.uuid())
+            .get_model(org_id, disabled_model.id.uuid())
             .await
             .unwrap()
             .is_none(),
@@ -2439,7 +2430,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
 
     // Admin listing must still include disabled models so administrators can
     // see and re-enable them via the management UI.
-    let listed = backend.list_all_llm_models(org_id).await.unwrap();
+    let listed = backend.list_all_models(org_id).await.unwrap();
     assert!(
         listed.iter().any(|model| model.id == disabled_model.id),
         "admin listing must include disabled models"
@@ -2451,11 +2442,11 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
         .await
         .expect("clear default model");
     backend
-        .delete_llm_model(org_id, disabled_model.id.uuid())
+        .delete_model(org_id, disabled_model.id.uuid())
         .await
         .expect("delete disabled model");
     backend
-        .delete_llm_provider(org_id, provider.id.uuid())
+        .delete_provider(org_id, provider.id.uuid())
         .await
         .expect("delete provider");
 }

@@ -31,8 +31,8 @@ use everruns_core::{
     },
     capabilities::CapabilityRegistry,
     in_memory::{
-        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-        InMemoryMessageRetriever, InMemorySessionStore,
+        InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
+        InMemoryProviderStore, InMemorySessionStore,
     },
     llm_driver_registry::DriverRegistry,
     session::{Session, SessionStatus},
@@ -105,7 +105,7 @@ async fn main() -> anyhow::Result<()> {
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
-    let provider_store = InMemoryLlmProviderStore::from_env().await;
+    let provider_store = InMemoryProviderStore::from_env().await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
     // Create a harness in the store

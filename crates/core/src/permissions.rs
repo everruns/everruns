@@ -37,9 +37,9 @@ pub enum Permission {
     /// CRUD on sessions
     OrgSessionsManage,
     /// View LLM providers (read-only)
-    OrgLlmProvidersView,
+    OrgProvidersView,
     /// CRUD on LLM providers
-    OrgLlmProvidersManage,
+    OrgProvidersManage,
     /// View organization settings (read-only)
     OrgSettingsView,
     /// Organization settings
@@ -74,8 +74,8 @@ impl Permission {
             Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgAppsDangerous => "org:apps:dangerous",
             Permission::OrgSessionsManage => "org:sessions:manage",
-            Permission::OrgLlmProvidersView => "org:llm-providers:view",
-            Permission::OrgLlmProvidersManage => "org:llm-providers:manage",
+            Permission::OrgProvidersView => "org:llm-providers:view",
+            Permission::OrgProvidersManage => "org:llm-providers:manage",
             Permission::OrgSettingsView => "org:settings:view",
             Permission::OrgSettingsManage => "org:settings:manage",
             Permission::OrgMembersView => "org:members:view",
@@ -100,8 +100,8 @@ impl Permission {
         Permission::OrgPluginsManage,
         Permission::OrgAppsDangerous,
         Permission::OrgSessionsManage,
-        Permission::OrgLlmProvidersView,
-        Permission::OrgLlmProvidersManage,
+        Permission::OrgProvidersView,
+        Permission::OrgProvidersManage,
         Permission::OrgSettingsView,
         Permission::OrgSettingsManage,
         Permission::OrgMembersView,
@@ -136,8 +136,8 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgPluginsManage,
     Permission::OrgAppsDangerous,
     Permission::OrgSessionsManage,
-    Permission::OrgLlmProvidersView,
-    Permission::OrgLlmProvidersManage,
+    Permission::OrgProvidersView,
+    Permission::OrgProvidersManage,
     Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
     Permission::OrgMembersView,
@@ -156,8 +156,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgAgentsManage,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
-    Permission::OrgLlmProvidersView,
-    Permission::OrgLlmProvidersManage,
+    Permission::OrgProvidersView,
+    Permission::OrgProvidersManage,
     Permission::OrgSettingsView,
     Permission::OrgSettingsManage,
     Permission::OrgMembersView,
@@ -174,7 +174,7 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesView,
     Permission::OrgAgentsManage,
     Permission::OrgSessionsManage,
-    Permission::OrgLlmProvidersView,
+    Permission::OrgProvidersView,
     Permission::OrgSettingsView,
     Permission::OrgMembersView,
     Permission::OrgReportsView,
@@ -1001,7 +1001,7 @@ mod tests {
         ));
         assert!(role_has_permission(
             OrgRole::Member,
-            &Permission::OrgLlmProvidersView
+            &Permission::OrgProvidersView
         ));
         assert!(role_has_permission(
             OrgRole::Member,
@@ -1021,7 +1021,7 @@ mod tests {
         ));
         assert!(!role_has_permission(
             OrgRole::Member,
-            &Permission::OrgLlmProvidersManage
+            &Permission::OrgProvidersManage
         ));
         assert!(!role_has_permission(
             OrgRole::Member,

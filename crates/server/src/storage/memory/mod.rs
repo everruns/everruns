@@ -20,7 +20,6 @@ mod evals;
 mod events;
 mod harnesses;
 mod knowledge_bases;
-mod llm;
 mod mcp_servers;
 mod memories;
 mod notifications;
@@ -30,6 +29,7 @@ mod organizations;
 mod payments;
 mod plugins;
 mod principals;
+mod providers;
 mod schedules;
 mod session_files;
 mod session_git;
@@ -98,8 +98,8 @@ pub struct InMemoryDatabase {
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
-    llm_providers: RwLock<HashMap<ProviderId, LlmProviderRow>>,
-    llm_models: RwLock<HashMap<ModelId, LlmModelRow>>,
+    providers: RwLock<HashMap<ProviderId, ProviderRow>>,
+    models: RwLock<HashMap<ModelId, ModelRow>>,
     agent_capabilities: RwLock<HashMap<(AgentId, String), AgentCapabilityRow>>,
     harnesses: RwLock<HashMap<HarnessId, HarnessRow>>,
     harness_capabilities: RwLock<HashMap<(HarnessId, String), HarnessCapabilityRow>>,
@@ -233,8 +233,8 @@ impl Default for InMemoryDatabase {
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
-            llm_providers: RwLock::new(HashMap::new()),
-            llm_models: RwLock::new(HashMap::new()),
+            providers: RwLock::new(HashMap::new()),
+            models: RwLock::new(HashMap::new()),
             agent_capabilities: RwLock::new(HashMap::new()),
             harnesses: RwLock::new(HashMap::new()),
             harness_capabilities: RwLock::new(HashMap::new()),

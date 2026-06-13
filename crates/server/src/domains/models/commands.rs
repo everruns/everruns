@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::domains::common::*;
-use everruns_core::{LlmModel, LlmModelSource, LlmModelWithProvider, Policy, ProviderId};
+use everruns_core::{Model, ModelSource, ModelWithProvider, Policy, ProviderId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -30,12 +30,12 @@ pub struct CreateModel {
 }
 
 impl Command for CreateModel {
-    type Output = LlmModel;
+    type Output = Model;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "create_model",
-            category: "llm_models",
+            category: "models",
             description: "Create a new model for a provider.",
             method: "POST",
             path: "/v1/llm-providers/{provider_id}/models",
@@ -46,13 +46,13 @@ impl Command for CreateModel {
         Some(&LLM_MODEL_MANAGE)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmModel, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Model, CommandError> {
         let provider_id = q::parse_provider_id(&self.provider_id)?;
         q::service(ctx)
             .create(
                 &ctx.caller,
                 provider_id,
-                crate::api::llm_models::CreateLlmModelRequest {
+                crate::api::models::CreateModelRequest {
                     model_id: self.model_id,
                     display_name: self.display_name,
                     capabilities: self.capabilities,
@@ -74,12 +74,12 @@ pub struct ListProviderModels {
 }
 
 impl Command for ListProviderModels {
-    type Output = Vec<LlmModel>;
+    type Output = Vec<Model>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "list_provider_models",
-            category: "llm_models",
+            category: "models",
             description: "List models for a specific provider.",
             method: "GET",
             path: "/v1/llm-providers/{provider_id}/models",
@@ -90,7 +90,7 @@ impl Command for ListProviderModels {
         Some(&LLM_MODEL_VIEW)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<LlmModel>, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<Model>, CommandError> {
         let provider_id = q::parse_provider_id(&self.provider_id)?;
         q::service(ctx)
             .list_for_provider(&ctx.caller, provider_id)
@@ -103,7 +103,7 @@ inventory::submit! { CommandDescriptor::of::<ListProviderModels>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListModels {
-    pub source: Option<LlmModelSource>,
+    pub source: Option<ModelSource>,
     #[serde(
         default = "default_true",
         deserialize_with = "deserialize_bool_lenient"
@@ -118,12 +118,12 @@ const fn default_true() -> bool {
 }
 
 impl Command for ListModels {
-    type Output = Vec<LlmModelWithProvider>;
+    type Output = Vec<ModelWithProvider>;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "list_models",
-            category: "llm_models",
+            category: "models",
             description: "List all models across all providers.",
             method: "GET",
             path: "/v1/llm-models",
@@ -134,7 +134,7 @@ impl Command for ListModels {
         Some(&LLM_MODEL_VIEW)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<Vec<LlmModelWithProvider>, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<ModelWithProvider>, CommandError> {
         q::service(ctx)
             .list_all_with_filters(
                 &ctx.caller,
@@ -156,12 +156,12 @@ pub struct GetModel {
 }
 
 impl Command for GetModel {
-    type Output = LlmModelWithProvider;
+    type Output = ModelWithProvider;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "get_model",
-            category: "llm_models",
+            category: "models",
             description: "Get a specific model with provider information.",
             method: "GET",
             path: "/v1/llm-models/{id}",
@@ -176,7 +176,7 @@ impl Command for GetModel {
         Some("id")
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmModelWithProvider, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<ModelWithProvider, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
         q::service(ctx)
             .get_with_provider(&ctx.caller, model_id)
@@ -209,12 +209,12 @@ pub struct UpdateModel {
 }
 
 impl Command for UpdateModel {
-    type Output = LlmModel;
+    type Output = Model;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "update_model",
-            category: "llm_models",
+            category: "models",
             description: "Update a model.",
             method: "PATCH",
             path: "/v1/llm-models/{id}",
@@ -225,7 +225,7 @@ impl Command for UpdateModel {
         Some(&LLM_MODEL_MANAGE)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<LlmModel, CommandError> {
+    async fn execute(self, ctx: &Ctx) -> Result<Model, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
         let provider_id = self
             .provider_id
@@ -236,7 +236,7 @@ impl Command for UpdateModel {
             .update(
                 &ctx.caller,
                 model_id,
-                crate::api::llm_models::UpdateLlmModelRequest {
+                crate::api::models::UpdateModelRequest {
                     provider_id: provider_id.map(|id| ProviderId::from_uuid(id).to_string()),
                     model_id: self.model_id,
                     display_name: self.display_name,
@@ -265,7 +265,7 @@ impl Command for DeleteModel {
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "delete_model",
-            category: "llm_models",
+            category: "models",
             description: "Delete a model.",
             method: "DELETE",
             path: "/v1/llm-models/{id}",

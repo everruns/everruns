@@ -820,7 +820,7 @@ pub struct EventsSummary {
 // ============================================
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct LlmProviderRow {
+pub struct ProviderRow {
     pub id: ProviderId,
     pub org_id: i64,
     pub name: String,
@@ -837,7 +837,7 @@ pub struct LlmProviderRow {
 }
 
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct LlmModelRow {
+pub struct ModelRow {
     pub id: ModelId,
     pub org_id: i64,
     pub provider_id: ProviderId,
@@ -859,7 +859,7 @@ pub struct LlmModelRow {
 
 /// Model with provider info joined
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
-pub struct LlmModelWithProviderRow {
+pub struct ModelWithProviderRow {
     pub id: ModelId,
     pub org_id: i64,
     pub provider_id: ProviderId,
@@ -879,16 +879,16 @@ pub struct LlmModelWithProviderRow {
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,
     pub provider_type: String,
-    /// Joined from `llm_providers.api_key_set`. Used to derive `healthy` on
+    /// Joined from `providers.api_key_set`. Used to derive `healthy` on
     /// the public model shape; stays internal to the storage layer.
     pub provider_api_key_set: bool,
-    /// Joined from `llm_providers.status`.
+    /// Joined from `providers.status`.
     pub provider_status: String,
 }
 
 /// LLM Provider with decrypted API key (used by worker activities)
 #[derive(Debug, Clone)]
-pub struct LlmProviderWithApiKey {
+pub struct ProviderWithApiKey {
     pub id: ProviderId,
     pub name: String,
     pub provider_type: String,
@@ -899,7 +899,7 @@ pub struct LlmProviderWithApiKey {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-pub struct CreateLlmProviderRow {
+pub struct CreateProviderRow {
     pub name: String,
     pub provider_type: String,
     pub base_url: Option<String>,
@@ -908,7 +908,7 @@ pub struct CreateLlmProviderRow {
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateLlmProvider {
+pub struct UpdateProvider {
     pub name: Option<String>,
     pub provider_type: Option<String>,
     pub base_url: Option<String>,
@@ -918,7 +918,7 @@ pub struct UpdateLlmProvider {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateLlmModelRow {
+pub struct CreateModelRow {
     pub provider_id: ProviderId,
     pub model_id: String,
     pub display_name: String,
@@ -933,7 +933,7 @@ pub struct CreateLlmModelRow {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct UpdateLlmModel {
+pub struct UpdateModel {
     pub provider_id: Option<ProviderId>,
     pub model_id: Option<String>,
     pub display_name: Option<String>,

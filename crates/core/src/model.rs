@@ -1,142 +1,21 @@
-// LLM Provider and Model entity types
+// Model entity and model-profile types (specs/providers.md)
 //
-// These types represent the database entities for LLM providers and models.
-// Note: This is separate from llm.rs which defines the LlmProvider trait.
+// A Model is a specific model via a specific provider (provider FK + wire
+// model id). ModelProfile is the model's identity and metadata; profile data
+// lives in `crate::model_profiles`.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+pub use crate::provider::{DriverId, ProviderStatus};
 use crate::typed_id::{ModelId, ProviderId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
-/// LLM provider type identifier.
-///
-/// Built-in variants cover providers shipped with everruns. Any string that
-/// does not match a built-in id becomes `External(id)`, so embedders can store
-/// and use custom provider ids without schema migrations.
-///
-/// Serializes to/from a plain string (e.g. `"anthropic"`, `"openai-codex"`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum LlmProviderType {
-    /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
-    Openai,
-    /// OpenRouter using the OpenAI-compatible Responses API
-    Openrouter,
-    /// Azure OpenAI using the Azure-hosted OpenAI v1 API
-    AzureOpenai,
-    /// OpenAI using Chat Completions API (for backward compatibility)
-    OpenaiCompletions,
-    Anthropic,
-    /// Google Gemini API
-    Gemini,
-    /// LLM simulator for testing
-    LlmSim,
-    /// AWS Bedrock Runtime (ConverseStream API)
-    Bedrock,
-    /// Embedder-defined provider not compiled into everruns-core. The inner id
-    /// is the canonical wire string (e.g. `"openai-codex"`).
-    External(std::sync::Arc<str>),
-}
-
-impl std::fmt::Display for LlmProviderType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
-impl LlmProviderType {
-    /// Return the canonical string identifier for this provider.
-    pub fn as_str(&self) -> &str {
-        match self {
-            LlmProviderType::Openai => "openai",
-            LlmProviderType::Openrouter => "openrouter",
-            LlmProviderType::AzureOpenai => "azure_openai",
-            LlmProviderType::OpenaiCompletions => "openai_completions",
-            LlmProviderType::Anthropic => "anthropic",
-            LlmProviderType::Gemini => "gemini",
-            LlmProviderType::LlmSim => "llmsim",
-            LlmProviderType::Bedrock => "bedrock",
-            LlmProviderType::External(id) => id.as_ref(),
-        }
-    }
-}
-
-impl std::str::FromStr for LlmProviderType {
-    // Parsing never fails: unknown ids become `External`.
-    type Err = std::convert::Infallible;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Normalize once so built-in matching and the External id share the
-        // same lowercased form; casing variance never yields duplicate ids.
-        let lower = s.to_lowercase();
-        Ok(match lower.as_str() {
-            "openai" => LlmProviderType::Openai,
-            "openrouter" => LlmProviderType::Openrouter,
-            "azure_openai" => LlmProviderType::AzureOpenai,
-            "openai_completions" => LlmProviderType::OpenaiCompletions,
-            "anthropic" => LlmProviderType::Anthropic,
-            "gemini" => LlmProviderType::Gemini,
-            "llmsim" => LlmProviderType::LlmSim,
-            "bedrock" => LlmProviderType::Bedrock,
-            _ => LlmProviderType::External(std::sync::Arc::from(lower.as_str())),
-        })
-    }
-}
-
-impl Serialize for LlmProviderType {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for LlmProviderType {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
-        // FromStr is infallible (unknown ids become External).
-        Ok(s.parse().unwrap_or_else(|_| unreachable!()))
-    }
-}
-
-// `Arc<str>` does not implement `ToSchema`, so the schema is written by hand.
-// It is a plain string at the wire level regardless of the variant.
-#[cfg(feature = "openapi")]
-impl utoipa::ToSchema for LlmProviderType {
-    fn name() -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed("LlmProviderType")
-    }
-}
-
-#[cfg(feature = "openapi")]
-impl utoipa::PartialSchema for LlmProviderType {
-    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::Schema> {
-        utoipa::openapi::ObjectBuilder::new()
-            .schema_type(utoipa::openapi::schema::SchemaType::new(
-                utoipa::openapi::schema::Type::String,
-            ))
-            .description(Some(
-                "LLM provider type. Built-in: openai, openrouter, azure_openai, \
-                 openai_completions, anthropic, gemini, llmsim, bedrock. \
-                 Any other string is treated as an embedder-defined external provider.",
-            ))
-            .build()
-            .into()
-    }
-}
-
-/// LLM provider status
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum LlmProviderStatus {
-    Active,
-    Disabled,
-}
-
 // LLM model "healthy" status is not persisted on the model row. It is
 // derived at read time from the joined provider's state and exposed as a
-// boolean on `LlmModelWithProvider`. The per-row `enabled` flag is the only
+// boolean on `ModelWithProvider`. The per-row `enabled` flag is the only
 // persisted user-facing toggle, and it controls visibility in UI model
 // pickers.
 
@@ -145,7 +24,7 @@ pub enum LlmProviderStatus {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(example = "predefined"))]
 #[serde(rename_all = "snake_case")]
-pub enum LlmModelSource {
+pub enum ModelSource {
     /// User-created via API or UI
     #[default]
     Manual,
@@ -155,61 +34,33 @@ pub enum LlmModelSource {
     Predefined,
 }
 
-impl std::fmt::Display for LlmModelSource {
+impl std::fmt::Display for ModelSource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            LlmModelSource::Manual => write!(f, "manual"),
-            LlmModelSource::Discovered => write!(f, "discovered"),
-            LlmModelSource::Predefined => write!(f, "predefined"),
+            ModelSource::Manual => write!(f, "manual"),
+            ModelSource::Discovered => write!(f, "discovered"),
+            ModelSource::Predefined => write!(f, "predefined"),
         }
     }
 }
 
-impl std::str::FromStr for LlmModelSource {
+impl std::str::FromStr for ModelSource {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "manual" => Ok(LlmModelSource::Manual),
-            "discovered" => Ok(LlmModelSource::Discovered),
-            "predefined" => Ok(LlmModelSource::Predefined),
+            "manual" => Ok(ModelSource::Manual),
+            "discovered" => Ok(ModelSource::Discovered),
+            "predefined" => Ok(ModelSource::Predefined),
             _ => Err(format!("Unknown model source: {}", s)),
         }
     }
 }
 
-/// LLM Provider entity (API keys never exposed)
-/// Note: This is the entity struct, separate from the LlmProvider trait in llm.rs
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmProvider {
-    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
-    pub id: ProviderId,
-    /// Human-readable provider name. Safe to render in user-facing messages.
-    pub name: String,
-    /// Provider implementation type (OpenAI, Anthropic, Gemini, etc.).
-    pub provider_type: LlmProviderType,
-    /// Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub base_url: Option<String>,
-    /// Whether an API key is configured. The key itself is never returned.
-    pub api_key_set: bool,
-    /// Current lifecycle status of this provider.
-    pub status: LlmProviderStatus,
-    /// Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_synced_at: Option<DateTime<Utc>>,
-    /// Timestamp when this provider was created (RFC 3339).
-    pub created_at: DateTime<Utc>,
-    /// Timestamp when this provider was last updated (RFC 3339).
-    pub updated_at: DateTime<Utc>,
-}
-
 /// LLM Model entity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModel {
+pub struct Model {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
@@ -224,10 +75,10 @@ pub struct LlmModel {
     pub capabilities: Vec<String>,
     /// Whether this model is starred in the UI for quick access.
     pub is_favorite: bool,
-    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default.
+    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default.
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
-    pub source: LlmModelSource,
+    pub source: ModelSource,
     /// Timestamp when this model was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     /// Timestamp when this model was last updated (RFC 3339).
@@ -237,7 +88,7 @@ pub struct LlmModel {
 /// LLM Model with provider info
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModelWithProvider {
+pub struct ModelWithProvider {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
@@ -256,12 +107,12 @@ pub struct LlmModelWithProvider {
     /// Whether this model is starred in the UI for quick access.
     #[cfg_attr(feature = "openapi", schema(example = true))]
     pub is_favorite: bool,
-    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.
+    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.
     #[cfg_attr(feature = "openapi", schema(example = true))]
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
     #[cfg_attr(feature = "openapi", schema(example = "predefined"))]
-    pub source: LlmModelSource,
+    pub source: ModelSource,
     /// Timestamp when this model was created (RFC 3339).
     #[cfg_attr(feature = "openapi", schema(example = "2026-01-04T11:23:00Z"))]
     pub created_at: DateTime<Utc>,
@@ -273,7 +124,7 @@ pub struct LlmModelWithProvider {
     pub provider_name: String,
     /// Joined provider implementation type.
     #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
-    pub provider_type: LlmProviderType,
+    pub provider_type: DriverId,
     /// Derived: model is configured and ready for use. Currently means the
     /// joined provider is active and has an API key set; over time this may
     /// also incorporate live reachability checks. Not persisted.
@@ -281,7 +132,7 @@ pub struct LlmModelWithProvider {
     pub healthy: bool,
     /// Readonly profile with model capabilities (limits, pricing, modalities). Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub profile: Option<LlmModelProfile>,
+    pub profile: Option<ModelProfile>,
     /// Vendor/brand of the model, derived from the model registry. Drives UI
     /// branding (icons). `None` when the model id is not in the registry. Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -296,7 +147,7 @@ pub struct LlmModelWithProvider {
 /// Cost information for the model (per million tokens)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModelCost {
+pub struct ModelCost {
     /// Input cost per million tokens (USD)
     pub input: f64,
     /// Output cost per million tokens (USD)
@@ -330,7 +181,7 @@ pub struct CostTier {
 /// Token limits for the model
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModelLimits {
+pub struct ModelLimits {
     /// Maximum context window size in tokens
     pub context: i32,
     /// Maximum input tokens (if different from context - output)
@@ -358,7 +209,7 @@ pub enum Modality {
 /// Model modalities for input and output
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModelModalities {
+pub struct ModelModalities {
     /// Supported input modalities
     pub input: Vec<Modality>,
     /// Supported output modalities
@@ -447,7 +298,7 @@ impl ModelVendor {
 /// Additional model profiles can be added as needed.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct LlmModelProfile {
+pub struct ModelProfile {
     /// Display name of the model
     pub name: String,
     /// Model family (e.g., "gpt-4o", "claude-3-5-sonnet")
@@ -478,13 +329,13 @@ pub struct LlmModelProfile {
     pub open_weights: bool,
     /// Cost per million tokens
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub cost: Option<LlmModelCost>,
+    pub cost: Option<ModelCost>,
     /// Token limits
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub limits: Option<LlmModelLimits>,
+    pub limits: Option<ModelLimits>,
     /// Supported modalities
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub modalities: Option<LlmModelModalities>,
+    pub modalities: Option<ModelModalities>,
     /// Reasoning effort configuration (for reasoning models)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffortConfig>,
@@ -508,107 +359,107 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_llm_provider_type_serialization() {
+    fn test_provider_type_serialization() {
         // Verify all provider types serialize correctly
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::Openai).unwrap(),
+            serde_json::to_string(&DriverId::OpenAI).unwrap(),
             "\"openai\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::Openrouter).unwrap(),
+            serde_json::to_string(&DriverId::OpenRouter).unwrap(),
             "\"openrouter\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::OpenaiCompletions).unwrap(),
+            serde_json::to_string(&DriverId::OpenAICompletions).unwrap(),
             "\"openai_completions\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::AzureOpenai).unwrap(),
+            serde_json::to_string(&DriverId::AzureOpenAI).unwrap(),
             "\"azure_openai\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::Anthropic).unwrap(),
+            serde_json::to_string(&DriverId::Anthropic).unwrap(),
             "\"anthropic\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::Gemini).unwrap(),
+            serde_json::to_string(&DriverId::Gemini).unwrap(),
             "\"gemini\""
         );
         assert_eq!(
-            serde_json::to_string(&LlmProviderType::LlmSim).unwrap(),
+            serde_json::to_string(&DriverId::LlmSim).unwrap(),
             "\"llmsim\""
         );
     }
 
     #[test]
-    fn test_llm_provider_type_deserialization() {
+    fn test_provider_type_deserialization() {
         // Verify all provider types deserialize correctly
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"openai\"").unwrap(),
-            LlmProviderType::Openai
+            serde_json::from_str::<DriverId>("\"openai\"").unwrap(),
+            DriverId::OpenAI
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"openrouter\"").unwrap(),
-            LlmProviderType::Openrouter
+            serde_json::from_str::<DriverId>("\"openrouter\"").unwrap(),
+            DriverId::OpenRouter
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"openai_completions\"").unwrap(),
-            LlmProviderType::OpenaiCompletions
+            serde_json::from_str::<DriverId>("\"openai_completions\"").unwrap(),
+            DriverId::OpenAICompletions
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"azure_openai\"").unwrap(),
-            LlmProviderType::AzureOpenai
+            serde_json::from_str::<DriverId>("\"azure_openai\"").unwrap(),
+            DriverId::AzureOpenAI
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"anthropic\"").unwrap(),
-            LlmProviderType::Anthropic
+            serde_json::from_str::<DriverId>("\"anthropic\"").unwrap(),
+            DriverId::Anthropic
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"gemini\"").unwrap(),
-            LlmProviderType::Gemini
+            serde_json::from_str::<DriverId>("\"gemini\"").unwrap(),
+            DriverId::Gemini
         ));
         assert!(matches!(
-            serde_json::from_str::<LlmProviderType>("\"llmsim\"").unwrap(),
-            LlmProviderType::LlmSim
+            serde_json::from_str::<DriverId>("\"llmsim\"").unwrap(),
+            DriverId::LlmSim
         ));
     }
 
     #[test]
-    fn test_llm_provider_type_from_str() {
+    fn test_provider_type_from_str() {
         // Verify FromStr works correctly
         assert!(matches!(
-            "openai".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::Openai
+            "openai".parse::<DriverId>().unwrap(),
+            DriverId::OpenAI
         ));
         assert!(matches!(
-            "openrouter".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::Openrouter
+            "openrouter".parse::<DriverId>().unwrap(),
+            DriverId::OpenRouter
         ));
         assert!(matches!(
-            "openai_completions".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::OpenaiCompletions
+            "openai_completions".parse::<DriverId>().unwrap(),
+            DriverId::OpenAICompletions
         ));
         assert!(matches!(
-            "azure_openai".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::AzureOpenai
+            "azure_openai".parse::<DriverId>().unwrap(),
+            DriverId::AzureOpenAI
         ));
         assert!(matches!(
-            "anthropic".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::Anthropic
+            "anthropic".parse::<DriverId>().unwrap(),
+            DriverId::Anthropic
         ));
         assert!(matches!(
-            "gemini".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::Gemini
+            "gemini".parse::<DriverId>().unwrap(),
+            DriverId::Gemini
         ));
         assert!(matches!(
-            "llmsim".parse::<LlmProviderType>().unwrap(),
-            LlmProviderType::LlmSim
+            "llmsim".parse::<DriverId>().unwrap(),
+            DriverId::LlmSim
         ));
     }
 
     #[test]
-    fn test_llm_model_limits_input_omitted_when_none() {
-        let limits = LlmModelLimits {
+    fn test_model_limits_input_omitted_when_none() {
+        let limits = ModelLimits {
             context: 200_000,
             input: None,
             output: 64_000,
@@ -619,8 +470,8 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_model_limits_input_included_when_some() {
-        let limits = LlmModelLimits {
+    fn test_model_limits_input_included_when_some() {
+        let limits = ModelLimits {
             context: 200_000,
             input: Some(150_000),
             output: 64_000,
@@ -631,26 +482,26 @@ mod tests {
     }
 
     #[test]
-    fn test_llm_model_limits_deserialize_without_input() {
+    fn test_model_limits_deserialize_without_input() {
         let json = r#"{"context": 200000, "output": 64000}"#;
-        let limits: LlmModelLimits = serde_json::from_str(json).unwrap();
+        let limits: ModelLimits = serde_json::from_str(json).unwrap();
         assert_eq!(limits.context, 200_000);
         assert!(limits.input.is_none());
         assert_eq!(limits.output, 64_000);
     }
 
     #[test]
-    fn test_llm_provider_type_display() {
+    fn test_provider_type_display() {
         // Verify Display works correctly
-        assert_eq!(LlmProviderType::Openai.to_string(), "openai");
-        assert_eq!(LlmProviderType::Openrouter.to_string(), "openrouter");
-        assert_eq!(LlmProviderType::AzureOpenai.to_string(), "azure_openai");
+        assert_eq!(DriverId::OpenAI.to_string(), "openai");
+        assert_eq!(DriverId::OpenRouter.to_string(), "openrouter");
+        assert_eq!(DriverId::AzureOpenAI.to_string(), "azure_openai");
         assert_eq!(
-            LlmProviderType::OpenaiCompletions.to_string(),
+            DriverId::OpenAICompletions.to_string(),
             "openai_completions"
         );
-        assert_eq!(LlmProviderType::Anthropic.to_string(), "anthropic");
-        assert_eq!(LlmProviderType::Gemini.to_string(), "gemini");
-        assert_eq!(LlmProviderType::LlmSim.to_string(), "llmsim");
+        assert_eq!(DriverId::Anthropic.to_string(), "anthropic");
+        assert_eq!(DriverId::Gemini.to_string(), "gemini");
+        assert_eq!(DriverId::LlmSim.to_string(), "llmsim");
     }
 }

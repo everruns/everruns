@@ -15,8 +15,7 @@ use everruns_core::capabilities::{LuaCapability, LuaCodeModeCapability, TestMath
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_core::{
-    AgentId, CapabilityRegistry, HarnessId, LlmProviderType, ModelWithProvider, PlatformDefinition,
-    SessionId,
+    AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel, SessionId,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
@@ -72,9 +71,9 @@ async fn hides_math_tools_but_runs_them_via_lua() {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform())
         .llm_sim(sim)
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "llmsim-model".to_string(),
-            provider_type: LlmProviderType::LlmSim,
+            provider_type: DriverId::LlmSim,
             api_key: Some("fake-key".to_string()),
             base_url: None,
             provider_metadata: None,

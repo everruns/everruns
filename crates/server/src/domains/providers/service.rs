@@ -3,70 +3,66 @@
 // On create/update/delete, the LLM resolver cache is invalidated so that
 // subsequent model resolutions pick up the new provider config.
 
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
-    models::{CreateLlmProviderRow, LlmProviderRow, UpdateLlmProvider},
+    models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::llm_models::LlmProvider;
+use everruns_core::provider::Provider;
 use everruns_core::url_validation::validate_safe_url;
-use everruns_core::{Caller, LlmProviderStatus, LlmProviderType, Permission, Policy, Rule};
+use everruns_core::{Caller, DriverId, Permission, Policy, ProviderStatus, Rule};
 use reqwest::Url;
 use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
+use crate::api::providers::{CreateProviderRequest, UpdateProviderRequest};
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
-    id: "llm_provider.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+    id: "provider.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_PROVIDER_MANAGE: Policy = Policy {
-    id: "llm_provider.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+    id: "provider.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };
 
-pub struct LlmProviderService {
+pub struct ProviderService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
-    llm_resolver: Option<Arc<LlmResolverService>>,
+    provider_resolver: Option<Arc<ProviderResolverService>>,
 }
 
-impl LlmProviderService {
+impl ProviderService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
         Self {
             db,
             encryption,
-            llm_resolver: None,
+            provider_resolver: None,
         }
     }
 
     pub fn with_resolver(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
-        resolver: Arc<LlmResolverService>,
+        resolver: Arc<ProviderResolverService>,
     ) -> Self {
         Self {
             db,
             encryption,
-            llm_resolver: Some(resolver),
+            provider_resolver: Some(resolver),
         }
     }
 
     /// Invalidate resolver cache after provider mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
-        if let Some(ref resolver) = self.llm_resolver {
+        if let Some(ref resolver) = self.provider_resolver {
             resolver.invalidate_cache(org_id).await;
         }
     }
 
-    pub async fn create(
-        &self,
-        caller: &Caller,
-        req: CreateLlmProviderRequest,
-    ) -> Result<LlmProvider> {
+    pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
 
         // Encrypt API key if provided
@@ -80,7 +76,7 @@ impl LlmProviderService {
             None
         };
 
-        let input = CreateLlmProviderRow {
+        let input = CreateProviderRow {
             name: req.name,
             provider_type: req.provider_type.to_string(),
             base_url: req.base_url,
@@ -88,19 +84,19 @@ impl LlmProviderService {
             settings: None,
         };
 
-        let row = self.db.create_llm_provider(caller.org_id, input).await?;
+        let row = self.db.create_provider(caller.org_id, input).await?;
         self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_provider(&row))
     }
 
-    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<LlmProvider>> {
+    pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<Provider>> {
         // EVE-417: log the underlying DB error with org/provider context so
         // operators can diagnose the org-scoped read failures that surface
         // through MCP as a structured `internal: <message>` (and previously as
         // an opaque `callback failed`). The error still propagates unchanged.
         let row = self
             .db
-            .get_llm_provider(caller.org_id, id)
+            .get_provider(caller.org_id, id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -113,12 +109,12 @@ impl LlmProviderService {
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    pub async fn list(&self, caller: &Caller) -> Result<Vec<LlmProvider>> {
+    pub async fn list(&self, caller: &Caller) -> Result<Vec<Provider>> {
         // EVE-417: same diagnostic logging as `get`. List failures here are
         // the most common path for org-scoped MCP read regressions.
         let rows = self
             .db
-            .list_llm_providers(caller.org_id)
+            .list_providers(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -134,19 +130,17 @@ impl LlmProviderService {
         &self,
         caller: &Caller,
         id: Uuid,
-        req: UpdateLlmProviderRequest,
-    ) -> Result<Option<LlmProvider>> {
-        let existing = match self.db.get_llm_provider(caller.org_id, id).await? {
+        req: UpdateProviderRequest,
+    ) -> Result<Option<Provider>> {
+        let existing = match self.db.get_provider(caller.org_id, id).await? {
             Some(row) => row,
             None => return Ok(None),
         };
 
-        let provider_type = req.provider_type.clone().unwrap_or_else(|| {
-            existing
-                .provider_type
-                .parse()
-                .unwrap_or(LlmProviderType::Openai)
-        });
+        let provider_type = req
+            .provider_type
+            .clone()
+            .unwrap_or_else(|| existing.provider_type.parse().unwrap_or(DriverId::OpenAI));
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
 
@@ -161,22 +155,19 @@ impl LlmProviderService {
             None
         };
 
-        let input = UpdateLlmProvider {
+        let input = UpdateProvider {
             name: req.name,
             provider_type: req.provider_type.map(|t| t.to_string()),
             base_url: req.base_url,
             api_key_encrypted,
             status: req.status.map(|s| match s {
-                LlmProviderStatus::Active => "active".to_string(),
-                LlmProviderStatus::Disabled => "disabled".to_string(),
+                ProviderStatus::Active => "active".to_string(),
+                ProviderStatus::Disabled => "disabled".to_string(),
             }),
             settings: None,
         };
 
-        let row = self
-            .db
-            .update_llm_provider(caller.org_id, id, input)
-            .await?;
+        let row = self.db.update_provider(caller.org_id, id, input).await?;
         if row.is_some() {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
@@ -184,15 +175,15 @@ impl LlmProviderService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        let deleted = self.db.delete_llm_provider(caller.org_id, id).await?;
+        let deleted = self.db.delete_provider(caller.org_id, id).await?;
         if deleted {
             self.invalidate_resolver_cache(caller.org_id).await;
         }
         Ok(deleted)
     }
 
-    fn row_to_provider(row: &LlmProviderRow) -> LlmProvider {
-        let provider_type = row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
+    fn row_to_provider(row: &ProviderRow) -> Provider {
+        let provider_type = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
         // api_key_set reflects the database only. The tenant resolver is
         // fail-closed and never reads process env at execution time (EVE-511),
         // so reporting an env-derived key here would mislead the UI. In
@@ -202,15 +193,15 @@ impl LlmProviderService {
         // `row.api_key_set` through the normal path.
         let api_key_set = row.api_key_set;
 
-        LlmProvider {
+        Provider {
             id: row.id,
             name: row.name.clone(),
             provider_type,
             base_url: row.base_url.clone(),
             api_key_set,
             status: match row.status.as_str() {
-                "active" => LlmProviderStatus::Active,
-                _ => LlmProviderStatus::Disabled,
+                "active" => ProviderStatus::Active,
+                _ => ProviderStatus::Disabled,
             },
             last_synced_at: row.last_synced_at,
             created_at: row.created_at,
@@ -219,16 +210,13 @@ impl LlmProviderService {
     }
 }
 
-fn validate_provider_base_url(
-    provider_type: LlmProviderType,
-    base_url: Option<&str>,
-) -> Result<()> {
+fn validate_provider_base_url(provider_type: DriverId, base_url: Option<&str>) -> Result<()> {
     let parsed = match base_url {
         Some(url) => Some(validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?),
         None => None,
     };
 
-    if provider_type == LlmProviderType::AzureOpenai {
+    if provider_type == DriverId::AzureOpenAI {
         let parsed = parsed.ok_or_else(|| {
             anyhow!(
                 "Invalid base URL: Azure OpenAI providers require a base URL ending in /openai/v1 on an Azure host"
@@ -268,7 +256,7 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::validate_provider_base_url;
-    use everruns_core::LlmProviderType;
+    use everruns_core::DriverId;
     use everruns_core::url_validation::validate_safe_url;
 
     // ---- SSRF prevention tests (EVE-69) ----
@@ -315,7 +303,7 @@ mod tests {
 
     #[test]
     fn azure_openai_requires_base_url() {
-        let err = validate_provider_base_url(LlmProviderType::AzureOpenai, None).unwrap_err();
+        let err = validate_provider_base_url(DriverId::AzureOpenAI, None).unwrap_err();
         assert!(
             err.to_string()
                 .contains("Invalid base URL: Azure OpenAI providers require a base URL")
@@ -324,11 +312,9 @@ mod tests {
 
     #[test]
     fn azure_openai_rejects_non_azure_hosts() {
-        let err = validate_provider_base_url(
-            LlmProviderType::AzureOpenai,
-            Some("https://api.openai.com/v1"),
-        )
-        .unwrap_err();
+        let err =
+            validate_provider_base_url(DriverId::AzureOpenAI, Some("https://api.openai.com/v1"))
+                .unwrap_err();
         assert!(err.to_string().contains("*.openai.azure.com"));
     }
 
@@ -336,14 +322,14 @@ mod tests {
     fn azure_openai_accepts_supported_domains() {
         assert!(
             validate_provider_base_url(
-                LlmProviderType::AzureOpenai,
+                DriverId::AzureOpenAI,
                 Some("https://resource.openai.azure.com/openai/v1"),
             )
             .is_ok()
         );
         assert!(
             validate_provider_base_url(
-                LlmProviderType::AzureOpenai,
+                DriverId::AzureOpenAI,
                 Some("https://resource.services.ai.azure.com/openai/v1/responses"),
             )
             .is_ok()
@@ -353,7 +339,7 @@ mod tests {
     #[test]
     fn azure_openai_rejects_chat_completions_base_url() {
         let err = validate_provider_base_url(
-            LlmProviderType::AzureOpenai,
+            DriverId::AzureOpenAI,
             Some("https://resource.openai.azure.com/openai/v1/chat/completions"),
         )
         .unwrap_err();

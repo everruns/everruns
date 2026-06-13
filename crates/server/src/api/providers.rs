@@ -3,11 +3,11 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::llm_providers::{
+use crate::domains::providers::{
     CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
-    ListProviders, LlmProviderService, SyncProviderModels, UpdateProvider,
+    ListProviders, ProviderService, SyncProviderModels, UpdateProvider,
 };
-use crate::services::{LlmResolverService, ModelSyncService};
+use crate::services::{ModelSyncService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -15,9 +15,9 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::llm_models::LlmProvider;
+use everruns_core::provider::Provider;
 use everruns_core::{
-    Caller, DriverRegistry, LlmProviderStatus, LlmProviderType, ResourceConfigResponse,
+    Caller, DriverId, DriverRegistry, ProviderStatus, ResourceConfigResponse,
     evaluate_policies_with,
 };
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ use super::dispatch::{Dispatchable, impl_dispatchable};
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub service: Arc<LlmProviderService>,
+    pub service: Arc<ProviderService>,
     pub sync_service: Arc<ModelSyncService>,
     pub auth: AuthState,
 }
@@ -43,12 +43,12 @@ impl AppState {
         encryption: Option<Arc<EncryptionService>>,
         driver_registry: Arc<DriverRegistry>,
         auth: AuthState,
-        llm_resolver: Option<Arc<LlmResolverService>>,
+        provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let service = if let Some(resolver) = llm_resolver {
-            LlmProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
+        let service = if let Some(resolver) = provider_resolver {
+            ProviderService::with_resolver(db.clone(), encryption.clone(), resolver)
         } else {
-            LlmProviderService::new(db.clone(), encryption.clone())
+            ProviderService::new(db.clone(), encryption.clone())
         };
         Self {
             db: db.clone(),
@@ -65,7 +65,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_llm_provider_service(self.service.clone())
+        .with_provider_service(self.service.clone())
         .with_model_sync_service(self.sync_service.clone())
     }
 }
@@ -75,12 +75,12 @@ impl_dispatchable!(AppState);
 
 /// Request to create a new LLM provider
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateLlmProviderRequest {
+pub struct CreateProviderRequest {
     /// Display name for the provider.
     #[schema(example = "OpenAI Production")]
     pub name: String,
     /// The type of LLM provider (e.g., openai, anthropic).
-    pub provider_type: LlmProviderType,
+    pub provider_type: DriverId,
     /// Base URL for the provider's API. Required for custom endpoints.
     /// For standard providers, this can be omitted to use the default URL.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -111,14 +111,14 @@ pub enum SyncModelsResponse {
 
 /// Request to update an LLM provider. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateLlmProviderRequest {
+pub struct UpdateProviderRequest {
     /// Display name for the provider.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "OpenAI Development")]
     pub name: Option<String>,
     /// The type of LLM provider (e.g., openai, anthropic).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub provider_type: Option<LlmProviderType>,
+    pub provider_type: Option<DriverId>,
     /// Base URL for the provider's API.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "https://api.openai.com/v1")]
@@ -129,16 +129,16 @@ pub struct UpdateLlmProviderRequest {
     pub api_key: Option<String>,
     /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<LlmProviderStatus>,
+    pub status: Option<ProviderStatus>,
 }
 
 /// Create a new LLM provider
 #[utoipa::path(
     post,
     path = "/v1/llm-providers",
-    request_body = CreateLlmProviderRequest,
+    request_body = CreateProviderRequest,
     responses(
-        (status = 201, description = "Provider created", body = WithUrls<LlmProvider>),
+        (status = 201, description = "Provider created", body = WithUrls<Provider>),
         (status = 400, description = "Invalid request"),
         (status = 500, description = "Internal error")
     ),
@@ -147,8 +147,8 @@ pub struct UpdateLlmProviderRequest {
 pub async fn create_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
-    Json(req): Json<CreateLlmProviderRequest>,
-) -> Result<(StatusCode, Json<WithUrls<LlmProvider>>), (StatusCode, Json<ErrorResponse>)> {
+    Json(req): Json<CreateProviderRequest>,
+) -> Result<(StatusCode, Json<WithUrls<Provider>>), (StatusCode, Json<ErrorResponse>)> {
     state
         .dispatcher(&org)
         .run_created_with_urls(CreateProvider {
@@ -165,14 +165,14 @@ pub async fn create_provider(
     get,
     path = "/v1/llm-providers",
     responses(
-        (status = 200, description = "List of providers", body = ListResponse<WithUrls<LlmProvider>>)
+        (status = 200, description = "List of providers", body = ListResponse<WithUrls<Provider>>)
     ),
     tag = "llm-providers"
 )]
 pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
-) -> ApiResult<ListResponse<WithUrls<LlmProvider>>> {
+) -> ApiResult<ListResponse<WithUrls<Provider>>> {
     let providers = ListProviders.run(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -187,7 +187,7 @@ pub async fn list_providers(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
-        (status = 200, description = "Provider found", body = WithUrls<LlmProvider>),
+        (status = 200, description = "Provider found", body = WithUrls<Provider>),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
@@ -197,7 +197,7 @@ pub async fn get_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<WithUrls<LlmProvider>> {
+) -> ApiResult<WithUrls<Provider>> {
     state
         .dispatcher(&org)
         .run_with_urls(GetProvider { id })
@@ -211,9 +211,9 @@ pub async fn get_provider(
     params(
         ("id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
-    request_body = UpdateLlmProviderRequest,
+    request_body = UpdateProviderRequest,
     responses(
-        (status = 200, description = "Provider updated", body = WithUrls<LlmProvider>),
+        (status = 200, description = "Provider updated", body = WithUrls<Provider>),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found")
     ),
@@ -223,8 +223,8 @@ pub async fn update_provider(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(req): Json<UpdateLlmProviderRequest>,
-) -> ApiResult<WithUrls<LlmProvider>> {
+    Json(req): Json<UpdateProviderRequest>,
+) -> ApiResult<WithUrls<Provider>> {
     state
         .dispatcher(&org)
         .run_with_urls(UpdateProvider {
@@ -298,7 +298,7 @@ pub async fn sync_models(
     ),
     tag = "llm-providers"
 )]
-pub async fn llm_provider_config(
+pub async fn provider_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
 ) -> Json<ResourceConfigResponse> {
@@ -313,7 +313,7 @@ pub async fn llm_provider_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-providers/config", get(llm_provider_config))
+        .route("/v1/llm-providers/config", get(provider_config))
         .route(
             "/v1/llm-providers",
             post(create_provider).get(list_providers),

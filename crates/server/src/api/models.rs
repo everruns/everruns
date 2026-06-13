@@ -7,9 +7,9 @@ use crate::api::common::{
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::llm_models::{
+use crate::domains::models::{
     CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
-    ListProviderModels, LlmModelService, UpdateModel,
+    ListProviderModels, ModelService, UpdateModel,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -19,19 +19,18 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    Caller, LlmModel, LlmModelSource, LlmModelWithProvider, ResourceConfigResponse,
-    evaluate_policies_with,
+    Caller, Model, ModelSource, ModelWithProvider, ResourceConfigResponse, evaluate_policies_with,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub service: Arc<LlmModelService>,
+    pub service: Arc<ModelService>,
     pub auth: AuthState,
 }
 
@@ -39,12 +38,12 @@ impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
         auth: AuthState,
-        llm_resolver: Option<Arc<LlmResolverService>>,
+        provider_resolver: Option<Arc<ProviderResolverService>>,
     ) -> Self {
-        let service = if let Some(resolver) = llm_resolver {
-            LlmModelService::with_resolver(db.clone(), resolver)
+        let service = if let Some(resolver) = provider_resolver {
+            ModelService::with_resolver(db.clone(), resolver)
         } else {
-            LlmModelService::new(db.clone())
+            ModelService::new(db.clone())
         };
         Self {
             db,
@@ -60,7 +59,7 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
-        .with_llm_model_service(self.service.clone())
+        .with_model_service(self.service.clone())
     }
 }
 
@@ -69,7 +68,7 @@ impl_dispatchable!(AppState);
 
 /// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct CreateLlmModelRequest {
+pub struct CreateModelRequest {
     /// The model identifier used by the provider's API (e.g., "gpt-4", "claude-3-opus").
     #[schema(example = "gpt-4o")]
     pub model_id: String,
@@ -94,7 +93,7 @@ pub struct CreateLlmModelRequest {
 #[derive(Debug, Default, Deserialize, IntoParams)]
 pub struct ListModelsQuery {
     /// Filter by model source (manual, discovered, predefined)
-    pub source: Option<LlmModelSource>,
+    pub source: Option<ModelSource>,
     /// Include models that are stale (not seen in recent sync). Default: true
     #[serde(default = "default_true")]
     pub include_stale: bool,
@@ -109,7 +108,7 @@ fn default_true() -> bool {
 
 /// Request to update an LLM model. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
-pub struct UpdateLlmModelRequest {
+pub struct UpdateModelRequest {
     /// Provider that owns this model.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "provider_019df670b5af7db7a5685a4ad18a544a")]
@@ -143,9 +142,9 @@ pub struct UpdateLlmModelRequest {
     params(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
-    request_body = CreateLlmModelRequest,
+    request_body = CreateModelRequest,
     responses(
-        (status = 201, description = "Model created", body = WithUrls<LlmModel>),
+        (status = 201, description = "Model created", body = WithUrls<Model>),
         (status = 400, description = "Invalid provider ID"),
         (status = 404, description = "Provider not found"),
         (status = 500, description = "Internal error")
@@ -156,8 +155,8 @@ pub async fn create_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
-    Json(req): Json<CreateLlmModelRequest>,
-) -> Result<(StatusCode, Json<WithUrls<LlmModel>>), (StatusCode, Json<ErrorResponse>)> {
+    Json(req): Json<CreateModelRequest>,
+) -> Result<(StatusCode, Json<WithUrls<Model>>), (StatusCode, Json<ErrorResponse>)> {
     state
         .dispatcher(&org)
         .run_created_with_urls(CreateModel {
@@ -179,7 +178,7 @@ pub async fn create_model(
         ("provider_id" = String, Path, description = "Provider ID (prefixed, e.g., prov_...)")
     ),
     responses(
-        (status = 200, description = "List of models", body = ListResponse<WithUrls<LlmModel>>),
+        (status = 200, description = "List of models", body = ListResponse<WithUrls<Model>>),
         (status = 400, description = "Invalid provider ID")
     ),
     tag = "llm-models"
@@ -188,7 +187,7 @@ pub async fn list_provider_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(provider_id): Path<String>,
-) -> ApiResult<ListResponse<WithUrls<LlmModel>>> {
+) -> ApiResult<ListResponse<WithUrls<Model>>> {
     let models = ListProviderModels { provider_id }
         .run(&state.ctx(&org))
         .await?;
@@ -205,7 +204,7 @@ pub async fn list_provider_models(
         ListModelsQuery
     ),
     responses(
-        (status = 200, description = "List of all models", body = ListResponse<WithUrls<LlmModelWithProvider>>)
+        (status = 200, description = "List of all models", body = ListResponse<WithUrls<ModelWithProvider>>)
     ),
     tag = "llm-models"
 )]
@@ -213,7 +212,7 @@ pub async fn list_all_models(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListModelsQuery>,
-) -> ApiResult<ListResponse<WithUrls<LlmModelWithProvider>>> {
+) -> ApiResult<ListResponse<WithUrls<ModelWithProvider>>> {
     let models = ListModels {
         source: query.source,
         include_stale: query.include_stale,
@@ -234,7 +233,7 @@ pub async fn list_all_models(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
     responses(
-        (status = 200, description = "Model found", body = WithUrls<LlmModelWithProvider>),
+        (status = 200, description = "Model found", body = WithUrls<ModelWithProvider>),
         (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
@@ -244,7 +243,7 @@ pub async fn get_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-) -> ApiResult<WithUrls<LlmModelWithProvider>> {
+) -> ApiResult<WithUrls<ModelWithProvider>> {
     state.dispatcher(&org).run_with_urls(GetModel { id }).await
 }
 
@@ -255,9 +254,9 @@ pub async fn get_model(
     params(
         ("id" = String, Path, description = "Model ID (prefixed, e.g., mod_...)")
     ),
-    request_body = UpdateLlmModelRequest,
+    request_body = UpdateModelRequest,
     responses(
-        (status = 200, description = "Model updated", body = WithUrls<LlmModel>),
+        (status = 200, description = "Model updated", body = WithUrls<Model>),
         (status = 400, description = "Invalid model ID"),
         (status = 404, description = "Model not found")
     ),
@@ -267,8 +266,8 @@ pub async fn update_model(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(req): Json<UpdateLlmModelRequest>,
-) -> ApiResult<WithUrls<LlmModel>> {
+    Json(req): Json<UpdateModelRequest>,
+) -> ApiResult<WithUrls<Model>> {
     state
         .dispatcher(&org)
         .run_with_urls(UpdateModel {
@@ -317,7 +316,7 @@ pub async fn delete_model(
     ),
     tag = "llm-models"
 )]
-pub async fn llm_model_config(
+pub async fn model_config(
     State(auth): State<AuthState>,
     org: ResolvedOrg,
 ) -> Json<ResourceConfigResponse> {
@@ -332,7 +331,7 @@ pub async fn llm_model_config(
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
-        .route("/v1/llm-models/config", get(llm_model_config))
+        .route("/v1/llm-models/config", get(model_config))
         .route(
             "/v1/llm-providers/{provider_id}/models",
             post(create_model).get(list_provider_models),

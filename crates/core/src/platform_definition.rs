@@ -491,7 +491,7 @@ mod tests {
         assert!(
             platform
                 .driver_registry()
-                .has_driver(&crate::ProviderType::LlmSim)
+                .has_driver(&crate::DriverId::LlmSim)
         );
     }
 

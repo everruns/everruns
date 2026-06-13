@@ -1,12 +1,12 @@
 use crate::domains::common::CommandError;
-use crate::domains::llm_models::LlmModelService;
+use crate::domains::models::ModelService;
 use everruns_core::typed_id::{ModelId, ProviderId};
 use std::sync::Arc;
 
-pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<LlmModelService> {
-    ctx.llm_model_service
+pub fn service(ctx: &crate::domains::common::Ctx) -> Arc<ModelService> {
+    ctx.model_service
         .clone()
-        .unwrap_or_else(|| Arc::new(LlmModelService::new(ctx.db.clone())))
+        .unwrap_or_else(|| Arc::new(ModelService::new(ctx.db.clone())))
 }
 
 pub fn parse_model_id(input: &str) -> Result<uuid::Uuid, CommandError> {

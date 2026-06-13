@@ -84,7 +84,7 @@ EXAMPLES:
     reencrypt-secrets
 
     # Re-encrypt specific table with smaller batches
-    reencrypt-secrets --table llm_providers --batch-size 50
+    reencrypt-secrets --table providers --batch-size 50
 "#
     );
 }

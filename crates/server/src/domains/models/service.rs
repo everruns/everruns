@@ -4,54 +4,54 @@
 // subsequent model resolutions pick up the new model config.
 
 use crate::errors::ResourceNotFoundError;
-use crate::services::LlmResolverService;
+use crate::services::ProviderResolverService;
 use crate::storage::{
     StorageBackend,
-    models::{CreateLlmModelRow, LlmModelRow, LlmModelWithProviderRow, UpdateLlmModel},
+    models::{CreateModelRow, ModelRow, ModelWithProviderRow, UpdateModel},
 };
 use anyhow::Result;
 use everruns_core::{
-    Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelWithProvider, LlmProviderType,
-    Permission, Policy, ProviderId, Rule, get_model_profile,
+    Caller, DriverId, Model, ModelProfile, ModelSource, ModelWithProvider, Permission, Policy,
+    ProviderId, Rule, get_model_profile,
 };
 use std::sync::Arc;
 use tracing::error;
 use uuid::Uuid;
 
-use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
+use crate::api::models::{CreateModelRequest, UpdateModelRequest};
 
 pub const LLM_MODEL_VIEW: Policy = Policy {
-    id: "llm_model.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersView)],
+    id: "model.view",
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersView)],
 };
 pub const LLM_MODEL_MANAGE: Policy = Policy {
-    id: "llm_model.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgLlmProvidersManage)],
+    id: "model.manage",
+    rules: &[Rule::UserHasPermission(Permission::OrgProvidersManage)],
 };
 
-pub struct LlmModelService {
+pub struct ModelService {
     db: Arc<StorageBackend>,
-    llm_resolver: Option<Arc<LlmResolverService>>,
+    provider_resolver: Option<Arc<ProviderResolverService>>,
 }
 
-impl LlmModelService {
+impl ModelService {
     pub fn new(db: Arc<StorageBackend>) -> Self {
         Self {
             db,
-            llm_resolver: None,
+            provider_resolver: None,
         }
     }
 
-    pub fn with_resolver(db: Arc<StorageBackend>, resolver: Arc<LlmResolverService>) -> Self {
+    pub fn with_resolver(db: Arc<StorageBackend>, resolver: Arc<ProviderResolverService>) -> Self {
         Self {
             db,
-            llm_resolver: Some(resolver),
+            provider_resolver: Some(resolver),
         }
     }
 
     /// Invalidate resolver cache after model mutation.
     async fn invalidate_resolver_cache(&self, org_id: i64) {
-        if let Some(ref resolver) = self.llm_resolver {
+        if let Some(ref resolver) = self.provider_resolver {
             resolver.invalidate_cache(org_id).await;
         }
     }
@@ -60,13 +60,13 @@ impl LlmModelService {
         &self,
         caller: &Caller,
         provider_id: Uuid,
-        req: CreateLlmModelRequest,
-    ) -> Result<LlmModel> {
+        req: CreateModelRequest,
+    ) -> Result<Model> {
         let provider_id = self
             .validate_provider_id(caller.org_id, provider_id)
             .await?;
 
-        let input = CreateLlmModelRow {
+        let input = CreateModelRow {
             provider_id: provider_id.into(),
             model_id: req.model_id,
             display_name: req.display_name,
@@ -77,7 +77,7 @@ impl LlmModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.create_llm_model(caller.org_id, input).await?;
+        let row = self.db.create_model(caller.org_id, input).await?;
         self.invalidate_resolver_cache(caller.org_id).await;
         Ok(Self::row_to_model(&row))
     }
@@ -86,13 +86,13 @@ impl LlmModelService {
         &self,
         caller: &Caller,
         id: Uuid,
-    ) -> Result<Option<LlmModelWithProvider>> {
+    ) -> Result<Option<ModelWithProvider>> {
         // EVE-417: log the underlying DB error with org/model context so
         // operators can diagnose the org-scoped read failures that surface
         // through MCP as `internal: <message>`. Error still propagates.
         let row = self
             .db
-            .get_llm_model_with_provider(caller.org_id, id)
+            .get_model_with_provider(caller.org_id, id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -109,10 +109,10 @@ impl LlmModelService {
         &self,
         caller: &Caller,
         provider_id: Uuid,
-    ) -> Result<Vec<LlmModel>> {
+    ) -> Result<Vec<Model>> {
         let rows = self
             .db
-            .list_llm_models_for_provider(caller.org_id, provider_id)
+            .list_models_for_provider(caller.org_id, provider_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -125,10 +125,10 @@ impl LlmModelService {
         Ok(rows.iter().map(Self::row_to_model).collect())
     }
 
-    pub async fn list_all(&self, caller: &Caller) -> Result<Vec<LlmModelWithProvider>> {
+    pub async fn list_all(&self, caller: &Caller) -> Result<Vec<ModelWithProvider>> {
         let rows = self
             .db
-            .list_all_llm_models(caller.org_id)
+            .list_all_models(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -144,14 +144,14 @@ impl LlmModelService {
     pub async fn list_all_with_filters(
         &self,
         caller: &Caller,
-        source: Option<LlmModelSource>,
+        source: Option<ModelSource>,
         include_stale: bool,
         favorites_only: bool,
-    ) -> Result<Vec<LlmModelWithProvider>> {
+    ) -> Result<Vec<ModelWithProvider>> {
         // EVE-417: same diagnostic logging as `list_all`/`list_for_provider`.
         let rows = self
             .db
-            .list_all_llm_models(caller.org_id)
+            .list_all_models(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -164,7 +164,7 @@ impl LlmModelService {
         // Get provider last_synced_at timestamps for stale detection
         let providers = self
             .db
-            .list_llm_providers(caller.org_id)
+            .list_providers(caller.org_id)
             .await
             .inspect_err(|err| {
                 error!(
@@ -181,13 +181,12 @@ impl LlmModelService {
             .map(|p| (p.id.uuid(), p.last_synced_at))
             .collect();
 
-        let models: Vec<LlmModelWithProvider> = rows
+        let models: Vec<ModelWithProvider> = rows
             .iter()
             .filter(|row| {
                 // Filter by source
                 if let Some(ref filter_source) = source {
-                    let row_source: LlmModelSource =
-                        row.source.parse().unwrap_or(LlmModelSource::Manual);
+                    let row_source: ModelSource = row.source.parse().unwrap_or(ModelSource::Manual);
                     if row_source != *filter_source {
                         return false;
                     }
@@ -228,8 +227,8 @@ impl LlmModelService {
         &self,
         caller: &Caller,
         id: Uuid,
-        req: UpdateLlmModelRequest,
-    ) -> Result<Option<LlmModel>> {
+        req: UpdateModelRequest,
+    ) -> Result<Option<Model>> {
         let provider_id = match req.provider_id.as_deref() {
             Some(provider_id) => Some(
                 provider_id
@@ -248,7 +247,7 @@ impl LlmModelService {
             None
         };
 
-        let input = UpdateLlmModel {
+        let input = UpdateModel {
             provider_id: provider_id.map(Into::into),
             model_id: req.model_id,
             display_name: req.display_name,
@@ -259,7 +258,7 @@ impl LlmModelService {
             provider_metadata: None,
         };
 
-        let row = self.db.update_llm_model(caller.org_id, id, input).await?;
+        let row = self.db.update_model(caller.org_id, id, input).await?;
 
         // If disabling a model, check if it was the org default and elect a new one
         if req.enabled == Some(false)
@@ -277,7 +276,7 @@ impl LlmModelService {
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         // Before deleting, check if this was the org default
         let was_default = self.is_org_default(caller.org_id, id).await?;
-        let deleted = self.db.delete_llm_model(caller.org_id, id).await?;
+        let deleted = self.db.delete_model(caller.org_id, id).await?;
         if deleted {
             if was_default {
                 self.elect_new_default(caller.org_id).await?;
@@ -288,8 +287,8 @@ impl LlmModelService {
     }
 
     /// Get the default model
-    pub async fn get_default(&self, caller: &Caller) -> Result<Option<LlmModelWithProvider>> {
-        let row = self.db.get_default_llm_model(caller.org_id).await?;
+    pub async fn get_default(&self, caller: &Caller) -> Result<Option<ModelWithProvider>> {
+        let row = self.db.get_default_model(caller.org_id).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
@@ -322,7 +321,7 @@ impl LlmModelService {
 
     /// Elect a new default model from enabled models
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
-        let all_models = self.db.list_all_llm_models(org_id).await?;
+        let all_models = self.db.list_all_models(org_id).await?;
         let new_default = all_models.iter().find(|m| m.enabled);
 
         let new_default_id = new_default.map(|m| m.id.uuid());
@@ -335,17 +334,17 @@ impl LlmModelService {
 
     async fn validate_provider_id(&self, org_id: i64, provider_id: Uuid) -> Result<Uuid> {
         self.db
-            .get_llm_provider(org_id, provider_id)
+            .get_provider(org_id, provider_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Provider"))?;
 
         Ok(provider_id)
     }
 
-    fn row_to_model(row: &LlmModelRow) -> LlmModel {
+    fn row_to_model(row: &ModelRow) -> Model {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-        LlmModel {
+        Model {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
@@ -353,17 +352,16 @@ impl LlmModelService {
             capabilities,
             enabled: row.enabled,
             is_favorite: row.is_favorite,
-            source: row.source.parse().unwrap_or(LlmModelSource::Manual),
+            source: row.source.parse().unwrap_or(ModelSource::Manual),
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
     }
 
-    fn row_to_model_with_provider(row: &LlmModelWithProviderRow) -> LlmModelWithProvider {
+    fn row_to_model_with_provider(row: &ModelWithProviderRow) -> ModelWithProvider {
         let capabilities: Vec<String> =
             serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
-        let provider_type: LlmProviderType =
-            row.provider_type.parse().unwrap_or(LlmProviderType::Openai);
+        let provider_type: DriverId = row.provider_type.parse().unwrap_or(DriverId::OpenAI);
 
         // Look up hardcoded profile, then try discovered profile from provider_metadata.
         // Hardcoded profiles take precedence; discovered provider catalog data fills gaps.
@@ -390,7 +388,7 @@ impl LlmModelService {
         // independent of the configured provider type.
         let model_vendor = everruns_core::get_model_vendor(&provider_type, &row.model_id);
 
-        LlmModelWithProvider {
+        ModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id.clone(),
@@ -398,7 +396,7 @@ impl LlmModelService {
             capabilities,
             enabled: row.enabled,
             is_favorite: row.is_favorite,
-            source: row.source.parse().unwrap_or(LlmModelSource::Manual),
+            source: row.source.parse().unwrap_or(ModelSource::Manual),
             created_at: row.created_at,
             updated_at: row.updated_at,
             provider_name: row.provider_name.clone(),
@@ -410,7 +408,7 @@ impl LlmModelService {
     }
 
     /// Extract the discovered profile from provider_metadata JSON.
-    fn extract_discovered_profile(row: &LlmModelWithProviderRow) -> Option<LlmModelProfile> {
+    fn extract_discovered_profile(row: &ModelWithProviderRow) -> Option<ModelProfile> {
         let metadata = row.provider_metadata.as_ref()?;
         let profile_val = metadata.get("discovered_profile")?;
         serde_json::from_value(profile_val.clone()).ok()
@@ -418,8 +416,8 @@ impl LlmModelService {
 
     /// Merge a hardcoded profile with a discovered profile.
     /// Hardcoded values take precedence; discovered values fill gaps.
-    fn merge_profiles(hardcoded: LlmModelProfile, discovered: LlmModelProfile) -> LlmModelProfile {
-        LlmModelProfile {
+    fn merge_profiles(hardcoded: ModelProfile, discovered: ModelProfile) -> ModelProfile {
+        ModelProfile {
             // Hardcoded always wins for curated fields
             name: hardcoded.name,
             family: hardcoded.family,
@@ -452,11 +450,11 @@ impl LlmModelService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::{CreateLlmProviderRow, CreateOrganizationRow};
+    use crate::storage::{CreateOrganizationRow, CreateProviderRow};
     use everruns_core::DEFAULT_ORG_ID;
 
-    fn build_create_request() -> CreateLlmModelRequest {
-        CreateLlmModelRequest {
+    fn build_create_request() -> CreateModelRequest {
+        CreateModelRequest {
             model_id: "test-model".to_string(),
             display_name: "Test Model".to_string(),
             capabilities: vec!["chat".to_string()],
@@ -481,9 +479,9 @@ mod tests {
     }
 
     async fn create_provider(db: &StorageBackend, org_id: i64) -> everruns_core::ProviderId {
-        db.create_llm_provider(
+        db.create_provider(
             org_id,
-            CreateLlmProviderRow {
+            CreateProviderRow {
                 name: format!("Provider {org_id}"),
                 provider_type: "openai".to_string(),
                 base_url: None,
@@ -499,7 +497,7 @@ mod tests {
     #[tokio::test]
     async fn create_rejects_provider_from_another_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let service = LlmModelService::new(db.clone());
+        let service = ModelService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
         let other_provider_id = create_provider(&db, other_org_id).await;
@@ -515,7 +513,7 @@ mod tests {
     #[tokio::test]
     async fn update_can_move_model_to_another_provider_in_same_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let service = LlmModelService::new(db.clone());
+        let service = ModelService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let first_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
         let second_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
@@ -528,7 +526,7 @@ mod tests {
             .update(
                 &caller,
                 model.id.uuid(),
-                UpdateLlmModelRequest {
+                UpdateModelRequest {
                     provider_id: Some(second_provider_id.to_string()),
                     model_id: None,
                     display_name: None,
@@ -547,7 +545,7 @@ mod tests {
     #[tokio::test]
     async fn update_rejects_provider_from_another_org() {
         let db = Arc::new(StorageBackend::in_memory());
-        let service = LlmModelService::new(db.clone());
+        let service = ModelService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
         let other_org_id = create_second_org(&db).await;
@@ -561,7 +559,7 @@ mod tests {
             .update(
                 &caller,
                 model.id.uuid(),
-                UpdateLlmModelRequest {
+                UpdateModelRequest {
                     provider_id: Some(other_provider_id.to_string()),
                     model_id: None,
                     display_name: None,
@@ -580,8 +578,8 @@ mod tests {
     // Profile merge tests
     // ========================================================================
 
-    fn base_profile() -> LlmModelProfile {
-        LlmModelProfile {
+    fn base_profile() -> ModelProfile {
+        ModelProfile {
             name: "Test".into(),
             family: "test".into(),
             description: None,
@@ -606,10 +604,10 @@ mod tests {
 
     #[test]
     fn merge_hardcoded_wins_for_curated_fields() {
-        let hardcoded = LlmModelProfile {
+        let hardcoded = ModelProfile {
             name: "Hardcoded Name".into(),
             family: "hardcoded-family".into(),
-            cost: Some(everruns_core::LlmModelCost {
+            cost: Some(everruns_core::ModelCost {
                 input: 5.0,
                 output: 25.0,
                 cache_read: None,
@@ -617,11 +615,11 @@ mod tests {
             }),
             ..base_profile()
         };
-        let discovered = LlmModelProfile {
+        let discovered = ModelProfile {
             name: "Discovered Name".into(),
             family: "discovered-family".into(),
             knowledge: Some("2025-01-01".into()),
-            cost: Some(everruns_core::LlmModelCost {
+            cost: Some(everruns_core::ModelCost {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
@@ -630,7 +628,7 @@ mod tests {
             ..base_profile()
         };
 
-        let merged = LlmModelService::merge_profiles(hardcoded, discovered);
+        let merged = ModelService::merge_profiles(hardcoded, discovered);
         assert_eq!(merged.name, "Hardcoded Name");
         assert_eq!(merged.family, "hardcoded-family");
         assert_eq!(merged.knowledge.as_deref(), Some("2025-01-01"));
@@ -639,21 +637,21 @@ mod tests {
 
     #[test]
     fn merge_discovered_fills_gaps() {
-        use everruns_core::llm_models::LlmModelLimits;
+        use everruns_core::model::ModelLimits;
 
-        let hardcoded = LlmModelProfile {
+        let hardcoded = ModelProfile {
             limits: None,
             ..base_profile()
         };
-        let discovered = LlmModelProfile {
-            limits: Some(LlmModelLimits {
+        let discovered = ModelProfile {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
                 max_media: None,
             }),
             knowledge: Some("2025-02-01".into()),
-            cost: Some(everruns_core::LlmModelCost {
+            cost: Some(everruns_core::ModelCost {
                 input: 0.5,
                 output: 1.0,
                 cache_read: Some(0.1),
@@ -663,7 +661,7 @@ mod tests {
             ..base_profile()
         };
 
-        let merged = LlmModelService::merge_profiles(hardcoded, discovered);
+        let merged = ModelService::merge_profiles(hardcoded, discovered);
         assert!(merged.limits.is_some());
         assert_eq!(merged.limits.unwrap().context, 200_000);
         assert_eq!(merged.knowledge.as_deref(), Some("2025-02-01"));
@@ -676,10 +674,10 @@ mod tests {
 
     #[test]
     fn merge_hardcoded_limits_take_precedence() {
-        use everruns_core::llm_models::LlmModelLimits;
+        use everruns_core::model::ModelLimits;
 
-        let hardcoded = LlmModelProfile {
-            limits: Some(LlmModelLimits {
+        let hardcoded = ModelProfile {
+            limits: Some(ModelLimits {
                 context: 128_000,
                 input: None,
                 output: 16_384,
@@ -687,8 +685,8 @@ mod tests {
             }),
             ..base_profile()
         };
-        let discovered = LlmModelProfile {
-            limits: Some(LlmModelLimits {
+        let discovered = ModelProfile {
+            limits: Some(ModelLimits {
                 context: 200_000,
                 input: None,
                 output: 64_000,
@@ -697,13 +695,13 @@ mod tests {
             ..base_profile()
         };
 
-        let merged = LlmModelService::merge_profiles(hardcoded, discovered);
+        let merged = ModelService::merge_profiles(hardcoded, discovered);
         assert_eq!(merged.limits.unwrap().context, 128_000);
     }
 
     #[test]
     fn extract_discovered_profile_from_metadata() {
-        use crate::storage::models::LlmModelWithProviderRow;
+        use crate::storage::models::ModelWithProviderRow;
         use chrono::Utc;
 
         let profile = base_profile();
@@ -711,7 +709,7 @@ mod tests {
             "discovered_profile": profile,
         });
 
-        let row = LlmModelWithProviderRow {
+        let row = ModelWithProviderRow {
             id: everruns_core::ModelId::new(),
             org_id: 1,
             provider_id: everruns_core::ProviderId::new(),
@@ -731,17 +729,17 @@ mod tests {
             provider_status: "active".into(),
         };
 
-        let extracted = LlmModelService::extract_discovered_profile(&row);
+        let extracted = ModelService::extract_discovered_profile(&row);
         assert!(extracted.is_some());
         assert_eq!(extracted.unwrap().name, "Test");
     }
 
     #[test]
     fn extract_discovered_profile_returns_none_without_metadata() {
-        use crate::storage::models::LlmModelWithProviderRow;
+        use crate::storage::models::ModelWithProviderRow;
         use chrono::Utc;
 
-        let row = LlmModelWithProviderRow {
+        let row = ModelWithProviderRow {
             id: everruns_core::ModelId::new(),
             org_id: 1,
             provider_id: everruns_core::ProviderId::new(),
@@ -761,7 +759,7 @@ mod tests {
             provider_status: "active".into(),
         };
 
-        let extracted = LlmModelService::extract_discovered_profile(&row);
+        let extracted = ModelService::extract_discovered_profile(&row);
         assert!(extracted.is_none());
     }
 }

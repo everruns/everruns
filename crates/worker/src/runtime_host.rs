@@ -5,8 +5,8 @@
 use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, LlmProviderStore,
-    PaymentAuthority, ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionStore,
+    AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
+    ProviderCredentialStore, ProviderStore, SessionFileSystem, SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
@@ -22,8 +22,8 @@ use uuid::Uuid;
 
 use crate::worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterHarnessStore, AdapterImageResolver,
-    AdapterLlmProviderStore, AdapterMessageRetriever, AdapterSessionFileStore,
-    AdapterSessionMutator, AdapterSessionStore, WorkerAdapters,
+    AdapterMessageRetriever, AdapterProviderStore, AdapterSessionFileStore, AdapterSessionMutator,
+    AdapterSessionStore, WorkerAdapters,
 };
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
@@ -166,8 +166,8 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Arc::new(AdapterSessionMutator::new(self.adapters.clone(), org_id))
     }
 
-    fn provider_store(&self, org_id: i64) -> Arc<dyn LlmProviderStore> {
-        Arc::new(AdapterLlmProviderStore::new(self.adapters.clone(), org_id))
+    fn provider_store(&self, org_id: i64) -> Arc<dyn ProviderStore> {
+        Arc::new(AdapterProviderStore::new(self.adapters.clone(), org_id))
     }
 
     fn message_store(&self) -> Arc<dyn everruns_core::MessageRetriever> {

@@ -15,7 +15,7 @@ use everruns_core::capabilities::{LuaCapability, VirtualBashCapability};
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
-    AgentId, CapabilityRegistry, HarnessId, LlmProviderType, MessageRole, ModelWithProvider,
+    AgentId, CapabilityRegistry, HarnessId, DriverId, MessageRole, ResolvedModel,
     PlatformDefinition, SessionId,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
@@ -109,7 +109,7 @@ fn platform() -> PlatformDefinition {
 async fn run_one(
     task: &Task,
     capability: &str,
-    model: &ModelWithProvider,
+    model: &ResolvedModel,
     seed: u64,
 ) -> RunMetrics {
     let harness_id = HarnessId::from_seed(seed as u128);
@@ -199,7 +199,7 @@ async fn run_one(
 
 /// Print the fully assembled system prompt each arm sends to the model (harness
 /// + agent + the execution capability's own contribution). No model call.
-async fn dump_prompts(model: &ModelWithProvider) -> anyhow::Result<()> {
+async fn dump_prompts(model: &ResolvedModel) -> anyhow::Result<()> {
     for capability in ["virtual_bash", "lua"] {
         let harness_id = HarnessId::from_seed(1);
         let agent_id = AgentId::from_seed(1);
@@ -245,9 +245,9 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(1);
 
-    let model = ModelWithProvider {
+    let model = ResolvedModel {
         model: model_name.clone(),
-        provider_type: LlmProviderType::Anthropic,
+        provider_type: DriverId::Anthropic,
         api_key: Some(api_key),
         base_url: None,
         provider_metadata: None,
