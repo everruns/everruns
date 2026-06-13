@@ -2,11 +2,8 @@
 
 #[cfg(test)]
 mod driver_tests {
-    use crate::{
-        DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver,
-        register_driver,
-    };
-    use everruns_core::llm_driver_registry::{ChatDriver, DriverId, ProviderConfig};
+    use crate::{DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
+    use everruns_core::llm_driver_registry::{DriverId, ProviderConfig};
 
     #[test]
     fn test_driver_with_api_key() {
@@ -55,39 +52,6 @@ mod driver_tests {
     }
 
     #[test]
-    fn test_openrouter_driver_defaults_to_responses_api() {
-        let driver = OpenRouterChatDriver::new("test-key");
-        assert!(format!("{:?}", driver).contains("OpenRouterChatDriver"));
-        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
-        assert_eq!(driver.provider_type(), &DriverId::OpenRouter);
-    }
-
-    #[test]
-    fn test_openrouter_driver_with_base_url_marks_custom_url() {
-        let driver = OpenRouterChatDriver::with_base_url(
-            "test-key",
-            "https://openrouter.ai/api/v1/responses",
-        );
-        assert_eq!(driver.api_url(), "https://openrouter.ai/api/v1/responses");
-        assert!(driver.uses_custom_url());
-    }
-
-    #[tokio::test]
-    async fn test_openrouter_custom_non_openrouter_host_skips_model_listing() {
-        let driver = OpenRouterChatDriver::with_base_url(
-            "test-key",
-            "https://custom.api.example/v1/responses",
-        );
-
-        let discovered = driver
-            .list_models()
-            .await
-            .expect("custom non-OpenRouter discovery should be skipped");
-
-        assert!(discovered.is_none());
-    }
-
-    #[test]
     fn test_completions_driver_with_base_url() {
         let driver = OpenAICompletionsChatDriver::with_base_url(
             "test-key",
@@ -105,25 +69,21 @@ mod driver_tests {
     fn test_register_driver() {
         let mut registry = DriverRegistry::new();
         assert!(!registry.has_driver(&DriverId::OpenAI));
-        assert!(!registry.has_driver(&DriverId::OpenRouter));
         assert!(!registry.has_driver(&DriverId::AzureOpenAI));
         assert!(!registry.has_driver(&DriverId::OpenAICompletions));
 
         register_driver(&mut registry);
 
         assert!(registry.has_driver(&DriverId::OpenAI));
-        assert!(registry.has_driver(&DriverId::OpenRouter));
         assert!(registry.has_driver(&DriverId::AzureOpenAI));
         assert!(registry.has_driver(&DriverId::OpenAICompletions));
+        // OpenRouter is registered by everruns-openrouter, not this crate.
+        assert!(!registry.has_driver(&DriverId::OpenRouter));
 
         // Verify OpenAI driver can be created
         let config = ProviderConfig::new(DriverId::OpenAI).with_api_key("test-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
-
-        let openrouter_config = ProviderConfig::new(DriverId::OpenRouter).with_api_key("test-key");
-        let openrouter_driver = registry.create_chat_driver(&openrouter_config);
-        assert!(openrouter_driver.is_ok());
 
         let azure_config = ProviderConfig::new(DriverId::AzureOpenAI)
             .with_api_key("test-key")
@@ -249,11 +209,7 @@ mod descriptor_tests {
         assert_eq!(openai.credential_schema.fields[0].name, "api_key");
 
         // The other OpenAI-protocol drivers are chat-only.
-        for id in [
-            DriverId::OpenRouter,
-            DriverId::AzureOpenAI,
-            DriverId::OpenAICompletions,
-        ] {
+        for id in [DriverId::AzureOpenAI, DriverId::OpenAICompletions] {
             let descriptor = registry.descriptor(&id).unwrap();
             assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
             assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");

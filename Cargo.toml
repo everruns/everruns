@@ -10,6 +10,7 @@ members = [
     "crates/llm-tests",
     "crates/runtime",
     "crates/openai",
+    "crates/openrouter",
     "crates/anthropic",
     "crates/gemini",
     "crates/internal-protocol",

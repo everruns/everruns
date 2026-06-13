@@ -4,11 +4,12 @@
 //! ecosystem. It implements the [`ChatDriver`] contract from `everruns-core` and
 //! registers OpenAI providers into a [`DriverRegistry`].
 //!
-//! The crate exposes three drivers:
+//! The crate exposes two drivers:
 //!
 //! - [`OpenAIChatDriver`], the recommended Responses API driver.
-//! - [`OpenRouterChatDriver`], the OpenRouter Responses API driver.
 //! - [`OpenAICompletionsChatDriver`], a Chat Completions compatibility driver.
+//!
+//! OpenRouter lives in the separate `everruns-openrouter` crate.
 //!
 //! # Registering the Driver
 //!
@@ -62,9 +63,7 @@ mod types;
 #[cfg(test)]
 mod tests;
 
-pub use driver::{
-    OpenAIChatDriver, OpenAICompletionsChatDriver, OpenRouterChatDriver, register_driver,
-};
+pub use driver::{OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
 pub use embeddings::OpenAIEmbeddingsDriver;
 pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{

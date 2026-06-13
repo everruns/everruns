@@ -66,6 +66,76 @@ pub fn is_openai_api_url(api_url: &str) -> bool {
         .is_some_and(|host| host == "api.openai.com")
 }
 
+// ============================================================================
+// Model-discovery helpers (shared by OpenAI-compatible provider crates)
+// ============================================================================
+//
+// These are used by both `everruns-openai` and `everruns-openrouter` to derive
+// a `/models` URL, normalize a base URL, authenticate the discovery request, and
+// map a non-success status into an error. They live in core so the provider
+// crates can reuse them without duplicating logic.
+
+const OPENAI_MODELS_URL: &str = "https://api.openai.com/v1/models";
+
+/// Whether `api_url`'s host equals `host` (case-insensitive), ignoring path/port.
+pub fn url_host_eq(api_url: &str, host: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|h| h.eq_ignore_ascii_case(host))
+}
+
+/// Normalize a base URL to a canonical endpoint URL, appending `endpoint_suffix`
+/// (e.g. `/responses`) unless it is already present.
+pub fn normalize_api_url(base_url: &str, endpoint_suffix: &str) -> String {
+    let trimmed = base_url.trim_end_matches('/');
+    if trimmed.ends_with(endpoint_suffix) {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}{endpoint_suffix}")
+    }
+}
+
+/// Derive the `/models` discovery URL from a chat/responses API URL.
+pub fn models_url_for_api_url(api_url: &str) -> String {
+    let trimmed = api_url.trim_end_matches('/');
+
+    if let Some(prefix) = trimmed.strip_suffix("/responses") {
+        return format!("{prefix}/models");
+    }
+    if let Some(prefix) = trimmed.strip_suffix("/chat/completions") {
+        return format!("{prefix}/models");
+    }
+    if trimmed.ends_with("/models") {
+        return trimmed.to_string();
+    }
+    if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
+        return format!("{trimmed}/models");
+    }
+
+    OPENAI_MODELS_URL.to_string()
+}
+
+/// Apply the appropriate auth header for a `/models` discovery request: Azure
+/// OpenAI uses `api-key`, everything else uses bearer auth.
+pub fn apply_models_api_auth(
+    request: RequestBuilder,
+    api_url: &str,
+    api_key: &str,
+) -> RequestBuilder {
+    if is_azure_openai_api_url(api_url) {
+        request.header("api-key", api_key)
+    } else {
+        request.bearer_auth(api_key)
+    }
+}
+
+/// Build the error returned when the `/models` endpoint responds with a
+/// non-success status.
+pub fn models_api_status_error(status: reqwest::StatusCode) -> AgentLoopError {
+    AgentLoopError::llm(format!("Models API returned status {status}"))
+}
+
 /// OpenAI Protocol Chat Driver
 ///
 /// Base implementation of `ChatDriver` for OpenAI-compatible APIs.
