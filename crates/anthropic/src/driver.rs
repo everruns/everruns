@@ -1926,7 +1926,7 @@ mod tests {
             make_tool("write_todos", DeferrablePolicy::Never),
         ];
 
-        let converted = AnthropicLlmDriver::convert_tools_with_search(&tools, 3, false);
+        let converted = AnthropicChatDriver::convert_tools_with_search(&tools, 3, false);
         let json = serde_json::to_value(&converted).unwrap();
         let arr = json.as_array().unwrap();
 
@@ -1963,7 +1963,7 @@ mod tests {
             })
         };
         let tools = vec![make_tool("one"), make_tool("two")];
-        let converted = AnthropicLlmDriver::convert_tools_with_search(&tools, 3, false);
+        let converted = AnthropicChatDriver::convert_tools_with_search(&tools, 3, false);
         let json = serde_json::to_value(&converted).unwrap();
         let arr = json.as_array().unwrap();
         // Below threshold: no search tool, no deferral.
@@ -1977,7 +1977,7 @@ mod tests {
         // Below threshold must preserve the standard prompt-cache behavior:
         // `prompt_cache_enabled` is threaded through, so the last tool still gets
         // a cache breakpoint (regression guard for the dropped-marker bug).
-        let cached = AnthropicLlmDriver::convert_tools_with_search(
+        let cached = AnthropicChatDriver::convert_tools_with_search(
             &tools, 3, /* prompt_cache_enabled */ true,
         );
         let cached_json = serde_json::to_value(&cached).unwrap();
