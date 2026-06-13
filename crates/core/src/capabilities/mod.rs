@@ -167,7 +167,7 @@ pub use attach_skill::{
 pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
-pub use budgeting::BudgetingCapability;
+pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
@@ -178,8 +178,8 @@ pub use compaction::{
     build_summarization_prompt, build_summary_message, classify_memory_tiers, estimate_tokens,
     estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
 };
-pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
-pub use data_knowledge::DataKnowledgeCapability;
+pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
+pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
 pub use declarative::{
     DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile, declarative_capability_id,
@@ -194,27 +194,28 @@ pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
     AwsListIamUsersTool, AwsListRdsDatabasesTool, AwsListS3BucketsTool, AwsListSecurityGroupsTool,
-    AwsStopEc2InstanceTool, FakeAwsCapability,
+    AwsStopEc2InstanceTool, FAKE_AWS_CAPABILITY_ID, FakeAwsCapability,
 };
 pub use fake_crm::{
     CrmAddInteractionTool, CrmCreateCustomerTool, CrmCreateTicketTool, CrmGetCustomerTool,
     CrmListCustomersTool, CrmListTicketsTool, CrmSearchCustomersTool, CrmUpdateTicketTool,
-    FakeCrmCapability,
+    FAKE_CRM_CAPABILITY_ID, FakeCrmCapability,
 };
 pub use fake_financial::{
-    FakeFinancialCapability, FinanceCreateBudgetTool, FinanceCreateTransactionTool,
-    FinanceForecastCashFlowTool, FinanceGetBalanceTool, FinanceGetExpenseReportTool,
-    FinanceGetRevenueReportTool, FinanceListBudgetsTool, FinanceListTransactionsTool,
+    FAKE_FINANCIAL_CAPABILITY_ID, FakeFinancialCapability, FinanceCreateBudgetTool,
+    FinanceCreateTransactionTool, FinanceForecastCashFlowTool, FinanceGetBalanceTool,
+    FinanceGetExpenseReportTool, FinanceGetRevenueReportTool, FinanceListBudgetsTool,
+    FinanceListTransactionsTool,
 };
 pub use fake_warehouse::{
-    FakeWarehouseCapability, WarehouseCreateInvoiceTool, WarehouseCreateOrderTool,
-    WarehouseCreateShipmentTool, WarehouseGetInventoryTool, WarehouseInventoryReportTool,
-    WarehouseListOrdersTool, WarehouseListShipmentsTool, WarehouseProcessReturnTool,
-    WarehouseUpdateInventoryTool, WarehouseUpdateShipmentStatusTool,
+    FAKE_WAREHOUSE_CAPABILITY_ID, FakeWarehouseCapability, WarehouseCreateInvoiceTool,
+    WarehouseCreateOrderTool, WarehouseCreateShipmentTool, WarehouseGetInventoryTool,
+    WarehouseInventoryReportTool, WarehouseListOrdersTool, WarehouseListShipmentsTool,
+    WarehouseProcessReturnTool, WarehouseUpdateInventoryTool, WarehouseUpdateShipmentStatusTool,
 };
 pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
-    ReadFileTool, StatFileTool, WriteFileTool,
+    ReadFileTool, SESSION_FILE_SYSTEM_CAPABILITY_ID, StatFileTool, WriteFileTool,
 };
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
@@ -224,7 +225,7 @@ pub use knowledge_base::{
     KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
     validate_knowledge_base_config,
 };
-pub use loop_detection::LoopDetectionCapability;
+pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs, is_code_mode_eligible};
 pub use lua_code_mode::{LUA_CODE_MODE_CAPABILITY_ID, LuaCodeModeCapability};
 pub use mcp::{
@@ -236,7 +237,7 @@ pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
     MessageMetadataField, render_annotation,
 };
-pub use noop::NoopCapability;
+pub use noop::{NOOP_CAPABILITY_ID, NoopCapability};
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     model_supports_native_tool_search,
@@ -244,9 +245,9 @@ pub use openai_tool_search::{
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use platform_management::{
-    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PlatformManagementCapability,
-    ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool, ReadSessionsTool,
-    SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
+    ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
+    PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
+    ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
 pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
 pub use prompt_canary_guardrail::{
@@ -254,10 +255,12 @@ pub use prompt_canary_guardrail::{
     PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
     REASON_CODE_SYSTEM_PROMPT_LEAK,
 };
-pub use research::ResearchCapability;
-pub use sample_data::SampleDataCapability;
+pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
+pub use sample_data::{SAMPLE_DATA_CAPABILITY_ID, SampleDataCapability};
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
-pub use session::{GetSessionInfoTool, SessionCapability, WriteSessionTitleTool};
+pub use session::{
+    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, WriteSessionTitleTool,
+};
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,
     SandboxStatusTool, SandboxWriteFileTool, SessionSandboxCapability,
@@ -267,26 +270,42 @@ pub use session_schedule::{
     SessionScheduleCapability,
 };
 pub use session_sql_database::{
-    SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool, SqlSchemaTool,
+    SESSION_SQL_DATABASE_CAPABILITY_ID, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
+    SqlSchemaTool,
 };
-pub use session_storage::{KvStoreTool, SecretStoreTool, SessionStorageCapability};
+pub use session_storage::{
+    KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
+};
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};
-pub use stateless_todo_list::{StatelessTodoListCapability, WriteTodosTool};
-pub use subagents::SubagentCapability;
+pub use stateless_todo_list::{
+    STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
+};
+pub use subagents::{SUBAGENTS_CAPABILITY_ID, SubagentCapability};
 // Blueprint types are exported directly from the trait definitions above
-pub use bashkit_shell::{BashTool, BashkitShellCapability, SessionFileSystemAdapter};
+pub use bashkit_shell::{
+    BASHKIT_SHELL_CAPABILITY_ID, BashTool, BashkitShellCapability, SessionFileSystemAdapter,
+};
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
-pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
-pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
-pub use tool_output_distillation::{DistillOutputHook, ToolOutputDistillationCapability};
-pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
+pub use test_math::{
+    AddTool, DivideTool, MultiplyTool, SubtractTool, TEST_MATH_CAPABILITY_ID, TestMathCapability,
+};
+pub use test_weather::{
+    GetForecastTool, GetWeatherTool, TEST_WEATHER_CAPABILITY_ID, TestWeatherCapability,
+};
+pub use tool_output_distillation::{
+    DistillOutputHook, TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID, ToolOutputDistillationCapability,
+};
+pub use tool_output_persistence::{
+    PersistOutputHook, TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID, ToolOutputPersistenceCapability,
+};
 pub use tool_search::{
     TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
 };
-pub use user_hooks::UserHooksCapability;
+pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
 pub use web_fetch::{
-    BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
+    BotAuthPublicKey, WEB_FETCH_CAPABILITY_ID, WebFetchCapability, WebFetchTool,
+    derive_bot_auth_public_key,
 };
 
 // ============================================================================

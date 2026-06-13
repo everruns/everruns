@@ -29,12 +29,14 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
 
+pub const SUBAGENTS_CAPABILITY_ID: &str = "subagents";
+
 /// Subagent capability — spawn and manage child agent sessions.
 pub struct SubagentCapability;
 
 impl Capability for SubagentCapability {
     fn id(&self) -> &str {
-        "subagents"
+        SUBAGENTS_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

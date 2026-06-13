@@ -18,11 +18,13 @@ use crate::tool_fingerprint::tool_call_parts_fingerprint;
 /// Default threshold: 3 consecutive identical tool call batches triggers warning.
 const DEFAULT_THRESHOLD: usize = 3;
 
+pub const LOOP_DETECTION_CAPABILITY_ID: &str = "loop_detection";
+
 pub struct LoopDetectionCapability;
 
 impl Capability for LoopDetectionCapability {
     fn id(&self) -> &str {
-        "loop_detection"
+        LOOP_DETECTION_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

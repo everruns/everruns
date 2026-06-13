@@ -2,12 +2,14 @@
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
+pub const RESEARCH_CAPABILITY_ID: &str = "research";
+
 /// Research capability - for deep research with organized findings (coming soon)
 pub struct ResearchCapability;
 
 impl Capability for ResearchCapability {
     fn id(&self) -> &str {
-        "research"
+        RESEARCH_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

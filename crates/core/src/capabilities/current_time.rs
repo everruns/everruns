@@ -6,12 +6,14 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
 
+pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
+
 /// CurrentTime capability - provides tools to get current date and time
 pub struct CurrentTimeCapability;
 
 impl Capability for CurrentTimeCapability {
     fn id(&self) -> &str {
-        "current_time"
+        CURRENT_TIME_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

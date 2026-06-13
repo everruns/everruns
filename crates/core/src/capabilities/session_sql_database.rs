@@ -14,12 +14,14 @@ use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+pub const SESSION_SQL_DATABASE_CAPABILITY_ID: &str = "session_sql_database";
+
 /// Session SQL Database capability
 pub struct SessionSqlDatabaseCapability;
 
 impl Capability for SessionSqlDatabaseCapability {
     fn id(&self) -> &str {
-        "session_sql_database"
+        SESSION_SQL_DATABASE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

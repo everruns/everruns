@@ -116,11 +116,13 @@ consult these docs before answering.
 #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
 const SYSTEM_PROMPT: &str = "Capabilities extend agent/harness functionality. Three types: built-in, MCP servers, and skills. Use `read_capabilities` to discover IDs before creating agents/harnesses. All results include UI links.";
 
+pub const PLATFORM_MANAGEMENT_CAPABILITY_ID: &str = "platform_management";
+
 pub struct PlatformManagementCapability;
 
 impl Capability for PlatformManagementCapability {
     fn id(&self) -> &str {
-        "platform_management"
+        PLATFORM_MANAGEMENT_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

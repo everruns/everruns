@@ -6,12 +6,14 @@ use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
 use serde_json::Value;
 
+pub const TEST_WEATHER_CAPABILITY_ID: &str = "test_weather";
+
 /// TestWeather capability - mock weather tools for testing tool calling
 pub struct TestWeatherCapability;
 
 impl Capability for TestWeatherCapability {
     fn id(&self) -> &str {
-        "test_weather"
+        TEST_WEATHER_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

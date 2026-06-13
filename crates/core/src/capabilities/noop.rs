@@ -2,12 +2,14 @@
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 
+pub const NOOP_CAPABILITY_ID: &str = "noop";
+
 /// Noop capability - for testing and demonstration purposes
 pub struct NoopCapability;
 
 impl Capability for NoopCapability {
     fn id(&self) -> &str {
-        "noop"
+        NOOP_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

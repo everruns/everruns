@@ -21,12 +21,14 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub const FAKE_FINANCIAL_CAPABILITY_ID: &str = "fake_financial";
+
 /// Fake Financial Tools capability - mock financial management for demos
 pub struct FakeFinancialCapability;
 
 impl Capability for FakeFinancialCapability {
     fn id(&self) -> &str {
-        "fake_financial"
+        FAKE_FINANCIAL_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

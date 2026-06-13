@@ -13,6 +13,8 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
 };
 
+pub const SAMPLE_DATA_CAPABILITY_ID: &str = "sample_data";
+
 /// Sample Data capability - demonstrates capability mounting
 pub struct SampleDataCapability;
 
@@ -101,7 +103,7 @@ data formats commonly used in applications.
 
 impl Capability for SampleDataCapability {
     fn id(&self) -> &str {
-        "sample_data"
+        SAMPLE_DATA_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

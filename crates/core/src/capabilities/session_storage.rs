@@ -22,12 +22,14 @@ fn is_internal_secret_name(name: &str) -> bool {
         .any(|prefix| name.starts_with(prefix))
 }
 
+pub const SESSION_STORAGE_CAPABILITY_ID: &str = "session_storage";
+
 /// Session Storage capability - provides key/value and secret storage for sessions
 pub struct SessionStorageCapability;
 
 impl Capability for SessionStorageCapability {
     fn id(&self) -> &str {
-        "session_storage"
+        SESSION_STORAGE_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

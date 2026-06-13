@@ -738,11 +738,13 @@ fn metric_profile_base(resource_id: &str, metric: &str) -> Option<f64> {
 // Capability
 // ============================================================================
 
+pub const FAKE_AWS_CAPABILITY_ID: &str = "fake_aws";
+
 pub struct FakeAwsCapability;
 
 impl Capability for FakeAwsCapability {
     fn id(&self) -> &str {
-        "fake_aws"
+        FAKE_AWS_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

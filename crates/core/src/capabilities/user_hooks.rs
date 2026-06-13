@@ -26,11 +26,13 @@ pub struct UserHooksConfig {
     pub disabled_contributions: Vec<String>,
 }
 
+pub const USER_HOOKS_CAPABILITY_ID: &str = "user_hooks";
+
 pub struct UserHooksCapability;
 
 impl Capability for UserHooksCapability {
     fn id(&self) -> &str {
-        "user_hooks"
+        USER_HOOKS_CAPABILITY_ID
     }
 
     fn name(&self) -> &str {

@@ -121,12 +121,14 @@ static TOOL_INPUT_SCHEMA: LazyLock<Value> = LazyLock::new(|| {
     schema
 });
 
+pub const BASHKIT_SHELL_CAPABILITY_ID: &str = "bashkit_shell";
+
 /// Bashkit Shell capability - execute bash commands in a sandboxed environment
 pub struct BashkitShellCapability;
 
 impl Capability for BashkitShellCapability {
     fn id(&self) -> &str {
-        "bashkit_shell"
+        BASHKIT_SHELL_CAPABILITY_ID
     }
 
     fn aliases(&self) -> Vec<&'static str> {
