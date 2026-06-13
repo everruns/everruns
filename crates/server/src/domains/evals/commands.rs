@@ -401,7 +401,7 @@ impl Command for CreateEvalRun {
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::evals::EVAL_MANAGE)
+        Some(&crate::domains::evals::EVAL_RUN)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {

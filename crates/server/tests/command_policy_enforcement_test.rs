@@ -23,9 +23,11 @@ use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver,
 };
+use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::domains::common::{
     Command, CommandError, CommandErrorKind, Ctx, catalog_entries, dispatch,
 };
+use everruns_server::domains::evals::{CreateEvalRun, ListEvals};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
 use everruns_server::domains::session_tasks::{
@@ -364,6 +366,62 @@ fn mcp_query_read_only_overrides_are_allowlisted() {
         "MCP query exposes every read_only() command. Non-GET read-only overrides \
          must stay intentionally reviewed so mutating commands do not drift into query."
     );
+}
+
+/// Grants OrgAgentsManage but denies OrgSessionsManage — models an eval-only
+/// SaaS tier that can manage eval definitions but cannot start runs.
+struct AgentsOnlyResolver;
+
+impl PermissionResolver for AgentsOnlyResolver {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        matches!(permission, Permission::OrgAgentsManage)
+    }
+    fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+        vec![Permission::OrgAgentsManage]
+    }
+}
+
+// ============================================================================
+// EVE-549: CreateEvalRun must require EVAL_RUN (OrgAgentsManage +
+//           OrgSessionsManage), not just EVAL_MANAGE (OrgAgentsManage).
+// ============================================================================
+
+#[tokio::test]
+async fn eval_run_creation_requires_session_permission() {
+    // Regression for EVE-549: a caller with eval management but denied
+    // OrgSessionsManage must not be able to trigger real session creation.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(AgentsOnlyResolver),
+    );
+    let err = CreateEvalRun {
+        eval_id: "eval_nonexistent".to_string(),
+        req: CreateEvalRunRequest {
+            target: None,
+            model_override: None,
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect_err("CreateEvalRun must require OrgSessionsManage");
+    assert_forbidden(err);
+}
+
+#[tokio::test]
+async fn eval_manage_without_session_permission_still_allows_list() {
+    // A caller with only OrgAgentsManage can still list evals — the EVAL_VIEW
+    // policy only requires OrgAgentsManage. Only run creation needs more.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(AgentsOnlyResolver),
+    );
+    ListEvals {
+        search: None,
+        include_archived: false,
+    }
+    .run(&ctx)
+    .await
+    .expect("ListEvals must be allowed with only OrgAgentsManage");
 }
 
 /// Commands intentionally exposed without a policy (public reads, probes).
