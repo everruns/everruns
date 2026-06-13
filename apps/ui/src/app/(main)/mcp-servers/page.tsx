@@ -32,7 +32,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Plug, Trash2, Key, Globe, X } from "lucide-react";
+import { Plus, Plug, Trash2, Key, Globe, X, Settings2 } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
 import {
   apiKeySecretSchema,
@@ -49,15 +49,18 @@ function McpServerCard({
   onDelete,
   onArchive,
   onSetApiKey,
+  onManageHeaders,
 }: {
   server: McpServer;
   canDestroy: boolean;
   onDelete: (server: McpServer) => void;
   onArchive: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
+  onManageHeaders: (server: McpServer) => void;
 }) {
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
+  const headerCount = Object.keys(server.headers ?? {}).length;
 
   return (
     <Card>
@@ -100,6 +103,11 @@ function McpServerCard({
             <Badge variant="secondary" className="text-xs">
               {server.transport_type.toUpperCase()}
             </Badge>
+            {headerCount > 0 && (
+              <Badge variant="outline" className="text-xs">
+                {headerCount} custom header{headerCount !== 1 ? "s" : ""}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
@@ -107,6 +115,12 @@ function McpServerCard({
             <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
               <Key className="h-4 w-4 mr-1" />
               {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
+          {!isArchived && !isDeleted && (
+            <Button variant="outline" size="sm" onClick={() => onManageHeaders(server)}>
+              <Settings2 className="h-4 w-4 mr-1" />
+              Headers
             </Button>
           )}
           {!isArchived && !isDeleted && (
@@ -452,6 +466,151 @@ function SetApiKeyDialog({
   );
 }
 
+function ManageHeadersDialog({
+  server,
+  open,
+  onOpenChange,
+}: {
+  server: McpServer | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [rows, setRows] = useState<Array<{ key: string; value: string; existing: boolean }>>([]);
+  const [headerErrors, setHeaderErrors] = useState<string | null>(null);
+  const updateServer = useUpdateMcpServer(server?.id ?? "");
+
+  useEffect(() => {
+    if (!open || !server) return;
+    const existing = Object.keys(server.headers ?? {}).map((key) => ({
+      key,
+      value: "",
+      existing: true,
+    }));
+    setRows(existing.length > 0 ? existing : [{ key: "", value: "", existing: false }]);
+    setHeaderErrors(null);
+  }, [open, server]);
+
+  const existingKeyCount = Object.keys(server?.headers ?? {}).length;
+  const keptExistingCount = rows.filter((r) => r.existing).length;
+  const isDirty = rows.some((r) => r.value.trim()) || keptExistingCount < existingKeyCount;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!server) return;
+
+    const missingKey = rows.find((r) => !r.key.trim() && r.value.trim());
+    if (missingKey) {
+      setHeaderErrors("All headers must have a name.");
+      return;
+    }
+    const activeKeys = rows.map((r) => r.key.trim()).filter(Boolean);
+    if (new Set(activeKeys).size !== activeKeys.length) {
+      setHeaderErrors("Header names must be unique.");
+      return;
+    }
+    setHeaderErrors(null);
+
+    if (!isDirty) {
+      onOpenChange(false);
+      return;
+    }
+
+    // Backend replaces the entire headers JSON column. Only include rows where both
+    // key and value are non-empty; blank-value rows are effectively deleted.
+    const headersRecord: Record<string, string> = {};
+    for (const row of rows) {
+      if (row.key.trim() && row.value.trim()) {
+        headersRecord[row.key.trim()] = row.value.trim();
+      }
+    }
+
+    await updateServer.mutateAsync({ headers: headersRecord });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Custom Headers</DialogTitle>
+          <DialogDescription>
+            Header values are write-only and not shown. Enter a value to keep or update a header;
+            leave it blank or remove the row to delete it. Saving replaces all headers.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Headers</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() =>
+                  setRows((prev) => [...prev, { key: "", value: "", existing: false }])
+                }
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Add header
+              </Button>
+            </div>
+            {rows.length > 0 && (
+              <div className="space-y-2">
+                {rows.map((row, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Input
+                      placeholder="Name"
+                      value={row.key}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setRows((prev) =>
+                          prev.map((r, i) => (i === index ? { ...r, key: e.target.value } : r)),
+                        );
+                        setHeaderErrors(null);
+                      }}
+                      className="flex-1"
+                    />
+                    <Input
+                      placeholder={row.existing ? "stored" : "Value"}
+                      value={row.value}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setRows((prev) =>
+                          prev.map((r, i) => (i === index ? { ...r, value: e.target.value } : r)),
+                        );
+                        setHeaderErrors(null);
+                      }}
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label="Remove header"
+                      className="h-9 w-9 p-0 shrink-0"
+                      onClick={() => setRows((prev) => prev.filter((_, i) => i !== index))}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {headerErrors && <p className="text-xs text-destructive">{headerErrors}</p>}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateServer.isPending || !isDirty}>
+              {updateServer.isPending ? "Saving..." : "Save Headers"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ArchiveConfirmDialog({
   server,
   open,
@@ -524,6 +683,7 @@ export default function McpServersPage() {
 
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
+  const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
   const [pendingArchiveServer, setPendingArchiveServer] = useState<McpServer | null>(null);
 
@@ -588,6 +748,7 @@ export default function McpServersPage() {
                 onDelete={setPendingDeleteServer}
                 onArchive={setPendingArchiveServer}
                 onSetApiKey={setApiKeyServer}
+                onManageHeaders={setHeadersServer}
               />
             ))}
           </div>
@@ -596,6 +757,11 @@ export default function McpServersPage() {
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
+      <ManageHeadersDialog
+        server={headersServer}
+        open={headersServer !== null}
+        onOpenChange={(open) => !open && setHeadersServer(null)}
+      />
       <ArchiveConfirmDialog
         server={pendingArchiveServer}
         open={pendingArchiveServer !== null}
