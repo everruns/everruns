@@ -18,11 +18,10 @@ use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 
-use everruns_core::llm_models::LlmProvider;
+use everruns_core::provider::Provider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{
-    Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionContextReport,
-    SessionFile,
+    Agent, DEFAULT_ORG_ID, Harness, Model, PrincipalId, Session, SessionContextReport, SessionFile,
 };
 use everruns_durable::UpdateField;
 use everruns_server::storage::models::{
@@ -1319,11 +1318,11 @@ async fn test_list_events_since_id_filters_old_events() {
 // ============================================
 
 #[tokio::test]
-async fn test_llm_provider_crud() {
+async fn test_provider_crud() {
     let server = TestServer::new().await;
 
     // Create a provider
-    let provider: LlmProvider = server
+    let provider: Provider = server
         .post(
             "/v1/llm-providers",
             json!({
@@ -1353,11 +1352,11 @@ async fn test_llm_provider_crud() {
 }
 
 #[tokio::test]
-async fn test_llm_model_crud() {
+async fn test_model_crud() {
     let server = TestServer::new().await;
 
     // Create a provider first
-    let provider: LlmProvider = server
+    let provider: Provider = server
         .post(
             "/v1/llm-providers",
             json!({
@@ -1370,7 +1369,7 @@ async fn test_llm_model_crud() {
         .json();
 
     // Create a model
-    let model: LlmModel = server
+    let model: Model = server
         .post(
             &format!("/v1/llm-providers/{}/models", provider.id),
             json!({
@@ -1404,7 +1403,7 @@ async fn test_llm_model_crud() {
 }
 
 #[tokio::test]
-async fn test_create_llm_model_missing_provider_returns_not_found() {
+async fn test_create_model_missing_provider_returns_not_found() {
     let server = TestServer::in_memory().await;
 
     server
@@ -1430,7 +1429,7 @@ async fn test_session_inherits_agent_default_model() {
     let server = TestServer::new().await;
 
     // Create provider and model
-    let provider: LlmProvider = server
+    let provider: Provider = server
         .post(
             "/v1/llm-providers",
             json!({
@@ -1442,7 +1441,7 @@ async fn test_session_inherits_agent_default_model() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let model: LlmModel = server
+    let model: Model = server
         .post(
             &format!("/v1/llm-providers/{}/models", provider.id),
             json!({

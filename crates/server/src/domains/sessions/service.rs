@@ -765,7 +765,7 @@ impl SessionService {
         };
 
         self.db
-            .get_llm_model(org_id, model_id.uuid())
+            .get_model(org_id, model_id.uuid())
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Model"))?;
 
@@ -1802,8 +1802,8 @@ mod tests {
     };
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
-        CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMemoryFileRow,
-        CreateOrganizationRow, StorageBackend,
+        CreateHarnessRow, CreateMemoryFileRow, CreateModelRow, CreateOrganizationRow,
+        CreateProviderRow, StorageBackend,
     };
     use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
@@ -1918,9 +1918,9 @@ mod tests {
 
     async fn create_model(db: &StorageBackend, org_id: i64, model_id: &str) -> ModelId {
         let provider = db
-            .create_llm_provider(
+            .create_provider(
                 org_id,
-                CreateLlmProviderRow {
+                CreateProviderRow {
                     name: format!("Provider {org_id}"),
                     provider_type: "openai".to_string(),
                     base_url: None,
@@ -1931,9 +1931,9 @@ mod tests {
             .await
             .unwrap();
 
-        db.create_llm_model(
+        db.create_model(
             org_id,
-            CreateLlmModelRow {
+            CreateModelRow {
                 provider_id: provider.id,
                 model_id: model_id.to_string(),
                 display_name: model_id.to_string(),

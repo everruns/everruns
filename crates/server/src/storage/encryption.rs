@@ -369,7 +369,7 @@ pub struct EncryptedColumn {
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
     // LLM Provider API keys are encrypted at rest
     EncryptedColumn {
-        table: "llm_providers",
+        table: "providers",
         column: "api_key_encrypted",
         id_column: "id",
     },
@@ -776,7 +776,7 @@ mod tests {
         let mut found = HashSet::new();
 
         let sql = r#"
-            CREATE TABLE llm_providers (
+            CREATE TABLE providers (
                 id UUID PRIMARY KEY DEFAULT uuidv7(),
                 name TEXT NOT NULL,
                 api_key_encrypted BYTEA,
@@ -793,8 +793,8 @@ mod tests {
         parse_encrypted_columns(sql, &mut found);
 
         assert!(
-            found.contains(&("llm_providers".to_string(), "api_key_encrypted".to_string())),
-            "Expected llm_providers.api_key_encrypted, found: {:?}",
+            found.contains(&("providers".to_string(), "api_key_encrypted".to_string())),
+            "Expected providers.api_key_encrypted, found: {:?}",
             found
         );
         assert!(

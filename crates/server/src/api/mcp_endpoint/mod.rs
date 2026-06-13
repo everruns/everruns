@@ -591,7 +591,7 @@ async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, S
 
 async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
     let ctx = mcp_ctx(org, state);
-    let providers = crate::domains::llm_providers::ListProviders
+    let providers = crate::domains::providers::ListProviders
         .run(&ctx)
         .await
         .map_err(|e| resource_error("providers", e))?;
@@ -1760,12 +1760,12 @@ mod resources_read_policy_tests {
     #[tokio::test]
     async fn list_providers_blocked_when_resolver_denies() {
         let ctx = deny_all_ctx();
-        let result = crate::domains::llm_providers::ListProviders.run(&ctx).await;
+        let result = crate::domains::providers::ListProviders.run(&ctx).await;
 
         let err = result.expect_err("denying resolver must block list_providers");
         assert!(
-            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("llm_provider.view")),
-            "expected Forbidden(llm_provider.view), got {err:?}"
+            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("provider.view")),
+            "expected Forbidden(provider.view), got {err:?}"
         );
     }
 

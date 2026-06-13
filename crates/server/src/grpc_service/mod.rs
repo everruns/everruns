@@ -16,7 +16,7 @@ use crate::domains::session_files::{
     CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::sessions::SessionService;
-use crate::services::{CapabilityService, EventService, LlmResolverService};
+use crate::services::{CapabilityService, EventService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
@@ -109,8 +109,8 @@ use everruns_internal_protocol::proto::{
     GetMcpServerByPrefixResponse,
     GetMessageRequest,
     GetMessageResponse,
-    GetModelWithProviderRequest,
-    GetModelWithProviderResponse,
+    GetResolvedModelRequest,
+    GetResolvedModelResponse,
     GetSessionRequest,
     GetSessionResponse,
     GetSessionTaskRequest,
@@ -455,7 +455,7 @@ pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: Arc<SessionService>,
     session_file_service: WorkspaceFileService,
-    llm_resolver_service: Arc<LlmResolverService>,
+    provider_resolver_service: Arc<ProviderResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
@@ -512,7 +512,7 @@ impl WorkerServiceImpl {
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
-        llm_resolver_service: Option<Arc<LlmResolverService>>,
+        provider_resolver_service: Option<Arc<ProviderResolverService>>,
     ) -> Self {
         let capability_registry = platform_definition.capability_registry().clone();
         let session_service = {
@@ -528,8 +528,9 @@ impl WorkerServiceImpl {
         } else {
             WorkspaceFileService::new(db.clone())
         };
-        let llm_resolver_service = llm_resolver_service
-            .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));
+        let provider_resolver_service = provider_resolver_service.unwrap_or_else(|| {
+            Arc::new(ProviderResolverService::new(db.clone(), encryption.clone()))
+        });
         let mcp_server_service = McpServerService::with_egress_service(
             db.clone(),
             encryption.clone(),
@@ -597,7 +598,7 @@ impl WorkerServiceImpl {
             event_service,
             session_service: Arc::new(session_service),
             session_file_service,
-            llm_resolver_service,
+            provider_resolver_service,
             mcp_server_service,
             capability_service,
             durable_store,
@@ -792,11 +793,9 @@ impl WorkerServiceImpl {
             .max_encoding_message_size(Self::MAX_GRPC_MESSAGE_SIZE)
     }
 
-    /// Convert ResolvedModel to proto ModelWithProvider
-    fn resolved_model_to_proto(
-        resolved: crate::services::ResolvedModel,
-    ) -> proto::ModelWithProvider {
-        proto::ModelWithProvider {
+    /// Convert ResolvedModel to proto ResolvedModel
+    fn resolved_model_to_proto(resolved: crate::services::ResolvedModel) -> proto::ResolvedModel {
+        proto::ResolvedModel {
             model: resolved.model_id,
             provider_type: resolved.provider_type,
             api_key: resolved.api_key,

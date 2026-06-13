@@ -5531,7 +5531,7 @@
                   "type": "null"
                 },
                 {
-                  "$ref": "#/components/schemas/LlmModelSource"
+                  "$ref": "#/components/schemas/ModelSource"
                 }
               ]
             }
@@ -5561,7 +5561,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_LlmModelWithProvider"
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_ModelWithProvider"
                 }
               }
             }
@@ -5575,7 +5575,7 @@
           "llm-models"
         ],
         "summary": "GET /v1/llm-models/config",
-        "operationId": "llm_model_config",
+        "operationId": "model_config",
         "responses": {
           "200": {
             "description": "Resource config for LLM models",
@@ -5614,7 +5614,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmModelWithProvider"
+                  "$ref": "#/components/schemas/WithUrls_ModelWithProvider"
                 }
               }
             }
@@ -5677,7 +5677,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateLlmModelRequest"
+                "$ref": "#/components/schemas/UpdateModelRequest"
               }
             }
           },
@@ -5689,7 +5689,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmModel"
+                  "$ref": "#/components/schemas/WithUrls_Model"
                 }
               }
             }
@@ -5716,7 +5716,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_LlmProvider"
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_Provider"
                 }
               }
             }
@@ -5733,7 +5733,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateLlmProviderRequest"
+                "$ref": "#/components/schemas/CreateProviderRequest"
               }
             }
           },
@@ -5745,7 +5745,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmProvider"
+                  "$ref": "#/components/schemas/WithUrls_Provider"
                 }
               }
             }
@@ -5765,7 +5765,7 @@
           "llm-providers"
         ],
         "summary": "GET /v1/llm-providers/config",
-        "operationId": "llm_provider_config",
+        "operationId": "provider_config",
         "responses": {
           "200": {
             "description": "Resource config for LLM providers",
@@ -5804,7 +5804,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmProvider"
+                  "$ref": "#/components/schemas/WithUrls_Provider"
                 }
               }
             }
@@ -5867,7 +5867,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/UpdateLlmProviderRequest"
+                "$ref": "#/components/schemas/UpdateProviderRequest"
               }
             }
           },
@@ -5879,7 +5879,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmProvider"
+                  "$ref": "#/components/schemas/WithUrls_Provider"
                 }
               }
             }
@@ -5959,7 +5959,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WithUrls_LlmModel"
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_Model"
                 }
               }
             }
@@ -5990,7 +5990,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateLlmModelRequest"
+                "$ref": "#/components/schemas/CreateModelRequest"
               }
             }
           },
@@ -6002,7 +6002,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WithUrls_LlmModel"
+                  "$ref": "#/components/schemas/WithUrls_Model"
                 }
               }
             }
@@ -14953,82 +14953,6 @@
           }
         }
       },
-      "CreateLlmModelRequest": {
-        "type": "object",
-        "description": "Request to create a new LLM model for a provider",
-        "required": [
-          "model_id",
-          "display_name"
-        ],
-        "properties": {
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "List of capabilities this model supports (e.g., \"chat\", \"vision\", \"tools\").",
-            "example": [
-              "chat",
-              "vision",
-              "tools"
-            ]
-          },
-          "display_name": {
-            "type": "string",
-            "description": "Human-readable display name for the model.",
-            "example": "GPT-4o"
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether this model should be enabled (visible in UI model pickers).",
-            "example": false
-          },
-          "is_favorite": {
-            "type": "boolean",
-            "description": "Whether this model should be marked as a favorite for quick access.",
-            "example": false
-          },
-          "model_id": {
-            "type": "string",
-            "description": "The model identifier used by the provider's API (e.g., \"gpt-4\", \"claude-3-opus\").",
-            "example": "gpt-4o"
-          }
-        }
-      },
-      "CreateLlmProviderRequest": {
-        "type": "object",
-        "description": "Request to create a new LLM provider",
-        "required": [
-          "name",
-          "provider_type"
-        ],
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
-          },
-          "base_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Base URL for the provider's API. Required for custom endpoints.\nFor standard providers, this can be omitted to use the default URL.",
-            "example": "https://api.openai.com/v1"
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name for the provider.",
-            "example": "OpenAI Production"
-          },
-          "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType",
-            "description": "The type of LLM provider (e.g., openai, anthropic)."
-          }
-        }
-      },
       "CreateMcpServerRequest": {
         "type": "object",
         "description": "Request to create a new MCP server",
@@ -15272,6 +15196,48 @@
           }
         }
       },
+      "CreateModelRequest": {
+        "type": "object",
+        "description": "Request to create a new LLM model for a provider",
+        "required": [
+          "model_id",
+          "display_name"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "List of capabilities this model supports (e.g., \"chat\", \"vision\", \"tools\").",
+            "example": [
+              "chat",
+              "vision",
+              "tools"
+            ]
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name for the model.",
+            "example": "GPT-4o"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this model should be enabled (visible in UI model pickers).",
+            "example": false
+          },
+          "is_favorite": {
+            "type": "boolean",
+            "description": "Whether this model should be marked as a favorite for quick access.",
+            "example": false
+          },
+          "model_id": {
+            "type": "string",
+            "description": "The model identifier used by the provider's API (e.g., \"gpt-4\", \"claude-3-opus\").",
+            "example": "gpt-4o"
+          }
+        }
+      },
       "CreateOrganizationRequest": {
         "type": "object",
         "description": "Request to create a new organization",
@@ -15432,6 +15398,40 @@
             "type": "string",
             "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.",
             "example": "agent_identity"
+          }
+        }
+      },
+      "CreateProviderRequest": {
+        "type": "object",
+        "description": "Request to create a new LLM provider",
+        "required": [
+          "name",
+          "provider_type"
+        ],
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API. Required for custom endpoints.\nFor standard providers, this can be omitted to use the default URL.",
+            "example": "https://api.openai.com/v1"
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name for the provider.",
+            "example": "OpenAI Production"
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/DriverId",
+            "description": "The type of LLM provider (e.g., openai, anthropic)."
           }
         }
       },
@@ -16114,6 +16114,10 @@
             "minimum": 0
           }
         }
+      },
+      "DriverId": {
+        "type": "string",
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock. Any other string is treated as an embedder-defined external provider."
       },
       "EnqueueTaskOptions": {
         "type": "object",
@@ -20772,389 +20776,6 @@
           }
         }
       },
-      "ListResponse_WithUrls_LlmModel": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "type": "object",
-                  "description": "LLM Model entity",
-                  "required": [
-                    "id",
-                    "provider_id",
-                    "model_id",
-                    "display_name",
-                    "capabilities",
-                    "is_favorite",
-                    "enabled",
-                    "source",
-                    "created_at",
-                    "updated_at"
-                  ],
-                  "properties": {
-                    "capabilities": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this model was created (RFC 3339)."
-                    },
-                    "display_name": {
-                      "type": "string",
-                      "description": "Human-readable display name. Safe to render in user-facing messages."
-                    },
-                    "enabled": {
-                      "type": "boolean",
-                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
-                    },
-                    "id": {
-                      "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                      "example": "model_01933b5a00007000800000000000001"
-                    },
-                    "is_favorite": {
-                      "type": "boolean",
-                      "description": "Whether this model is starred in the UI for quick access."
-                    },
-                    "model_id": {
-                      "type": "string",
-                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
-                    },
-                    "provider_id": {
-                      "type": "string",
-                      "description": "Owning provider's prefixed public identifier.",
-                      "example": "provider_01933b5a00007000800000000000001"
-                    },
-                    "source": {
-                      "$ref": "#/components/schemas/LlmModelSource",
-                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-                    },
-                    "updated_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this model was last updated (RFC 3339)."
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "self_url",
-                    "view_url",
-                    "ui_link"
-                  ],
-                  "properties": {
-                    "allowed_actions": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/AllowedAction"
-                      },
-                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-                    },
-                    "self_url": {
-                      "type": "string",
-                      "description": "Full API endpoint URL for this resource."
-                    },
-                    "ui_link": {
-                      "type": "string",
-                      "description": "Alias for `view_url`, used by command and MCP outputs."
-                    },
-                    "view_url": {
-                      "type": "string",
-                      "description": "Full UI URL for viewing this resource."
-                    }
-                  }
-                }
-              ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_WithUrls_LlmModelWithProvider": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "type": "object",
-                  "description": "LLM Model with provider info",
-                  "required": [
-                    "id",
-                    "provider_id",
-                    "model_id",
-                    "display_name",
-                    "capabilities",
-                    "is_favorite",
-                    "enabled",
-                    "source",
-                    "created_at",
-                    "updated_at",
-                    "provider_name",
-                    "provider_type",
-                    "healthy"
-                  ],
-                  "properties": {
-                    "capabilities": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      },
-                      "description": "Capability tags supported by this model.",
-                      "example": [
-                        "text",
-                        "tools",
-                        "vision",
-                        "thinking"
-                      ]
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this model was created (RFC 3339).",
-                      "example": "2026-01-04T11:23:00Z"
-                    },
-                    "display_name": {
-                      "type": "string",
-                      "description": "Human-readable display name.",
-                      "example": "Claude Sonnet 4.5"
-                    },
-                    "enabled": {
-                      "type": "boolean",
-                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
-                      "example": true
-                    },
-                    "healthy": {
-                      "type": "boolean",
-                      "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
-                      "example": true
-                    },
-                    "id": {
-                      "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                      "example": "model_01933b5a00007000800000000000001"
-                    },
-                    "is_favorite": {
-                      "type": "boolean",
-                      "description": "Whether this model is starred in the UI for quick access.",
-                      "example": true
-                    },
-                    "model_id": {
-                      "type": "string",
-                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
-                      "example": "claude-sonnet-4-5"
-                    },
-                    "model_vendor": {
-                      "oneOf": [
-                        {
-                          "type": "null"
-                        },
-                        {
-                          "$ref": "#/components/schemas/ModelVendor",
-                          "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
-                        }
-                      ]
-                    },
-                    "profile": {
-                      "oneOf": [
-                        {
-                          "type": "null"
-                        },
-                        {
-                          "$ref": "#/components/schemas/LlmModelProfile",
-                          "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
-                        }
-                      ]
-                    },
-                    "provider_id": {
-                      "type": "string",
-                      "description": "Owning provider's prefixed public identifier.",
-                      "example": "provider_01933b5a00007000800000000000001"
-                    },
-                    "provider_name": {
-                      "type": "string",
-                      "description": "Joined provider display name.",
-                      "example": "Anthropic"
-                    },
-                    "provider_type": {
-                      "$ref": "#/components/schemas/LlmProviderType",
-                      "description": "Joined provider implementation type."
-                    },
-                    "source": {
-                      "$ref": "#/components/schemas/LlmModelSource",
-                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-                    },
-                    "updated_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this model was last updated (RFC 3339).",
-                      "example": "2026-05-27T15:24:00Z"
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "self_url",
-                    "view_url",
-                    "ui_link"
-                  ],
-                  "properties": {
-                    "allowed_actions": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/AllowedAction"
-                      },
-                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-                    },
-                    "self_url": {
-                      "type": "string",
-                      "description": "Full API endpoint URL for this resource."
-                    },
-                    "ui_link": {
-                      "type": "string",
-                      "description": "Alias for `view_url`, used by command and MCP outputs."
-                    },
-                    "view_url": {
-                      "type": "string",
-                      "description": "Full UI URL for viewing this resource."
-                    }
-                  }
-                }
-              ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_WithUrls_LlmProvider": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "allOf": [
-                {
-                  "type": "object",
-                  "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
-                  "required": [
-                    "id",
-                    "name",
-                    "provider_type",
-                    "api_key_set",
-                    "status",
-                    "created_at",
-                    "updated_at"
-                  ],
-                  "properties": {
-                    "api_key_set": {
-                      "type": "boolean",
-                      "description": "Whether an API key is configured. The key itself is never returned."
-                    },
-                    "base_url": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
-                    },
-                    "created_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this provider was created (RFC 3339)."
-                    },
-                    "id": {
-                      "type": "string",
-                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                      "example": "provider_01933b5a00007000800000000000001"
-                    },
-                    "last_synced_at": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "format": "date-time",
-                      "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
-                    },
-                    "name": {
-                      "type": "string",
-                      "description": "Human-readable provider name. Safe to render in user-facing messages."
-                    },
-                    "provider_type": {
-                      "$ref": "#/components/schemas/LlmProviderType",
-                      "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
-                    },
-                    "status": {
-                      "$ref": "#/components/schemas/LlmProviderStatus",
-                      "description": "Current lifecycle status of this provider."
-                    },
-                    "updated_at": {
-                      "type": "string",
-                      "format": "date-time",
-                      "description": "Timestamp when this provider was last updated (RFC 3339)."
-                    }
-                  }
-                },
-                {
-                  "type": "object",
-                  "required": [
-                    "self_url",
-                    "view_url",
-                    "ui_link"
-                  ],
-                  "properties": {
-                    "allowed_actions": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/AllowedAction"
-                      },
-                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-                    },
-                    "self_url": {
-                      "type": "string",
-                      "description": "Full API endpoint URL for this resource."
-                    },
-                    "ui_link": {
-                      "type": "string",
-                      "description": "Alias for `view_url`, used by command and MCP outputs."
-                    },
-                    "view_url": {
-                      "type": "string",
-                      "description": "Full UI URL for viewing this resource."
-                    }
-                  }
-                }
-              ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
       "ListResponse_WithUrls_McpServer": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -21261,6 +20882,389 @@
                       "type": "string",
                       "description": "URL of the MCP server endpoint.",
                       "example": "https://mcp.atlassian.com/v1/mcp"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "self_url",
+                    "view_url",
+                    "ui_link"
+                  ],
+                  "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
+                    "self_url": {
+                      "type": "string",
+                      "description": "Full API endpoint URL for this resource."
+                    },
+                    "ui_link": {
+                      "type": "string",
+                      "description": "Alias for `view_url`, used by command and MCP outputs."
+                    },
+                    "view_url": {
+                      "type": "string",
+                      "description": "Full UI URL for viewing this resource."
+                    }
+                  }
+                }
+              ],
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_WithUrls_Model": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "description": "LLM Model entity",
+                  "required": [
+                    "id",
+                    "provider_id",
+                    "model_id",
+                    "display_name",
+                    "capabilities",
+                    "is_favorite",
+                    "enabled",
+                    "source",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "properties": {
+                    "capabilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this model was created (RFC 3339)."
+                    },
+                    "display_name": {
+                      "type": "string",
+                      "description": "Human-readable display name. Safe to render in user-facing messages."
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "example": "model_01933b5a00007000800000000000001"
+                    },
+                    "is_favorite": {
+                      "type": "boolean",
+                      "description": "Whether this model is starred in the UI for quick access."
+                    },
+                    "model_id": {
+                      "type": "string",
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+                    },
+                    "provider_id": {
+                      "type": "string",
+                      "description": "Owning provider's prefixed public identifier.",
+                      "example": "provider_01933b5a00007000800000000000001"
+                    },
+                    "source": {
+                      "$ref": "#/components/schemas/ModelSource",
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this model was last updated (RFC 3339)."
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "self_url",
+                    "view_url",
+                    "ui_link"
+                  ],
+                  "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
+                    "self_url": {
+                      "type": "string",
+                      "description": "Full API endpoint URL for this resource."
+                    },
+                    "ui_link": {
+                      "type": "string",
+                      "description": "Alias for `view_url`, used by command and MCP outputs."
+                    },
+                    "view_url": {
+                      "type": "string",
+                      "description": "Full UI URL for viewing this resource."
+                    }
+                  }
+                }
+              ],
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_WithUrls_ModelWithProvider": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "description": "LLM Model with provider info",
+                  "required": [
+                    "id",
+                    "provider_id",
+                    "model_id",
+                    "display_name",
+                    "capabilities",
+                    "is_favorite",
+                    "enabled",
+                    "source",
+                    "created_at",
+                    "updated_at",
+                    "provider_name",
+                    "provider_type",
+                    "healthy"
+                  ],
+                  "properties": {
+                    "capabilities": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Capability tags supported by this model.",
+                      "example": [
+                        "text",
+                        "tools",
+                        "vision",
+                        "thinking"
+                      ]
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this model was created (RFC 3339).",
+                      "example": "2026-01-04T11:23:00Z"
+                    },
+                    "display_name": {
+                      "type": "string",
+                      "description": "Human-readable display name.",
+                      "example": "Claude Sonnet 4.5"
+                    },
+                    "enabled": {
+                      "type": "boolean",
+                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
+                      "example": true
+                    },
+                    "healthy": {
+                      "type": "boolean",
+                      "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
+                      "example": true
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "example": "model_01933b5a00007000800000000000001"
+                    },
+                    "is_favorite": {
+                      "type": "boolean",
+                      "description": "Whether this model is starred in the UI for quick access.",
+                      "example": true
+                    },
+                    "model_id": {
+                      "type": "string",
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                      "example": "claude-sonnet-4-5"
+                    },
+                    "model_vendor": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ModelVendor",
+                          "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                        }
+                      ]
+                    },
+                    "profile": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "$ref": "#/components/schemas/ModelProfile",
+                          "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
+                        }
+                      ]
+                    },
+                    "provider_id": {
+                      "type": "string",
+                      "description": "Owning provider's prefixed public identifier.",
+                      "example": "provider_01933b5a00007000800000000000001"
+                    },
+                    "provider_name": {
+                      "type": "string",
+                      "description": "Joined provider display name.",
+                      "example": "Anthropic"
+                    },
+                    "provider_type": {
+                      "$ref": "#/components/schemas/DriverId",
+                      "description": "Joined provider implementation type."
+                    },
+                    "source": {
+                      "$ref": "#/components/schemas/ModelSource",
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this model was last updated (RFC 3339).",
+                      "example": "2026-05-27T15:24:00Z"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "self_url",
+                    "view_url",
+                    "ui_link"
+                  ],
+                  "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
+                    "self_url": {
+                      "type": "string",
+                      "description": "Full API endpoint URL for this resource."
+                    },
+                    "ui_link": {
+                      "type": "string",
+                      "description": "Alias for `view_url`, used by command and MCP outputs."
+                    },
+                    "view_url": {
+                      "type": "string",
+                      "description": "Full UI URL for viewing this resource."
+                    }
+                  }
+                }
+              ],
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_WithUrls_Provider": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the Provider trait in llm.rs",
+                  "required": [
+                    "id",
+                    "name",
+                    "provider_type",
+                    "api_key_set",
+                    "status",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "properties": {
+                    "api_key_set": {
+                      "type": "boolean",
+                      "description": "Whether an API key is configured. The key itself is never returned."
+                    },
+                    "base_url": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this provider was created (RFC 3339)."
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                      "example": "provider_01933b5a00007000800000000000001"
+                    },
+                    "last_synced_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time",
+                      "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Human-readable provider name. Safe to render in user-facing messages."
+                    },
+                    "provider_type": {
+                      "$ref": "#/components/schemas/DriverId",
+                      "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
+                    },
+                    "status": {
+                      "$ref": "#/components/schemas/ProviderStatus",
+                      "description": "Current lifecycle status of this provider."
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Timestamp when this provider was last updated (RFC 3339)."
                     }
                   }
                 },
@@ -22015,427 +22019,6 @@
           }
         }
       },
-      "LlmModel": {
-        "type": "object",
-        "description": "LLM Model entity",
-        "required": [
-          "id",
-          "provider_id",
-          "model_id",
-          "display_name",
-          "capabilities",
-          "is_favorite",
-          "enabled",
-          "source",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this model was created (RFC 3339)."
-          },
-          "display_name": {
-            "type": "string",
-            "description": "Human-readable display name. Safe to render in user-facing messages."
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "model_01933b5a00007000800000000000001"
-          },
-          "is_favorite": {
-            "type": "boolean",
-            "description": "Whether this model is starred in the UI for quick access."
-          },
-          "model_id": {
-            "type": "string",
-            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
-          },
-          "provider_id": {
-            "type": "string",
-            "description": "Owning provider's prefixed public identifier.",
-            "example": "provider_01933b5a00007000800000000000001"
-          },
-          "source": {
-            "$ref": "#/components/schemas/LlmModelSource",
-            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this model was last updated (RFC 3339)."
-          }
-        }
-      },
-      "LlmModelCost": {
-        "type": "object",
-        "description": "Cost information for the model (per million tokens)",
-        "required": [
-          "input",
-          "output"
-        ],
-        "properties": {
-          "cache_read": {
-            "type": [
-              "number",
-              "null"
-            ],
-            "format": "double",
-            "description": "Cached read cost per million tokens (USD), if supported"
-          },
-          "cost_tiers": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CostTier"
-            },
-            "description": "Tiered pricing that applies above certain context thresholds.\nWhen present, the base cost fields apply up to the tier threshold,\nand each tier's costs apply for tokens beyond that threshold."
-          },
-          "input": {
-            "type": "number",
-            "format": "double",
-            "description": "Input cost per million tokens (USD)"
-          },
-          "output": {
-            "type": "number",
-            "format": "double",
-            "description": "Output cost per million tokens (USD)"
-          }
-        }
-      },
-      "LlmModelLimits": {
-        "type": "object",
-        "description": "Token limits for the model",
-        "required": [
-          "context",
-          "output"
-        ],
-        "properties": {
-          "context": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum context window size in tokens"
-          },
-          "input": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Maximum input tokens (if different from context - output)"
-          },
-          "max_media": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "description": "Maximum images or PDF pages per request"
-          },
-          "output": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Maximum output tokens"
-          }
-        }
-      },
-      "LlmModelModalities": {
-        "type": "object",
-        "description": "Model modalities for input and output",
-        "required": [
-          "input",
-          "output"
-        ],
-        "properties": {
-          "input": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Modality"
-            },
-            "description": "Supported input modalities"
-          },
-          "output": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/Modality"
-            },
-            "description": "Supported output modalities"
-          }
-        }
-      },
-      "LlmModelProfile": {
-        "type": "object",
-        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nNOTE: Currently only includes profiles for:\n- OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini\n- Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4\n\nAdditional model profiles can be added as needed.",
-        "required": [
-          "name",
-          "family",
-          "attachment",
-          "reasoning",
-          "temperature",
-          "tool_call",
-          "structured_output",
-          "open_weights"
-        ],
-        "properties": {
-          "attachment": {
-            "type": "boolean",
-            "description": "Whether the model supports file/image attachments"
-          },
-          "cost": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmModelCost",
-                "description": "Cost per million tokens"
-              }
-            ]
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Short human-readable description of the model's strengths and intended use"
-          },
-          "family": {
-            "type": "string",
-            "description": "Model family (e.g., \"gpt-4o\", \"claude-3-5-sonnet\")"
-          },
-          "knowledge": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Knowledge cutoff date (YYYY-MM-DD format)"
-          },
-          "last_updated": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Last updated date (YYYY-MM-DD format)"
-          },
-          "limits": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmModelLimits",
-                "description": "Token limits"
-              }
-            ]
-          },
-          "modalities": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmModelModalities",
-                "description": "Supported modalities"
-              }
-            ]
-          },
-          "name": {
-            "type": "string",
-            "description": "Display name of the model"
-          },
-          "open_weights": {
-            "type": "boolean",
-            "description": "Whether the model has open weights"
-          },
-          "reasoning": {
-            "type": "boolean",
-            "description": "Whether the model has reasoning/chain-of-thought capabilities"
-          },
-          "reasoning_effort": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ReasoningEffortConfig",
-                "description": "Reasoning effort configuration (for reasoning models)"
-              }
-            ]
-          },
-          "release_date": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Release date (YYYY-MM-DD format)"
-          },
-          "structured_output": {
-            "type": "boolean",
-            "description": "Whether the model supports structured output (JSON mode)"
-          },
-          "supported_parameters": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Provider-advertised request parameters supported by this model."
-          },
-          "supports_phases": {
-            "type": "boolean",
-            "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."
-          },
-          "temperature": {
-            "type": "boolean",
-            "description": "Whether temperature control is supported"
-          },
-          "tool_call": {
-            "type": "boolean",
-            "description": "Whether the model supports tool/function calling"
-          },
-          "tool_search": {
-            "type": "boolean",
-            "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
-          }
-        }
-      },
-      "LlmModelSource": {
-        "type": "string",
-        "description": "How the model was added to the system",
-        "enum": [
-          "manual",
-          "discovered",
-          "predefined"
-        ],
-        "example": "predefined"
-      },
-      "LlmModelWithProvider": {
-        "type": "object",
-        "description": "LLM Model with provider info",
-        "required": [
-          "id",
-          "provider_id",
-          "model_id",
-          "display_name",
-          "capabilities",
-          "is_favorite",
-          "enabled",
-          "source",
-          "created_at",
-          "updated_at",
-          "provider_name",
-          "provider_type",
-          "healthy"
-        ],
-        "properties": {
-          "capabilities": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Capability tags supported by this model.",
-            "example": [
-              "text",
-              "tools",
-              "vision",
-              "thinking"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this model was created (RFC 3339).",
-            "example": "2026-01-04T11:23:00Z"
-          },
-          "display_name": {
-            "type": "string",
-            "description": "Human-readable display name.",
-            "example": "Claude Sonnet 4.5"
-          },
-          "enabled": {
-            "type": "boolean",
-            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
-            "example": true
-          },
-          "healthy": {
-            "type": "boolean",
-            "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
-            "example": true
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "model_01933b5a00007000800000000000001"
-          },
-          "is_favorite": {
-            "type": "boolean",
-            "description": "Whether this model is starred in the UI for quick access.",
-            "example": true
-          },
-          "model_id": {
-            "type": "string",
-            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
-            "example": "claude-sonnet-4-5"
-          },
-          "model_vendor": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/ModelVendor",
-                "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
-              }
-            ]
-          },
-          "profile": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmModelProfile",
-                "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
-              }
-            ]
-          },
-          "provider_id": {
-            "type": "string",
-            "description": "Owning provider's prefixed public identifier.",
-            "example": "provider_01933b5a00007000800000000000001"
-          },
-          "provider_name": {
-            "type": "string",
-            "description": "Joined provider display name.",
-            "example": "Anthropic"
-          },
-          "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType",
-            "description": "Joined provider implementation type."
-          },
-          "source": {
-            "$ref": "#/components/schemas/LlmModelSource",
-            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this model was last updated (RFC 3339).",
-            "example": "2026-05-27T15:24:00Z"
-          }
-        }
-      },
       "LlmPromptCacheInfo": {
         "type": "object",
         "description": "Request-side prompt cache settings for an LLM generation.",
@@ -22460,79 +22043,6 @@
             "description": "Strategy used to enable prompt caching."
           }
         }
-      },
-      "LlmProvider": {
-        "type": "object",
-        "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
-        "required": [
-          "id",
-          "name",
-          "provider_type",
-          "api_key_set",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "api_key_set": {
-            "type": "boolean",
-            "description": "Whether an API key is configured. The key itself is never returned."
-          },
-          "base_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this provider was created (RFC 3339)."
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "provider_01933b5a00007000800000000000001"
-          },
-          "last_synced_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable provider name. Safe to render in user-facing messages."
-          },
-          "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType",
-            "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
-          },
-          "status": {
-            "$ref": "#/components/schemas/LlmProviderStatus",
-            "description": "Current lifecycle status of this provider."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this provider was last updated (RFC 3339)."
-          }
-        }
-      },
-      "LlmProviderStatus": {
-        "type": "string",
-        "description": "LLM provider status",
-        "enum": [
-          "active",
-          "disabled"
-        ]
-      },
-      "LlmProviderType": {
-        "type": "string",
-        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock. Any other string is treated as an embedder-defined external provider."
       },
       "LlmRequestOptions": {
         "type": "object",
@@ -23448,6 +22958,142 @@
           "pdf"
         ]
       },
+      "Model": {
+        "type": "object",
+        "description": "LLM Model entity",
+        "required": [
+          "id",
+          "provider_id",
+          "model_id",
+          "display_name",
+          "capabilities",
+          "is_favorite",
+          "enabled",
+          "source",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this model was created (RFC 3339)."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name. Safe to render in user-facing messages."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "model_01933b5a00007000800000000000001"
+          },
+          "is_favorite": {
+            "type": "boolean",
+            "description": "Whether this model is starred in the UI for quick access."
+          },
+          "model_id": {
+            "type": "string",
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+          },
+          "provider_id": {
+            "type": "string",
+            "description": "Owning provider's prefixed public identifier.",
+            "example": "provider_01933b5a00007000800000000000001"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ModelSource",
+            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this model was last updated (RFC 3339)."
+          }
+        }
+      },
+      "ModelCost": {
+        "type": "object",
+        "description": "Cost information for the model (per million tokens)",
+        "required": [
+          "input",
+          "output"
+        ],
+        "properties": {
+          "cache_read": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cached read cost per million tokens (USD), if supported"
+          },
+          "cost_tiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostTier"
+            },
+            "description": "Tiered pricing that applies above certain context thresholds.\nWhen present, the base cost fields apply up to the tier threshold,\nand each tier's costs apply for tokens beyond that threshold."
+          },
+          "input": {
+            "type": "number",
+            "format": "double",
+            "description": "Input cost per million tokens (USD)"
+          },
+          "output": {
+            "type": "number",
+            "format": "double",
+            "description": "Output cost per million tokens (USD)"
+          }
+        }
+      },
+      "ModelLimits": {
+        "type": "object",
+        "description": "Token limits for the model",
+        "required": [
+          "context",
+          "output"
+        ],
+        "properties": {
+          "context": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum context window size in tokens"
+          },
+          "input": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum input tokens (if different from context - output)"
+          },
+          "max_media": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Maximum images or PDF pages per request"
+          },
+          "output": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Maximum output tokens"
+          }
+        }
+      },
       "ModelMetadata": {
         "type": "object",
         "description": "Metadata about the model used for generation",
@@ -23476,6 +23122,175 @@
             "description": "Provider ID (internal identifier)"
           }
         }
+      },
+      "ModelModalities": {
+        "type": "object",
+        "description": "Model modalities for input and output",
+        "required": [
+          "input",
+          "output"
+        ],
+        "properties": {
+          "input": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Modality"
+            },
+            "description": "Supported input modalities"
+          },
+          "output": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Modality"
+            },
+            "description": "Supported output modalities"
+          }
+        }
+      },
+      "ModelProfile": {
+        "type": "object",
+        "description": "LLM Model Profile describing model capabilities\nBased on models.dev structure (<https://models.dev/api.json>)\n\nNOTE: Currently only includes profiles for:\n- OpenAI: gpt-4o, gpt-4o-mini, o1, o1-mini, o1-pro, o3-mini\n- Anthropic: claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus, claude-3-sonnet, claude-3-haiku, claude-sonnet-4, claude-opus-4\n\nAdditional model profiles can be added as needed.",
+        "required": [
+          "name",
+          "family",
+          "attachment",
+          "reasoning",
+          "temperature",
+          "tool_call",
+          "structured_output",
+          "open_weights"
+        ],
+        "properties": {
+          "attachment": {
+            "type": "boolean",
+            "description": "Whether the model supports file/image attachments"
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelCost",
+                "description": "Cost per million tokens"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short human-readable description of the model's strengths and intended use"
+          },
+          "family": {
+            "type": "string",
+            "description": "Model family (e.g., \"gpt-4o\", \"claude-3-5-sonnet\")"
+          },
+          "knowledge": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Knowledge cutoff date (YYYY-MM-DD format)"
+          },
+          "last_updated": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Last updated date (YYYY-MM-DD format)"
+          },
+          "limits": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelLimits",
+                "description": "Token limits"
+              }
+            ]
+          },
+          "modalities": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ModelModalities",
+                "description": "Supported modalities"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name of the model"
+          },
+          "open_weights": {
+            "type": "boolean",
+            "description": "Whether the model has open weights"
+          },
+          "reasoning": {
+            "type": "boolean",
+            "description": "Whether the model has reasoning/chain-of-thought capabilities"
+          },
+          "reasoning_effort": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReasoningEffortConfig",
+                "description": "Reasoning effort configuration (for reasoning models)"
+              }
+            ]
+          },
+          "release_date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Release date (YYYY-MM-DD format)"
+          },
+          "structured_output": {
+            "type": "boolean",
+            "description": "Whether the model supports structured output (JSON mode)"
+          },
+          "supported_parameters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Provider-advertised request parameters supported by this model."
+          },
+          "supports_phases": {
+            "type": "boolean",
+            "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."
+          },
+          "temperature": {
+            "type": "boolean",
+            "description": "Whether temperature control is supported"
+          },
+          "tool_call": {
+            "type": "boolean",
+            "description": "Whether the model supports tool/function calling"
+          },
+          "tool_search": {
+            "type": "boolean",
+            "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
+          }
+        }
+      },
+      "ModelSource": {
+        "type": "string",
+        "description": "How the model was added to the system",
+        "enum": [
+          "manual",
+          "discovered",
+          "predefined"
+        ],
+        "example": "predefined"
       },
       "ModelVendor": {
         "type": "string",
@@ -25684,6 +25499,75 @@
         "description": "Strategy for prompt caching.",
         "enum": [
           "auto"
+        ]
+      },
+      "Provider": {
+        "type": "object",
+        "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the Provider trait in llm.rs",
+        "required": [
+          "id",
+          "name",
+          "provider_type",
+          "api_key_set",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "api_key_set": {
+            "type": "boolean",
+            "description": "Whether an API key is configured. The key itself is never returned."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this provider was created (RFC 3339)."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "provider_01933b5a00007000800000000000001"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable provider name. Safe to render in user-facing messages."
+          },
+          "provider_type": {
+            "$ref": "#/components/schemas/DriverId",
+            "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProviderStatus",
+            "description": "Current lifecycle status of this provider."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this provider was last updated (RFC 3339)."
+          }
+        }
+      },
+      "ProviderStatus": {
+        "type": "string",
+        "description": "LLM provider status",
+        "enum": [
+          "active",
+          "disabled"
         ]
       },
       "ReasonCompletedData": {
@@ -30110,117 +29994,6 @@
           }
         }
       },
-      "UpdateLlmModelRequest": {
-        "type": "object",
-        "description": "Request to update an LLM model. Only provided fields will be updated.",
-        "properties": {
-          "capabilities": {
-            "type": [
-              "array",
-              "null"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "description": "List of capabilities this model supports.",
-            "example": [
-              "chat",
-              "tools"
-            ]
-          },
-          "display_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable display name for the model.",
-            "example": "GPT-4o Mini"
-          },
-          "enabled": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether this model should be enabled (visible in UI model pickers).",
-            "example": true
-          },
-          "is_favorite": {
-            "type": [
-              "boolean",
-              "null"
-            ],
-            "description": "Whether this model should be marked as a favorite for quick access.",
-            "example": true
-          },
-          "model_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "The model identifier used by the provider's API.",
-            "example": "gpt-4o-mini"
-          },
-          "provider_id": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Provider that owns this model.",
-            "example": "provider_019df670b5af7db7a5685a4ad18a544a"
-          }
-        }
-      },
-      "UpdateLlmProviderRequest": {
-        "type": "object",
-        "description": "Request to update an LLM provider. Only provided fields will be updated.",
-        "properties": {
-          "api_key": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
-          },
-          "base_url": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Base URL for the provider's API.",
-            "example": "https://api.openai.com/v1"
-          },
-          "name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Display name for the provider.",
-            "example": "OpenAI Development"
-          },
-          "provider_type": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmProviderType",
-                "description": "The type of LLM provider (e.g., openai, anthropic)."
-              }
-            ]
-          },
-          "status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmProviderStatus",
-                "description": "The status of the provider. Set to \"inactive\" to disable."
-              }
-            ]
-          }
-        }
-      },
       "UpdateMcpServerRequest": {
         "type": "object",
         "description": "Request to update an MCP server. Only provided fields will be updated.",
@@ -30354,6 +30127,66 @@
                 "description": "Source configuration. Example shape is defined on `CreateMemorySourceRequest`."
               }
             ]
+          }
+        }
+      },
+      "UpdateModelRequest": {
+        "type": "object",
+        "description": "Request to update an LLM model. Only provided fields will be updated.",
+        "properties": {
+          "capabilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "List of capabilities this model supports.",
+            "example": [
+              "chat",
+              "tools"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable display name for the model.",
+            "example": "GPT-4o Mini"
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this model should be enabled (visible in UI model pickers).",
+            "example": true
+          },
+          "is_favorite": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this model should be marked as a favorite for quick access.",
+            "example": true
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The model identifier used by the provider's API.",
+            "example": "gpt-4o-mini"
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider that owns this model.",
+            "example": "provider_019df670b5af7db7a5685a4ad18a544a"
           }
         }
       },
@@ -30565,6 +30398,57 @@
             "type": "string",
             "description": "New display name",
             "example": "Jane Doe"
+          }
+        }
+      },
+      "UpdateProviderRequest": {
+        "type": "object",
+        "description": "Request to update an LLM provider. Only provided fields will be updated.",
+        "properties": {
+          "api_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+          },
+          "base_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base URL for the provider's API.",
+            "example": "https://api.openai.com/v1"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Display name for the provider.",
+            "example": "OpenAI Development"
+          },
+          "provider_type": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/DriverId",
+                "description": "The type of LLM provider (e.g., openai, anthropic)."
+              }
+            ]
+          },
+          "status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderStatus",
+                "description": "The status of the provider. Set to \"inactive\" to disable."
+              }
+            ]
           }
         }
       },
@@ -32181,350 +32065,6 @@
         ],
         "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
-      "WithUrls_LlmModel": {
-        "allOf": [
-          {
-            "type": "object",
-            "description": "LLM Model entity",
-            "required": [
-              "id",
-              "provider_id",
-              "model_id",
-              "display_name",
-              "capabilities",
-              "is_favorite",
-              "enabled",
-              "source",
-              "created_at",
-              "updated_at"
-            ],
-            "properties": {
-              "capabilities": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
-              },
-              "created_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this model was created (RFC 3339)."
-              },
-              "display_name": {
-                "type": "string",
-                "description": "Human-readable display name. Safe to render in user-facing messages."
-              },
-              "enabled": {
-                "type": "boolean",
-                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
-              },
-              "id": {
-                "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                "example": "model_01933b5a00007000800000000000001"
-              },
-              "is_favorite": {
-                "type": "boolean",
-                "description": "Whether this model is starred in the UI for quick access."
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
-              },
-              "provider_id": {
-                "type": "string",
-                "description": "Owning provider's prefixed public identifier.",
-                "example": "provider_01933b5a00007000800000000000001"
-              },
-              "source": {
-                "$ref": "#/components/schemas/LlmModelSource",
-                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-              },
-              "updated_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this model was last updated (RFC 3339)."
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "self_url",
-              "view_url",
-              "ui_link"
-            ],
-            "properties": {
-              "allowed_actions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AllowedAction"
-                },
-                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-              },
-              "self_url": {
-                "type": "string",
-                "description": "Full API endpoint URL for this resource."
-              },
-              "ui_link": {
-                "type": "string",
-                "description": "Alias for `view_url`, used by command and MCP outputs."
-              },
-              "view_url": {
-                "type": "string",
-                "description": "Full UI URL for viewing this resource."
-              }
-            }
-          }
-        ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-      },
-      "WithUrls_LlmModelWithProvider": {
-        "allOf": [
-          {
-            "type": "object",
-            "description": "LLM Model with provider info",
-            "required": [
-              "id",
-              "provider_id",
-              "model_id",
-              "display_name",
-              "capabilities",
-              "is_favorite",
-              "enabled",
-              "source",
-              "created_at",
-              "updated_at",
-              "provider_name",
-              "provider_type",
-              "healthy"
-            ],
-            "properties": {
-              "capabilities": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                },
-                "description": "Capability tags supported by this model.",
-                "example": [
-                  "text",
-                  "tools",
-                  "vision",
-                  "thinking"
-                ]
-              },
-              "created_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this model was created (RFC 3339).",
-                "example": "2026-01-04T11:23:00Z"
-              },
-              "display_name": {
-                "type": "string",
-                "description": "Human-readable display name.",
-                "example": "Claude Sonnet 4.5"
-              },
-              "enabled": {
-                "type": "boolean",
-                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
-                "example": true
-              },
-              "healthy": {
-                "type": "boolean",
-                "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
-                "example": true
-              },
-              "id": {
-                "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                "example": "model_01933b5a00007000800000000000001"
-              },
-              "is_favorite": {
-                "type": "boolean",
-                "description": "Whether this model is starred in the UI for quick access.",
-                "example": true
-              },
-              "model_id": {
-                "type": "string",
-                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
-                "example": "claude-sonnet-4-5"
-              },
-              "model_vendor": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/ModelVendor",
-                    "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
-                  }
-                ]
-              },
-              "profile": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/LlmModelProfile",
-                    "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
-                  }
-                ]
-              },
-              "provider_id": {
-                "type": "string",
-                "description": "Owning provider's prefixed public identifier.",
-                "example": "provider_01933b5a00007000800000000000001"
-              },
-              "provider_name": {
-                "type": "string",
-                "description": "Joined provider display name.",
-                "example": "Anthropic"
-              },
-              "provider_type": {
-                "$ref": "#/components/schemas/LlmProviderType",
-                "description": "Joined provider implementation type."
-              },
-              "source": {
-                "$ref": "#/components/schemas/LlmModelSource",
-                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
-              },
-              "updated_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this model was last updated (RFC 3339).",
-                "example": "2026-05-27T15:24:00Z"
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "self_url",
-              "view_url",
-              "ui_link"
-            ],
-            "properties": {
-              "allowed_actions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AllowedAction"
-                },
-                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-              },
-              "self_url": {
-                "type": "string",
-                "description": "Full API endpoint URL for this resource."
-              },
-              "ui_link": {
-                "type": "string",
-                "description": "Alias for `view_url`, used by command and MCP outputs."
-              },
-              "view_url": {
-                "type": "string",
-                "description": "Full UI URL for viewing this resource."
-              }
-            }
-          }
-        ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-      },
-      "WithUrls_LlmProvider": {
-        "allOf": [
-          {
-            "type": "object",
-            "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the LlmProvider trait in llm.rs",
-            "required": [
-              "id",
-              "name",
-              "provider_type",
-              "api_key_set",
-              "status",
-              "created_at",
-              "updated_at"
-            ],
-            "properties": {
-              "api_key_set": {
-                "type": "boolean",
-                "description": "Whether an API key is configured. The key itself is never returned."
-              },
-              "base_url": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
-              },
-              "created_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this provider was created (RFC 3339)."
-              },
-              "id": {
-                "type": "string",
-                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-                "example": "provider_01933b5a00007000800000000000001"
-              },
-              "last_synced_at": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "format": "date-time",
-                "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
-              },
-              "name": {
-                "type": "string",
-                "description": "Human-readable provider name. Safe to render in user-facing messages."
-              },
-              "provider_type": {
-                "$ref": "#/components/schemas/LlmProviderType",
-                "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
-              },
-              "status": {
-                "$ref": "#/components/schemas/LlmProviderStatus",
-                "description": "Current lifecycle status of this provider."
-              },
-              "updated_at": {
-                "type": "string",
-                "format": "date-time",
-                "description": "Timestamp when this provider was last updated (RFC 3339)."
-              }
-            }
-          },
-          {
-            "type": "object",
-            "required": [
-              "self_url",
-              "view_url",
-              "ui_link"
-            ],
-            "properties": {
-              "allowed_actions": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/components/schemas/AllowedAction"
-                },
-                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
-              },
-              "self_url": {
-                "type": "string",
-                "description": "Full API endpoint URL for this resource."
-              },
-              "ui_link": {
-                "type": "string",
-                "description": "Alias for `view_url`, used by command and MCP outputs."
-              },
-              "view_url": {
-                "type": "string",
-                "description": "Full UI URL for viewing this resource."
-              }
-            }
-          }
-        ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
-      },
       "WithUrls_McpServer": {
         "allOf": [
           {
@@ -32622,6 +32162,350 @@
                 "type": "string",
                 "description": "URL of the MCP server endpoint.",
                 "example": "https://mcp.atlassian.com/v1/mcp"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WithUrls_Model": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "LLM Model entity",
+            "required": [
+              "id",
+              "provider_id",
+              "model_id",
+              "display_name",
+              "capabilities",
+              "is_favorite",
+              "enabled",
+              "source",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this model was created (RFC 3339)."
+              },
+              "display_name": {
+                "type": "string",
+                "description": "Human-readable display name. Safe to render in user-facing messages."
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
+              },
+              "id": {
+                "type": "string",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "example": "model_01933b5a00007000800000000000001"
+              },
+              "is_favorite": {
+                "type": "boolean",
+                "description": "Whether this model is starred in the UI for quick access."
+              },
+              "model_id": {
+                "type": "string",
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
+              },
+              "provider_id": {
+                "type": "string",
+                "description": "Owning provider's prefixed public identifier.",
+                "example": "provider_01933b5a00007000800000000000001"
+              },
+              "source": {
+                "$ref": "#/components/schemas/ModelSource",
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this model was last updated (RFC 3339)."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WithUrls_ModelWithProvider": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "LLM Model with provider info",
+            "required": [
+              "id",
+              "provider_id",
+              "model_id",
+              "display_name",
+              "capabilities",
+              "is_favorite",
+              "enabled",
+              "source",
+              "created_at",
+              "updated_at",
+              "provider_name",
+              "provider_type",
+              "healthy"
+            ],
+            "properties": {
+              "capabilities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Capability tags supported by this model.",
+                "example": [
+                  "text",
+                  "tools",
+                  "vision",
+                  "thinking"
+                ]
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this model was created (RFC 3339).",
+                "example": "2026-01-04T11:23:00Z"
+              },
+              "display_name": {
+                "type": "string",
+                "description": "Human-readable display name.",
+                "example": "Claude Sonnet 4.5"
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `ProviderResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
+                "example": true
+              },
+              "healthy": {
+                "type": "boolean",
+                "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
+                "example": true
+              },
+              "id": {
+                "type": "string",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "example": "model_01933b5a00007000800000000000001"
+              },
+              "is_favorite": {
+                "type": "boolean",
+                "description": "Whether this model is starred in the UI for quick access.",
+                "example": true
+              },
+              "model_id": {
+                "type": "string",
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                "example": "claude-sonnet-4-5"
+              },
+              "model_vendor": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelVendor",
+                    "description": "Vendor/brand of the model, derived from the model registry. Drives UI\nbranding (icons). `None` when the model id is not in the registry. Not persisted."
+                  }
+                ]
+              },
+              "profile": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/ModelProfile",
+                    "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
+                  }
+                ]
+              },
+              "provider_id": {
+                "type": "string",
+                "description": "Owning provider's prefixed public identifier.",
+                "example": "provider_01933b5a00007000800000000000001"
+              },
+              "provider_name": {
+                "type": "string",
+                "description": "Joined provider display name.",
+                "example": "Anthropic"
+              },
+              "provider_type": {
+                "$ref": "#/components/schemas/DriverId",
+                "description": "Joined provider implementation type."
+              },
+              "source": {
+                "$ref": "#/components/schemas/ModelSource",
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this model was last updated (RFC 3339).",
+                "example": "2026-05-27T15:24:00Z"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+      },
+      "WithUrls_Provider": {
+        "allOf": [
+          {
+            "type": "object",
+            "description": "LLM Provider entity (API keys never exposed)\nNote: This is the entity struct, separate from the Provider trait in llm.rs",
+            "required": [
+              "id",
+              "name",
+              "provider_type",
+              "api_key_set",
+              "status",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "api_key_set": {
+                "type": "boolean",
+                "description": "Whether an API key is configured. The key itself is never returned."
+              },
+              "base_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this provider was created (RFC 3339)."
+              },
+              "id": {
+                "type": "string",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                "example": "provider_01933b5a00007000800000000000001"
+              },
+              "last_synced_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time",
+                "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+              },
+              "name": {
+                "type": "string",
+                "description": "Human-readable provider name. Safe to render in user-facing messages."
+              },
+              "provider_type": {
+                "$ref": "#/components/schemas/DriverId",
+                "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
+              },
+              "status": {
+                "$ref": "#/components/schemas/ProviderStatus",
+                "description": "Current lifecycle status of this provider."
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time",
+                "description": "Timestamp when this provider was last updated (RFC 3339)."
               }
             }
           },

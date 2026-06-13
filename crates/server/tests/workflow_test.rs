@@ -15,8 +15,8 @@
 //! - PostgreSQL with migrations applied
 //! - Uses LlmSim for workflow tests, no real API keys needed
 
-use everruns_core::llm_models::LlmProvider;
-use everruns_core::{Agent, LlmModel, Session, SessionFile};
+use everruns_core::provider::Provider;
+use everruns_core::{Agent, Model, Session, SessionFile};
 use serde_json::{Value, json};
 
 const SERVER_BASE_URL: &str = "http://localhost:9000";
@@ -253,7 +253,7 @@ async fn test_openapi_spec() {
 }
 
 #[tokio::test]
-async fn test_llm_provider_and_model_workflow() {
+async fn test_provider_and_model_workflow() {
     let client = reqwest::Client::new();
 
     println!("Testing LLM Provider and Model workflow...");
@@ -277,7 +277,7 @@ async fn test_llm_provider_and_model_workflow() {
         .await
         .expect("Failed to get response text");
 
-    let provider: LlmProvider =
+    let provider: Provider =
         serde_json::from_str(&response_text).expect("Failed to parse provider response");
 
     println!("Created provider: {} ({})", provider.name, provider.id);
@@ -305,7 +305,7 @@ async fn test_llm_provider_and_model_workflow() {
         .await
         .expect("Failed to get model response text");
 
-    let model: LlmModel =
+    let model: Model =
         serde_json::from_str(&model_response_text).expect("Failed to parse model response");
 
     println!("Created model: {} ({})", model.display_name, model.id);
@@ -330,7 +330,7 @@ async fn test_llm_provider_and_model_workflow() {
 }
 
 #[tokio::test]
-async fn test_llm_model_profile() {
+async fn test_model_profile() {
     let client = reqwest::Client::new();
 
     println!("Testing LLM Model Profile...");
@@ -348,7 +348,7 @@ async fn test_llm_model_profile() {
         .await
         .expect("Failed to create LLM provider");
 
-    let provider: LlmProvider = create_provider_response
+    let provider: Provider = create_provider_response
         .json()
         .await
         .expect("Failed to parse provider response");
@@ -459,7 +459,7 @@ async fn test_session_inherits_agent_default_model() {
         .await
         .expect("Failed to create provider");
 
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -481,7 +481,7 @@ async fn test_session_inherits_agent_default_model() {
         .await
         .expect("Failed to create model");
 
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
     // Step 3: Create an agent with default_model_id
@@ -554,7 +554,7 @@ async fn test_session_inherits_agent_default_model() {
         .await
         .expect("Failed to create second model");
 
-    let model2: LlmModel = model2_response
+    let model2: Model = model2_response
         .json()
         .await
         .expect("Failed to parse second model");
@@ -1046,7 +1046,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -1075,7 +1075,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
             status, body
         );
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
     // Step 2: Create agent with both session_file_system and bashkit_shell capabilities
@@ -1312,7 +1312,7 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -1340,7 +1340,7 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
             status, body
         );
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created LlmSim model: {}", model.id);
 
     // Step 2: Create agent with session_file_system capability
@@ -1520,7 +1520,7 @@ async fn test_message_triggers_agent_workflow() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -1548,7 +1548,7 @@ async fn test_message_triggers_agent_workflow() {
             status, body
         );
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created LlmSim model: {}", model.id);
 
     // Step 1: Create agent with LlmSim model
@@ -1801,7 +1801,7 @@ async fn test_no_duplicate_tool_calls() {
         .await
         .expect("Failed to create provider");
 
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -1828,7 +1828,7 @@ async fn test_no_duplicate_tool_calls() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
     // Step 3: Create an agent with current_time capability
@@ -2245,7 +2245,7 @@ async fn test_second_message_triggers_workflow() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -2273,7 +2273,7 @@ async fn test_second_message_triggers_workflow() {
             status, body
         );
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created LlmSim model: {}", model.id);
 
     // Step 1: Create agent with LlmSim model
@@ -3102,7 +3102,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -3130,7 +3130,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
             status, body
         );
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created LlmSim model: {}", model.id);
 
     // Step 2: Create a dad jokes agent with current_time capability
@@ -3400,7 +3400,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -3426,7 +3426,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create dad jokes agent with current_time capability
@@ -3650,7 +3650,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -3676,7 +3676,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create dad jokes agent with current_time capability
@@ -3885,7 +3885,7 @@ async fn test_agent_execution_multiple_tool_calls() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -3904,7 +3904,7 @@ async fn test_agent_execution_multiple_tool_calls() {
         .await
         .expect("Failed to create model");
 
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created provider and model");
 
     // Step 2: Create agent with test_math capability
@@ -4061,7 +4061,7 @@ async fn test_streaming_events_emitted() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -4086,7 +4086,7 @@ async fn test_streaming_events_emitted() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
     // Step 2: Create agent
@@ -4387,7 +4387,7 @@ async fn test_cancel_turn_endpoint() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -4414,7 +4414,7 @@ async fn test_cancel_turn_endpoint() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {}", model.id);
 
     // Step 3: Create agent with LlmSim model
@@ -4550,7 +4550,7 @@ async fn test_anthropic_extended_thinking() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -4576,7 +4576,7 @@ async fn test_anthropic_extended_thinking() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create agent (no tool calls - tests basic thinking flow)
@@ -4907,7 +4907,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
             status, body
         );
     }
-    let provider: LlmProvider = provider_response
+    let provider: Provider = provider_response
         .json()
         .await
         .expect("Failed to parse provider");
@@ -4933,7 +4933,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
         let body = model_response.text().await.unwrap_or_default();
         panic!("Failed to create model: status={}, body={}", status, body);
     }
-    let model: LlmModel = model_response.json().await.expect("Failed to parse model");
+    let model: Model = model_response.json().await.expect("Failed to parse model");
     println!("Created model: {} ({})", model.display_name, model.id);
 
     // Step 2: Create agent WITH current_time tool

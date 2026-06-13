@@ -14,13 +14,14 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider, PaymentAuthority,
-    ProviderCredentialStore, ProviderCredentials, ResolvedImage, StoredImage, StoredImageInfo,
+    BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
+    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel, StoredImage,
+    StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EgressService, EventData, Harness,
-    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressService, EventData,
+    Harness, HarnessStatus, Message, MessageRole, Session, SessionStatus, ToolDefinition,
     ToolResultContentPart, UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -40,7 +41,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
 use crate::org_init;
-use crate::services::{EventService, LlmResolverService};
+use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
@@ -157,7 +158,7 @@ impl ImageArtifactStore for DirectImageArtifactStore {
 }
 
 struct DirectProviderCredentialStore {
-    llm_resolver: Arc<LlmResolverService>,
+    provider_resolver: Arc<ProviderResolverService>,
     org_id: i64,
 }
 
@@ -168,7 +169,7 @@ impl ProviderCredentialStore for DirectProviderCredentialStore {
         provider_type: &str,
     ) -> Result<Option<ProviderCredentials>> {
         Ok(self
-            .llm_resolver
+            .provider_resolver
             .resolve_provider_credentials(self.org_id, provider_type)
             .await
             .map_err(|e| store_error(format!("Failed to resolve provider credentials: {e}")))?
@@ -265,7 +266,7 @@ pub struct DirectWorkerAdapters {
     db: Arc<StorageBackend>,
     event_service: Arc<EventService>,
     budget_service: Option<Arc<BudgetService>>,
-    llm_resolver: Arc<LlmResolverService>,
+    provider_resolver: Arc<ProviderResolverService>,
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
@@ -289,7 +290,7 @@ impl DirectWorkerAdapters {
     pub fn new(
         db: Arc<StorageBackend>,
         event_service: Arc<EventService>,
-        llm_resolver: Arc<LlmResolverService>,
+        provider_resolver: Arc<ProviderResolverService>,
         mcp_server_service: Arc<McpServerService>,
         capability_registry: CapabilityRegistry,
         driver_registry: DriverRegistry,
@@ -299,7 +300,7 @@ impl DirectWorkerAdapters {
             db,
             event_service,
             budget_service: None,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             capability_registry,
             driver_registry,
@@ -670,13 +671,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
     // LLM Provider Operations
     // =========================================================================
 
-    async fn get_model_with_provider(
+    async fn get_resolved_model(
         &self,
         org_id: i64,
         model_id: Uuid,
-    ) -> Result<Option<ModelWithProvider>> {
+    ) -> Result<Option<ResolvedModel>> {
         let resolved = self
-            .llm_resolver
+            .provider_resolver
             .resolve_model(org_id, model_id)
             .await
             .map_err(|e| {
@@ -684,7 +685,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve model")
             })?;
 
-        Ok(resolved.map(|r| ModelWithProvider {
+        Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
@@ -693,9 +694,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
-    async fn get_default_model(&self, org_id: i64) -> Result<Option<ModelWithProvider>> {
+    async fn get_default_model(&self, org_id: i64) -> Result<Option<ResolvedModel>> {
         let resolved = self
-            .llm_resolver
+            .provider_resolver
             .resolve_default_model(org_id)
             .await
             .map_err(|e| {
@@ -703,7 +704,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to resolve default model")
             })?;
 
-        Ok(resolved.map(|r| ModelWithProvider {
+        Ok(resolved.map(|r| ResolvedModel {
             model: r.model_id,
             provider_type: string_to_provider_type(&r.provider_type),
             api_key: r.api_key,
@@ -1396,16 +1397,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
-            self.get_model_with_provider(org_id, model_id.uuid())
-                .await?
+            self.get_resolved_model(org_id, model_id.uuid()).await?
         } else if let Some(ref a) = agent {
             if let Some(model_id) = a.default_model_id {
-                self.get_model_with_provider(org_id, model_id.uuid())
-                    .await?
+                self.get_resolved_model(org_id, model_id.uuid()).await?
             } else if let Some(ref h) = harness {
                 if let Some(model_id) = h.default_model_id {
-                    self.get_model_with_provider(org_id, model_id.uuid())
-                        .await?
+                    self.get_resolved_model(org_id, model_id.uuid()).await?
                 } else {
                     self.get_default_model(org_id).await?
                 }
@@ -1414,8 +1412,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             }
         } else if let Some(ref h) = harness {
             if let Some(model_id) = h.default_model_id {
-                self.get_model_with_provider(org_id, model_id.uuid())
-                    .await?
+                self.get_resolved_model(org_id, model_id.uuid()).await?
             } else {
                 self.get_default_model(org_id).await?
             }
@@ -1463,7 +1460,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore> {
         Arc::new(DirectProviderCredentialStore {
-            llm_resolver: self.llm_resolver.clone(),
+            provider_resolver: self.provider_resolver.clone(),
             org_id,
         })
     }
@@ -1942,7 +1939,7 @@ impl DirectWorkerAdapters {
 // Helper Functions
 // =============================================================================
 
-fn string_to_provider_type(s: &str) -> LlmProviderType {
+fn string_to_provider_type(s: &str) -> DriverId {
     // FromStr is infallible: unknown ids become External providers, preserving
     // the id so embedder-defined providers resolve correctly.
     s.to_lowercase().parse().unwrap_or_else(|_| unreachable!())
@@ -3047,7 +3044,10 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(
+            db.clone(),
+            None,
+        ));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             None,
@@ -3062,7 +3062,7 @@ mod tests {
         DirectWorkerAdapters::new(
             db,
             event_service,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             cap_registry,
             driver_registry,
@@ -3632,7 +3632,10 @@ mod tests {
             db.clone(),
             crate::event_delivery::EventDelivery::in_memory(),
         ));
-        let llm_resolver = Arc::new(crate::services::LlmResolverService::new(db.clone(), None));
+        let provider_resolver = Arc::new(crate::services::ProviderResolverService::new(
+            db.clone(),
+            None,
+        ));
         let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
             db.clone(),
             Some(encryption),
@@ -3647,7 +3650,7 @@ mod tests {
         DirectWorkerAdapters::new(
             db,
             event_service,
-            llm_resolver,
+            provider_resolver,
             mcp_server_service,
             cap_registry,
             driver_registry,
@@ -4143,10 +4146,10 @@ mod tests {
     // =========================================================================
 
     #[tokio::test]
-    async fn get_model_with_provider_returns_none_for_missing() {
+    async fn get_resolved_model_returns_none_for_missing() {
         let adapters = test_adapters();
         let result = adapters
-            .get_model_with_provider(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
+            .get_resolved_model(everruns_core::DEFAULT_ORG_ID, Uuid::new_v4())
             .await
             .unwrap();
         assert!(result.is_none());
