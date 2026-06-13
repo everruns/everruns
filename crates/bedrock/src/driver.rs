@@ -20,9 +20,10 @@ use aws_sdk_bedrockruntime::types::{
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
+use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmResponseStream, LlmStreamEvent, ProviderType,
 };
@@ -70,12 +71,58 @@ impl BedrockChatDriver {
 
 /// Register the Bedrock driver with the given registry.
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::Bedrock, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        match BedrockChatDriver::new(api_key) {
-            Ok(driver) => Box::new(driver) as BoxedChatDriver,
-            Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
-        }
+    // The declared schema is the target credential shape (specs/providers.md).
+    // Until the credential-document storage phase lands, the runtime still
+    // receives these fields as a JSON document through `config.api_key`.
+    registry.register_descriptor(DriverDescriptor {
+        credential_schema: CredentialFormSchema {
+            fields: vec![
+                FormField {
+                    name: "access_key_id".to_string(),
+                    label: "Access Key ID".to_string(),
+                    field_type: FieldType::Password,
+                    required: true,
+                    placeholder: None,
+                    help_text: None,
+                },
+                FormField {
+                    name: "secret_access_key".to_string(),
+                    label: "Secret Access Key".to_string(),
+                    field_type: FieldType::Password,
+                    required: true,
+                    placeholder: None,
+                    help_text: None,
+                },
+                FormField {
+                    name: "region".to_string(),
+                    label: "Region".to_string(),
+                    field_type: FieldType::Text,
+                    // Optional to match BedrockCredential::from_api_key, which
+                    // defaults the region to us-east-1 when omitted.
+                    required: false,
+                    placeholder: Some("us-east-1".to_string()),
+                    help_text: Some("Defaults to us-east-1.".to_string()),
+                },
+                FormField {
+                    name: "session_token".to_string(),
+                    label: "Session Token".to_string(),
+                    field_type: FieldType::Password,
+                    required: false,
+                    placeholder: None,
+                    help_text: Some("Only for temporary credentials.".to_string()),
+                },
+            ],
+            instructions_markdown:
+                "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
+                    .to_string(),
+        },
+        ..DriverDescriptor::chat_only(ProviderType::Bedrock, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            match BedrockChatDriver::new(api_key) {
+                Ok(driver) => Box::new(driver) as BoxedChatDriver,
+                Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
+            }
+        })
     });
 }
 
@@ -596,6 +643,39 @@ fn is_too_large(msg: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn registered_descriptor_declares_aws_credential_fields() {
+        let mut registry = DriverRegistry::new();
+        super::register_driver(&mut registry);
+
+        let descriptor = registry.descriptor(&ProviderType::Bedrock).unwrap();
+        assert_eq!(descriptor.display_name, "AWS Bedrock");
+        let names: Vec<&str> = descriptor
+            .credential_schema
+            .fields
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "access_key_id",
+                "secret_access_key",
+                "region",
+                "session_token"
+            ]
+        );
+        // Region (defaulted to us-east-1 at parse time) and session token are
+        // optional; the key pair is required.
+        let required: Vec<bool> = descriptor
+            .credential_schema
+            .fields
+            .iter()
+            .map(|f| f.required)
+            .collect();
+        assert_eq!(required, [true, true, false, false]);
+    }
+
     use super::*;
 
     #[test]

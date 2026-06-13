@@ -85,6 +85,7 @@ pub mod agent_identity;
 pub mod app;
 pub mod capability_dto;
 pub mod connection_provider;
+pub mod credential_schema;
 pub mod eval;
 pub mod events;
 pub mod harness;
@@ -263,9 +264,10 @@ pub use utility_llm::{
 
 // LLM driver types re-exports
 pub use llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverFactory, DriverRegistry, LlmCallConfig,
-    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ProviderType,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverFactory, DriverRegistry,
+    LlmCallConfig, LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage,
+    LlmMessageContent, LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent,
+    ProviderConfig, ProviderType, ServiceKind,
 };
 
 // LLM retry types re-exports
@@ -287,6 +289,9 @@ pub use tools::{
     EchoTool, FailingTool, SpawnBackgroundTool, Tool, ToolExecutionResult, ToolInternalError,
     ToolRegistry, ToolRegistryBuilder, ToolResultImage,
 };
+
+// Shared credential form schema (provider drivers + connection providers)
+pub use credential_schema::CredentialFormSchema;
 
 // Capability re-exports
 // Connection provider plugin system (API key connections like Daytona)

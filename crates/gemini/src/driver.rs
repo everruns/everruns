@@ -15,6 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
+use everruns_core::credential_schema::CredentialFormSchema;
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
 use everruns_core::llm_driver_helpers::{
@@ -22,7 +23,7 @@ use everruns_core::llm_driver_helpers::{
     parse_data_url,
 };
 use everruns_core::llm_driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverRegistry, LlmCallConfig,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverRegistry, LlmCallConfig,
     LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
     LlmResponseStream, LlmStreamEvent, ProviderType,
 };
@@ -835,13 +836,18 @@ impl std::fmt::Debug for GeminiChatDriver {
 
 /// Register the Gemini driver with the driver registry
 pub fn register_driver(registry: &mut DriverRegistry) {
-    registry.register(ProviderType::Gemini, |config| {
-        let api_key = config.api_key.as_deref().unwrap_or("");
-        let driver = match config.base_url.as_deref() {
-            Some(url) => GeminiChatDriver::with_base_url(api_key, url),
-            None => GeminiChatDriver::new(api_key),
-        };
-        Box::new(driver) as BoxedChatDriver
+    registry.register_descriptor(DriverDescriptor {
+        credential_schema: CredentialFormSchema::api_key(
+            "Create an API key in [Google AI Studio](https://aistudio.google.com/apikey).",
+        ),
+        ..DriverDescriptor::chat_only(ProviderType::Gemini, |config| {
+            let api_key = config.api_key.as_deref().unwrap_or("");
+            let driver = match config.base_url.as_deref() {
+                Some(url) => GeminiChatDriver::with_base_url(api_key, url),
+                None => GeminiChatDriver::new(api_key),
+            };
+            Box::new(driver) as BoxedChatDriver
+        })
     });
 }
 

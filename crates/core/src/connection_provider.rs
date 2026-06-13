@@ -212,45 +212,15 @@ impl Default for ConnectionProviderRegistryBuilder {
 // Form Schema Types
 // ============================================================================
 
-/// Describes the form fields and instructions for an API key connection.
-#[derive(Debug, Clone, Serialize)]
-pub struct ConnectionFormSchema {
-    /// Input fields to render.
-    pub fields: Vec<FormField>,
-    /// Markdown instructions shown above the form (how to get the key, etc.).
-    pub instructions_markdown: String,
-}
+// Form schema types are shared with provider drivers; see
+// `crate::credential_schema` and specs/providers.md "Credentials".
+pub use crate::credential_schema::{FieldType, FormField};
 
-/// A single form field.
-#[derive(Debug, Clone, Serialize)]
-pub struct FormField {
-    /// Field name used as the key when submitting (e.g. "api_key").
-    pub name: String,
-    /// Label shown next to the input.
-    pub label: String,
-    /// Input type.
-    pub field_type: FieldType,
-    /// Whether the field is required.
-    pub required: bool,
-    /// Placeholder text inside the input.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub placeholder: Option<String>,
-    /// Help text shown below the input.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub help_text: Option<String>,
-}
-
-/// Input field type for rendering.
-#[derive(Debug, Clone, Copy, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FieldType {
-    /// Masked password/secret input.
-    Password,
-    /// Plain text input.
-    Text,
-    /// URL input.
-    Url,
-}
+/// Connection-provider name for the shared credential form schema.
+///
+/// Transitional alias until the connector rename (specs/providers.md,
+/// "Providers vs Connections") makes `CredentialFormSchema` the only name.
+pub type ConnectionFormSchema = crate::credential_schema::CredentialFormSchema;
 
 /// Result of credential validation.
 #[derive(Debug, Clone)]

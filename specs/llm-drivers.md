@@ -81,7 +81,13 @@ Each driver MUST implement provider-specific error detection to classify context
 
 ### Driver Registry
 
-Provider crates register factories at startup. Drivers created on-demand from `ProviderConfig`. All real providers require API keys; `LlmSim` exempted for testing. See `crates/core/src/llm_driver_registry.rs` for `DriverRegistry`.
+Provider crates register a `DriverDescriptor` at startup: driver id, display
+name, declared `ServiceKind`s (see `specs/providers.md`), a credential form
+schema, and per-service factories (chat today). Chat drivers are created
+on-demand from `ProviderConfig`. All real built-in providers require API keys;
+`LlmSim` and `External` drivers are exempted (external drivers may authenticate
+via `ProviderMetadata`). See `crates/core/src/llm_driver_registry.rs` for
+`DriverRegistry` and `DriverDescriptor`.
 
 ### Egress Boundary
 
