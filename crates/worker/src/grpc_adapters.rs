@@ -241,38 +241,6 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
-    pub async fn set_subagent_metadata(
-        &self,
-        org_id: i64,
-        session_id: SessionId,
-        parent_session_id: SessionId,
-        subagent_name: &str,
-        subagent_task: &str,
-        subagent_status: everruns_core::session::SubagentStatus,
-    ) -> Result<Session> {
-        let request = proto::SetSubagentMetadataRequest {
-            org_id,
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-            parent_session_id: Some(uuid_to_proto(parent_session_id.uuid())),
-            subagent_name: subagent_name.to_string(),
-            subagent_task: subagent_task.to_string(),
-            subagent_status: subagent_status.to_string(),
-        };
-
-        let mut client = self.inner.lock().await;
-        let response = client
-            .set_subagent_metadata(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let proto_session = response
-            .into_inner()
-            .session
-            .ok_or_else(|| grpc_missing_field("No session in response"))?;
-
-        proto_session_to_session(proto_session)
-    }
-
     pub async fn create_image_artifact(
         &self,
         org_id: i64,
@@ -1283,10 +1251,6 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)).map(SessionId::from_uuid))
         .transpose()?;
-    let subagent_status = proto_session
-        .subagent_status
-        .as_deref()
-        .map(everruns_core::session::SubagentStatus::from);
     let blueprint_config = proto_session
         .blueprint_config_json
         .as_deref()
@@ -1361,9 +1325,6 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         active_schedule_count: None,
         features: vec![], // Computed at API read time, not in worker
         parent_session_id,
-        subagent_name: proto_session.subagent_name,
-        subagent_task: proto_session.subagent_task,
-        subagent_status,
         blueprint_id: proto_session.blueprint_id,
         blueprint_config,
     })
@@ -3132,6 +3093,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         locale: Option<&str>,
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
+        parent_session_id: Option<SessionId>,
     ) -> Result<Session> {
         self.execute_platform_command(
             "create_session",
@@ -3147,6 +3109,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 "initial_files": [],
                 "blueprint_id": blueprint_id,
                 "blueprint_config": blueprint_config,
+                "parent_session_id": parent_session_id.map(|id| id.to_string()),
             }),
         )
         .await
@@ -3169,26 +3132,6 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
             serde_json::json!({ "session_id": id.to_string() }),
         )
         .await
-    }
-
-    async fn set_subagent_metadata(
-        &self,
-        session_id: SessionId,
-        parent_session_id: SessionId,
-        subagent_name: &str,
-        subagent_task: &str,
-        subagent_status: everruns_core::session::SubagentStatus,
-    ) -> Result<Session> {
-        self.client
-            .set_subagent_metadata(
-                self.org_id,
-                session_id,
-                parent_session_id,
-                subagent_name,
-                subagent_task,
-                subagent_status,
-            )
-            .await
     }
 
     async fn delete_session(&self, id: SessionId) -> Result<()> {

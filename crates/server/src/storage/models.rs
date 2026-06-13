@@ -631,15 +631,9 @@ pub struct SessionRow {
     /// else estimated)
     #[sqlx(default)]
     pub total_cost_usd: f64,
-    // -- Subagent fields --
+    // -- Subagent nesting fields --
     #[sqlx(default)]
     pub parent_session_id: Option<SessionId>,
-    #[sqlx(default)]
-    pub subagent_name: Option<String>,
-    #[sqlx(default)]
-    pub subagent_task: Option<String>,
-    #[sqlx(default)]
-    pub subagent_status: Option<String>,
     // -- Blueprint fields --
     #[sqlx(default)]
     pub blueprint_id: Option<String>,
@@ -701,6 +695,8 @@ pub struct CreateSessionRow {
     pub blueprint_id: Option<String>,
     /// Validated blueprint config (JSONB in DB).
     pub blueprint_config: Option<serde_json::Value>,
+    /// Parent session ID for subagent nesting guard (set by spawn_subagent).
+    pub parent_session_id: Option<everruns_core::SessionId>,
 }
 
 #[derive(Debug, Clone, Default)]

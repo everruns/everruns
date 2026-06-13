@@ -40,7 +40,6 @@ use crate::domains::mcp_servers::scoped_mcp::{
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
-use crate::org_init;
 use crate::services::{EventService, ProviderResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -571,11 +570,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 active_schedule_count: None,
                 features: vec![],
                 parent_session_id: r.parent_session_id,
-                subagent_name: r.subagent_name,
-                subagent_task: r.subagent_task,
-                subagent_status: r
-                    .subagent_status
-                    .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
                 blueprint_id: r.blueprint_id,
                 blueprint_config: r.blueprint_config,
             }
@@ -2230,66 +2224,6 @@ impl DirectPlatformStore {
             Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
         }
     }
-
-    fn row_to_session(
-        &self,
-        row: crate::storage::SessionRow,
-        fallback_harness: Option<HarnessId>,
-    ) -> Session {
-        let capabilities = serde_json::from_value(row.capabilities).unwrap_or_default();
-        Session {
-            id: row.id,
-            organization_id: everruns_core::org_public_id_from_internal(self.org_id),
-            workspace_id: everruns_core::WorkspaceId::from_uuid(row.workspace_id),
-            harness_id: row.harness_id.or(fallback_harness).unwrap_or_else(|| {
-                panic!(
-                    "session {} has no harness_id and no fallback was provided; \
-                     ensure the org has a built-in 'base' harness provisioned",
-                    row.id
-                )
-            }),
-            agent_id: row.agent_id,
-            agent_version_id: row.agent_version_id,
-            agent_identity_id: row.agent_identity_id,
-            owner_principal_id: row.owner_principal_id,
-            resolved_owner_user_id: row.resolved_owner_user_id,
-            owner: None,
-            effective_owner: None,
-            title: row.title,
-            locale: row.locale,
-            preview: None,
-            output_preview: None,
-            tags: row.tags,
-            model_id: row.model_id,
-            capabilities,
-            tools: serde_json::from_value(row.tools).unwrap_or_default(),
-            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
-            system_prompt: row.system_prompt,
-            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-            network_access: row
-                .network_access
-                .and_then(|v| serde_json::from_value(v).ok()),
-            hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: max_iterations::from_db(row.max_iterations),
-            status: SessionStatus::from(row.status.as_str()),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            started_at: row.started_at,
-            finished_at: row.finished_at,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: row.parent_session_id,
-            subagent_name: row.subagent_name,
-            subagent_task: row.subagent_task,
-            subagent_status: row
-                .subagent_status
-                .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
-            blueprint_id: row.blueprint_id,
-            blueprint_config: row.blueprint_config,
-        }
-    }
 }
 
 #[async_trait]
@@ -2782,6 +2716,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         locale: Option<&str>,
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
+        parent_session_id: Option<SessionId>,
     ) -> everruns_core::error::Result<Session> {
         self.execute_domain_command(
             "create_session",
@@ -2797,6 +2732,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 "initial_files": [],
                 "blueprint_id": blueprint_id,
                 "blueprint_config": blueprint_config,
+                "parent_session_id": parent_session_id.map(|id| id.to_string()),
             }),
         )
         .await
@@ -2822,40 +2758,6 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             serde_json::json!({ "session_id": id.to_string() }),
         )
         .await
-    }
-
-    async fn set_subagent_metadata(
-        &self,
-        session_id: SessionId,
-        parent_session_id: SessionId,
-        subagent_name: &str,
-        subagent_task: &str,
-        subagent_status: everruns_core::session::SubagentStatus,
-    ) -> everruns_core::error::Result<Session> {
-        let row = self
-            .db
-            .set_subagent_metadata(
-                self.org_id,
-                session_id,
-                parent_session_id,
-                subagent_name,
-                subagent_task,
-                &subagent_status.to_string(),
-            )
-            .await
-            .map_err(|e| store_error(format!("Failed to set subagent metadata: {e}")))?
-            .ok_or_else(|| store_error("Session not found"))?;
-
-        let fallback = if row.harness_id.is_none() {
-            Some(
-                org_init::base_harness_id(&self.db, self.org_id)
-                    .await
-                    .map_err(|e| store_error(format!("Failed to resolve base harness: {e}")))?,
-            )
-        } else {
-            None
-        };
-        Ok(self.row_to_session(row, fallback))
     }
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {
@@ -3304,6 +3206,7 @@ mod tests {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("seed session")
@@ -4124,6 +4027,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,
+                parent_session_id: None,
             })
             .await
             .expect("create session");

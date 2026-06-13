@@ -778,6 +778,7 @@ async fn find_or_create_session(
                         hints: None,
                         network_access: None,
                         max_iterations: None,
+                        parent_session_id: None,
                     },
                 )
                 .await?;

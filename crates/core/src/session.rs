@@ -261,25 +261,12 @@ pub struct Session {
     #[cfg_attr(feature = "openapi", schema(example = json!(["file_system", "secrets"])))]
     pub features: Vec<String>,
 
-    // -- Subagent fields (only set when this session is a subagent) --
+    // -- Subagent nesting fields --
     /// Parent session that spawned this subagent. NULL for top-level sessions.
+    /// Used as the nesting guard in spawn_subagent.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_session_id: Option<SessionId>,
-    /// Human-readable subagent name ("Test Runner"), unique per parent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Test Runner"))]
-    pub subagent_name: Option<String>,
-    /// Original task description given to this subagent.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(
-        feature = "openapi",
-        schema(example = "Run the integration test suite and report failures.")
-    )]
-    pub subagent_task: Option<String>,
-    /// Subagent lifecycle status: spawning, running, completed, failed, cancelled.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub subagent_status: Option<SubagentStatus>,
 
     // -- Blueprint fields (only set when this session runs a blueprint agent) --
     /// Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent

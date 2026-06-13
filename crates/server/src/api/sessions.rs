@@ -18,7 +18,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::capability_types::AgentCapabilityConfig;
-use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, SessionId};
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
     Session, SessionContextReport, ToolDefinition, evaluate_policies_with,
@@ -114,6 +114,12 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 20)]
     pub max_iterations: Option<usize>,
+    /// Internal: parent session for subagent nesting guard.
+    /// Set by the worker when spawning a child session so the child cannot itself
+    /// spawn further children (prevents runaway recursion).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub parent_session_id: Option<SessionId>,
 }
 
 // Trust boundary (client-side tools deprecation rollout): the `tools` field
@@ -465,6 +471,13 @@ pub async fn create_session(
                 .into_response(StatusCode::TOO_MANY_REQUESTS),
         );
     }
+    // `parent_session_id` is internal-only: the subagent/handoff spawn flow
+    // sets it via the platform store (DirectPlatformStore::create_session
+    // dispatches the command directly). External HTTP callers must never set
+    // it — that would let a client forge cross-session/cross-org parent links —
+    // so strip any client-supplied value at the public boundary.
+    let mut req = req;
+    req.parent_session_id = None;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
 

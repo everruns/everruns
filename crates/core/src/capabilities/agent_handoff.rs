@@ -10,8 +10,8 @@ use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, Sys
 use crate::platform_store::PlatformStore;
 use crate::session::SubagentStatus;
 use crate::session_task::{
-    CreateSessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError,
-    TaskLinks, TaskWakePolicy,
+    CreateSessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT,
+    TaskError, TaskLinks, TaskWakePolicy,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -522,6 +522,7 @@ impl Tool for StartAgentHandoffTool {
                 parent_session.locale.as_deref(),
                 None,
                 None,
+                Some(context.session_id),
             )
             .await
         {
@@ -530,19 +531,6 @@ impl Tool for StartAgentHandoffTool {
         };
 
         let handoff_task = child_task(instructions, arguments.get("public_context"));
-        let child_session = match store
-            .set_subagent_metadata(
-                child_session.id,
-                context.session_id,
-                &target.name,
-                &handoff_task,
-                SubagentStatus::Running,
-            )
-            .await
-        {
-            Ok(session) => session,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
 
         // Register a subagent-kind session task so the handoff appears in the
         // task registry alongside other work-shaped tasks (specs/session-tasks.md).
@@ -623,58 +611,40 @@ impl Tool for StartAgentHandoffTool {
         let result = last_agent_message(&messages)
             .unwrap_or_else(|| format!("Handoff completed with status: {status}"));
 
-        if let Some(subagent_status) = terminal_handoff_status(&status) {
-            if let Err(error) = store
-                .set_subagent_metadata(
-                    child_session.id,
+        // Mirror terminal state into the session task (best-effort).
+        if let (Some(subagent_status), Some(registry), Some(task_id)) = (
+            terminal_handoff_status(&status),
+            context.session_task_registry.as_ref(),
+            handoff_task_id.as_ref(),
+        ) {
+            let task_state = match subagent_status {
+                SubagentStatus::Completed => SessionTaskState::Succeeded,
+                SubagentStatus::Failed | SubagentStatus::MaxIterationsReached => {
+                    SessionTaskState::Failed
+                }
+                SubagentStatus::Cancelled => SessionTaskState::Canceled,
+                SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
+            };
+            let error = if task_state == SessionTaskState::Failed {
+                Some(TaskError {
+                    kind: "handoff_failed".to_string(),
+                    message: format!("Handoff ended with status: {status}"),
+                })
+            } else {
+                None
+            };
+            let _ = registry
+                .update(
                     context.session_id,
-                    &target.name,
-                    &handoff_task,
-                    subagent_status.clone(),
+                    task_id,
+                    SessionTaskUpdate {
+                        state: Some(task_state),
+                        summary: Some(result.clone()),
+                        error,
+                        ..Default::default()
+                    },
                 )
-                .await
-            {
-                tracing::warn!(
-                    session_id = %context.session_id,
-                    child_session_id = %child_session.id,
-                    error = %error,
-                    "failed to persist terminal handoff metadata"
-                );
-            }
-
-            // Mirror terminal state into the session task (best-effort).
-            if let (Some(registry), Some(task_id)) =
-                (&context.session_task_registry, &handoff_task_id)
-            {
-                let task_state = match subagent_status {
-                    SubagentStatus::Completed => SessionTaskState::Succeeded,
-                    SubagentStatus::Failed | SubagentStatus::MaxIterationsReached => {
-                        SessionTaskState::Failed
-                    }
-                    SubagentStatus::Cancelled => SessionTaskState::Canceled,
-                    SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
-                };
-                let error = if task_state == SessionTaskState::Failed {
-                    Some(TaskError {
-                        kind: "handoff_failed".to_string(),
-                        message: format!("Handoff ended with status: {status}"),
-                    })
-                } else {
-                    None
-                };
-                let _ = registry
-                    .update(
-                        context.session_id,
-                        task_id,
-                        SessionTaskUpdate {
-                            state: Some(task_state),
-                            summary: Some(result.clone()),
-                            error,
-                            ..Default::default()
-                        },
-                    )
-                    .await;
-            }
+                .await;
         }
 
         ToolExecutionResult::success(json!({
@@ -733,30 +703,54 @@ impl Tool for GetAgentHandoffsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(store) => store,
-            Err(error) => return error,
+        // Derive handoff name/status from session task records (task.display_name /
+        // task.state) rather than the now-retired sessions.subagent_name/status columns.
+        // Each subagent-kind task has links.child_session_id pointing at the child session.
+        let Some(task_registry) = &context.session_task_registry else {
+            return ToolExecutionResult::success(json!({ "handoffs": [] }));
         };
-        let sessions = match store.list_sessions(Some(100), None).await {
-            Ok(sessions) => sessions,
+
+        let handoff_id_filter = arguments.get("handoff_id").and_then(Value::as_str);
+
+        let tasks = match task_registry
+            .list(
+                context.session_id,
+                Some(&SessionTaskFilter {
+                    kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                    state: None,
+                }),
+            )
+            .await
+        {
+            Ok(tasks) => tasks,
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
-        let handoff_id = arguments.get("handoff_id").and_then(Value::as_str);
-        let handoffs = sessions
+
+        let handoffs = tasks
             .into_iter()
-            .filter(|session| session.parent_session_id == Some(context.session_id))
-            .filter(|session| handoff_id.is_none_or(|id| session.id.to_string() == id))
-            .map(|session| {
-                json!({
-                    "handoff_id": session.id.to_string(),
-                    "name": session.subagent_name,
-                    "status": session.subagent_status,
-                    "target_agent_id": session.agent_id,
-                    "created_at": session.created_at,
-                    "updated_at": session.updated_at,
-                })
+            .filter_map(|task| {
+                // Subagent-kind tasks cover both spawn_subagent and handoffs;
+                // only handoff tasks carry `target_id`/`external_agent_id` in
+                // their spec (set by start_agent_handoff), so use that to
+                // exclude plain subagents.
+                let target_id = task.spec.get("target_id").and_then(Value::as_str)?;
+                let child_session_id = task.links.child_session_id?;
+                let handoff_id_str = child_session_id.to_string();
+                if handoff_id_filter.is_some_and(|id| id != handoff_id_str) {
+                    return None;
+                }
+                Some(json!({
+                    "handoff_id": handoff_id_str,
+                    "target_id": target_id,
+                    "target_agent_id": task.spec.get("external_agent_id"),
+                    "name": task.display_name,
+                    "status": task.state,
+                    "created_at": task.created_at,
+                    "updated_at": task.updated_at,
+                }))
             })
             .collect::<Vec<_>>();
+
         ToolExecutionResult::success(json!({ "handoffs": handoffs }))
     }
 
@@ -879,7 +873,9 @@ impl Tool for MessageAgentHandoffTool {
 mod tests {
     use super::*;
     use crate::Result;
+    use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
+    use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks};
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;
@@ -1177,20 +1173,38 @@ mod tests {
 
     #[tokio::test]
     async fn get_handoffs_lists_child_sessions_as_handoffs() {
-        // The get_agent_handoffs tool uses list_sessions filtered by parent_session_id.
-        // Set up a mock store whose session record already represents a child session
-        // so list_sessions returns it in the filtered results.
+        // get_agent_handoffs now derives name/status from the session task registry
+        // (task.display_name / task.state) rather than retired session columns.
         let parent_id = SessionId::new();
-        let mut store_value = MockPlatformStore::new();
-        store_value.session.parent_session_id = Some(parent_id);
-        store_value.session.subagent_name = Some("AWS Operator".to_string());
-        store_value.session.subagent_status = Some(SubagentStatus::Completed);
-        let store = Arc::new(store_value);
+        let child_id = SessionId::new();
+        let store = Arc::new(MockPlatformStore::new());
         let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let get = get_tool(config);
 
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        registry
+            .create(CreateSessionTask {
+                session_id: parent_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "AWS Operator".to_string(),
+                // Handoff tasks carry target_id/external_agent_id in spec;
+                // get_agent_handoffs filters on target_id to exclude plain
+                // spawn_subagent tasks.
+                spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
+                state: SessionTaskState::Succeeded,
+                links: TaskLinks {
+                    child_session_id: Some(child_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .expect("create task");
+
         let mut ctx = ToolContext::new(parent_id);
         ctx.platform_store = Some(store);
+        ctx.session_task_registry = Some(registry);
 
         let result = get.execute_with_context(json!({}), &ctx).await;
         let ToolExecutionResult::Success(value) = result else {
@@ -1198,8 +1212,54 @@ mod tests {
         };
         let handoffs = value["handoffs"].as_array().expect("handoffs");
         assert_eq!(handoffs.len(), 1);
+        assert_eq!(handoffs[0]["handoff_id"], child_id.to_string());
         assert_eq!(handoffs[0]["name"], "AWS Operator");
-        assert_eq!(handoffs[0]["status"], "completed");
+        assert_eq!(handoffs[0]["status"], "succeeded");
+        assert_eq!(handoffs[0]["target_id"], "aws");
+        assert_eq!(handoffs[0]["target_agent_id"], "agent_aws");
+    }
+
+    #[tokio::test]
+    async fn get_handoffs_excludes_plain_subagent_tasks() {
+        // A subagent-kind task without target_id in spec is a plain
+        // spawn_subagent, not a handoff — it must not be listed.
+        let parent_id = SessionId::new();
+        let child_id = SessionId::new();
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let get = get_tool(config);
+
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        registry
+            .create(CreateSessionTask {
+                session_id: parent_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Plain Subagent".to_string(),
+                spec: json!({ "instructions": "do a thing" }),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .expect("create task");
+
+        let mut ctx = ToolContext::new(parent_id);
+        ctx.platform_store = Some(store);
+        ctx.session_task_registry = Some(registry);
+
+        let result = get.execute_with_context(json!({}), &ctx).await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(
+            value["handoffs"].as_array().expect("handoffs").len(),
+            0,
+            "plain subagent must not be reported as a handoff"
+        );
     }
 
     #[tokio::test]

@@ -458,6 +458,7 @@ mod tests {
                 max_iterations: None,
                 blueprint_id: None,
                 blueprint_config: None,
+                parent_session_id: None,
             })
             .await
             .unwrap();

@@ -141,9 +141,6 @@ async fn setup_test_environment() -> (
         active_schedule_count: None,
         features: vec![],
         parent_session_id: None,
-        subagent_name: None,
-        subagent_task: None,
-        subagent_status: None,
         blueprint_id: None,
         blueprint_config: None,
     };
@@ -555,9 +552,6 @@ async fn test_reason_atom_with_different_configs() {
         active_schedule_count: None,
         features: vec![],
         parent_session_id: None,
-        subagent_name: None,
-        subagent_task: None,
-        subagent_status: None,
         blueprint_id: None,
         blueprint_config: None,
     };
@@ -2079,9 +2073,6 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
                 active_schedule_count: None,
                 features: vec![],
                 parent_session_id: None,
-                subagent_name: None,
-                subagent_task: None,
-                subagent_status: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })
@@ -2204,9 +2195,6 @@ async fn test_empty_session_system_prompt_is_ignored() {
                 active_schedule_count: None,
                 features: vec![],
                 parent_session_id: None,
-                subagent_name: None,
-                subagent_task: None,
-                subagent_status: None,
                 blueprint_id: None,
                 blueprint_config: None,
             })

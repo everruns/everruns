@@ -24198,7 +24198,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
                 },
                 "preview": {
                   "type": [
@@ -24229,33 +24229,6 @@
                 "status": {
                   "$ref": "#/components/schemas/SessionStatus",
                   "description": "Current execution status of the session."
-                },
-                "subagent_name": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
-                  "example": "Test Runner"
-                },
-                "subagent_status": {
-                  "oneOf": [
-                    {
-                      "type": "null"
-                    },
-                    {
-                      "$ref": "#/components/schemas/SubagentStatus",
-                      "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
-                    }
-                  ]
-                },
-                "subagent_task": {
-                  "type": [
-                    "string",
-                    "null"
-                  ],
-                  "description": "Original task description given to this subagent.",
-                  "example": "Run the integration test suite and report failures."
                 },
                 "system_prompt": {
                   "type": [
@@ -25116,7 +25089,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
                     },
                     "preview": {
                       "type": [
@@ -25147,33 +25120,6 @@
                     "status": {
                       "$ref": "#/components/schemas/SessionStatus",
                       "description": "Current execution status of the session."
-                    },
-                    "subagent_name": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
-                      "example": "Test Runner"
-                    },
-                    "subagent_status": {
-                      "oneOf": [
-                        {
-                          "type": "null"
-                        },
-                        {
-                          "$ref": "#/components/schemas/SubagentStatus",
-                          "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
-                        }
-                      ]
-                    },
-                    "subagent_task": {
-                      "type": [
-                        "string",
-                        "null"
-                      ],
-                      "description": "Original task description given to this subagent.",
-                      "example": "Run the integration test suite and report failures."
                     },
                     "system_prompt": {
                       "type": [
@@ -27607,7 +27553,7 @@
               "string",
               "null"
             ],
-            "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
           },
           "preview": {
             "type": [
@@ -27638,33 +27584,6 @@
           "status": {
             "$ref": "#/components/schemas/SessionStatus",
             "description": "Current execution status of the session."
-          },
-          "subagent_name": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
-            "example": "Test Runner"
-          },
-          "subagent_status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/SubagentStatus",
-                "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
-              }
-            ]
-          },
-          "subagent_task": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Original task description given to this subagent.",
-            "example": "Run the integration test suite and report failures."
           },
           "system_prompt": {
             "type": [
@@ -28553,18 +28472,6 @@
             "description": "Task description"
           }
         }
-      },
-      "SubagentStatus": {
-        "type": "string",
-        "description": "Subagent lifecycle status.",
-        "enum": [
-          "spawning",
-          "running",
-          "completed",
-          "failed",
-          "cancelled",
-          "max_iterations_reached"
-        ]
       },
       "SubmitToolResultsRequest": {
         "type": "object",
@@ -33581,7 +33488,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Parent session that spawned this subagent. NULL for top-level sessions."
+                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
               },
               "preview": {
                 "type": [
@@ -33612,33 +33519,6 @@
               "status": {
                 "$ref": "#/components/schemas/SessionStatus",
                 "description": "Current execution status of the session."
-              },
-              "subagent_name": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
-                "example": "Test Runner"
-              },
-              "subagent_status": {
-                "oneOf": [
-                  {
-                    "type": "null"
-                  },
-                  {
-                    "$ref": "#/components/schemas/SubagentStatus",
-                    "description": "Subagent lifecycle status: spawning, running, completed, failed, cancelled."
-                  }
-                ]
-              },
-              "subagent_task": {
-                "type": [
-                  "string",
-                  "null"
-                ],
-                "description": "Original task description given to this subagent.",
-                "example": "Run the integration test suite and report failures."
               },
               "system_prompt": {
                 "type": [

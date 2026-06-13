@@ -477,72 +477,6 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
-    async fn set_subagent_metadata(
-        &self,
-        request: Request<SetSubagentMetadataRequest>,
-    ) -> Result<Response<SetSubagentMetadataResponse>, Status> {
-        use everruns_internal_protocol::schema_session_to_proto;
-
-        let req = request.into_inner();
-        let session_id = parse_uuid(req.session_id.as_ref())?;
-        let parent_session_id = parse_uuid(req.parent_session_id.as_ref())?;
-        let valid_statuses = [
-            "spawning",
-            "running",
-            "completed",
-            "failed",
-            "cancelled",
-            "max_iterations_reached",
-        ];
-        if !valid_statuses.contains(&req.subagent_status.as_str()) {
-            return Err(Status::invalid_argument(format!(
-                "Invalid subagent_status '{}'. Must be one of: {}",
-                req.subagent_status,
-                valid_statuses.join(", ")
-            )));
-        }
-
-        let row = self
-            .db
-            .set_subagent_metadata(
-                req.org_id,
-                everruns_core::SessionId::from_uuid(session_id),
-                everruns_core::SessionId::from_uuid(parent_session_id),
-                &req.subagent_name,
-                &req.subagent_task,
-                &req.subagent_status,
-            )
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to set subagent metadata: {}", e);
-                Status::internal("Failed to set subagent metadata")
-            })?
-            .ok_or_else(|| Status::not_found("Session not found"))?;
-
-        let fallback_harness = if row.harness_id.is_none() {
-            Some(
-                crate::org_init::base_harness_id(&self.db, req.org_id)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to resolve base harness: {}", e);
-                        Status::internal("Failed to resolve base harness")
-                    })?,
-            )
-        } else {
-            None
-        };
-        let org_public_id = everruns_core::org_public_id_from_internal(req.org_id);
-        let session = crate::domains::sessions::SessionService::row_to_session(
-            row,
-            &org_public_id,
-            fallback_harness,
-        );
-
-        Ok(Response::new(SetSubagentMetadataResponse {
-            session: Some(schema_session_to_proto(&session)),
-        }))
-    }
-
     async fn get_message(
         &self,
         request: Request<GetMessageRequest>,
@@ -3801,6 +3735,7 @@ impl WorkerService for WorkerServiceImpl {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parent_session_id: None,
         };
 
         let session = if let Some(blueprint_id) = req.blueprint_id {

@@ -25,7 +25,7 @@ use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
-    SessionFile, SessionId, SessionStatus, SubagentStatus, TokenUsage, WorkspaceId,
+    SessionFile, SessionId, SessionStatus, TokenUsage, WorkspaceId,
     capabilities::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
@@ -396,6 +396,7 @@ impl SessionService {
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: req.parent_session_id,
         };
         let row = self.db.create_session(input).await?;
         let row = if let Some(version) = resolved_agent_version.as_ref() {
@@ -539,6 +540,7 @@ impl SessionService {
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
+            parent_session_id: None,
         };
         let row = self.db.create_session(input).await?;
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
@@ -1161,6 +1163,7 @@ impl SessionService {
             blueprint_id: None,
             blueprint_config: None,
             network_access: None,
+            parent_session_id: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -1676,11 +1679,6 @@ impl SessionService {
             active_schedule_count: None, // Populated by caller
             features: vec![],            // Populated by caller via populate_features()
             parent_session_id: row.parent_session_id,
-            subagent_name: row.subagent_name,
-            subagent_task: row.subagent_task,
-            subagent_status: row
-                .subagent_status
-                .map(|s| SubagentStatus::from(s.as_str())),
             blueprint_id: row.blueprint_id,
             blueprint_config: row.blueprint_config,
         }
@@ -1898,6 +1896,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parent_session_id: None,
         }
     }
 
@@ -2506,6 +2505,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,
+                parent_session_id: None,
             })
             .await
             .unwrap();
@@ -2767,6 +2767,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,
+                parent_session_id: None,
             })
             .await
             .unwrap();

@@ -232,7 +232,8 @@ Naming cleanup: `task` parameters that carry instruction text
 (`subagent_task`, `spawn_subagent(task:)`) have been renamed to `instructions` so
 "task" unambiguously means the lifecycle object. This rename is done for the
 model-facing tool parameters (`spawn_subagent`, `spawn_agent`, `handoff`);
-the `sessions.subagent_task` DB column retirement remains follow-up work.
+`sessions.subagent_task`, `subagent_name`, and `subagent_status` DB columns
+were retired in migration 059.
 
 ## Wake-ups
 
@@ -301,8 +302,8 @@ No backward compatibility is required; data migrates forward once:
   (`agent_run` → `external_agent`; the A2A `AgentRunRecord` maps
   field-for-field). Remaining kinds stay as resources.
 - `subagent_results` folds into `session_tasks` and is dropped.
-- `sessions.subagent_status`/`subagent_task` become derivable from the task
-  record; `parent_session_id` stays.
+- `sessions.subagent_status`/`subagent_task`/`subagent_name` were dropped
+  (migration 059); `parent_session_id` stays as the nesting guard.
 - `subagent.*` event types are superseded by `task.*` events.
 - `get_subagents`, `get_agent_runs`, `wait_agent`, `message_agent`,
   `message_subagent`, `cancel_agent` — **retired (done)**. These per-kind tools have
@@ -336,7 +337,9 @@ No backward compatibility is required; data migrates forward once:
   lifecycle instead; retiring the legacy emission awaits a compatibility
   decision (specs/events.md). The `task` → `instructions` parameter rename is done (model-facing
   tool parameters `spawn_subagent`, `spawn_agent`, `handoff`). The
-  `sessions.subagent_*` column retirement remains follow-up work.
+  `sessions.subagent_*` columns (`subagent_name`, `subagent_task`, `subagent_status`)
+  were retired in migration 059; `parent_session_id` is kept as the nesting guard
+  and is now set at session creation time.
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
   reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks
   with stale heartbeats (`heartbeat_at IS NOT NULL AND heartbeat_at < now -

@@ -307,6 +307,7 @@ async fn execute_case_inner(
                 hints: None,
                 network_access: None,
                 max_iterations,
+                parent_session_id: None,
             },
         )
         .await?;

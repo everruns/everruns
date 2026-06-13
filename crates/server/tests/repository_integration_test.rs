@@ -443,6 +443,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -667,6 +668,7 @@ async fn test_session_crud() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -819,6 +821,7 @@ async fn test_event_crud() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -910,6 +913,7 @@ async fn test_event_exclude_types() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1009,6 +1013,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1102,6 +1107,7 @@ async fn test_event_filter_types() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1404,6 +1410,7 @@ async fn test_session_file_crud() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1866,6 +1873,7 @@ async fn test_session_usage_tracking() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1966,6 +1974,7 @@ async fn test_session_previews() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2571,6 +2580,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             max_iterations: None,
             blueprint_id: None,
             blueprint_config: None,
+            parent_session_id: None,
         })
         .await
         .expect("Failed to create test session");

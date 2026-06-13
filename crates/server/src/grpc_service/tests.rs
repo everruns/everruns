@@ -387,82 +387,6 @@ async fn start_grpc_test_server(
 }
 
 #[tokio::test]
-async fn test_set_subagent_metadata_rpc_persists_child_linkage() {
-    let service = test_worker_service().await;
-    let parent = create_grpc_test_session(&service).await;
-    let child = create_grpc_test_session(&service).await;
-    let parent_id = parent.id.clone().expect("parent id");
-    let child_id = child.id.clone().expect("child id");
-
-    let updated = service
-        .set_subagent_metadata(Request::new(SetSubagentMetadataRequest {
-            org_id: everruns_core::DEFAULT_ORG_ID,
-            session_id: Some(child_id),
-            parent_session_id: Some(parent_id.clone()),
-            subagent_name: "Test Runner".to_string(),
-            subagent_task: "Run the focused gRPC regression".to_string(),
-            subagent_status: "running".to_string(),
-        }))
-        .await
-        .expect("set_subagent_metadata should succeed")
-        .into_inner()
-        .session
-        .expect("updated session");
-
-    assert_eq!(updated.parent_session_id, Some(parent_id));
-    assert_eq!(updated.subagent_name.as_deref(), Some("Test Runner"));
-    assert_eq!(
-        updated.subagent_task.as_deref(),
-        Some("Run the focused gRPC regression")
-    );
-    assert_eq!(updated.subagent_status.as_deref(), Some("running"));
-}
-
-#[tokio::test]
-async fn test_worker_grpc_platform_store_sets_subagent_metadata() {
-    use everruns_core::platform_store::PlatformStore;
-
-    let service = test_worker_service().await;
-    let parent = create_grpc_test_session(&service).await;
-    let child = create_grpc_test_session(&service).await;
-    let parent_id = proto_session_id(&parent);
-    let child_id = proto_session_id(&child);
-
-    let (addr, shutdown_tx, server) = start_grpc_test_server(service).await;
-
-    let client = everruns_worker::GrpcClient::connect(&addr)
-        .await
-        .expect("worker grpc client should connect");
-    let platform_store =
-        everruns_worker::grpc_adapters::GrpcOrgAdapter::new(client, everruns_core::DEFAULT_ORG_ID);
-
-    let updated = platform_store
-        .set_subagent_metadata(
-            child_id,
-            parent_id,
-            "Handoff Worker",
-            "Complete a worker-path handoff",
-            everruns_core::session::SubagentStatus::Running,
-        )
-        .await
-        .expect("worker platform store should set metadata over grpc");
-
-    assert_eq!(updated.parent_session_id, Some(parent_id));
-    assert_eq!(updated.subagent_name.as_deref(), Some("Handoff Worker"));
-    assert_eq!(
-        updated.subagent_task.as_deref(),
-        Some("Complete a worker-path handoff")
-    );
-    assert_eq!(
-        updated.subagent_status,
-        Some(everruns_core::session::SubagentStatus::Running)
-    );
-
-    let _ = shutdown_tx.send(());
-    server.await.expect("grpc server task should join");
-}
-
-#[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     use everruns_core::capabilities::{AgentHandoffCapability, Capability, SubagentCapability};
     use everruns_core::platform_store::PlatformStore;
@@ -556,12 +480,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .await
         .expect("get spawned subagent")
         .expect("spawned subagent exists");
+    // parent_session_id is set on spawn (nesting guard); name/status now live on the task record.
     assert_eq!(subagent.parent_session_id, Some(parent_id));
-    assert_eq!(subagent.subagent_name.as_deref(), Some("gRPC Subagent"));
-    assert_eq!(
-        subagent.subagent_status,
-        Some(everruns_core::session::SubagentStatus::Completed)
-    );
 
     let target_agent = adapter
         .create_agent(
@@ -615,15 +535,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .await
         .expect("get handoff child")
         .expect("handoff child exists");
+    // parent_session_id is set on spawn; name/status now live on the task record.
     assert_eq!(handoff.parent_session_id, Some(parent_id));
-    assert_eq!(
-        handoff.subagent_name.as_deref(),
-        Some("gRPC Handoff Target")
-    );
-    assert_eq!(
-        handoff.subagent_status,
-        Some(everruns_core::session::SubagentStatus::Completed)
-    );
 
     let _ = shutdown_tx.send(());
     server.await.expect("grpc server task should join");
