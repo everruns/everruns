@@ -793,17 +793,24 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .validate_for_primary_model(&config.model)
                 .map_err(AgentLoopError::llm)?;
         }
-        let effective_routing_owned;
-        let effective_routing: Option<&crate::llm_driver_registry::OpenRouterRoutingConfig> =
-            match openrouter_routing {
-                Some(routing) => {
-                    effective_routing_owned = routing
-                        .apply_capacity_strategy()
-                        .map_err(AgentLoopError::llm)?;
-                    Some(&effective_routing_owned)
+        // Apply capacity strategy without cloning when the strategy is a no-op.
+        let effective_routing_cow: Option<
+            std::borrow::Cow<'_, crate::llm_driver_registry::OpenRouterRoutingConfig>,
+        > = match openrouter_routing {
+            None => None,
+            Some(routing) => match routing.capacity_strategy {
+                None
+                | Some(crate::llm_driver_registry::OpenRouterCapacityStrategy::SharedCapacity) => {
+                    Some(std::borrow::Cow::Borrowed(routing))
                 }
-                None => None,
-            };
+                _ => Some(std::borrow::Cow::Owned(
+                    routing
+                        .apply_capacity_strategy()
+                        .map_err(AgentLoopError::llm)?,
+                )),
+            },
+        };
+        let effective_routing = effective_routing_cow.as_deref();
         let openrouter_provider = effective_routing.and_then(|routing| {
             routing
                 .provider
