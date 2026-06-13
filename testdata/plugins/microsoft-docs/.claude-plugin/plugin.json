@@ -15,6 +15,20 @@
   "commands": "./commands/",
   "agents": "./agents/",
   "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "preferred_language": {
+      "type": "string",
+      "title": "Preferred Language",
+      "description": "Filter results to this documentation language (e.g. csharp, python, javascript).",
+      "default": ""
+    },
+    "api_token": {
+      "type": "string",
+      "title": "API Token",
+      "description": "Optional token for authenticated Microsoft Learn API access.",
+      "sensitive": true
+    }
+  },
   "interface": {
     "displayName": "Microsoft Docs",
     "shortDescription": "Search official Microsoft docs and code samples.",

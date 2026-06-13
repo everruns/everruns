@@ -55,6 +55,13 @@ pub struct DeclarativeCapabilityDefinition {
     pub features: Vec<String>,
     #[serde(default = "default_risk_level")]
     pub risk_level: RiskLevel,
+    /// JSON Schema for user-configurable fields (from plugin `userConfig`).
+    /// `None` = no configuration prompted at enable time.
+    #[serde(default)]
+    pub config_schema: Option<serde_json::Value>,
+    /// react-jsonschema-form uiSchema hints for `config_schema` (e.g. password widgets).
+    #[serde(default)]
+    pub config_ui_schema: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +119,8 @@ impl Default for DeclarativeCapabilityDefinition {
             dependencies: Vec::new(),
             features: Vec::new(),
             risk_level: RiskLevel::Low,
+            config_schema: None,
+            config_ui_schema: None,
         }
     }
 }
@@ -238,8 +247,8 @@ pub fn plugin_capability_info(
         is_skill: false,
         dependencies: definition.dependencies.clone(),
         features: definition.features.clone(),
-        config_schema: None,
-        config_ui_schema: None,
+        config_schema: definition.config_schema.clone(),
+        config_ui_schema: definition.config_ui_schema.clone(),
         risk_level: definition.risk_level,
         agent_count: 0,
         harness_count: 0,

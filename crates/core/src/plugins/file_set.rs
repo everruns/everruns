@@ -158,6 +158,7 @@ impl PluginFileSet {
                 commands: None,
                 agents: None,
                 mcp_servers: None,
+                user_config: None,
                 extra: Default::default(),
             },
             vec!["no plugin.json manifest found; name derived from directory name".to_string()],

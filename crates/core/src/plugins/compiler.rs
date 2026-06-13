@@ -79,6 +79,10 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
     // --- MCP servers ---
     let mcp_servers = compile_mcp_servers(file_set, &manifest, &mut warnings)?;
 
+    // --- userConfig → config_schema / config_ui_schema ---
+    let (config_schema, config_ui_schema) =
+        compile_user_config(manifest.user_config.as_ref(), &mut warnings);
+
     // Warn about unsupported component fields in the manifest.
     for ignored_field in &["hooks", "lspServers", "monitors", "themes", "outputStyles"] {
         if manifest.extra.contains_key(*ignored_field) {
@@ -102,6 +106,8 @@ pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String
         dependencies: Vec::new(),
         features: Vec::new(),
         risk_level: crate::capabilities::RiskLevel::Low,
+        config_schema,
+        config_ui_schema,
     };
 
     // Run through declarative validation to catch size/count violations.
@@ -443,6 +449,96 @@ fn compile_mcp_servers(
     }
 }
 
+// ============================================================================
+// userConfig → config_schema / config_ui_schema
+// ============================================================================
+
+/// Convert a `userConfig` map from a plugin manifest into a JSON Schema object
+/// and an optional react-jsonschema-form uiSchema.
+///
+/// Each entry's `type`, `title`, `description`, `default`, and `enum` fields
+/// are carried into the schema's `properties`. `sensitive: true` is stripped
+/// from the schema and becomes `{"ui:widget": "password"}` in the uiSchema.
+/// Per-entry `required: true` is collected into the top-level `required` array.
+fn compile_user_config(
+    user_config: Option<&std::collections::HashMap<String, serde_json::Value>>,
+    _warnings: &mut Vec<String>,
+) -> (Option<serde_json::Value>, Option<serde_json::Value>) {
+    let Some(config_map) = user_config else {
+        return (None, None);
+    };
+    if config_map.is_empty() {
+        return (None, None);
+    }
+
+    let mut properties = serde_json::Map::new();
+    let mut required: Vec<serde_json::Value> = Vec::new();
+    let mut ui_schema = serde_json::Map::new();
+
+    // Sort keys for deterministic output.
+    let mut keys: Vec<&String> = config_map.keys().collect();
+    keys.sort();
+
+    for key in keys {
+        let descriptor = &config_map[key];
+        let obj = match descriptor.as_object() {
+            Some(o) => o,
+            None => continue,
+        };
+
+        let mut prop = serde_json::Map::new();
+        // Carry standard JSON Schema keywords.
+        for kw in &["type", "title", "description", "default", "enum"] {
+            if let Some(v) = obj.get(*kw) {
+                prop.insert(kw.to_string(), v.clone());
+            }
+        }
+        // Default type to "string" if absent.
+        if !prop.contains_key("type") {
+            prop.insert(
+                "type".to_string(),
+                serde_json::Value::String("string".to_string()),
+            );
+        }
+
+        // `sensitive: true` → password widget in uiSchema.
+        if obj
+            .get("sensitive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            ui_schema.insert(key.clone(), serde_json::json!({"ui:widget": "password"}));
+        }
+
+        // Per-entry `required: true` → top-level required array.
+        if obj
+            .get("required")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false)
+        {
+            required.push(serde_json::Value::String(key.clone()));
+        }
+
+        properties.insert(key.clone(), serde_json::Value::Object(prop));
+    }
+
+    let mut schema = serde_json::json!({
+        "type": "object",
+        "properties": properties,
+    });
+    if !required.is_empty() {
+        schema["required"] = serde_json::Value::Array(required);
+    }
+
+    let ui = if ui_schema.is_empty() {
+        None
+    } else {
+        Some(serde_json::Value::Object(ui_schema))
+    };
+
+    (Some(schema), ui)
+}
+
 enum McpConfigSource {
     File(String),
     Map(BTreeMap<String, serde_json::Value>),
@@ -604,6 +700,40 @@ mod tests {
             "expected interface warning, got: {:?}",
             compiled.warnings
         );
+
+        // --- userConfig → config_schema / config_ui_schema ---
+        let schema = compiled
+            .definition
+            .config_schema
+            .as_ref()
+            .expect("config_schema from userConfig");
+        let props = schema["properties"].as_object().expect("properties");
+        assert!(
+            props.contains_key("preferred_language"),
+            "preferred_language in schema"
+        );
+        assert!(props.contains_key("api_token"), "api_token in schema");
+        // `sensitive` must not leak into the schema properties.
+        assert!(
+            props["api_token"].get("sensitive").is_none(),
+            "sensitive must not appear in schema property"
+        );
+
+        let ui = compiled
+            .definition
+            .config_ui_schema
+            .as_ref()
+            .expect("config_ui_schema from sensitive field");
+        assert_eq!(
+            ui["api_token"]["ui:widget"].as_str(),
+            Some("password"),
+            "sensitive field maps to password widget"
+        );
+        // Non-sensitive field must not appear in uiSchema.
+        assert!(
+            ui.get("preferred_language").is_none(),
+            "non-sensitive field must not appear in uiSchema"
+        );
     }
 
     // ---- targeted unit tests ----
@@ -669,6 +799,7 @@ mod tests {
             commands: None,
             agents: None,
             mcp_servers: None,
+            user_config: None,
             extra: Default::default(),
         };
         let result = compile_mcp_servers(&file_set, &manifest, &mut warnings);
@@ -679,6 +810,57 @@ mod tests {
         );
         // No servers compiled since only one was stdio.
         assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn user_config_compiles_to_schema() {
+        use std::collections::HashMap;
+        let mut config_map: HashMap<String, serde_json::Value> = HashMap::new();
+        config_map.insert(
+            "endpoint".to_string(),
+            serde_json::json!({
+                "type": "string",
+                "title": "Endpoint URL",
+                "description": "API endpoint",
+                "required": true
+            }),
+        );
+        config_map.insert(
+            "token".to_string(),
+            serde_json::json!({
+                "type": "string",
+                "title": "API Token",
+                "sensitive": true
+            }),
+        );
+
+        let mut warnings = Vec::new();
+        let (schema, ui) = compile_user_config(Some(&config_map), &mut warnings);
+
+        let schema = schema.expect("schema produced");
+        assert_eq!(schema["type"].as_str(), Some("object"));
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("endpoint"));
+        assert!(props.contains_key("token"));
+        // `sensitive` does not appear in properties.
+        assert!(props["token"].get("sensitive").is_none());
+        // `required` at field level is hoisted to top-level array.
+        let req = schema["required"].as_array().expect("required array");
+        assert!(req.iter().any(|v| v.as_str() == Some("endpoint")));
+        // Non-required field is not in required array.
+        assert!(!req.iter().any(|v| v.as_str() == Some("token")));
+
+        let ui = ui.expect("uiSchema produced");
+        assert_eq!(ui["token"]["ui:widget"].as_str(), Some("password"));
+        assert!(ui.get("endpoint").is_none());
+    }
+
+    #[test]
+    fn user_config_none_produces_no_schema() {
+        let mut warnings = Vec::new();
+        let (schema, ui) = compile_user_config(None, &mut warnings);
+        assert!(schema.is_none());
+        assert!(ui.is_none());
     }
 
     #[test]

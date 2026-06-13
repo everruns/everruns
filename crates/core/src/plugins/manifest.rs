@@ -121,6 +121,19 @@ pub struct PluginManifest {
     )]
     pub mcp_servers: Option<McpServersField>,
 
+    /// User-configurable fields prompted at plugin enable time.
+    ///
+    /// Each key is a config field name; each value is a descriptor with
+    /// `type`, `title`, `description`, `default`, `enum`, `required`, and
+    /// optionally `sensitive: true` (maps to a password widget in the UI).
+    /// Compiled into `config_schema` / `config_ui_schema` on the capability.
+    #[serde(
+        rename = "userConfig",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub user_config: Option<HashMap<String, serde_json::Value>>,
+
     /// Unrecognized top-level fields, preserved for warning generation.
     /// The presence of any keys here becomes an install warning.
     #[serde(flatten)]
