@@ -231,6 +231,12 @@ Specialized agents you can delegate to via spawn_subagent(blueprint: "<id>"):
 - github_scout: Search GitHub repositories for code, issues, and discussions.
   Fast read-only agent. Use for codebase exploration, finding patterns,
   understanding unfamiliar repos. Config: { "repos": ["owner/repo"] }
+
+- openrouter_model_scout: Benchmark OpenRouter models/providers using small
+  probe tasks and recommend model-router updates. Use when evaluating which
+  models best suit a task profile for cost, latency, or quality.
+  Config: { "max_candidates": 10, "max_spend_usd": 0.10, "probe_timeout_ms": 10000,
+            "probe_tasks": [...], "target_route_key": "base" }
 </available-blueprints>
 ```
 

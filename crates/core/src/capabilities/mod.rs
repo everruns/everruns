@@ -114,6 +114,7 @@ mod lua_code_mode;
 pub mod mcp;
 mod memory;
 mod message_metadata;
+mod model_scout;
 mod monitors;
 mod noop;
 mod openai_tool_search;
@@ -237,6 +238,10 @@ pub use memory::{MEMORY_CAPABILITY_ID, MemoryCapability};
 pub use message_metadata::{
     MESSAGE_METADATA_CAPABILITY_ID, MessageMetadataCapability, MessageMetadataConfig,
     MessageMetadataField, render_annotation,
+};
+pub use model_scout::{
+    MODEL_SCOUT_CAPABILITY_ID, ModelRanking, ModelScoutCapability, ProbeResult, ProbeTask,
+    RouterUpdateProposal, compute_score, rank_results,
 };
 pub use noop::{NOOP_CAPABILITY_ID, NoopCapability};
 pub use openai_tool_search::{
@@ -1148,6 +1153,7 @@ impl CapabilityRegistry {
         registry.register(CurrentTimeCapability);
         registry.register(MessageMetadataCapability);
         registry.register(ResearchCapability);
+        registry.register(ModelScoutCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
@@ -2451,6 +2457,7 @@ mod tests {
             "prompt_canary_guardrail",
             "guardrails",
             "user_hooks",
+            "model_scout",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();
