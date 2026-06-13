@@ -177,9 +177,9 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 /v1/sessions/{session_id}
 /v1/sessions/{session_id}/messages
 /v1/sessions/{session_id}/sse
-/v1/llm-providers
-/v1/llm-providers/{provider_id}
-/v1/llm-models
+/v1/providers
+/v1/providers/{provider_id}
+/v1/models
 ```
 
 **Org Resolution:**

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { MessageSquare, Loader2, Zap, Sparkles, Bot } from "lucide-react";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { shortenId } from "@/lib/utils";
-import type { Session, Agent, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { Session, Agent, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import {
   getDisplayName,
   getEntityReferenceClassName,
@@ -16,7 +16,7 @@ import {
 interface RecentSessionsProps {
   sessions: Session[];
   agents: Agent[];
-  models?: LlmModelWithProvider[];
+  models?: ModelWithProvider[];
 }
 
 function truncateText(text: string, maxLength: number = 80): string {

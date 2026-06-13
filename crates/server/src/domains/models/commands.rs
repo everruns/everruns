@@ -38,7 +38,7 @@ impl Command for CreateModel {
             category: "models",
             description: "Create a new model for a provider.",
             method: "POST",
-            path: "/v1/llm-providers/{provider_id}/models",
+            path: "/v1/providers/{provider_id}/models",
         }
     }
 
@@ -82,7 +82,7 @@ impl Command for ListProviderModels {
             category: "models",
             description: "List models for a specific provider.",
             method: "GET",
-            path: "/v1/llm-providers/{provider_id}/models",
+            path: "/v1/providers/{provider_id}/models",
         }
     }
 
@@ -126,7 +126,7 @@ impl Command for ListModels {
             category: "models",
             description: "List all models across all providers.",
             method: "GET",
-            path: "/v1/llm-models",
+            path: "/v1/models",
         }
     }
 
@@ -164,7 +164,7 @@ impl Command for GetModel {
             category: "models",
             description: "Get a specific model with provider information.",
             method: "GET",
-            path: "/v1/llm-models/{id}",
+            path: "/v1/models/{id}",
         }
     }
 
@@ -217,7 +217,7 @@ impl Command for UpdateModel {
             category: "models",
             description: "Update a model.",
             method: "PATCH",
-            path: "/v1/llm-models/{id}",
+            path: "/v1/models/{id}",
         }
     }
 
@@ -268,7 +268,7 @@ impl Command for DeleteModel {
             category: "models",
             description: "Delete a model.",
             method: "DELETE",
-            path: "/v1/llm-models/{id}",
+            path: "/v1/models/{id}",
         }
     }
 

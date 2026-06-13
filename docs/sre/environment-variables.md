@@ -249,7 +249,7 @@ LLM provider API keys (OpenAI, Anthropic, Gemini) are primarily stored encrypted
 | Property | Value |
 |----------|-------|
 | **Storage** | Database (encrypted with AES-256-GCM) |
-| **Configuration** | Settings > Providers UI or `/v1/llm-providers` API |
+| **Configuration** | Settings > Providers UI or `/v1/providers` API |
 | **Supported Providers** | OpenAI, Anthropic, Google Gemini |
 
 **Required for encryption:**

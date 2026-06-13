@@ -76,18 +76,18 @@ export const queryKeys = {
   },
 
   // LLM Provider queries
-  llmProviders: {
-    all: ["llm-providers"] as const,
-    list: () => ["llm-providers"] as const,
-    detail: (providerId: string) => ["llm-providers", providerId] as const,
-    models: (providerId: string) => ["llm-providers", providerId, "models"] as const,
+  providers: {
+    all: ["providers"] as const,
+    list: () => ["providers"] as const,
+    detail: (providerId: string) => ["providers", providerId] as const,
+    models: (providerId: string) => ["providers", providerId, "models"] as const,
   },
 
   // LLM Model queries
-  llmModels: {
-    all: ["llm-models"] as const,
-    list: () => ["llm-models"] as const,
-    detail: (modelId: string) => ["llm-models", modelId] as const,
+  models: {
+    all: ["models"] as const,
+    list: () => ["models"] as const,
+    detail: (modelId: string) => ["models", modelId] as const,
   },
 
   // Session files queries

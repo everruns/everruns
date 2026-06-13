@@ -75,13 +75,13 @@ jest.mock("@/providers/feature-flags-provider", () => ({
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
-const mockUseLlmProviders = jest.fn(() => ({
+const mockUseProviders = jest.fn(() => ({
   data: [{ id: "provider-1", name: "Test Provider" }],
   isLoading: false,
   isError: false,
 }));
-jest.mock("@/hooks/use-llm-providers", () => ({
-  useLlmProviders: () => mockUseLlmProviders(),
+jest.mock("@/hooks/use-providers", () => ({
+  useProviders: () => mockUseProviders(),
 }));
 
 const mockUsePolicies = jest.fn(() => ({
@@ -582,7 +582,7 @@ describe("Create Organization dialog", () => {
   });
 
   it("shows chat warning badge when no LLM providers configured", () => {
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [],
       isLoading: false,
       isError: false,
@@ -596,7 +596,7 @@ describe("Create Organization dialog", () => {
     expect(warningBtn).toBeInTheDocument();
 
     // Restore default mock
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [{ id: "provider-1", name: "Test Provider" }],
       isLoading: false,
       isError: false,

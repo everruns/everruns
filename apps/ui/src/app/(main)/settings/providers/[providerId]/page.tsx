@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { PageBody, PageHeader, PageShell } from "@/components/layout";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
-import { useLlmModels, useLlmProvider, useUpdateLlmProvider } from "@/hooks/use-llm-providers";
+import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { formatCountLabel } from "@/lib/formatting";
 
@@ -22,9 +22,9 @@ export default function ProviderDetailPage({
   params: Promise<{ providerId: string }>;
 }) {
   const { providerId } = use(params);
-  const { data: provider, isLoading } = useLlmProvider(providerId);
-  const { data: models = [], isLoading: modelsLoading } = useLlmModels();
-  const updateProvider = useUpdateLlmProvider(providerId);
+  const { data: provider, isLoading } = useProvider(providerId);
+  const { data: models = [], isLoading: modelsLoading } = useModels();
+  const updateProvider = useUpdateProvider(providerId);
   const [name, setName] = useState("");
   const [nameProviderId, setNameProviderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

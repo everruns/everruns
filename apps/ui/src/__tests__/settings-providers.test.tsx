@@ -61,24 +61,24 @@ const mockModels = [
   },
 ];
 
-const mockUseLlmProviders = jest.fn();
-const mockUseLlmModels = jest.fn();
-const mockUseCreateLlmProvider = jest.fn();
-const mockUseUpdateLlmProvider = jest.fn();
-const mockUseDeleteLlmProvider = jest.fn();
-const mockUseCreateLlmModel = jest.fn();
-const mockUseDeleteLlmModel = jest.fn();
+const mockUseProviders = jest.fn();
+const mockUseModels = jest.fn();
+const mockUseCreateProvider = jest.fn();
+const mockUseUpdateProvider = jest.fn();
+const mockUseDeleteProvider = jest.fn();
+const mockUseCreateModel = jest.fn();
+const mockUseDeleteModel = jest.fn();
 const mockUseSyncProviderModels = jest.fn();
 
-jest.mock("@/hooks/use-llm-providers", () => ({
-  useLlmProviders: () => mockUseLlmProviders(),
-  useLlmProvider: () => ({ data: null, isLoading: false, error: null }),
-  useLlmModels: () => mockUseLlmModels(),
-  useCreateLlmProvider: () => mockUseCreateLlmProvider(),
-  useUpdateLlmProvider: () => mockUseUpdateLlmProvider(),
-  useDeleteLlmProvider: () => mockUseDeleteLlmProvider(),
-  useCreateLlmModel: () => mockUseCreateLlmModel(),
-  useDeleteLlmModel: () => mockUseDeleteLlmModel(),
+jest.mock("@/hooks/use-providers", () => ({
+  useProviders: () => mockUseProviders(),
+  useProvider: () => ({ data: null, isLoading: false, error: null }),
+  useModels: () => mockUseModels(),
+  useCreateProvider: () => mockUseCreateProvider(),
+  useUpdateProvider: () => mockUseUpdateProvider(),
+  useDeleteProvider: () => mockUseDeleteProvider(),
+  useCreateModel: () => mockUseCreateModel(),
+  useDeleteModel: () => mockUseDeleteModel(),
   useSyncProviderModels: () => mockUseSyncProviderModels(),
 }));
 
@@ -102,16 +102,16 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
-jest.mock("@/lib/api/llm-providers", () => ({
-  updateLlmModel: jest.fn(),
+jest.mock("@/lib/api/providers", () => ({
+  updateModel: jest.fn(),
 }));
 
 jest.mock("@/lib/query-keys", () => ({
   queryKeys: {
-    llmModels: {
-      all: ["llm-models"],
-      list: () => ["llm-models"],
-      detail: (id: string) => ["llm-models", id],
+    models: {
+      all: ["models"],
+      list: () => ["models"],
+      detail: (id: string) => ["models", id],
     },
     organizations: { all: ["organizations"], detail: (id: string) => ["organization", id] },
   },
@@ -133,39 +133,39 @@ describe("ProvidersPage", () => {
     });
 
     // Default mock implementations
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: mockProviders,
       isLoading: false,
       error: null,
     });
 
-    mockUseLlmModels.mockReturnValue({
+    mockUseModels.mockReturnValue({
       data: mockModels,
       isLoading: false,
       error: null,
     });
 
-    mockUseDeleteLlmProvider.mockReturnValue({
+    mockUseDeleteProvider.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
 
-    mockUseDeleteLlmModel.mockReturnValue({
+    mockUseDeleteModel.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
 
-    mockUseCreateLlmProvider.mockReturnValue({
+    mockUseCreateProvider.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
 
-    mockUseUpdateLlmProvider.mockReturnValue({
+    mockUseUpdateProvider.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
 
-    mockUseCreateLlmModel.mockReturnValue({
+    mockUseCreateModel.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
     });
@@ -215,7 +215,7 @@ describe("ProvidersPage", () => {
   });
 
   it("shows loading skeleton when providers are loading", () => {
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [],
       isLoading: true,
       error: null,
@@ -229,7 +229,7 @@ describe("ProvidersPage", () => {
   });
 
   it("shows empty state when no providers exist", () => {
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [],
       isLoading: false,
       error: null,
@@ -244,7 +244,7 @@ describe("ProvidersPage", () => {
   });
 
   it("shows error message when providers fail to load", () => {
-    mockUseLlmProviders.mockReturnValue({
+    mockUseProviders.mockReturnValue({
       data: [],
       isLoading: false,
       error: new Error("Network error"),

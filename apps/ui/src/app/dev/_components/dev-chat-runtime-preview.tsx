@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { type SessionContextValue } from "@/app/(main)/sessions/[sessionId]/session-context";
-import type { Agent, Event, LlmModelWithProvider, Message, Session } from "@/lib/api/types";
+import type { Agent, Event, ModelWithProvider, Message, Session } from "@/lib/api/types";
 import { getTextFromContent, getToolCallsFromContent } from "@/lib/api/types";
 import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
 import { getDevChatFixture } from "@/app/dev/_fixtures/chat-runtime-fixtures";
@@ -24,9 +24,9 @@ export function DevChatRuntimeScene({
 }) {
   const fixture = useMemo(() => getDevChatFixture(scenario), [scenario]);
   const { locale } = useLocale();
-  const llmModels = useMemo<LlmModelWithProvider[]>(
+  const models = useMemo<ModelWithProvider[]>(
     () =>
-      fixture.llmModels.map((model) => ({
+      fixture.models.map((model) => ({
         ...model,
         provider_name: model.provider_id === "provider-openai" ? "OpenAI" : "OpenRouter",
         provider_type: "openai",
@@ -50,7 +50,7 @@ export function DevChatRuntimeScene({
           },
         },
       })),
-    [fixture.llmModels],
+    [fixture.models],
   );
   const [events, setEvents] = useState<Event[]>(fixture.events);
   const [reasoningEffort, setReasoningEffort] = useState<SessionContextValue["reasoningEffort"]>(
@@ -64,7 +64,7 @@ export function DevChatRuntimeScene({
     display_name: "Platform Chat",
     description: "Fixture agent for runtime chat previews.",
     system_prompt: "You are a precise coding assistant.",
-    default_model_id: llmModels[0].id,
+    default_model_id: models[0].id,
     tags: [],
     capabilities: [],
     initial_files: [],
@@ -86,7 +86,7 @@ export function DevChatRuntimeScene({
     preview: null,
     output_preview: null,
     tags: [],
-    model_id: llmModels[0].id,
+    model_id: models[0].id,
     status: scenario === "tool-activity" ? "active" : "idle",
     created_at: "2026-03-07T21:20:00Z",
     updated_at: "2026-03-07T21:22:00Z",
@@ -142,7 +142,7 @@ export function DevChatRuntimeScene({
     agent,
     session,
     events,
-    llmModel: llmModels[0],
+    llmModel: models[0],
     chatEvents: events,
     toolResultsMap: fixture.toolResultsMap,
     toolProgressMap: fixture.toolProgressMap,

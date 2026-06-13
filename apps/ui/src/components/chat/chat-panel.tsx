@@ -8,7 +8,7 @@ import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-con
 import {
   useImageAttachments,
   useImageDropZone,
-  useLlmModels,
+  useModels,
   useScrollManager,
   useSessionCommands,
 } from "@/hooks";
@@ -125,7 +125,7 @@ export function ChatPanel() {
     getToolCalls,
   } = useSessionContext();
 
-  const { data: llmModels = [] } = useLlmModels();
+  const { data: models = [] } = useModels();
   const [inputValue, setInputValue] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
@@ -149,7 +149,7 @@ export function ChatPanel() {
   } = useChatModelSelection({
     agentId,
     sessionId,
-    llmModels,
+    models,
     defaultModel: llmModel,
     reasoningEffort,
     setReasoningEffort,
@@ -545,7 +545,7 @@ export function ChatPanel() {
 
       <ChatComposer
         commands={commands}
-        llmModels={llmModels}
+        models={models}
         inputValue={inputValue}
         onInputChange={setInputValue}
         onSubmit={submitMessage}

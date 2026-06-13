@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { EditModelDialog } from "@/components/models/edit-model-dialog";
-import type { LlmModelWithProvider, LlmProvider } from "@/lib/api/types";
+import type { ModelWithProvider, Provider } from "@/lib/api/types";
 
 jest.mock("@/components/ui/select", () => {
   const React = jest.requireActual("react");
@@ -31,7 +31,7 @@ jest.mock("@/components/ui/select", () => {
   };
 });
 
-const providers: LlmProvider[] = [
+const providers: Provider[] = [
   {
     id: "provider-1",
     name: "OpenAI Production",
@@ -52,7 +52,7 @@ const providers: LlmProvider[] = [
   },
 ];
 
-const model: LlmModelWithProvider = {
+const model: ModelWithProvider = {
   id: "model-1",
   provider_id: "provider-1",
   model_id: "gpt-4.5",

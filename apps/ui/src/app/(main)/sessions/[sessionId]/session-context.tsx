@@ -10,7 +10,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useAgent, useSession, useEvents, useLlmModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useModel } from "@/hooks";
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
 import { useOrg } from "@/providers/org-provider";
@@ -20,7 +20,7 @@ import type {
   Session,
   SessionStatus,
   Event,
-  LlmModelWithProvider,
+  ModelWithProvider,
   Controls,
   ReasoningEffort,
   ToolCompletedData,
@@ -48,7 +48,7 @@ export interface SessionContextValue {
   agent: Agent | undefined;
   session: Session | undefined;
   events: Event[] | undefined;
-  llmModel: LlmModelWithProvider | undefined;
+  llmModel: ModelWithProvider | undefined;
   chatEvents: Event[];
   toolResultsMap: Map<string, ToolCompletedData>;
   toolProgressMap: Map<string, ToolProgressData>;
@@ -201,7 +201,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   });
 
   // Fetch LLM model info if session has a model_id
-  const { data: llmModel } = useLlmModel(session?.model_id ?? "");
+  const { data: llmModel } = useModel(session?.model_id ?? "");
 
   // Fetch events using paginated REST + SSE for real-time streaming
   const {

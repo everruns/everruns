@@ -1,12 +1,6 @@
 "use client";
 
-import type {
-  Agent,
-  LlmModelWithProvider,
-  Session,
-  SessionStatus,
-  TokenUsage,
-} from "@/lib/api/types";
+import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
 import type { SessionNavKey } from "@/components/session/session-header";
 
 const agent: Agent = {
@@ -26,7 +20,7 @@ const agent: Agent = {
   deleted_at: null,
 };
 
-const model: LlmModelWithProvider = {
+const model: ModelWithProvider = {
   id: "model-kimi-k2.5",
   provider_id: "provider-openrouter",
   model_id: "openrouter/kimi-k2.5",

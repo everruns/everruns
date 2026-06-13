@@ -261,7 +261,7 @@ async fn test_provider_and_model_workflow() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating LLM provider...");
     let create_provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Test OpenAI Provider",
             "provider_type": "openai",
@@ -287,7 +287,7 @@ async fn test_provider_and_model_workflow() {
     println!("\nStep 2: Creating model for provider...");
     let create_model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -315,13 +315,13 @@ async fn test_provider_and_model_workflow() {
     println!("\nCleaning up...");
 
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -338,7 +338,7 @@ async fn test_model_profile() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating OpenAI provider...");
     let create_provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Test Profile Provider",
             "provider_type": "openai",
@@ -359,7 +359,7 @@ async fn test_model_profile() {
     println!("\nStep 2: Creating gpt-4o model...");
     let create_model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -383,7 +383,7 @@ async fn test_model_profile() {
     // Step 3: Get the model via the list endpoint which includes profile
     println!("\nStep 3: Getting model with profile via list endpoint...");
     let list_models_response = client
-        .get(format!("{}/v1/llm-models", API_BASE_URL))
+        .get(format!("{}/v1/models", API_BASE_URL))
         .send()
         .await
         .expect("Failed to list models");
@@ -426,13 +426,13 @@ async fn test_model_profile() {
     // Cleanup
     println!("\nCleaning up...");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model_id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model_id))
         .send()
         .await
         .expect("Failed to delete model");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -449,7 +449,7 @@ async fn test_session_inherits_agent_default_model() {
     // Step 1: Create an LLM provider
     println!("\nStep 1: Creating LLM provider...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Test Provider for Session Model",
             "provider_type": "openai",
@@ -469,7 +469,7 @@ async fn test_session_inherits_agent_default_model() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -542,7 +542,7 @@ async fn test_session_inherits_agent_default_model() {
     // Create another model
     let model2_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -596,17 +596,17 @@ async fn test_session_inherits_agent_default_model() {
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model2.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model2.id))
         .send()
         .await
         .expect("Failed to delete model2");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1027,7 +1027,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Step 1: Create Anthropic provider and model
     println!("\nStep 1: Creating Anthropic provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "FS Bash Integration Test Provider",
             "provider_type": "anthropic",
@@ -1055,7 +1055,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
     // Create model (claude-3-5-haiku for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -1263,7 +1263,7 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         .expect("Failed to delete agent");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1295,7 +1295,7 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Edit Tool Provider",
             "provider_type": "llmsim"
@@ -1320,7 +1320,7 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -1467,14 +1467,14 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1503,7 +1503,7 @@ async fn test_message_triggers_agent_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Test Provider",
             "provider_type": "llmsim"
@@ -1528,7 +1528,7 @@ async fn test_message_triggers_agent_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -1750,12 +1750,12 @@ async fn test_message_triggers_agent_workflow() {
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -1790,7 +1790,7 @@ async fn test_no_duplicate_tool_calls() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Duplicate Tool Test Provider",
             "provider_type": "openai",
@@ -1811,7 +1811,7 @@ async fn test_no_duplicate_tool_calls() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -2016,12 +2016,12 @@ async fn test_no_duplicate_tool_calls() {
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -2228,7 +2228,7 @@ async fn test_second_message_triggers_workflow() {
     // Step 0: Create LlmSim provider and model (no real API keys needed)
     println!("\nStep 0: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Second Message Test",
             "provider_type": "llmsim"
@@ -2253,7 +2253,7 @@ async fn test_second_message_triggers_workflow() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -2521,12 +2521,12 @@ async fn test_second_message_triggers_workflow() {
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3085,7 +3085,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Tool Test Provider",
             "provider_type": "llmsim"
@@ -3110,7 +3110,7 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -3332,14 +3332,14 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3381,7 +3381,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "OpenAI Tool Test Provider",
             "provider_type": "openai",
@@ -3409,7 +3409,7 @@ async fn test_agent_execution_openai_with_tool_calls() {
     // Create model (gpt-4o-mini for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -3566,14 +3566,14 @@ async fn test_agent_execution_openai_with_tool_calls() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3631,7 +3631,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     let api_key = std::env::var("ANTHROPIC_API_KEY").expect("ANTHROPIC_API_KEY should be set");
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Tool Test Provider",
             "provider_type": "anthropic",
@@ -3659,7 +3659,7 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
     // Create model (claude-3-5-haiku for cost-effectiveness)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -3816,14 +3816,14 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -3868,7 +3868,7 @@ async fn test_agent_execution_multiple_tool_calls() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Multi-Tool Test",
             "provider_type": "llmsim"
@@ -3892,7 +3892,7 @@ async fn test_agent_execution_multiple_tool_calls() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -4005,14 +4005,14 @@ async fn test_agent_execution_multiple_tool_calls() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4044,7 +4044,7 @@ async fn test_streaming_events_emitted() {
     // Step 1: Create LlmSim provider and model
     println!("\nStep 1: Creating LlmSim provider and model...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Streaming Test Provider",
             "provider_type": "llmsim"
@@ -4069,7 +4069,7 @@ async fn test_streaming_events_emitted() {
 
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -4342,12 +4342,12 @@ async fn test_streaming_events_emitted() {
         .await
         .expect("Failed to delete agent");
     client
-        .delete(format!("{}/v1/llm-models/{}", API_BASE_URL, model.id))
+        .delete(format!("{}/v1/models/{}", API_BASE_URL, model.id))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4370,7 +4370,7 @@ async fn test_cancel_turn_endpoint() {
     // Step 1: Create LlmSim provider
     println!("\nStep 1: Creating LlmSim provider...");
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "LlmSim Cancel Test",
             "provider_type": "llmsim"
@@ -4397,7 +4397,7 @@ async fn test_cancel_turn_endpoint() {
     println!("\nStep 2: Creating model...");
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -4492,7 +4492,7 @@ async fn test_cancel_turn_endpoint() {
         .expect("Failed to delete agent");
 
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4531,7 +4531,7 @@ async fn test_anthropic_extended_thinking() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Thinking Test Provider",
             "provider_type": "anthropic",
@@ -4559,7 +4559,7 @@ async fn test_anthropic_extended_thinking() {
     // Create model (claude-sonnet-4 supports extended thinking)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -4819,14 +4819,14 @@ async fn test_anthropic_extended_thinking() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");
@@ -4888,7 +4888,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     };
 
     let provider_response = client
-        .post(format!("{}/v1/llm-providers", API_BASE_URL))
+        .post(format!("{}/v1/providers", API_BASE_URL))
         .json(&json!({
             "name": "Anthropic Thinking+Tools Test",
             "provider_type": "anthropic",
@@ -4916,7 +4916,7 @@ async fn test_anthropic_extended_thinking_with_tools() {
     // Create model (claude-sonnet-4 supports extended thinking)
     let model_response = client
         .post(format!(
-            "{}/v1/llm-providers/{}/models",
+            "{}/v1/providers/{}/models",
             API_BASE_URL, provider.id
         ))
         .json(&json!({
@@ -5172,14 +5172,14 @@ async fn test_anthropic_extended_thinking_with_tools() {
         .expect("Failed to delete agent");
     client
         .delete(format!(
-            "{}/v1/llm-providers/{}/models/{}",
+            "{}/v1/providers/{}/models/{}",
             API_BASE_URL, provider.id, model.id
         ))
         .send()
         .await
         .expect("Failed to delete model");
     client
-        .delete(format!("{}/v1/llm-providers/{}", API_BASE_URL, provider.id))
+        .delete(format!("{}/v1/providers/{}", API_BASE_URL, provider.id))
         .send()
         .await
         .expect("Failed to delete provider");

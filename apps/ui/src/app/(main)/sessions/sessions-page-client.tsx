@@ -6,7 +6,7 @@ import {
   useHarnesses,
   useSessions,
   useCreateSession,
-  useLlmModels,
+  useModels,
   usePinSession,
   useUnpinSession,
 } from "@/hooks";
@@ -30,7 +30,7 @@ import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import { exportSessionJsonl } from "@/lib/api/sessions";
-import type { LlmModelWithProvider, Agent } from "@/lib/api/types";
+import type { ModelWithProvider, Agent } from "@/lib/api/types";
 import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
 
@@ -55,7 +55,7 @@ export default function SessionsPageClient() {
     selectedAgentId || undefined,
     { offset, limit: PAGE_SIZE },
   );
-  const { data: llmModels } = useLlmModels();
+  const { data: models } = useModels();
   const createSession = useCreateSession();
   const pinSessionMutation = usePinSession();
   const unpinSessionMutation = useUnpinSession();
@@ -72,9 +72,9 @@ export default function SessionsPageClient() {
   const totalPages = Math.ceil(totalSessions / PAGE_SIZE);
 
   const modelMap = useMemo(() => {
-    if (!llmModels) return new Map<string, LlmModelWithProvider>();
-    return new Map(llmModels.map((m) => [m.id, m]));
-  }, [llmModels]);
+    if (!models) return new Map<string, ModelWithProvider>();
+    return new Map(models.map((m) => [m.id, m]));
+  }, [models]);
 
   const agentMap = useMemo(() => {
     if (!agents) return new Map<string, Agent>();

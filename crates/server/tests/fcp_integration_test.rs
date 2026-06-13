@@ -41,7 +41,7 @@ fn unique_slug(prefix: &str) -> String {
 async fn create_llmsim_agent(server: &TestServer) -> String {
     let provider: Value = server
         .post(
-            "/v1/llm-providers",
+            "/v1/providers",
             json!({
                 "name": unique_id("FCP Test Provider"),
                 "provider_type": "llmsim"
@@ -53,10 +53,7 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
 
     let model: Value = server
         .post(
-            &format!(
-                "/v1/llm-providers/{}/models",
-                provider["id"].as_str().unwrap()
-            ),
+            &format!("/v1/providers/{}/models", provider["id"].as_str().unwrap()),
             json!({
                 "model_id": unique_id("llmsim-fcp"),
                 "display_name": unique_id("FCP Test Model"),

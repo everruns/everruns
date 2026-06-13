@@ -21,7 +21,7 @@ import {
 import { ModelIcon } from "@/components/models/model-icon";
 import { EditModelDialog } from "@/components/models/edit-model-dialog";
 import { formatTokens } from "@/lib/formatting";
-import type { LlmModelWithProvider, LlmProvider, UpdateLlmModelRequest } from "@/lib/api/types";
+import type { ModelWithProvider, Provider, UpdateModelRequest } from "@/lib/api/types";
 
 function formatCost(cost: number): string {
   if (cost >= 100) {
@@ -66,10 +66,10 @@ export function ModelRow({
   onToggleEnabled,
   isTogglingEnabled,
 }: {
-  model: LlmModelWithProvider;
-  providers: LlmProvider[];
+  model: ModelWithProvider;
+  providers: Provider[];
   onDelete: (id: string) => void;
-  onUpdate: (id: string, data: UpdateLlmModelRequest) => Promise<void>;
+  onUpdate: (id: string, data: UpdateModelRequest) => Promise<void>;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   isTogglingEnabled: boolean;
 }) {

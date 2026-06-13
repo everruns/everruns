@@ -1,10 +1,10 @@
 import { render } from "@testing-library/react";
 import { ModelIcon } from "@/components/models/model-icon";
-import type { LlmModelWithProvider, ModelVendor } from "@/lib/api/types";
+import type { ModelWithProvider, ModelVendor } from "@/lib/api/types";
 
 function model(
   model_vendor: ModelVendor | undefined,
-  provider_type: LlmModelWithProvider["provider_type"] = "openai_completions",
+  provider_type: ModelWithProvider["provider_type"] = "openai_completions",
 ) {
   return { provider_type, model_vendor };
 }

@@ -10,13 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type {
-  Agent,
-  LlmModelWithProvider,
-  Session,
-  SessionStatus,
-  TokenUsage,
-} from "@/lib/api/types";
+import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
@@ -319,7 +313,7 @@ export function SessionHeader({
   session: Session;
   agent?: Agent;
   agentId?: string;
-  llmModel?: LlmModelWithProvider;
+  llmModel?: ModelWithProvider;
   effectiveStatus?: SessionStatus;
   liveUsage?: TokenUsage;
   activeTab: SessionNavKey;

@@ -11,8 +11,8 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { LlmModelWithProvider } from "@/lib/api/types";
-import { useLlmModels, useUpdateLlmModel } from "@/hooks/use-llm-providers";
+import type { ModelWithProvider } from "@/lib/api/types";
+import { useModels, useUpdateModel } from "@/hooks/use-providers";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface ModelPickerProps {
@@ -47,7 +47,7 @@ export function ModelPicker({
   showFavoriteToggle = false,
   className,
 }: ModelPickerProps) {
-  const { data: models = [], isLoading } = useLlmModels();
+  const { data: models = [], isLoading } = useModels();
 
   // Only show enabled models, sorted: favorites first, then by provider and name
   const sortedModels = [...models]
@@ -103,13 +103,13 @@ export function ModelPicker({
 }
 
 interface ModelSelectItemProps {
-  model: LlmModelWithProvider;
+  model: ModelWithProvider;
   showFavoriteToggle: boolean;
 }
 
 function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
   const queryClient = useQueryClient();
-  const updateModel = useUpdateLlmModel(model.id);
+  const updateModel = useUpdateModel(model.id);
 
   const handleToggleFavorite = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -119,7 +119,7 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
       { is_favorite: !model.is_favorite },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ["llm-models"] });
+          queryClient.invalidateQueries({ queryKey: ["models"] });
         },
       },
     );
@@ -159,7 +159,7 @@ function ModelSelectItem({ model, showFavoriteToggle }: ModelSelectItemProps) {
 // ============================================
 
 interface FavoriteToggleProps {
-  model: LlmModelWithProvider;
+  model: ModelWithProvider;
   size?: "sm" | "default";
 }
 
@@ -168,14 +168,14 @@ interface FavoriteToggleProps {
  */
 export function FavoriteToggle({ model, size = "default" }: FavoriteToggleProps) {
   const queryClient = useQueryClient();
-  const updateModel = useUpdateLlmModel(model.id);
+  const updateModel = useUpdateModel(model.id);
 
   const handleToggle = () => {
     updateModel.mutate(
       { is_favorite: !model.is_favorite },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: ["llm-models"] });
+          queryClient.invalidateQueries({ queryKey: ["models"] });
         },
       },
     );

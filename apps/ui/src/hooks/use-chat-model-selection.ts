@@ -6,20 +6,20 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { LlmModelWithProvider, ReasoningEffort } from "@/lib/api/types";
+import type { ModelWithProvider, ReasoningEffort } from "@/lib/api/types";
 
 export function useChatModelSelection({
   agentId,
   sessionId,
-  llmModels,
+  models,
   defaultModel,
   reasoningEffort,
   setReasoningEffort,
 }: {
   agentId?: string;
   sessionId: string;
-  llmModels: LlmModelWithProvider[];
-  defaultModel?: LlmModelWithProvider;
+  models: ModelWithProvider[];
+  defaultModel?: ModelWithProvider;
   reasoningEffort: ReasoningEffort | "";
   setReasoningEffort: (value: ReasoningEffort | "") => void;
 }) {
@@ -39,8 +39,8 @@ export function useChatModelSelection({
   }, [storageKey]);
 
   const selectedModel = useMemo(
-    () => llmModels.find((model) => model.id === selectedModelId),
-    [llmModels, selectedModelId],
+    () => models.find((model) => model.id === selectedModelId),
+    [models, selectedModelId],
   );
 
   const activeModel = selectedModel ?? defaultModel;

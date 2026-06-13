@@ -13,15 +13,15 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getOrganization } from "@/lib/api/organizations";
 import { listHarnesses } from "@/lib/api/harnesses";
-import { useCreateLlmProvider, useLlmProviders } from "@/hooks/use-llm-providers";
+import { useCreateProvider, useProviders } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import type { ApiError } from "@/lib/api/client";
-import type { LlmProviderType } from "@/lib/api/types";
+import type { DriverId } from "@/lib/api/types";
 
-type SetupProviderType = Extract<LlmProviderType, "openai" | "anthropic">;
+type SetupProviderType = Extract<DriverId, "openai" | "anthropic">;
 
 interface SetupStep {
   label: string;
@@ -112,7 +112,7 @@ export default function OrgSetupPage() {
   });
 
   // Check if a provider already exists (skip the form if so)
-  const { data: providers = [] } = useLlmProviders();
+  const { data: providers = [] } = useProviders();
   const hasProvider = providers.length > 0;
 
   // Set current org once loaded — derive role from membership list when available
@@ -169,7 +169,7 @@ export default function OrgSetupPage() {
   // --- LLM provider form state ---
   const [selectedProvider, setSelectedProvider] = useState<SetupProviderType>("openai");
   const [apiKey, setApiKey] = useState("");
-  const createProvider = useCreateLlmProvider();
+  const createProvider = useCreateProvider();
   const [providerError, setProviderError] = useState<string | null>(null);
 
   const handleContinue = async () => {

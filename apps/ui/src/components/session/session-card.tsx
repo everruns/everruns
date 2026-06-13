@@ -17,7 +17,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
-import type { Session, SessionStatus, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { Session, SessionStatus, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 
@@ -37,7 +37,7 @@ export interface SessionCardProps {
   /** Optional agent lifecycle status for reference rendering */
   agentStatus?: string | null;
   /** Optional LLM model for display */
-  model?: LlmModelWithProvider;
+  model?: ModelWithProvider;
   /** Optional custom summary text (overrides default title display) */
   summary?: string;
   /** Whether to show the delete button (if provided with onDelete) */

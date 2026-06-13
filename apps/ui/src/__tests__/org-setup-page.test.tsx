@@ -28,13 +28,13 @@ jest.mock("@/lib/api/harnesses", () => ({
   ]),
 }));
 
-jest.mock("@/hooks/use-llm-providers", () => ({
-  useLlmProviders: () => ({
+jest.mock("@/hooks/use-providers", () => ({
+  useProviders: () => ({
     data: [],
     isLoading: false,
     isError: false,
   }),
-  useCreateLlmProvider: () => ({
+  useCreateProvider: () => ({
     mutateAsync: mockCreateProvider,
     isPending: false,
   }),

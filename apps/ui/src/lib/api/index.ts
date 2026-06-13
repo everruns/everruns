@@ -5,7 +5,7 @@ export * from "./agents";
 export * from "./sessions";
 export * from "./messages";
 export * from "./events";
-export * from "./llm-providers";
+export * from "./providers";
 export * from "./mcp-servers";
 export * from "./notifications";
 export * from "./organizations";

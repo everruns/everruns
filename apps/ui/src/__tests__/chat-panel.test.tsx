@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { ApiError } from "@/lib/api/client";
-import type { Event, LlmModelWithProvider } from "@/lib/api/types";
+import type { Event, ModelWithProvider } from "@/lib/api/types";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
@@ -25,7 +25,7 @@ const mockSessionContext = {
   agentId: "agent-1",
   events: [],
   sessionId: "session-1",
-  llmModel: null as LlmModelWithProvider | null,
+  llmModel: null as ModelWithProvider | null,
   chatEvents: [] as Event[],
   toolResultsMap: new Map(),
   toolProgressMap: new Map(),
@@ -61,7 +61,7 @@ jest.mock("@/components/session/session-task-chips", () => ({
 }));
 
 jest.mock("@/hooks", () => ({
-  useLlmModels: () => ({ data: [] }),
+  useModels: () => ({ data: [] }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,

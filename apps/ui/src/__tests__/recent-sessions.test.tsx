@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { RecentSessions } from "@/components/dashboard/recent-sessions";
-import type { Session, Agent, LlmModelWithProvider } from "@/lib/api/types";
+import type { Session, Agent, ModelWithProvider } from "@/lib/api/types";
 
 // Helper to create a test session
 function createSession(overrides?: Partial<Session>): Session {
@@ -43,7 +43,7 @@ function createAgent(overrides?: Partial<Agent>): Agent {
 }
 
 // Helper to create a test LLM model
-function createLlmModel(overrides?: Partial<LlmModelWithProvider>): LlmModelWithProvider {
+function createModel(overrides?: Partial<ModelWithProvider>): ModelWithProvider {
   return {
     id: "model-1",
     provider_id: "provider-1",
@@ -93,7 +93,7 @@ describe("RecentSessions", () => {
 
   describe("model display", () => {
     it("displays model name when session has a model_id and model data is provided", () => {
-      const model = createLlmModel({
+      const model = createModel({
         id: "model-123",
         display_name: "Claude 3.5 Sonnet",
       });
@@ -125,8 +125,8 @@ describe("RecentSessions", () => {
     });
 
     it("displays multiple sessions with different models", () => {
-      const model1 = createLlmModel({ id: "model-1", display_name: "GPT-4o" });
-      const model2 = createLlmModel({
+      const model1 = createModel({ id: "model-1", display_name: "GPT-4o" });
+      const model2 = createModel({
         id: "model-2",
         display_name: "Claude 3.5 Sonnet",
       });

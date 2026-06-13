@@ -22,7 +22,7 @@ Model resolution priority on each turn:
 ## Add a new provider
 
 ```bash
-curl -X POST http://localhost:9300/api/v1/llm-providers \
+curl -X POST http://localhost:9300/api/v1/providers \
   -H "Content-Type: application/json" \
   -d '{
     "name": "anthropic",
