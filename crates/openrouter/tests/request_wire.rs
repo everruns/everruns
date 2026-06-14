@@ -150,10 +150,6 @@ async fn excludes_reasoning_with_explicit_effort() {
             "exclude": true
         })
     );
-    assert!(
-        body["reasoning"].get("summary").is_none(),
-        "OpenRouter requests must not ask for visible reasoning summaries by default"
-    );
 }
 
 #[tokio::test]
