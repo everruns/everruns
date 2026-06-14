@@ -1839,11 +1839,15 @@ impl ServerAppBuilder {
         );
 
         // -- Session schedule poller (both prod and dev) --
+        // Provide a built-in probe registry so monitors with a `spec["tool"]`
+        // can run their probe directly without delegating to an agent turn.
+        let probe_registry = std::sync::Arc::new(everruns_core::ToolRegistry::with_defaults());
         crate::session_scheduler::spawn_session_scheduler(
             db.clone(),
             session_schedule_service,
             event_service,
             runner,
+            Some(probe_registry),
             std::time::Duration::from_secs(15),
         );
 
