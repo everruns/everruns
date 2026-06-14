@@ -3,8 +3,8 @@ use crate::domains::common::*;
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use everruns_core::SessionTask;
 use everruns_core::session_task::{
-    NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TaskMessage,
-    TaskMessagePart, find_task_executor,
+    NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TASK_KIND_SUBAGENT,
+    TaskMessage, TaskMessagePart, find_task_executor,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -159,9 +159,16 @@ impl Command for PostSessionTaskMessage {
 
     async fn execute(self, ctx: &Ctx) -> Result<TaskMessage, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
+        let task = q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Session task"))?;
+
+        if task.kind == TASK_KIND_SUBAGENT {
+            return Err(CommandError::bad_request(
+                "Subagent tasks are steered by their parent agent via the message_task tool; \
+                 HTTP message delivery is not supported for this task kind.",
+            ));
+        }
 
         let content = match (self.content, self.text) {
             (Some(content), _) if !content.is_empty() => content,
@@ -337,7 +344,7 @@ mod tests {
     use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
         CreateSessionTask, SessionTaskRegistry, SessionTaskState, TASK_KIND_BACKGROUND_TOOL,
-        TASK_KIND_MONITOR, TaskLinks, TaskWakePolicy,
+        TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskLinks, TaskWakePolicy,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
     use std::sync::Arc;
@@ -455,6 +462,59 @@ mod tests {
             !updated_schedule.enabled,
             "schedule must be disabled after monitor task cancel"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // PostSessionTaskMessage — subagent kind (must be rejected)
+    // -------------------------------------------------------------------------
+
+    /// Posting a message to a subagent task must return 400; subagent steering
+    /// is internal-channel only (parent agent's message_task tool).
+    #[tokio::test]
+    async fn post_message_to_subagent_task_returns_bad_request() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Subagent Task".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let result = PostSessionTaskMessage {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            text: Some("steer me".to_string()),
+            content: None,
+            in_reply_to: None,
+        }
+        .execute(&ctx)
+        .await;
+
+        assert!(result.is_err(), "subagent task message must be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, CommandErrorKind::BadRequest(_)),
+            "must be a BadRequest error, got: {:?}",
+            err.kind
+        );
+
+        // No message must have been recorded.
+        let messages = registry
+            .list_messages(session_id, &task.id, Some(10))
+            .await
+            .unwrap();
+        assert!(messages.is_empty(), "no message must be persisted for subagent tasks");
     }
 
     // -------------------------------------------------------------------------
