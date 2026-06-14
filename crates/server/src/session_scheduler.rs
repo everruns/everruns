@@ -454,15 +454,21 @@ async fn run_probe_for_task(
 
     let output = match result {
         everruns_core::ToolExecutionResult::Success(ref val) => {
+            // Try the MCP `{"content":[{"text":"…"}]}` envelope first, then a
+            // top-level string, then pretty-print the raw JSON so structured
+            // tool outputs (e.g. `get_current_time` → `{"datetime":…}`) are
+            // never silently discarded.
             let content = val
                 .get("content")
                 .and_then(|c| c.as_array())
                 .and_then(|arr| arr.first())
                 .and_then(|item| item.get("text"))
                 .and_then(|t| t.as_str())
+                .map(str::to_owned)
+                .or_else(|| val.as_str().map(str::to_owned))
                 .unwrap_or_else(|| {
-                    val.as_str()
-                        .unwrap_or("(probe completed with no text output)")
+                    serde_json::to_string_pretty(val)
+                        .unwrap_or_else(|_| "(probe completed with no text output)".to_owned())
                 });
             format!(
                 "Probe `{tool_name}` succeeded at {}.\n\n{}",
@@ -476,27 +482,23 @@ async fn run_probe_for_task(
                 Utc::now().to_rfc3339()
             )
         }
-        everruns_core::ToolExecutionResult::InternalError(ref err) => {
-            format!(
-                "Probe `{tool_name}` failed at {} (internal error).\n\nError: {}",
-                Utc::now().to_rfc3339(),
-                err.message
-            )
+        // InternalError and ConnectionRequired cannot produce a useful probe
+        // observation — fall back so the caller records the legacy placeholder
+        // and starts a normal scheduled agent turn.
+        everruns_core::ToolExecutionResult::InternalError(_)
+        | everruns_core::ToolExecutionResult::ConnectionRequired { .. } => {
+            return ProbeOutcome::Skipped;
         }
         everruns_core::ToolExecutionResult::SuccessWithImages { ref result, .. } => {
+            // Pretty-print the JSON result; note image count for context.
+            let text = result.as_str().map(str::to_owned).unwrap_or_else(|| {
+                serde_json::to_string_pretty(result)
+                    .unwrap_or_else(|_| "(probe completed with image output)".to_owned())
+            });
             format!(
                 "Probe `{tool_name}` succeeded at {}.\n\n{}",
                 Utc::now().to_rfc3339(),
-                result
-                    .as_str()
-                    .unwrap_or("(probe completed with image output)")
-            )
-        }
-        everruns_core::ToolExecutionResult::ConnectionRequired { .. } => {
-            format!(
-                "Probe `{tool_name}` requires an external connection at {}. \
-                 Configure the connection and retry.",
-                Utc::now().to_rfc3339()
+                text
             )
         }
     };
@@ -893,6 +895,12 @@ mod tests {
             !body.contains("Monitor fired at"),
             "probe message must not be the legacy placeholder, got: {body}"
         );
+        // Verify the actual tool payload is present: get_current_time returns
+        // {"datetime": "…", "format": "iso8601", "timezone": "UTC"}.
+        assert!(
+            body.contains("datetime"),
+            "probe message must contain the tool result payload, got: {body}"
+        );
     }
 
     #[tokio::test]
@@ -960,7 +968,7 @@ mod tests {
             .unwrap();
         assert_eq!(messages.len(), 1);
         assert!(
-            messages[0].content_text().contains("Monitor fired at"),
+            message_text(&messages[0]).contains("Monitor fired at"),
             "must fall back to placeholder when registry is absent"
         );
     }

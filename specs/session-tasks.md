@@ -168,9 +168,15 @@ each fire.
 On each fire the session scheduler executes the probe tool directly (using a
 built-in tool registry) and records the result as an outbound message on the
 monitor's thread. Because the probe runs autonomously, no agent turn is
-started — the session LLM is not involved. If the probe tool is not in the
-built-in registry a plain `"Monitor fired at …"` placeholder is recorded
-instead and the normal scheduled session turn runs.
+started — the session LLM is not involved.
+
+A plain `"Monitor fired at …"` placeholder is recorded and the normal
+scheduled session turn runs instead when any of the following are true:
+
+- No tool registry is available at startup.
+- `spec["tool"]` is absent or empty.
+- The named tool is not in the built-in registry.
+- The tool returns `InternalError` or `ConnectionRequired` (non-observable outcomes).
 
 One-shot monitors transition to `succeeded` after their single fire; recurring
 monitors stay `running` until `cancel_task` is called, which cancels the linked
