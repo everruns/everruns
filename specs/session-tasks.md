@@ -157,15 +157,24 @@ update); `post` and `output` are content (thread and stream). This keeps
 | `subagent` | create child session, send instructions | `send_message(child)` | child question → `request_input`; final message → `post` + terminal state |
 | `external_agent` | A2A `message/send` | `message/send` with `remote_task_id` | `reconcile` polls `tasks/get`; remote artifacts → `artifact` |
 | `background_tool` | run `execute_background` with the sink | rarely used | direct sink calls (existing `BackgroundEventSink` is a strict subset) |
-| `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → outbound message on thread; one-shot → `succeeded`; recurring stays `running` |
+| `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → probe runs (or placeholder message); one-shot → `succeeded`; recurring stays `running` |
 
 A monitor is a long-lived task (`running` until canceled or exhausted).
 `spawn_background` with a `schedule` argument creates a `monitor` task linked
-to the backing session schedule via `spec["schedule_id"]`. Each schedule fire
-appends an outbound message to the monitor's thread. One-shot monitors
-transition to `succeeded` after their single fire; recurring monitors stay
-`running` until `cancel_task` is called, which cancels the linked schedule and
-transitions the task to `canceled`.
+to the backing session schedule via `spec["schedule_id"]`. The monitor spec
+also stores `spec["tool"]` and `spec["arguments"]` — the probe tool to run on
+each fire.
+
+On each fire the session scheduler executes the probe tool directly (using a
+built-in tool registry) and records the result as an outbound message on the
+monitor's thread. Because the probe runs autonomously, no agent turn is
+started — the session LLM is not involved. If the probe tool is not in the
+built-in registry a plain `"Monitor fired at …"` placeholder is recorded
+instead and the normal scheduled session turn runs.
+
+One-shot monitors transition to `succeeded` after their single fire; recurring
+monitors stay `running` until `cancel_task` is called, which cancels the linked
+schedule and transitions the task to `canceled`.
 
 If the underlying schedule is canceled or deleted directly (not via `cancel_task`
 or the API cancel endpoint), the session scheduler's periodic reconciliation sweep
