@@ -32,6 +32,27 @@ fn base_config(model: &str) -> LlmCallConfig {
     }
 }
 
+async fn capture_request_body(config: &LlmCallConfig) -> serde_json::Value {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&server)
+        .await;
+
+    let api_url = format!("{}/v1/responses", server.uri());
+    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+
+    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let _ = driver.chat_completion_stream(messages, config).await;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock server recorded requests");
+    assert_eq!(requests.len(), 1);
+    requests[0].body_json().expect("request body is JSON")
+}
+
 #[tokio::test]
 async fn sends_routing_controls_and_session_id() {
     let server = MockServer::start().await;
@@ -104,6 +125,51 @@ async fn sends_routing_controls_and_session_id() {
     );
     // Session-tracking key is forwarded at the request root for OpenRouter.
     assert_eq!(body["session_id"], "session_abc123");
+}
+
+#[tokio::test]
+async fn excludes_reasoning_by_default() {
+    let config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
+
+    let body = capture_request_body(&config).await;
+
+    assert_eq!(body["reasoning"], json!({ "exclude": true }));
+}
+
+#[tokio::test]
+async fn excludes_reasoning_with_explicit_effort() {
+    let mut config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
+    config.reasoning_effort = Some("high".to_string());
+
+    let body = capture_request_body(&config).await;
+
+    assert_eq!(
+        body["reasoning"],
+        json!({
+            "effort": "high",
+            "exclude": true
+        })
+    );
+    assert!(
+        body["reasoning"].get("summary").is_none(),
+        "OpenRouter requests must not ask for visible reasoning summaries by default"
+    );
+}
+
+#[tokio::test]
+async fn sends_reasoning_none_to_disable_openrouter_reasoning() {
+    let mut config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
+    config.reasoning_effort = Some("none".to_string());
+
+    let body = capture_request_body(&config).await;
+
+    assert_eq!(
+        body["reasoning"],
+        json!({
+            "effort": "none",
+            "exclude": true
+        })
+    );
 }
 
 #[tokio::test]

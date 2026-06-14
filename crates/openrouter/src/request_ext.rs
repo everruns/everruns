@@ -7,6 +7,7 @@
 //   - `models` / `route` / `provider` — model-fallback and provider routing
 //   - `plugins` — web-search / file-reader activations
 //   - `session_id` — OpenRouter session grouping (the Everruns session id)
+//   - `reasoning.exclude` — keep provider reasoning private by default
 
 use std::borrow::Cow;
 
@@ -34,6 +35,8 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         if let Some(session_id) = config.metadata.get("session_id") {
             obj.insert("session_id".to_string(), json!(session_id));
         }
+
+        apply_private_reasoning_policy(obj, config);
 
         let Some(routing) = config.openrouter_routing.as_ref() else {
             return Ok(());
@@ -67,6 +70,33 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         Ok(())
     }
+}
+
+fn apply_private_reasoning_policy(
+    obj: &mut serde_json::Map<String, Value>,
+    config: &LlmCallConfig,
+) {
+    let mut reasoning = match obj.remove("reasoning") {
+        Some(Value::Object(map)) => map,
+        _ => serde_json::Map::new(),
+    };
+
+    // OpenRouter may return reasoning tokens even when no effort is requested.
+    // Keep that reasoning internal unless a future explicit visible-reasoning
+    // option asks for summaries.
+    reasoning.remove("summary");
+    reasoning.insert("exclude".to_string(), Value::Bool(true));
+
+    if let Some(effort) = config
+        .reasoning_effort
+        .as_deref()
+        .map(str::trim)
+        .filter(|effort| !effort.is_empty())
+    {
+        reasoning.insert("effort".to_string(), Value::String(effort.to_string()));
+    }
+
+    obj.insert("reasoning".to_string(), Value::Object(reasoning));
 }
 
 /// Apply routing presets, then the capacity strategy, returning the resolved
