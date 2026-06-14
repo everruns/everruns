@@ -160,7 +160,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 
         // Try to find a re-attachable executor for this kind.
         let should_reattach = find_task_executor(&task.kind)
-            .is_some_and(|exec| exec.can_reattach())
+            .is_some_and(|exec| exec.can_reattach_task(&task))
             && (task.attempt as i64) < input.max_attempts;
 
         if should_reattach {
@@ -642,7 +642,8 @@ mod tests {
                 continue;
             }
 
-            let should_reattach = executor_for(&task.kind).is_some_and(|exec| exec.can_reattach())
+            let should_reattach = executor_for(&task.kind)
+                .is_some_and(|exec| exec.can_reattach_task(&task))
                 && (task.attempt as i64) < input.max_attempts;
 
             if should_reattach {

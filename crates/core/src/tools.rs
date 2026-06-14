@@ -1246,6 +1246,10 @@ impl Tool for SpawnBackgroundTool {
                 spec: json!({
                     "tool": tool_name,
                     "arguments": &tool_args,
+                    // Reaper uses this to decide whether to re-run on orphan.
+                    // Only idempotent/readonly tools are safe to re-execute.
+                    "reattachable": tool.hints().idempotent.unwrap_or(false)
+                        || tool.hints().readonly.unwrap_or(false),
                 }),
                 state: crate::session_task::SessionTaskState::Running,
                 links: crate::session_task::TaskLinks::default(),
@@ -1712,6 +1716,153 @@ fn is_canceled_outcome(
     outcome: &std::result::Result<BackgroundOutcome, ToolExecutionResult>,
 ) -> bool {
     matches!(outcome, Err(ToolExecutionResult::ToolError(msg)) if msg == BACKGROUND_CANCEL_SENTINEL)
+}
+
+/// Re-attach a `background_tool` task after worker loss.
+///
+/// Called by `BackgroundToolTaskExecutor::start()` when the reaper decides the
+/// task is safe to restart. Reads `spec["tool"]` and `spec["arguments"]` from
+/// the task, looks up the tool in the built-in default registry, and spawns a
+/// fresh background run with `task.attempt` as the heartbeat fence. New artifact
+/// paths are generated so old partial artifacts do not conflict.
+///
+/// Returns an error (→ reaper falls back to orphaned-fail) when:
+/// - `spec["tool"]` is absent or empty
+/// - the tool is not in the built-in default registry
+/// - the tool does not implement `BackgroundExecutable`
+pub(crate) async fn reattach_background_run(
+    task: &crate::session_task::SessionTask,
+    context: &crate::traits::ToolContext,
+) -> crate::error::Result<()> {
+    let tool_name: String = task
+        .spec
+        .get("tool")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            crate::error::AgentLoopError::tool(
+                "background_tool spec missing 'tool' field; cannot re-attach",
+            )
+        })?;
+
+    let tool_args = task
+        .spec
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+
+    let registry = std::sync::Arc::new(ToolRegistry::with_defaults());
+
+    let Some(tool) = registry.get(&tool_name).cloned() else {
+        return Err(crate::error::AgentLoopError::tool(format!(
+            "tool '{tool_name}' not found in built-in registry; cannot re-attach"
+        )));
+    };
+
+    if tool.as_background_executable().is_none() {
+        return Err(crate::error::AgentLoopError::tool(format!(
+            "tool '{tool_name}' does not support background execution; cannot re-attach"
+        )));
+    }
+
+    let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
+    let artifact_dir = format!("/.background/{run_id}");
+    let log_path = format!("{artifact_dir}/output.log");
+    let result_path = format!("{artifact_dir}/result.json");
+
+    let task_id = task.id.clone();
+    let task_attempt = task.attempt;
+    let session_id = task.session_id;
+
+    let sink_context = context.clone().with_tool_registry(registry);
+    let sink = std::sync::Arc::new(SessionBackgroundSink::new(
+        sink_context.clone(),
+        run_id.clone(),
+        task.display_name.clone(),
+        tool_name.to_string(),
+        log_path,
+        result_path,
+        true, // always signal session on re-attach completion
+        Some(task_id.clone()),
+    ));
+
+    let cancel_registry = context.session_task_registry.clone();
+    let run_id_for_log = run_id.clone();
+
+    tokio::spawn(async move {
+        let _ = sink.status("Re-attaching").await;
+
+        let outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
+            match (cancel_registry.as_ref(), Some(task_id.as_str())) {
+                (Some(registry), Some(task_id_str)) => {
+                    let registry = registry.clone();
+                    let task_id_str = task_id_str.to_string();
+                    let tool_fut = async {
+                        match tool.as_background_executable() {
+                            Some(bg) => {
+                                bg.execute_background(tool_args, sink_context.clone(), sink.clone())
+                                    .await
+                            }
+                            None => Err(ToolExecutionResult::tool_error(format!(
+                                "tool '{tool_name}' lost background support during re-attach"
+                            ))),
+                        }
+                    };
+                    let watch_fut = async {
+                        loop {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                            let _ = registry
+                                .update(
+                                    session_id,
+                                    &task_id_str,
+                                    crate::session_task::SessionTaskUpdate {
+                                        heartbeat_at: Some(chrono::Utc::now()),
+                                        expected_attempt: Some(task_attempt),
+                                        ..Default::default()
+                                    },
+                                )
+                                .await;
+                            if let Ok(Some(t)) = registry.get(session_id, &task_id_str).await
+                                && t.cancel_requested_at.is_some()
+                            {
+                                break;
+                            }
+                        }
+                    };
+                    tokio::select! {
+                        result = tool_fut => result,
+                        () = watch_fut => Err(ToolExecutionResult::ToolError(
+                            BACKGROUND_CANCEL_SENTINEL.to_string(),
+                        )),
+                    }
+                }
+                _ => match tool.as_background_executable() {
+                    Some(bg) => {
+                        bg.execute_background(tool_args, sink_context, sink.clone())
+                            .await
+                    }
+                    None => Err(ToolExecutionResult::tool_error(format!(
+                        "tool '{tool_name}' lost background support during re-attach"
+                    ))),
+                },
+            };
+
+        let finalize_result = if is_canceled_outcome(&outcome) {
+            sink.finalize_canceled().await
+        } else {
+            sink.finalize(outcome).await
+        };
+        if let Err(err) = finalize_result {
+            tracing::warn!(
+                run_id = run_id_for_log,
+                error = %err,
+                "Background run re-attach finalization failed"
+            );
+        }
+    });
+
+    Ok(())
 }
 
 async fn ensure_directory(
