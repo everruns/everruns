@@ -882,7 +882,7 @@ mod tests {
 
         // The outbound message must be the tool result, not the "Monitor fired" placeholder.
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1, "exactly one message must be recorded");
@@ -929,7 +929,7 @@ mod tests {
         );
 
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
@@ -963,7 +963,7 @@ mod tests {
         assert!(!probe_ran, "no registry → probe_ran must be false");
 
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
