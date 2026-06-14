@@ -624,11 +624,17 @@ pub trait SessionTaskRegistry: Send + Sync {
     ) -> Result<TaskMessage>;
 
     /// List messages on the task's channel, oldest first.
+    ///
+    /// When `after_id` is `Some`, only messages newer than that message ID are
+    /// returned (exclusive cursor, since_id-style). Both postgres and in-memory
+    /// backends implement the cursor; other backends ignore it and return all
+    /// messages up to `limit`.
     async fn list_messages(
         &self,
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        after_id: Option<&str>,
     ) -> Result<Vec<TaskMessage>>;
 }
 

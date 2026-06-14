@@ -454,6 +454,7 @@ mod tests {
             _session_id: SessionId,
             _task_id: &str,
             _limit: Option<u32>,
+            _after_id: Option<&str>,
         ) -> CoreResult<Vec<TaskMessage>> {
             Ok(vec![])
         }

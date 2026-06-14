@@ -198,12 +198,17 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
-    /// Last `limit` messages, returned oldest first.
+    /// Messages on the task channel, oldest first.
+    ///
+    /// When `after_id` is `Some`, only messages after that cursor ID are
+    /// returned. When `after_id` is `None`, the latest `limit` messages are
+    /// returned (current default behaviour).
     pub async fn list_session_task_messages(
         &self,
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        after_id: Option<&str>,
     ) -> Result<Vec<SessionTaskMessageRow>> {
         let messages = self.session_task_messages.read();
         let mut result: Vec<_> = messages
@@ -212,7 +217,18 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)));
-        if let Some(limit) = limit {
+
+        if let Some(cursor_id) = after_id {
+            let pos = result.iter().position(|m| m.id == cursor_id);
+            if let Some(idx) = pos {
+                result.drain(..=idx);
+            } else {
+                result.clear();
+            }
+            if let Some(limit) = limit {
+                result.truncate(limit as usize);
+            }
+        } else if let Some(limit) = limit {
             let skip = result.len().saturating_sub(limit as usize);
             result.drain(..skip);
         }

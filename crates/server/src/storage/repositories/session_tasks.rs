@@ -314,28 +314,58 @@ impl Database {
         Ok(rows)
     }
 
-    /// Last `limit` messages, returned oldest first.
+    /// Messages on the task channel, oldest first.
+    ///
+    /// When `after_id` is `Some`, only messages newer than that message are
+    /// returned (exclusive cursor). When `after_id` is `None`, the latest
+    /// `limit` messages are returned.
     pub async fn list_session_task_messages(
         &self,
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        after_id: Option<&str>,
     ) -> Result<Vec<SessionTaskMessageRow>> {
-        let mut rows = sqlx::query_as::<_, SessionTaskMessageRow>(sqlx::AssertSqlSafe(format!(
-            r#"
-            SELECT {MESSAGE_COLUMNS}
-            FROM session_task_messages
-            WHERE session_id = $1 AND task_id = $2
-            ORDER BY created_at DESC, id DESC
-            LIMIT $3
-            "#
-        )))
-        .bind(session_id)
-        .bind(task_id)
-        .bind(limit.map(i64::from).unwrap_or(i64::MAX))
-        .fetch_all(&self.pool)
-        .await?;
-        rows.reverse();
-        Ok(rows)
+        if let Some(cursor_id) = after_id {
+            let rows = sqlx::query_as::<_, SessionTaskMessageRow>(sqlx::AssertSqlSafe(format!(
+                r#"
+                SELECT {MESSAGE_COLUMNS}
+                FROM session_task_messages
+                WHERE session_id = $1 AND task_id = $2
+                  AND (created_at, id) > (
+                    SELECT created_at, id
+                    FROM session_task_messages
+                    WHERE session_id = $1 AND task_id = $2 AND id = $3
+                  )
+                ORDER BY created_at ASC, id ASC
+                LIMIT $4
+                "#
+            )))
+            .bind(session_id)
+            .bind(task_id)
+            .bind(cursor_id)
+            .bind(limit.map(i64::from).unwrap_or(i64::MAX))
+            .fetch_all(&self.pool)
+            .await?;
+            Ok(rows)
+        } else {
+            let mut rows =
+                sqlx::query_as::<_, SessionTaskMessageRow>(sqlx::AssertSqlSafe(format!(
+                    r#"
+                    SELECT {MESSAGE_COLUMNS}
+                    FROM session_task_messages
+                    WHERE session_id = $1 AND task_id = $2
+                    ORDER BY created_at DESC, id DESC
+                    LIMIT $3
+                    "#
+                )))
+                .bind(session_id)
+                .bind(task_id)
+                .bind(limit.map(i64::from).unwrap_or(i64::MAX))
+                .fetch_all(&self.pool)
+                .await?;
+            rows.reverse();
+            Ok(rows)
+        }
     }
 }

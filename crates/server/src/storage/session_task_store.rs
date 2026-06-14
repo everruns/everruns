@@ -381,10 +381,11 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        after_id: Option<&str>,
     ) -> Result<Vec<TaskMessage>> {
         let rows = self
             .db
-            .list_session_task_messages(session_id, task_id, limit)
+            .list_session_task_messages(session_id, task_id, limit, after_id)
             .await
             .map_err(|e| AgentLoopError::store(format!("Failed to list task messages: {e}")))?;
         rows.iter()
@@ -587,7 +588,7 @@ mod tests {
         assert!(task.input_request.is_none());
 
         let messages = registry
-            .list_messages(session_id, &task.id, None)
+            .list_messages(session_id, &task.id, None, None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
@@ -648,7 +649,7 @@ mod tests {
                 .unwrap();
         }
         let messages = registry
-            .list_messages(session_id, &task.id, Some(2))
+            .list_messages(session_id, &task.id, Some(2), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 2);

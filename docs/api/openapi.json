@@ -10574,6 +10574,26 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "after_id",
+            "in": "query",
+            "description": "Return only messages after this message ID (exclusive cursor)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max messages to return (default 50, max 500)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
           }
         ],
         "responses": {
