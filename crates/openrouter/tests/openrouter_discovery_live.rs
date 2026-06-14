@@ -1,13 +1,14 @@
 //! Live smoke test for OpenRouter model discovery.
 //!
-//! Exercises the real `OpenAIChatDriver::list_models` path against OpenRouter's
-//! `/models` endpoint: HTTP fetch, deserialization, and capability profiling.
+//! Exercises the real `OpenRouterChatDriver::list_models` path against
+//! OpenRouter's `/models` endpoint: HTTP fetch, deserialization, and capability
+//! profiling.
 //!
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
-//!   `doppler run -- cargo test -p everruns-openai --test openrouter_discovery_live -- --ignored --nocapture`
+//!   `doppler run -- cargo test -p everruns-openrouter --test openrouter_discovery_live -- --ignored --nocapture`
 
 use everruns_core::llm_driver_registry::ChatDriver;
-use everruns_openai::OpenAIChatDriver;
+use everruns_openrouter::OpenRouterChatDriver;
 
 #[tokio::test]
 #[ignore = "live network + OPENROUTER_API_KEY"]
@@ -15,7 +16,7 @@ async fn openrouter_discovers_nemotron_reasoning_profile() {
     let api_key = std::env::var("OPENROUTER_API_KEY")
         .expect("OPENROUTER_API_KEY must be set for the live smoke test");
 
-    let driver = OpenAIChatDriver::with_base_url(api_key, "https://openrouter.ai/api/v1");
+    let driver = OpenRouterChatDriver::with_base_url(api_key, "https://openrouter.ai/api/v1");
 
     let models = driver
         .list_models()

@@ -2738,6 +2738,7 @@ dependencies = [
  "everruns-core",
  "everruns-gemini",
  "everruns-openai",
+ "everruns-openrouter",
  "rstest",
  "serde_json",
  "tokio",
@@ -2777,6 +2778,20 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "everruns-openrouter"
+version = "0.12.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
  "wiremock",
 ]
 
@@ -2962,6 +2977,7 @@ dependencies = [
  "everruns-internal-protocol",
  "everruns-mcp",
  "everruns-openai",
+ "everruns-openrouter",
  "everruns-runtime",
  "prost-types",
  "reqwest 0.13.4",

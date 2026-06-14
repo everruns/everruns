@@ -788,6 +788,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         } else {
             None
         };
+        // Group related generations under the Everruns session in OpenRouter's
+        // dashboard by forwarding the session id as its top-level `session_id`.
+        // OpenAI / Azure ignore the field, so only send it to OpenRouter.
+        let openrouter_session_id = if self.provider_type == DriverId::OpenRouter {
+            config.metadata.get("session_id").cloned()
+        } else {
+            None
+        };
         if let Some(routing) = openrouter_routing {
             routing
                 .validate_for_primary_model(&config.model)
@@ -849,6 +857,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             tools,
             reasoning,
             metadata,
+            session_id: openrouter_session_id,
             prompt_cache_key,
             plugins: openrouter_plugins,
         };
@@ -1914,6 +1923,12 @@ struct ResponsesRequest {
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<std::collections::HashMap<String, String>>,
+    /// OpenRouter session-tracking key. Surfaces the Everruns session id as
+    /// OpenRouter's top-level `session_id` so related generations group into a
+    /// single session in the OpenRouter dashboard. Only set for OpenRouter
+    /// requests; `None` for direct OpenAI / Azure (which ignore it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_key: Option<String>,
     /// OpenRouter plugin activations (web search, file reader).
@@ -2072,6 +2087,7 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: None,
+            session_id: None,
             prompt_cache_key: None,
             plugins: None,
         };
@@ -2107,6 +2123,7 @@ mod tests {
                 summary: "detailed".to_string(),
             }),
             metadata: None,
+            session_id: None,
             prompt_cache_key: None,
             plugins: None,
         };
@@ -2141,6 +2158,7 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: Some(metadata),
+            session_id: None,
             prompt_cache_key: None,
             plugins: None,
         };
@@ -2148,6 +2166,46 @@ mod tests {
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["metadata"]["session_id"], "session_abc123");
         assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
+    }
+
+    /// OpenRouter session tracking groups generations by a top-level `session_id`
+    /// field. Verify it serializes at the request root (not nested in metadata)
+    /// when present, and is omitted entirely when absent.
+    #[test]
+    fn test_request_with_openrouter_session_id() {
+        let base = ResponsesRequest {
+            model: "openai/gpt-4o".to_string(),
+            models: None,
+            route: None,
+            provider: None,
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            session_id: Some("session_abc123".to_string()),
+            prompt_cache_key: None,
+            plugins: None,
+        };
+
+        let json = serde_json::to_value(&base).unwrap();
+        assert_eq!(json["session_id"], "session_abc123");
+
+        let without = ResponsesRequest {
+            session_id: None,
+            ..base
+        };
+        let json = serde_json::to_value(&without).unwrap();
+        assert!(json.get("session_id").is_none());
     }
 
     #[test]
@@ -3157,13 +3215,15 @@ mod tests {
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
             .with_provider_type(DriverId::OpenRouter);
 
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             model: "openai/gpt-5-mini".to_string(),
             temperature: None,
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
+            metadata,
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
@@ -3229,6 +3289,8 @@ mod tests {
                 }
             })
         );
+        // Session-tracking key is forwarded at the request root for OpenRouter.
+        assert_eq!(body["session_id"], "session_abc123");
     }
 
     #[tokio::test]
@@ -3246,13 +3308,15 @@ mod tests {
         let api_url = format!("{}/v1/responses", server.uri());
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
 
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             model: "gpt-5-mini".to_string(),
             temperature: None,
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
+            metadata,
             previous_response_id: None,
             tool_search: None,
             prompt_cache: None,
@@ -3277,6 +3341,10 @@ mod tests {
         assert!(body.get("models").is_none(), "body: {body}");
         assert!(body.get("route").is_none(), "body: {body}");
         assert!(body.get("provider").is_none(), "body: {body}");
+        // The top-level session_id is OpenRouter-only; OpenAI must not receive it
+        // even though the session id rides along in `metadata`.
+        assert!(body.get("session_id").is_none(), "body: {body}");
+        assert_eq!(body["metadata"]["session_id"], "session_abc123");
     }
 
     #[tokio::test]

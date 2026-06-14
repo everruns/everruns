@@ -130,6 +130,7 @@ pub fn all_providers_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     everruns_anthropic::register_driver(&mut registry);
     everruns_openai::register_driver(&mut registry);
+    everruns_openrouter::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
     registry

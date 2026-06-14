@@ -19,6 +19,7 @@ llm-tests = []
 [dependencies]
 everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
+everruns-openrouter = { path = "../openrouter" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }

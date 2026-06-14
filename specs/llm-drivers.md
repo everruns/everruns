@@ -332,6 +332,14 @@ Responses protocol driver serializes them only when the resolved provider type i
 OpenRouter, so ordinary OpenAI-compatible requests do not receive non-standard OpenRouter
 routing extensions.
 
+For OpenRouter session tracking, the driver forwards the Everruns session id as a
+top-level `session_id` request field, sourced from `config.metadata["session_id"]`. This
+groups all generations from one Everruns session into a single session in the OpenRouter
+dashboard. Like the routing controls, it is emitted only for OpenRouter requests; direct
+OpenAI / Azure ignore the field, so it is omitted there. The same id also rides along
+inside the `metadata` map for provider-side correlation — the top-level field is what
+OpenRouter's session feature reads.
+
 `OpenRouterRoutingConfig.plugins` exposes optional OpenRouter plugin activations:
 
 - **Web-search plugin** (`OpenRouterWebSearchPlugin`): instructs OpenRouter to retrieve web

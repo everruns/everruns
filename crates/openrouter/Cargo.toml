@@ -1,0 +1,37 @@
+# OpenRouter Provider Implementation
+# Decision: Wraps the core Open Responses protocol driver with OpenRouter's
+# OpenAI-compatible Responses API and richer `/models` discovery metadata.
+
+[package]
+name = "everruns-openrouter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-openrouter"
+description = "OpenRouter provider implementation for Everruns"
+readme = "README.md"
+
+[dependencies]
+async-trait.workspace = true
+
+# HTTP client (model discovery)
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Date/time (model `created` timestamps)
+chrono.workspace = true
+
+# Internal dependencies
+everruns-core.workspace = true
+
+[dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures driver requests.
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
