@@ -281,15 +281,13 @@ session's effective network ACL (harness chain → agent → session overlay fol
 if the ACL cannot be computed the executor call is skipped with a `warn`.
 
 Specifically:
-- `POST …/messages`: only supported for task kinds without an internal
-  addressing channel (`external_agent`, `monitor`, `background_tool`). For
-  `subagent` tasks, the endpoint returns 400 — subagent steering is done
-  exclusively by the parent agent via the `message_task` tool; the
-  `links.child_session_id` on the task exposes the child session the parent
-  can address instead. For supported kinds, the message is recorded durably,
-  the task is re-fetched (it may have transitioned to `running` if the message
-  answered an input request), and `executor.deliver` is called. For kinds
-  without a registered executor the message is still recorded (delivery = no-op).
+- `POST …/messages`: rejected with 400 for `subagent`-kind tasks — subagent
+  steering is done exclusively by the parent agent via the `message_task` tool;
+  `links.child_session_id` exposes the child session for direct addressing. For
+  all other kinds the message is recorded durably, the task is re-fetched (it
+  may have transitioned to `running` if the message answered an input request),
+  and `executor.deliver` is called. For kinds without a registered executor the
+  message is still recorded (delivery = no-op).
 - `POST …/cancel`: sets `cancel_requested_at`, then calls `executor.cancel`.
   `MonitorTaskExecutor.cancel` disables the linked schedule and transitions
   the task to `canceled` — so API cancel of a monitor task now atomically
