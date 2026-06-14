@@ -33,7 +33,6 @@ use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
-    OpenRouterProviderRouting,
 };
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
@@ -78,6 +77,18 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// let driver = OpenResponsesProtocolChatDriver::new("your-api-key")
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
+/// Hook for provider-specific augmentation of an Open Responses request body.
+///
+/// The Open Responses request shape this driver builds is vendor-neutral.
+/// Providers reached through it (e.g. OpenRouter) layer extra top-level fields
+/// onto the outgoing JSON via this seam, so the core driver stays free of
+/// provider branching. `decorate` runs once per request, after the base body is
+/// serialized and before it is sent; it may mutate `body` in place and may
+/// return an error to abort the request (e.g. failed routing validation).
+pub trait OpenResponsesRequestExtension: Send + Sync {
+    fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
+}
+
 #[derive(Clone)]
 pub struct OpenResponsesProtocolChatDriver {
     client: Client,
@@ -86,6 +97,9 @@ pub struct OpenResponsesProtocolChatDriver {
     provider_type: DriverId,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    /// Optional provider-specific request-body decorator (see
+    /// [`OpenResponsesRequestExtension`]). `None` for vanilla OpenAI/Azure.
+    request_extension: Option<Arc<dyn OpenResponsesRequestExtension>>,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -97,6 +111,7 @@ impl OpenResponsesProtocolChatDriver {
             api_url: DEFAULT_API_URL.to_string(),
             provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
+            request_extension: None,
         }
     }
 
@@ -115,12 +130,24 @@ impl OpenResponsesProtocolChatDriver {
             api_url: api_url.into(),
             provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
+            request_extension: None,
         }
     }
 
     /// Set the model provider used for provider-specific request features.
     pub fn with_provider_type(mut self, provider_type: DriverId) -> Self {
         self.provider_type = provider_type;
+        self
+    }
+
+    /// Attach a provider-specific request-body decorator. The decorator runs on
+    /// every chat request just before it is sent (see
+    /// [`OpenResponsesRequestExtension`]).
+    pub fn with_request_extension(
+        mut self,
+        extension: Arc<dyn OpenResponsesRequestExtension>,
+    ) -> Self {
+        self.request_extension = Some(extension);
         self
     }
 
@@ -783,71 +810,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         };
         let prompt_cache_key =
             Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
-        let openrouter_routing = if self.provider_type == DriverId::OpenRouter {
-            config.openrouter_routing.as_ref()
-        } else {
-            None
-        };
-        // Group related generations under the Everruns session in OpenRouter's
-        // dashboard by forwarding the session id as its top-level `session_id`.
-        // OpenAI / Azure ignore the field, so only send it to OpenRouter.
-        let openrouter_session_id = if self.provider_type == DriverId::OpenRouter {
-            config.metadata.get("session_id").cloned()
-        } else {
-            None
-        };
-        if let Some(routing) = openrouter_routing {
-            routing
-                .validate_for_primary_model(&config.model)
-                .map_err(AgentLoopError::llm)?;
-        }
-        // Apply routing presets then capacity strategy; avoid allocating when both are no-ops.
-        let preset_applied_owned: Option<crate::llm_driver_registry::OpenRouterRoutingConfig>;
-        let after_presets: Option<&crate::llm_driver_registry::OpenRouterRoutingConfig> =
-            match openrouter_routing {
-                None => None,
-                Some(r) if r.presets.is_empty() => Some(r),
-                Some(r) => {
-                    preset_applied_owned = Some(r.apply_presets().map_err(AgentLoopError::llm)?);
-                    preset_applied_owned.as_ref()
-                }
-            };
-        let effective_routing_cow: Option<
-            std::borrow::Cow<'_, crate::llm_driver_registry::OpenRouterRoutingConfig>,
-        > = match after_presets {
-            None => None,
-            Some(r) => match r.capacity_strategy {
-                None
-                | Some(crate::llm_driver_registry::OpenRouterCapacityStrategy::SharedCapacity) => {
-                    Some(std::borrow::Cow::Borrowed(r))
-                }
-                _ => Some(std::borrow::Cow::Owned(
-                    r.apply_capacity_strategy().map_err(AgentLoopError::llm)?,
-                )),
-            },
-        };
-        let effective_routing = effective_routing_cow.as_deref();
-        let openrouter_provider = effective_routing.and_then(|routing| {
-            routing
-                .provider
-                .as_ref()
-                .filter(|provider| !provider.is_empty())
-                .cloned()
-        });
-        let openrouter_plugins = effective_routing.and_then(|routing| {
-            routing
-                .plugins
-                .as_ref()
-                .filter(|p| !p.is_empty())
-                .and_then(plugins_to_wire)
-        });
-
         let request = ResponsesRequest {
             model: config.model.clone(),
-            models: effective_routing
-                .and_then(|routing| (!routing.models.is_empty()).then_some(routing.models.clone())),
-            route: effective_routing.and_then(|routing| routing.route),
-            provider: openrouter_provider,
             input: input_items,
             instructions,
             previous_response_id,
@@ -857,9 +821,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             tools,
             reasoning,
             metadata,
-            session_id: openrouter_session_id,
             prompt_cache_key,
-            plugins: openrouter_plugins,
         };
 
         // Log request details for debugging LLM errors.
@@ -882,6 +844,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             );
         }
 
+        // Serialize the vendor-neutral request, then let any provider-specific
+        // extension (e.g. OpenRouter) layer extra top-level fields onto the body.
+        let mut request_body = serde_json::to_value(&request)
+            .map_err(|e| AgentLoopError::llm(format!("Failed to serialize request: {}", e)))?;
+        if let Some(extension) = &self.request_extension {
+            extension.decorate(&mut request_body, config)?;
+        }
+
         // Retry loop for rate limit (429) and transient errors
         let mut retry_metadata = RetryMetadata::default();
         let mut last_error: Option<String> = None;
@@ -893,7 +863,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 &self.api_key,
             )
             .header("Content-Type", "application/json")
-            .json(&request)
+            .json(&request_body)
             .send()
             .await
             .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
@@ -1866,45 +1836,9 @@ pub fn compact_output_to_messages(
 // OpenAI Responses API Types
 // ============================================================================
 
-/// Convert an [`OpenRouterPluginConfig`] into the wire-format `plugins` array.
-///
-/// Each active plugin becomes a JSON object with an `"id"` field plus any
-/// plugin-specific options. Plugins whose struct is `None` are omitted.
-/// Returns `None` when no plugins are enabled so the field is skipped in
-/// serialization.
-fn plugins_to_wire(
-    config: &crate::llm_driver_registry::OpenRouterPluginConfig,
-) -> Option<Vec<Value>> {
-    let mut items: Vec<Value> = Vec::new();
-
-    if let Some(web) = &config.web {
-        let mut obj = serde_json::Map::new();
-        obj.insert("id".to_string(), json!("web"));
-        if let Some(max_results) = web.max_results {
-            obj.insert("max_results".to_string(), json!(max_results));
-        }
-        if let Some(ref prompt) = web.search_prompt {
-            obj.insert("search_prompt".to_string(), json!(prompt));
-        }
-        items.push(Value::Object(obj));
-    }
-
-    if config.file.is_some() {
-        items.push(json!({"id": "file"}));
-    }
-
-    if items.is_empty() { None } else { Some(items) }
-}
-
 #[derive(Debug, Serialize)]
 struct ResponsesRequest {
     model: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    models: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    route: Option<crate::llm_driver_registry::OpenRouterRoute>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    provider: Option<OpenRouterProviderRouting>,
     input: Vec<ResponsesInputItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
     instructions: Option<String>,
@@ -1923,18 +1857,8 @@ struct ResponsesRequest {
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
     metadata: Option<std::collections::HashMap<String, String>>,
-    /// OpenRouter session-tracking key. Surfaces the Everruns session id as
-    /// OpenRouter's top-level `session_id` so related generations group into a
-    /// single session in the OpenRouter dashboard. Only set for OpenRouter
-    /// requests; `None` for direct OpenAI / Azure (which ignore it).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_key: Option<String>,
-    /// OpenRouter plugin activations (web search, file reader).
-    /// Only serialized for OpenRouter requests; `None` for all other providers.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    plugins: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2070,9 +1994,6 @@ mod tests {
     fn test_request_serialization() {
         let request = ResponsesRequest {
             model: "gpt-4o".to_string(),
-            models: None,
-            route: None,
-            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2087,9 +2008,7 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: None,
-            session_id: None,
             prompt_cache_key: None,
-            plugins: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -2103,9 +2022,6 @@ mod tests {
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
             model: "o3".to_string(),
-            models: None,
-            route: None,
-            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2123,9 +2039,7 @@ mod tests {
                 summary: "detailed".to_string(),
             }),
             metadata: None,
-            session_id: None,
             prompt_cache_key: None,
-            plugins: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -2141,9 +2055,6 @@ mod tests {
 
         let request = ResponsesRequest {
             model: "gpt-4o".to_string(),
-            models: None,
-            route: None,
-            provider: None,
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
                 role: "user".to_string(),
@@ -2158,54 +2069,12 @@ mod tests {
             tools: None,
             reasoning: None,
             metadata: Some(metadata),
-            session_id: None,
             prompt_cache_key: None,
-            plugins: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["metadata"]["session_id"], "session_abc123");
         assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
-    }
-
-    /// OpenRouter session tracking groups generations by a top-level `session_id`
-    /// field. Verify it serializes at the request root (not nested in metadata)
-    /// when present, and is omitted entirely when absent.
-    #[test]
-    fn test_request_with_openrouter_session_id() {
-        let base = ResponsesRequest {
-            model: "openai/gpt-4o".to_string(),
-            models: None,
-            route: None,
-            provider: None,
-            input: vec![ResponsesInputItem::Message {
-                r#type: "message".to_string(),
-                role: "user".to_string(),
-                content: ResponsesContent::Text("Hello".to_string()),
-                phase: None,
-            }],
-            instructions: None,
-            previous_response_id: None,
-            temperature: None,
-            max_output_tokens: None,
-            stream: true,
-            tools: None,
-            reasoning: None,
-            metadata: None,
-            session_id: Some("session_abc123".to_string()),
-            prompt_cache_key: None,
-            plugins: None,
-        };
-
-        let json = serde_json::to_value(&base).unwrap();
-        assert_eq!(json["session_id"], "session_abc123");
-
-        let without = ResponsesRequest {
-            session_id: None,
-            ..base
-        };
-        let json = serde_json::to_value(&without).unwrap();
-        assert!(json.get("session_id").is_none());
     }
 
     #[test]
@@ -3195,105 +3064,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn openrouter_provider_sends_routing_controls() {
-        use crate::llm_driver_registry::{
-            OpenRouterDataCollection, OpenRouterMaxPrice, OpenRouterProviderSort,
-            OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,
-            OpenRouterRoutingConfig, OpenRouterSortPartition,
-        };
-        use serde_json::json;
-        use wiremock::matchers::method;
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(DriverId::OpenRouter);
-
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("session_id".to_string(), "session_abc123".to_string());
-        let config = LlmCallConfig {
-            model: "openai/gpt-5-mini".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata,
-            previous_response_id: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                models: vec![
-                    "openai/gpt-5-mini".to_string(),
-                    "anthropic/claude-sonnet-4.5".to_string(),
-                ],
-                route: Some(OpenRouterRoute::Fallback),
-                provider: Some(OpenRouterProviderRouting {
-                    order: vec!["openai".to_string()],
-                    allow_fallbacks: Some(false),
-                    require_parameters: Some(true),
-                    data_collection: Some(OpenRouterDataCollection::Deny),
-                    zdr: Some(true),
-                    sort: Some(OpenRouterProviderSort::Advanced(
-                        OpenRouterProviderSortOptions {
-                            by: OpenRouterProviderSortBy::Latency,
-                            partition: Some(OpenRouterSortPartition::None),
-                        },
-                    )),
-                    max_price: Some(OpenRouterMaxPrice {
-                        prompt: Some(1.0),
-                        completion: Some(2.0),
-                        ..Default::default()
-                    }),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }),
-        };
-
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
-        let _ = driver.chat_completion_stream(messages, &config).await;
-
-        let requests = server
-            .received_requests()
-            .await
-            .expect("mock server recorded requests");
-        assert_eq!(requests.len(), 1, "exactly one request should be sent");
-        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
-
-        assert_eq!(
-            body["models"],
-            json!(["openai/gpt-5-mini", "anthropic/claude-sonnet-4.5"])
-        );
-        assert_eq!(body["route"], "fallback");
-        assert_eq!(
-            body["provider"],
-            json!({
-                "order": ["openai"],
-                "allow_fallbacks": false,
-                "require_parameters": true,
-                "data_collection": "deny",
-                "zdr": true,
-                "sort": {
-                    "by": "latency",
-                    "partition": "none"
-                },
-                "max_price": {
-                    "prompt": 1.0,
-                    "completion": 2.0
-                }
-            })
-        );
-        // Session-tracking key is forwarded at the request root for OpenRouter.
-        assert_eq!(body["session_id"], "session_abc123");
-    }
-
-    #[tokio::test]
     async fn openai_provider_omits_openrouter_routing_controls() {
         use crate::llm_driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
         use wiremock::matchers::method;
@@ -3345,90 +3115,6 @@ mod tests {
         // even though the session id rides along in `metadata`.
         assert!(body.get("session_id").is_none(), "body: {body}");
         assert_eq!(body["metadata"]["session_id"], "session_abc123");
-    }
-
-    #[tokio::test]
-    async fn openrouter_provider_rejects_invalid_routing_controls() {
-        use crate::llm_driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
-        use wiremock::matchers::method;
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(DriverId::OpenRouter);
-
-        let mismatch_config = LlmCallConfig {
-            model: "openai/gpt-5-mini".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                models: vec!["anthropic/claude-sonnet-4.5".to_string()],
-                route: Some(OpenRouterRoute::Fallback),
-                provider: None,
-                ..Default::default()
-            }),
-        };
-        let err = match driver
-            .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
-                &mismatch_config,
-            )
-            .await
-        {
-            Ok(_) => panic!("invalid OpenRouter routing should fail before dispatch"),
-            Err(err) => err,
-        };
-        assert!(err.to_string().contains("models[0]"));
-
-        let empty_fallback_config = LlmCallConfig {
-            model: "openai/gpt-5-mini".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                models: vec![],
-                route: Some(OpenRouterRoute::Fallback),
-                provider: None,
-                ..Default::default()
-            }),
-        };
-        let err = match driver
-            .chat_completion_stream(
-                vec![LlmMessage::text(LlmMessageRole::User, "hello")],
-                &empty_fallback_config,
-            )
-            .await
-        {
-            Ok(_) => panic!("empty OpenRouter fallback routing should fail before dispatch"),
-            Err(err) => err,
-        };
-        assert!(err.to_string().contains("requires at least one model"));
-
-        let requests = server
-            .received_requests()
-            .await
-            .expect("mock server recorded requests");
-        assert!(
-            requests.is_empty(),
-            "invalid routing must be rejected before request dispatch"
-        );
     }
 
     // ========================================================================
@@ -4547,191 +4233,5 @@ mod tests {
         let params = json!({"type": "string"});
         let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(sanitized, params);
-    }
-
-    // ========================================================================
-    // OpenRouter plugin tests
-    // ========================================================================
-
-    #[test]
-    fn test_plugins_to_wire_empty_is_none() {
-        use crate::llm_driver_registry::OpenRouterPluginConfig;
-        let cfg = OpenRouterPluginConfig::default();
-        assert!(plugins_to_wire(&cfg).is_none());
-    }
-
-    #[test]
-    fn test_plugins_to_wire_web_search_basic() {
-        use crate::llm_driver_registry::{OpenRouterPluginConfig, OpenRouterWebSearchPlugin};
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: Some(5),
-                search_prompt: Some("find recent news".to_string()),
-            }),
-            file: None,
-        };
-        let wire = plugins_to_wire(&cfg).expect("should produce wire entries");
-        assert_eq!(wire.len(), 1);
-        assert_eq!(wire[0]["id"], "web");
-        assert_eq!(wire[0]["max_results"], 5);
-        assert_eq!(wire[0]["search_prompt"], "find recent news");
-    }
-
-    #[test]
-    fn test_plugins_to_wire_web_search_no_options() {
-        use crate::llm_driver_registry::{OpenRouterPluginConfig, OpenRouterWebSearchPlugin};
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin::default()),
-            file: None,
-        };
-        let wire = plugins_to_wire(&cfg).expect("should produce wire entries");
-        assert_eq!(wire.len(), 1);
-        assert_eq!(wire[0]["id"], "web");
-        assert!(wire[0].get("max_results").is_none() || wire[0]["max_results"].is_null());
-        assert!(wire[0].get("search_prompt").is_none() || wire[0]["search_prompt"].is_null());
-    }
-
-    #[test]
-    fn test_plugins_to_wire_file_plugin() {
-        use crate::llm_driver_registry::{OpenRouterFilePlugin, OpenRouterPluginConfig};
-        let cfg = OpenRouterPluginConfig {
-            web: None,
-            file: Some(OpenRouterFilePlugin {}),
-        };
-        let wire = plugins_to_wire(&cfg).expect("should produce wire entries");
-        assert_eq!(wire.len(), 1);
-        assert_eq!(wire[0]["id"], "file");
-    }
-
-    #[test]
-    fn test_plugins_to_wire_both_plugins() {
-        use crate::llm_driver_registry::{
-            OpenRouterFilePlugin, OpenRouterPluginConfig, OpenRouterWebSearchPlugin,
-        };
-        let cfg = OpenRouterPluginConfig {
-            web: Some(OpenRouterWebSearchPlugin {
-                max_results: Some(3),
-                search_prompt: None,
-            }),
-            file: Some(OpenRouterFilePlugin {}),
-        };
-        let wire = plugins_to_wire(&cfg).expect("should produce wire entries");
-        assert_eq!(wire.len(), 2);
-        assert_eq!(wire[0]["id"], "web");
-        assert_eq!(wire[0]["max_results"], 3);
-        assert_eq!(wire[1]["id"], "file");
-    }
-
-    #[tokio::test]
-    async fn openrouter_provider_includes_plugins_in_request() {
-        use crate::llm_driver_registry::{
-            OpenRouterPluginConfig, OpenRouterRoutingConfig, OpenRouterWebSearchPlugin,
-        };
-        use wiremock::matchers::method;
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let api_url = format!("{}/v1/responses", server.uri());
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url)
-            .with_provider_type(DriverId::OpenRouter);
-
-        let config = LlmCallConfig {
-            model: "openai/gpt-5-mini".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                plugins: Some(OpenRouterPluginConfig {
-                    web: Some(OpenRouterWebSearchPlugin {
-                        max_results: Some(5),
-                        search_prompt: None,
-                    }),
-                    file: None,
-                }),
-                ..Default::default()
-            }),
-        };
-
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "search the web")];
-        let _ = driver.chat_completion_stream(messages, &config).await;
-
-        let requests = server
-            .received_requests()
-            .await
-            .expect("mock server recorded requests");
-        assert_eq!(requests.len(), 1);
-        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
-
-        assert!(
-            body.get("plugins").is_some(),
-            "plugins field should be present: {body}"
-        );
-        let plugins = body["plugins"].as_array().unwrap();
-        assert_eq!(plugins.len(), 1);
-        assert_eq!(plugins[0]["id"], "web");
-        assert_eq!(plugins[0]["max_results"], 5);
-    }
-
-    #[tokio::test]
-    async fn non_openrouter_provider_omits_plugins() {
-        use crate::llm_driver_registry::{
-            OpenRouterPluginConfig, OpenRouterRoutingConfig, OpenRouterWebSearchPlugin,
-        };
-        use wiremock::matchers::method;
-        use wiremock::{Mock, MockServer, ResponseTemplate};
-
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .respond_with(ResponseTemplate::new(200).set_body_string(""))
-            .mount(&server)
-            .await;
-
-        let api_url = format!("{}/v1/responses", server.uri());
-        // Default provider type is OpenAI, not OpenRouter
-        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
-
-        let config = LlmCallConfig {
-            model: "gpt-5-mini".to_string(),
-            temperature: None,
-            max_tokens: None,
-            tools: vec![],
-            reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
-            previous_response_id: None,
-            tool_search: None,
-            prompt_cache: None,
-            openrouter_routing: Some(OpenRouterRoutingConfig {
-                plugins: Some(OpenRouterPluginConfig {
-                    web: Some(OpenRouterWebSearchPlugin::default()),
-                    file: None,
-                }),
-                ..Default::default()
-            }),
-        };
-
-        let messages = vec![LlmMessage::text(LlmMessageRole::User, "search the web")];
-        let _ = driver.chat_completion_stream(messages, &config).await;
-
-        let requests = server
-            .received_requests()
-            .await
-            .expect("mock server recorded requests");
-        assert_eq!(requests.len(), 1);
-        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
-
-        assert!(
-            body.get("plugins").is_none(),
-            "plugins must not be forwarded to non-OpenRouter providers: {body}"
-        );
     }
 }

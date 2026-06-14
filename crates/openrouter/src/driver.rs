@@ -6,6 +6,8 @@
 // discovery metadata OpenRouter advertises is parsed here into capability
 // profiles (notably reasoning support, which gates the UI's effort selector).
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use chrono::TimeZone;
 
@@ -21,6 +23,7 @@ use everruns_core::openai_protocol::{
     url_host_eq,
 };
 
+use crate::request_ext::OpenRouterRequestExtension;
 use crate::types::OpenRouterModelsResponse;
 
 const OPENROUTER_RESPONSES_URL: &str = "https://openrouter.ai/api/v1/responses";
@@ -45,7 +48,8 @@ impl OpenRouterChatDriver {
                 api_key,
                 OPENROUTER_RESPONSES_URL,
             )
-            .with_provider_type(DriverId::OpenRouter),
+            .with_provider_type(DriverId::OpenRouter)
+            .with_request_extension(Arc::new(OpenRouterRequestExtension)),
             uses_custom_url: false,
         }
     }
@@ -55,7 +59,8 @@ impl OpenRouterChatDriver {
         let api_url = normalize_api_url(&api_url.into(), "/responses");
         Self {
             inner: OpenResponsesProtocolChatDriver::with_base_url(api_key, api_url)
-                .with_provider_type(DriverId::OpenRouter),
+                .with_provider_type(DriverId::OpenRouter)
+                .with_request_extension(Arc::new(OpenRouterRequestExtension)),
             uses_custom_url: true,
         }
     }
