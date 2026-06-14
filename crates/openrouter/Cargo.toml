@@ -32,6 +32,8 @@ chrono.workspace = true
 everruns-core.workspace = true
 
 [dev-dependencies]
-# tokio powers `#[tokio::test]`; wiremock captures driver requests.
+# tokio powers `#[tokio::test]`; wiremock captures driver requests; futures
+# drains the live chat stream.
 tokio = { workspace = true, features = ["full", "test-util"] }
+futures.workspace = true
 wiremock = "0.6"
