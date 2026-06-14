@@ -556,7 +556,7 @@ pub fn aggressive_trim(
 
     // Identify protected messages (skill tool results and their call messages).
     // Reserve budget for them first so they are never dropped.
-    let protected_indices: std::collections::HashSet<usize> = conversation
+    let mut protected_indices: std::collections::HashSet<usize> = conversation
         .iter()
         .enumerate()
         .filter(|(_, m)| {
@@ -564,6 +564,14 @@ pub fn aggressive_trim(
         })
         .map(|(i, _)| i)
         .collect();
+
+    // Anchor the first conversation message (the original task / goal). Like
+    // infinity context's head anchor, this is the one eviction we never want:
+    // without it the model loses track of what it is doing once the window
+    // slides. Protecting it reserves its budget first, newest-first if tight.
+    if !conversation.is_empty() {
+        protected_indices.insert(0);
+    }
 
     let mut protected_budget: usize = 0;
     for &idx in &protected_indices {
@@ -2569,6 +2577,32 @@ mod tests {
     fn test_aggressive_trim_empty() {
         let result = aggressive_trim(&[], 100, false);
         assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_aggressive_trim_anchors_first_conversation_message() {
+        // messages[0] = system prompt; messages[1] = the original task (old, big);
+        // the rest are newer. Under a tight budget the task must still survive so
+        // the model does not lose track of what it is doing.
+        let messages = vec![
+            make_user_msg("sys"),                 // system prompt (small)
+            make_user_msg(&"TASK ".repeat(80)),   // the task: old + big
+            make_assistant_msg(&"x".repeat(400)), // filler old
+            make_user_msg(&"c".repeat(400)),      // recent
+            make_assistant_msg(&"d".repeat(400)), // recent
+        ];
+        let result = aggressive_trim(&messages, 250, true);
+
+        assert!(
+            result.len() < messages.len(),
+            "expected a trim, got {} messages",
+            result.len()
+        );
+        let kept_task = result.iter().any(|m| match &m.content {
+            LlmMessageContent::Text(t) => t.contains("TASK"),
+            _ => false,
+        });
+        assert!(kept_task, "the original task must be anchored, not dropped");
     }
 
     #[test]
