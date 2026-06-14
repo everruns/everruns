@@ -20,9 +20,10 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressService, EventData,
-    Harness, HarnessStatus, Message, MessageRole, Session, SessionStatus, ToolDefinition,
-    ToolResultContentPart, UtilityLlmService, merge_harness,
+    Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressRequest,
+    EgressRequestKind, EgressService, EventData, Harness, HarnessStatus, Message, MessageRole,
+    Session, SessionStatus, ToolDefinition, ToolResultContentPart, UtilityLlmService,
+    merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -1497,11 +1498,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
             event_service: self.event_service.clone(),
             runner: self.runner.clone(),
         });
-        Some(Arc::new(
-            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
-                .with_event_emitter(self.event_service.clone())
-                .with_waker(waker),
-        ))
+        let mut registry = crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+            .with_event_emitter(self.event_service.clone())
+            .with_waker(waker);
+        if let Some(egress) = &self.egress_service {
+            let notifier = Arc::new(DirectTaskWebhookNotifier {
+                db: self.db.clone(),
+                egress_service: egress.clone(),
+            });
+            registry = registry.with_notifier(notifier);
+        }
+        Some(Arc::new(registry))
     }
 
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
@@ -1697,11 +1704,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
             event_service: self.event_service.clone(),
             runner: self.runner.clone(),
         });
-        Arc::new(
-            crate::storage::DbSessionTaskRegistry::new(self.db.clone())
-                .with_event_emitter(self.event_service.clone())
-                .with_waker(waker),
-        )
+        let mut registry = crate::storage::DbSessionTaskRegistry::new(self.db.clone())
+            .with_event_emitter(self.event_service.clone())
+            .with_waker(waker);
+        if let Some(egress) = &self.egress_service {
+            let notifier = Arc::new(DirectTaskWebhookNotifier {
+                db: self.db.clone(),
+                egress_service: egress.clone(),
+            });
+            registry = registry.with_notifier(notifier);
+        }
+        Arc::new(registry)
     }
 }
 
@@ -2043,6 +2056,82 @@ impl crate::storage::session_task_store::SessionTaskWaker for DirectSessionTaskW
                     );
                 }
             });
+        }
+
+        Ok(())
+    }
+}
+
+// =============================================================================
+// DirectTaskWebhookNotifier — fire outbound HTTP webhooks on terminal tasks
+// =============================================================================
+
+struct DirectTaskWebhookNotifier {
+    db: Arc<crate::storage::StorageBackend>,
+    egress_service: Arc<dyn EgressService>,
+}
+
+#[async_trait::async_trait]
+impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebhookNotifier {
+    async fn notify(&self, task: &everruns_core::session_task::SessionTask) -> anyhow::Result<()> {
+        // Resolve org_id from session (unscoped lookup — no harness required).
+        let session = self
+            .db
+            .get_session_unscoped(task.session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("webhook notifier: session lookup failed: {e}"))?;
+        let Some(session) = session else {
+            return Ok(());
+        };
+
+        let webhooks = self
+            .db
+            .list_enabled_org_task_webhooks(session.org_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("webhook notifier: webhook lookup failed: {e}"))?;
+
+        if webhooks.is_empty() {
+            return Ok(());
+        }
+
+        let payload = serde_json::json!({
+            "event": "task.terminal",
+            "task": {
+                "id": task.id,
+                "display_name": task.display_name,
+                "kind": task.kind,
+                "state": task.state.to_string(),
+                "session_id": task.session_id,
+                "summary": task.summary,
+                "result_path": task.result_path,
+            }
+        });
+        let body = serde_json::to_vec(&payload)?;
+
+        for webhook in webhooks {
+            let mut req = EgressRequest::new("POST", &webhook.url, EgressRequestKind::Integration)
+                .header("Content-Type", "application/json")
+                .body(body.clone());
+
+            if let Some(secret) = &webhook.secret {
+                use hmac::{Hmac, Mac};
+                use sha2::Sha256;
+                type HmacSha256 = Hmac<Sha256>;
+                let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+                    .expect("HMAC accepts any key length");
+                mac.update(&body);
+                let sig = hex::encode(mac.finalize().into_bytes());
+                req = req.header("X-Everruns-Signature", format!("sha256={sig}"));
+            }
+
+            if let Err(e) = self.egress_service.send(req).await {
+                tracing::warn!(
+                    webhook_id = %webhook.public_id,
+                    url = %webhook.url,
+                    task_id = %task.id,
+                    "Task webhook delivery failed (best-effort): {e}"
+                );
+            }
         }
 
         Ok(())

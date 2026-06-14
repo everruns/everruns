@@ -593,4 +593,122 @@ impl Database {
 
         Ok((added, updated, removed))
     }
+
+    // ============================================
+    // Organization Task Webhooks
+    // ============================================
+
+    pub async fn list_org_task_webhooks(&self, org_id: i64) -> Result<Vec<OrgTaskWebhookRow>> {
+        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(
+            r#"
+            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            FROM organization_task_webhooks
+            WHERE org_id = $1
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn list_enabled_org_task_webhooks(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrgTaskWebhookRow>> {
+        let rows = sqlx::query_as::<_, OrgTaskWebhookRow>(
+            r#"
+            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            FROM organization_task_webhooks
+            WHERE org_id = $1 AND enabled = TRUE
+            ORDER BY created_at ASC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn create_org_task_webhook(
+        &self,
+        input: CreateOrgTaskWebhook,
+    ) -> Result<OrgTaskWebhookRow> {
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+            r#"
+            INSERT INTO organization_task_webhooks (public_id, org_id, url, secret, enabled)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            "#,
+        )
+        .bind(&input.public_id)
+        .bind(input.org_id)
+        .bind(&input.url)
+        .bind(&input.secret)
+        .bind(input.enabled)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+            r#"
+            SELECT id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            FROM organization_task_webhooks
+            WHERE org_id = $1 AND public_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn update_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateOrgTaskWebhook,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        let row = sqlx::query_as::<_, OrgTaskWebhookRow>(
+            r#"
+            UPDATE organization_task_webhooks SET
+                url = CASE WHEN $3 THEN $4 ELSE url END,
+                secret = CASE WHEN $5 THEN $6 ELSE secret END,
+                enabled = CASE WHEN $7 THEN $8 ELSE enabled END,
+                updated_at = NOW()
+            WHERE org_id = $1 AND public_id = $2
+            RETURNING id, public_id, org_id, url, secret, enabled, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .bind(input.url.is_some())
+        .bind(input.url.as_deref())
+        .bind(input.secret.is_some())
+        .bind(input.secret.as_ref().and_then(|s| s.as_deref()))
+        .bind(input.enabled.is_some())
+        .bind(input.enabled)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn delete_org_task_webhook(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM organization_task_webhooks WHERE org_id = $1 AND public_id = $2",
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }

@@ -1202,6 +1202,9 @@ impl ServerAppBuilder {
             })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::task_webhooks::routes(
+                api::task_webhooks::AppState::new(db.clone(), auth_state.clone()),
+            ))
             .merge(api::org_feature_flags::routes(
                 api::org_feature_flags::AppState::new(
                     db.clone(),

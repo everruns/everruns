@@ -11333,6 +11333,301 @@
         }
       }
     },
+    "/v1/task-webhooks": {
+      "get": {
+        "tags": [
+          "task-webhooks"
+        ],
+        "summary": "List all task webhooks configured for the organization.",
+        "operationId": "list_webhooks",
+        "responses": {
+          "200": {
+            "description": "Webhook list",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_TaskWebhookResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — requires admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "task-webhooks"
+        ],
+        "summary": "Create a new task webhook for the organization.",
+        "operationId": "create_webhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTaskWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Webhook created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskWebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — requires admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/task-webhooks/{webhook_id}": {
+      "get": {
+        "tags": [
+          "task-webhooks"
+        ],
+        "summary": "Get a single task webhook.",
+        "operationId": "get_webhook",
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "description": "Webhook public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskWebhookResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — requires admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "task-webhooks"
+        ],
+        "summary": "Delete a task webhook.",
+        "operationId": "delete_webhook",
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "description": "Webhook public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Webhook deleted"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — requires admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "task-webhooks"
+        ],
+        "summary": "Update a task webhook.",
+        "operationId": "update_webhook",
+        "parameters": [
+          {
+            "name": "webhook_id",
+            "in": "path",
+            "description": "Webhook public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateTaskWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated webhook",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskWebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden — requires admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [
@@ -15893,6 +16188,30 @@
             "type": "string",
             "description": "Full SKILL.md content (YAML frontmatter + markdown body)",
             "example": "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\n# PDF Processing\n\nUse pdfplumber..."
+          }
+        }
+      },
+      "CreateTaskWebhookRequest": {
+        "type": "object",
+        "description": "Request body for creating a task webhook.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the webhook starts enabled. Defaults to true."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional HMAC-SHA256 signing secret. When set, every delivery includes\nan `X-Everruns-Signature: sha256=<hex>` header."
+          },
+          "url": {
+            "type": "string",
+            "description": "The URL to POST task terminal-state events to."
           }
         }
       },
@@ -20766,6 +21085,57 @@
                 "version": {
                   "type": "string",
                   "description": "Semver string declared by the skill author. Free-form; sorted lexicographically when comparing."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_TaskWebhookResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A configured outbound webhook target.",
+              "required": [
+                "id",
+                "url",
+                "enabled",
+                "has_secret",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Whether this webhook is enabled."
+                },
+                "has_secret": {
+                  "type": "boolean",
+                  "description": "Whether a signing secret is configured (the secret itself is never returned)."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Public identifier (wh_<32-hex-chars>)."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "url": {
+                  "type": "string",
+                  "description": "Target URL that receives POST requests."
                 }
               }
             },
@@ -29045,6 +29415,44 @@
           "on_activity"
         ]
       },
+      "TaskWebhookResponse": {
+        "type": "object",
+        "description": "A configured outbound webhook target.",
+        "required": [
+          "id",
+          "url",
+          "enabled",
+          "has_secret",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this webhook is enabled."
+          },
+          "has_secret": {
+            "type": "boolean",
+            "description": "Whether a signing secret is configured (the secret itself is never returned)."
+          },
+          "id": {
+            "type": "string",
+            "description": "Public identifier (wh_<32-hex-chars>)."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "url": {
+            "type": "string",
+            "description": "Target URL that receives POST requests."
+          }
+        }
+      },
       "TasksListResponse": {
         "type": "object",
         "description": "Tasks list response",
@@ -31035,6 +31443,33 @@
                 "description": "Update status"
               }
             ]
+          }
+        }
+      },
+      "UpdateTaskWebhookRequest": {
+        "type": "object",
+        "description": "Request body for updating a task webhook.",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Enable or disable the webhook."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Replace the signing secret. Pass null to remove the existing secret."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New target URL."
           }
         }
       },
@@ -34408,6 +34843,10 @@
     {
       "name": "reporting",
       "description": "Org-scoped semantic reporting endpoints"
+    },
+    {
+      "name": "task-webhooks",
+      "description": "Outbound HTTP webhooks fired on terminal task transitions"
     }
   ]
 }

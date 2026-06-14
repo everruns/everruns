@@ -2426,6 +2426,49 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Organization Task Webhooks
+    // ============================================
+
+    pub async fn list_org_task_webhooks(&self, org_id: i64) -> Result<Vec<OrgTaskWebhookRow>> {
+        dispatch!(self, list_org_task_webhooks, org_id)
+    }
+
+    pub async fn list_enabled_org_task_webhooks(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrgTaskWebhookRow>> {
+        dispatch!(self, list_enabled_org_task_webhooks, org_id)
+    }
+
+    pub async fn create_org_task_webhook(
+        &self,
+        input: CreateOrgTaskWebhook,
+    ) -> Result<OrgTaskWebhookRow> {
+        dispatch!(self, create_org_task_webhook, input)
+    }
+
+    pub async fn get_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        dispatch!(self, get_org_task_webhook, org_id, public_id)
+    }
+
+    pub async fn update_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateOrgTaskWebhook,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        dispatch!(self, update_org_task_webhook, org_id, public_id, input)
+    }
+
+    pub async fn delete_org_task_webhook(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        dispatch!(self, delete_org_task_webhook, org_id, public_id)
+    }
+
+    // ============================================
     // Session Storage (Key-Value & Secrets)
     // ============================================
 

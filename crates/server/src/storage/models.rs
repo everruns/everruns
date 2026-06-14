@@ -90,6 +90,37 @@ pub struct UpdateOrganizationSettings {
     pub base_harness_id: UpdateField<HarnessId>,
 }
 
+/// Organization task webhook row from database
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct OrgTaskWebhookRow {
+    pub id: i64,
+    pub public_id: String,
+    pub org_id: i64,
+    pub url: String,
+    pub secret: Option<String>,
+    pub enabled: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a task webhook
+#[derive(Debug, Clone)]
+pub struct CreateOrgTaskWebhook {
+    pub public_id: String,
+    pub org_id: i64,
+    pub url: String,
+    pub secret: Option<String>,
+    pub enabled: bool,
+}
+
+/// Input for updating a task webhook (all fields optional)
+#[derive(Debug, Clone, Default)]
+pub struct UpdateOrgTaskWebhook {
+    pub url: Option<String>,
+    pub secret: Option<Option<String>>,
+    pub enabled: Option<bool>,
+}
+
 /// Input for creating an organization member
 #[derive(Debug, Clone)]
 pub struct CreateOrganizationMemberRow {
