@@ -2861,3 +2861,12 @@ pub struct UpdatePluginInstall {
     pub definition: Option<serde_json::Value>,
     pub warnings: Option<serde_json::Value>,
 }
+
+/// Minimal projection returned by `list_unreconciled_llm_generations`.
+/// Contains only the fields needed to perform a reconciliation lookup.
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct UnreconciledGeneration {
+    pub id: uuid::Uuid,
+    pub org_id: i64,
+    pub provider_response_id: String,
+}

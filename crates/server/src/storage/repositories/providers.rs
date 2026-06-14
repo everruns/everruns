@@ -476,6 +476,7 @@ impl Database {
         estimated_cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
+        provider_response_id: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         let (id,): (uuid::Uuid,) = sqlx::query_as(
@@ -483,8 +484,9 @@ impl Database {
             INSERT INTO llm_generations (
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-                actual_cost_usd, estimated_cost_usd, duration_ms, finish_reason, created_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                actual_cost_usd, estimated_cost_usd, duration_ms, finish_reason,
+                provider_response_id, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
             RETURNING id
             "#,
         )
@@ -502,6 +504,7 @@ impl Database {
         .bind(estimated_cost_usd)
         .bind(duration_ms)
         .bind(&finish_reason)
+        .bind(&provider_response_id)
         .bind(created_at)
         .fetch_one(&self.pool)
         .await?;
@@ -528,6 +531,69 @@ impl Database {
             );
         }
 
+        Ok(())
+    }
+
+    /// Returns rows that have a `provider_response_id` but no `reconciled_at`,
+    /// ordered oldest-first. Used by the reconciliation service to find
+    /// generations that need an authoritative usage/cost lookup.
+    pub async fn list_unreconciled_llm_generations(
+        &self,
+        provider: &str,
+        limit: i64,
+    ) -> Result<Vec<UnreconciledGeneration>> {
+        let rows = sqlx::query_as::<_, UnreconciledGeneration>(
+            r#"
+            SELECT id, org_id, provider_response_id
+            FROM   llm_generations
+            WHERE  provider = $1
+              AND  provider_response_id IS NOT NULL
+              AND  reconciled_at IS NULL
+            ORDER  BY created_at ASC
+            LIMIT  $2
+            "#,
+        )
+        .bind(provider)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Updates a generation row with authoritative data from the provider and
+    /// stamps `reconciled_at`. Idempotent: a row already reconciled (`reconciled_at
+    /// IS NOT NULL`) is not modified.
+    pub async fn reconcile_llm_generation(
+        &self,
+        id: Uuid,
+        input_tokens: Option<i64>,
+        output_tokens: Option<i64>,
+        actual_cost_usd: Option<f64>,
+        reconciled_provider: Option<&str>,
+        reconciled_model: Option<&str>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE llm_generations
+            SET
+                input_tokens          = COALESCE($2, input_tokens),
+                output_tokens         = COALESCE($3, output_tokens),
+                actual_cost_usd       = COALESCE($4, actual_cost_usd),
+                provider              = COALESCE($5, provider),
+                model                 = COALESCE($6, model),
+                reconciled_at         = NOW()
+            WHERE id = $1
+              AND reconciled_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .bind(input_tokens)
+        .bind(output_tokens)
+        .bind(actual_cost_usd)
+        .bind(reconciled_provider)
+        .bind(reconciled_model)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 

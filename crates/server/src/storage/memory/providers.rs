@@ -573,10 +573,33 @@ impl InMemoryDatabase {
         _estimated_cost_usd: Option<f64>,
         _duration_ms: Option<i32>,
         _finish_reason: Option<String>,
+        _provider_response_id: Option<String>,
         _created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
         // In dev mode, we don't store individual generations
         // Usage totals are updated via increment_session_usage/increment_agent_usage
+        Ok(())
+    }
+
+    pub async fn list_unreconciled_llm_generations(
+        &self,
+        _provider: &str,
+        _limit: i64,
+    ) -> Result<Vec<crate::storage::models::UnreconciledGeneration>> {
+        // In-memory backend has no persisted generations to reconcile
+        Ok(vec![])
+    }
+
+    pub async fn reconcile_llm_generation(
+        &self,
+        _id: uuid::Uuid,
+        _input_tokens: Option<i64>,
+        _output_tokens: Option<i64>,
+        _actual_cost_usd: Option<f64>,
+        _reconciled_provider: Option<&str>,
+        _reconciled_model: Option<&str>,
+    ) -> Result<()> {
+        // In-memory backend has no persisted generations to reconcile
         Ok(())
     }
 

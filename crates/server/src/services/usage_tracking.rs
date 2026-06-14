@@ -100,6 +100,7 @@ impl EventListener for UsageTrackingListener {
                     .finish_reasons
                     .as_ref()
                     .and_then(|r| r.first().cloned()),
+                data.metadata.response_id.clone(),
                 event.ts,
             )
             .await

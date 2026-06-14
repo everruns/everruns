@@ -513,6 +513,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
+        // Captured from the first streaming chunk that carries an id field.
+        // OpenRouter sets this to a "gen-..." identifier on every completion.
+        let response_id = Arc::new(Mutex::new(Option::<String>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -533,6 +536,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                     let provider_cost_usd = Arc::clone(&provider_cost_usd);
                     let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
                     let finish_reason = Arc::clone(&finish_reason);
+                    let response_id = Arc::clone(&response_id);
                     let retry_metadata_for_done = shared_retry_metadata.clone();
 
                     async move {
@@ -551,6 +555,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
                             let cost = *provider_cost_usd.lock().unwrap();
+                            let resp_id = response_id.lock().unwrap().clone();
                             let mut reason = finish_reason.lock().unwrap().clone();
 
                             let mut events = Vec::new();
@@ -585,7 +590,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                     finish_reason: reason.or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
-                                    response_id: None,
+                                    response_id: resp_id,
                                     phase: None,
                                 },
                             ))));
@@ -595,6 +600,17 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
                             Ok(chunk) => {
+                                // Capture the completion ID from the first chunk that
+                                // carries one. OpenRouter sets this to a "gen-..."
+                                // identifier on every chunk; direct OpenAI uses
+                                // "chatcmpl-..." style IDs.
+                                if let Some(id) = &chunk.id {
+                                    let mut rid = response_id.lock().unwrap();
+                                    if rid.is_none() {
+                                        *rid = Some(id.clone());
+                                    }
+                                }
+
                                 // Capture usage from chunk if available
                                 if let Some(usage) = &chunk.usage {
                                     if let Some(pt) = usage.prompt_tokens {
@@ -1191,6 +1207,16 @@ mod tests {
 
         let chunk: OpenAiStreamChunk = serde_json::from_str(usage_chunk).unwrap();
         assert_eq!(chunk.usage.unwrap().cost, None);
+    }
+
+    #[test]
+    fn test_chunk_id_is_captured() {
+        let chunk_with_id: OpenAiStreamChunk =
+            serde_json::from_str(r#"{"id":"gen-abc123","choices":[]}"#).unwrap();
+        assert_eq!(chunk_with_id.id.as_deref(), Some("gen-abc123"));
+
+        let chunk_no_id: OpenAiStreamChunk = serde_json::from_str(r#"{"choices":[]}"#).unwrap();
+        assert!(chunk_no_id.id.is_none());
     }
 
     #[test]
