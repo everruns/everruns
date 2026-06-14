@@ -662,6 +662,17 @@ pub trait TaskExecutor: Send + Sync {
         false
     }
 
+    /// Whether this executor can re-attach to a *specific* task instance.
+    ///
+    /// Defaults to `self.can_reattach()`. Override to inspect per-task spec
+    /// fields (e.g. whether the spawned tool declared itself idempotent).
+    /// The reaper calls this instead of `can_reattach()` when a task snapshot
+    /// is available.
+    fn can_reattach_task(&self, task: &SessionTask) -> bool {
+        let _ = task;
+        self.can_reattach()
+    }
+
     /// Begin execution, or re-attach after worker loss.
     ///
     /// Called by the reaper when re-attaching a task (attempt already bumped).
