@@ -107,6 +107,15 @@ pub const OPENAI_GPT55: ProviderModelConfig =
 pub const GEMINI_FLASH: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Gemini, "gemini-2.0-flash", "GEMINI_API_KEY");
 
+// OpenRouter routes to upstream providers; gpt-4o-mini is cheap and reliably
+// available. Exercises the Open Responses streaming path (incl. the `[DONE]`
+// terminator) and the OpenRouter request decoration (session_id, routing).
+pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::OpenRouter,
+    "openai/gpt-4o-mini",
+    "OPENROUTER_API_KEY",
+);
+
 // Bedrock: credentials are JSON in the env var, not a plain API key.
 // Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.
 pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(

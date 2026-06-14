@@ -1008,6 +1008,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                     Ok(event) => {
                         let event_data = &event.data;
 
+                        // OpenAI-compatible gateways (e.g. OpenRouter) terminate the
+                        // Responses SSE stream with a chat-completions-style `[DONE]`
+                        // sentinel, which OpenAI's native Responses API does not send.
+                        // It is not JSON, so skip it instead of surfacing a spurious
+                        // "Failed to parse event" error after the real completion.
+                        if event_data == "[DONE]" {
+                            return Ok(LlmStreamEvent::TextDelta(String::new()));
+                        }
+
                         // Try to parse as typed StreamingEvent first for type safety
                         if let Ok(streaming_event) =
                             serde_json::from_str::<StreamingEvent>(event_data)
@@ -3150,6 +3159,64 @@ mod tests {
         // even though the session id rides along in `metadata`.
         assert!(body.get("session_id").is_none(), "body: {body}");
         assert_eq!(body["metadata"]["session_id"], "session_abc123");
+    }
+
+    /// OpenAI-compatible gateways (e.g. OpenRouter) terminate the Responses SSE
+    /// stream with a chat-completions-style `[DONE]` sentinel that OpenAI's
+    /// native API does not send. It must be skipped, not surfaced as a spurious
+    /// `Error` event after the real completion. (EVE: caught by the OpenRouter
+    /// live chat smoke test.)
+    #[tokio::test]
+    async fn openresponses_stream_skips_done_sentinel() {
+        use futures::StreamExt;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        // A normal text delta followed by the trailing `[DONE]` sentinel.
+        let body =
+            "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\ndata: [DONE]\n\n";
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(body),
+            )
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
+        let config = LlmCallConfig {
+            model: "openai/gpt-4o-mini".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+        };
+
+        let stream = driver
+            .chat_completion_stream(vec![LlmMessage::text(LlmMessageRole::User, "hi")], &config)
+            .await
+            .expect("stream should start");
+        let events: Vec<_> = stream.collect().await;
+
+        let mut text = String::new();
+        for ev in &events {
+            match ev.as_ref().expect("no transport error") {
+                LlmStreamEvent::TextDelta(d) => text.push_str(d),
+                LlmStreamEvent::Error(e) => {
+                    panic!("[DONE] sentinel must not surface as an error: {e}")
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(text, "hi");
     }
 
     // ========================================================================
