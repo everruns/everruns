@@ -8,6 +8,8 @@
 //   - `plugins` — web-search / file-reader activations
 //   - `session_id` — OpenRouter session grouping (the Everruns session id)
 
+use std::borrow::Cow;
+
 use everruns_core::OpenResponsesRequestExtension;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
@@ -68,18 +70,23 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 }
 
 /// Apply routing presets, then the capacity strategy, returning the resolved
-/// config used to build the wire request.
-fn resolve_effective_routing(routing: &OpenRouterRoutingConfig) -> Result<OpenRouterRoutingConfig> {
-    let after_presets = if routing.presets.is_empty() {
-        routing.clone()
+/// config used to build the wire request. Borrows the original when both steps
+/// are no-ops (the common case) and only allocates when a step changes routing.
+fn resolve_effective_routing(
+    routing: &OpenRouterRoutingConfig,
+) -> Result<Cow<'_, OpenRouterRoutingConfig>> {
+    let after_presets: Cow<'_, OpenRouterRoutingConfig> = if routing.presets.is_empty() {
+        Cow::Borrowed(routing)
     } else {
-        routing.apply_presets().map_err(AgentLoopError::llm)?
+        Cow::Owned(routing.apply_presets().map_err(AgentLoopError::llm)?)
     };
     match after_presets.capacity_strategy {
         None | Some(OpenRouterCapacityStrategy::SharedCapacity) => Ok(after_presets),
-        _ => after_presets
-            .apply_capacity_strategy()
-            .map_err(AgentLoopError::llm),
+        _ => Ok(Cow::Owned(
+            after_presets
+                .apply_capacity_strategy()
+                .map_err(AgentLoopError::llm)?,
+        )),
     }
 }
 
