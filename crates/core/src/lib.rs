@@ -286,8 +286,8 @@ pub use openai_protocol::OpenAIProtocolChatDriver;
 // Vendor-neutral API standard, recommended for new projects
 pub use openresponses_protocol::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
-    CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, compact_output_to_messages,
-    messages_to_compact_input,
+    CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
+    compact_output_to_messages, messages_to_compact_input,
 };
 
 // Tool abstraction re-exports
