@@ -3525,6 +3525,7 @@ mod tests {
             _session_id: SessionId,
             _task_id: &str,
             _limit: Option<u32>,
+            _after_id: Option<&str>,
         ) -> crate::Result<Vec<crate::session_task::TaskMessage>> {
             Ok(Vec::new())
         }

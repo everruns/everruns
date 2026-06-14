@@ -108,6 +108,12 @@ pub async fn list_tasks(
     ))
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct GetTaskQuery {
+    pub after_id: Option<String>,
+    pub limit: Option<u32>,
+}
+
 /// Get one session task with its recent message thread.
 #[utoipa::path(
     get,
@@ -115,6 +121,8 @@ pub async fn list_tasks(
     params(
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
+        ("after_id" = Option<String>, Query, description = "Return only messages after this message ID (exclusive cursor)"),
+        ("limit" = Option<u32>, Query, description = "Max messages to return (default 50)"),
     ),
     responses(
         (status = 200, description = "Session task detail", body = SessionTaskDetail),
@@ -126,11 +134,14 @@ pub async fn get_task(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, task_id)): Path<(String, String)>,
+    Query(query): Query<GetTaskQuery>,
 ) -> ApiResult<SessionTaskDetail> {
     Ok(Json(
         GetSessionTask {
             session_id,
             task_id,
+            after_id: query.after_id,
+            limit: query.limit,
         }
         .run(&state.ctx(&org))
         .await?,

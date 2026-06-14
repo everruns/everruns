@@ -2190,6 +2190,7 @@ mod tests {
             _session_id: crate::typed_id::SessionId,
             _task_id: &str,
             _limit: Option<u32>,
+            _after_id: Option<&str>,
         ) -> crate::error::Result<Vec<crate::session_task::TaskMessage>> {
             Ok(vec![])
         }

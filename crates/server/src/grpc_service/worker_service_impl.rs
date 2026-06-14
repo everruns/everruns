@@ -2951,7 +2951,7 @@ impl WorkerService for WorkerServiceImpl {
 
         let messages = self
             .session_task_registry()
-            .list_messages(session_id.into(), &req.task_id, req.limit)
+            .list_messages(session_id.into(), &req.task_id, req.limit, None)
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list session task messages: {e}");

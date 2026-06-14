@@ -305,7 +305,12 @@ impl Tool for GetTaskTool {
             Err(e) => return e,
         };
         let messages = registry
-            .list_messages(context.session_id, task_id, Some(GET_TASK_MESSAGE_LIMIT))
+            .list_messages(
+                context.session_id,
+                task_id,
+                Some(GET_TASK_MESSAGE_LIMIT),
+                None,
+            )
             .await
             .unwrap_or_default();
         ToolExecutionResult::success(json!({
@@ -795,14 +800,24 @@ pub(crate) mod tests {
             _session_id: SessionId,
             task_id: &str,
             limit: Option<u32>,
+            after_id: Option<&str>,
         ) -> crate::error::Result<Vec<TaskMessage>> {
             let messages = self.messages.lock().unwrap();
             let all = messages.get(task_id).cloned().unwrap_or_default();
-            let Some(limit) = limit else {
-                return Ok(all);
+            let mut iter: Box<dyn Iterator<Item = TaskMessage>> = if let Some(cursor) = after_id {
+                Box::new(all.into_iter().skip_while(move |m| m.id != cursor).skip(1))
+            } else {
+                Box::new(all.into_iter())
             };
-            let skip = all.len().saturating_sub(limit as usize);
-            Ok(all.into_iter().skip(skip).collect())
+            let collected: Vec<_> = iter.by_ref().collect();
+            if let Some(limit) = limit {
+                if after_id.is_some() {
+                    return Ok(collected.into_iter().take(limit as usize).collect());
+                }
+                let skip = collected.len().saturating_sub(limit as usize);
+                return Ok(collected.into_iter().skip(skip).collect());
+            }
+            Ok(collected)
         }
     }
 
@@ -1024,7 +1039,7 @@ pub(crate) mod tests {
         assert_eq!(executor_invocations(&TEST_DELIVERED, &task.id), 1);
 
         let messages = registry
-            .list_messages(context.session_id, &task.id, None)
+            .list_messages(context.session_id, &task.id, None, None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
@@ -1057,7 +1072,7 @@ pub(crate) mod tests {
         let delivery = value["delivery"].as_str().unwrap();
         assert!(delivery.starts_with("failed:"), "delivery: {delivery}");
         let messages = registry
-            .list_messages(context.session_id, &task.id, None)
+            .list_messages(context.session_id, &task.id, None, None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);

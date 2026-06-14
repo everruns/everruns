@@ -3772,6 +3772,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        _after_id: Option<&str>,
     ) -> Result<Vec<everruns_core::TaskMessage>> {
         let mut client = self.client.inner.lock().await;
         let response = client

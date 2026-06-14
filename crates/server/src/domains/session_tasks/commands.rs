@@ -89,6 +89,13 @@ pub struct GetSessionTask {
     pub session_id: String,
     /// Task's prefixed public identifier.
     pub task_id: String,
+    /// Return only messages newer than this message ID (exclusive cursor).
+    /// When omitted, the most recent `limit` messages are returned.
+    #[serde(default)]
+    pub after_id: Option<String>,
+    /// Maximum number of messages to return. Defaults to 50.
+    #[serde(default)]
+    pub limit: Option<u32>,
 }
 
 impl Command for GetSessionTask {
@@ -113,8 +120,9 @@ impl Command for GetSessionTask {
         let task = q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Session task"))?;
+        let limit = self.limit.or(Some(50));
         let messages = q::registry_for_ctx(ctx)
-            .list_messages(session_id, &self.task_id, Some(50))
+            .list_messages(session_id, &self.task_id, limit, self.after_id.as_deref())
             .await
             .map_err(registry_err)?;
         Ok(SessionTaskDetail { task, messages })
@@ -343,8 +351,9 @@ mod tests {
     use crate::storage::{CreateSessionRow, StorageBackend};
     use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
-        CreateSessionTask, SessionTaskRegistry, SessionTaskState, TASK_KIND_BACKGROUND_TOOL,
-        TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskLinks, TaskWakePolicy,
+        CreateSessionTask, NewTaskMessage, SessionTaskRegistry, SessionTaskState,
+        TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskLinks,
+        TaskMessagePart, TaskWakePolicy,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
     use std::sync::Arc;
@@ -511,7 +520,7 @@ mod tests {
 
         // No message must have been recorded.
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert!(
@@ -572,7 +581,7 @@ mod tests {
 
         // The message thread must contain the message.
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1, "message must be persisted");
@@ -619,10 +628,89 @@ mod tests {
 
         assert_eq!(result.task_id, task.id);
         let messages = registry
-            .list_messages(session_id, &task.id, Some(10))
+            .list_messages(session_id, &task.id, Some(10), None)
             .await
             .unwrap();
         assert_eq!(messages.len(), 1);
+    }
+
+    // -------------------------------------------------------------------------
+    // GetSessionTask — cursor pagination
+    // -------------------------------------------------------------------------
+
+    /// `after_id` returns only messages newer than the cursor, oldest-first.
+    #[tokio::test]
+    async fn get_task_after_id_returns_messages_after_cursor() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: "unknown_kind".to_string(),
+                display_name: "Cursor Test".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // Record 5 messages.
+        let mut ids = Vec::new();
+        for i in 0..5u32 {
+            let m = registry
+                .record_message(
+                    session_id,
+                    &task.id,
+                    NewTaskMessage {
+                        direction: everruns_core::session_task::TaskMessageDirection::Inbound,
+                        content: vec![TaskMessagePart::text(format!("msg{i}"))],
+                        in_reply_to: None,
+                        expected_attempt: None,
+                    },
+                )
+                .await
+                .unwrap();
+            ids.push(m.id);
+        }
+
+        // after_id = ids[1] → should return msgs 2, 3, 4
+        let result = GetSessionTask {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            after_id: Some(ids[1].clone()),
+            limit: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        assert_eq!(
+            result.messages.len(),
+            3,
+            "should have 3 messages after cursor"
+        );
+        assert_eq!(result.messages[0].id, ids[2]);
+        assert_eq!(result.messages[2].id, ids[4]);
+
+        // after_id + limit = 1 → should return only msg 2
+        let result_limited = GetSessionTask {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            after_id: Some(ids[1].clone()),
+            limit: Some(1),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        assert_eq!(result_limited.messages.len(), 1);
+        assert_eq!(result_limited.messages[0].id, ids[2]);
     }
 
     // -------------------------------------------------------------------------

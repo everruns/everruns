@@ -2857,8 +2857,16 @@ impl StorageBackend {
         session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
+        after_id: Option<&str>,
     ) -> Result<Vec<SessionTaskMessageRow>> {
-        dispatch!(self, list_session_task_messages, session_id, task_id, limit)
+        dispatch!(
+            self,
+            list_session_task_messages,
+            session_id,
+            task_id,
+            limit,
+            after_id
+        )
     }
 
     /// Return (session_id, task_id, schedule_id) triples for running monitor

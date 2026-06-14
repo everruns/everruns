@@ -198,6 +198,8 @@ async fn session_task_commands_honor_session_permissions_before_access() {
     let get_err = GetSessionTask {
         session_id: "not-a-session-id".to_string(),
         task_id: "task_test".to_string(),
+        after_id: None,
+        limit: None,
     }
     .run(&ctx)
     .await
