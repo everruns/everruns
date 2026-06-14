@@ -119,6 +119,12 @@ use utoipa::OpenApi;
         api::session_tasks::get_task,
         api::session_tasks::post_task_message,
         api::session_tasks::cancel_task,
+        // Task webhooks
+        api::task_webhooks::list_webhooks,
+        api::task_webhooks::create_webhook,
+        api::task_webhooks::get_webhook,
+        api::task_webhooks::update_webhook,
+        api::task_webhooks::delete_webhook,
         api::session_sandbox::get_sandbox,
         api::session_sandbox::manage_sandbox,
         api::mcp_servers::create_mcp_server,
@@ -513,6 +519,9 @@ use utoipa::OpenApi;
             domains::reporting::types::UpdateSavedReportRequest,
             api::reporting::ProjectorRunQuery,
             domains::reporting::types::ProjectorRunResult,
+            api::task_webhooks::TaskWebhookResponse,
+            api::task_webhooks::CreateTaskWebhookRequest,
+            api::task_webhooks::UpdateTaskWebhookRequest,
         )
     ),
     tags(
@@ -540,6 +549,7 @@ use utoipa::OpenApi;
         (name = "skills", description = "Skills registry endpoints"),
         (name = "payments", description = "Machine payment wallet, policy, and attempt endpoints"),
         (name = "reporting", description = "Org-scoped semantic reporting endpoints"),
+        (name = "task-webhooks", description = "Outbound HTTP webhooks fired on terminal task transitions"),
     ),
     info(
         title = "Everruns API",

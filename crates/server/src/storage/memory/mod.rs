@@ -177,6 +177,8 @@ pub struct InMemoryDatabase {
     // Plugin marketplaces and installs (see specs/plugins.md)
     plugin_marketplaces: RwLock<HashMap<Uuid, PluginMarketplaceRow>>,
     plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
+    // Organization task webhooks (outbound HTTP on terminal task transitions)
+    org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -288,6 +290,7 @@ impl Default for InMemoryDatabase {
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
             plugin_marketplaces: RwLock::new(plugin_marketplaces),
             plugin_installs: RwLock::new(HashMap::new()),
+            org_task_webhooks: RwLock::new(Vec::new()),
         }
     }
 }

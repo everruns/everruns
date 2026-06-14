@@ -456,4 +456,103 @@ impl InMemoryDatabase {
 
         Ok((added, updated, removed))
     }
+
+    // ============================================
+    // Organization Task Webhooks
+    // ============================================
+
+    pub async fn list_org_task_webhooks(&self, org_id: i64) -> Result<Vec<OrgTaskWebhookRow>> {
+        let mut rows: Vec<_> = self
+            .org_task_webhooks
+            .read()
+            .iter()
+            .filter(|w| w.org_id == org_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|w| w.created_at);
+        Ok(rows)
+    }
+
+    pub async fn list_enabled_org_task_webhooks(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<OrgTaskWebhookRow>> {
+        let mut rows: Vec<_> = self
+            .org_task_webhooks
+            .read()
+            .iter()
+            .filter(|w| w.org_id == org_id && w.enabled)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|w| w.created_at);
+        Ok(rows)
+    }
+
+    pub async fn create_org_task_webhook(
+        &self,
+        input: CreateOrgTaskWebhook,
+    ) -> Result<OrgTaskWebhookRow> {
+        let now = Self::now();
+        let mut webhooks = self.org_task_webhooks.write();
+        let id = webhooks.iter().map(|w| w.id).max().unwrap_or(0) + 1;
+        let row = OrgTaskWebhookRow {
+            id,
+            public_id: input.public_id,
+            org_id: input.org_id,
+            url: input.url,
+            secret: input.secret,
+            enabled: input.enabled,
+            created_at: now,
+            updated_at: now,
+        };
+        webhooks.push(row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        Ok(self
+            .org_task_webhooks
+            .read()
+            .iter()
+            .find(|w| w.org_id == org_id && w.public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn update_org_task_webhook(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateOrgTaskWebhook,
+    ) -> Result<Option<OrgTaskWebhookRow>> {
+        let now = Self::now();
+        let mut webhooks = self.org_task_webhooks.write();
+        if let Some(w) = webhooks
+            .iter_mut()
+            .find(|w| w.org_id == org_id && w.public_id == public_id)
+        {
+            if let Some(url) = input.url {
+                w.url = url;
+            }
+            if let Some(secret) = input.secret {
+                w.secret = secret;
+            }
+            if let Some(enabled) = input.enabled {
+                w.enabled = enabled;
+            }
+            w.updated_at = now;
+            return Ok(Some(w.clone()));
+        }
+        Ok(None)
+    }
+
+    pub async fn delete_org_task_webhook(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        let mut webhooks = self.org_task_webhooks.write();
+        let before = webhooks.len();
+        webhooks.retain(|w| !(w.org_id == org_id && w.public_id == public_id));
+        Ok(webhooks.len() < before)
+    }
 }

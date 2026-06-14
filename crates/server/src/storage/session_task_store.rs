@@ -37,6 +37,17 @@ pub trait SessionTaskWaker: Send + Sync {
 }
 
 // ============================================================================
+// TaskWebhookNotifier — fire outbound HTTP on terminal task transitions
+// ============================================================================
+
+/// Fire outbound HTTP webhooks configured for the owning org when a task
+/// reaches a terminal state. Errors are best-effort (logged, never fatal).
+#[async_trait]
+pub trait TaskWebhookNotifier: Send + Sync + 'static {
+    async fn notify(&self, task: &SessionTask) -> anyhow::Result<()>;
+}
+
+// ============================================================================
 // DbSessionTaskRegistry
 // ============================================================================
 
@@ -46,6 +57,7 @@ pub struct DbSessionTaskRegistry {
     db: Arc<StorageBackend>,
     emitter: Option<Arc<dyn EventEmitter>>,
     waker: Option<Arc<dyn SessionTaskWaker>>,
+    notifier: Option<Arc<dyn TaskWebhookNotifier>>,
 }
 
 impl DbSessionTaskRegistry {
@@ -54,6 +66,7 @@ impl DbSessionTaskRegistry {
             db,
             emitter: None,
             waker: None,
+            notifier: None,
         }
     }
 
@@ -68,6 +81,13 @@ impl DbSessionTaskRegistry {
     /// path (user-initiated mutations) must not wake.
     pub fn with_waker(mut self, waker: Arc<dyn SessionTaskWaker>) -> Self {
         self.waker = Some(waker);
+        self
+    }
+
+    /// Attach a webhook notifier. Fires outbound HTTP to all enabled org
+    /// webhooks on terminal task transitions. Best-effort only.
+    pub fn with_notifier(mut self, notifier: Arc<dyn TaskWebhookNotifier>) -> Self {
+        self.notifier = Some(notifier);
         self
     }
 
@@ -174,6 +194,24 @@ impl DbSessionTaskRegistry {
         );
         self.try_wake(task.session_id, &text).await;
     }
+
+    /// Fire webhook notifications for a terminal task transition (best-effort).
+    /// Spawns a detached task so outbound HTTP latency never blocks task updates.
+    fn try_notify_webhooks(&self, task: &SessionTask) {
+        let Some(notifier) = self.notifier.clone() else {
+            return;
+        };
+        let task = task.clone();
+        tokio::spawn(async move {
+            if let Err(e) = notifier.notify(&task).await {
+                tracing::warn!(
+                    task_id = %task.id,
+                    session_id = %task.session_id,
+                    "TaskWebhookNotifier failed (best-effort): {e}"
+                );
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -208,7 +246,10 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
 
         // Read prior state so we can detect the transition this update makes.
         // Best-effort: if the read fails we still proceed with the update.
-        let prior = if self.waker.is_some() && (wants_terminal_wake || wants_awaiting_input_wake) {
+        let needs_prior = (self.waker.is_some()
+            && (wants_terminal_wake || wants_awaiting_input_wake))
+            || (self.notifier.is_some() && wants_terminal_wake);
+        let prior = if needs_prior {
             self.get(session_id, task_id).await.ok().flatten()
         } else {
             None
@@ -227,11 +268,15 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
         if let Some(task) = &task {
             self.emit_task_snapshot(task, false).await;
 
-            // Wake enforcement: fire at most one wake per transition, gated
-            // on the intent of this specific update.
+            // Wake/notify enforcement: fire at most once per transition,
+            // gated on the intent of this specific update.
             if let Some(prior) = &prior {
                 if wants_terminal_wake {
                     self.maybe_wake_on_terminal(prior, task).await;
+                    // Webhook notifications fire on the same terminal transition.
+                    if !prior.state.is_terminal() && task.state.is_terminal() {
+                        self.try_notify_webhooks(task);
+                    }
                 }
                 if wants_awaiting_input_wake {
                     self.maybe_wake_on_awaiting_input(prior, task).await;
