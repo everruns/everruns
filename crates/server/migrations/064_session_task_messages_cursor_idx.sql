@@ -13,5 +13,5 @@
 -- (session_id = $1 AND task_id = $2) is index-only and avoids the heap for
 -- the task-ownership check.
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS session_task_messages_cursor_idx
+CREATE INDEX IF NOT EXISTS session_task_messages_cursor_idx
     ON session_task_messages (task_id, created_at ASC, id ASC);
