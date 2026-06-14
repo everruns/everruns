@@ -10,7 +10,13 @@ Current LLM context windows (128k-200k tokens) impose hard limits on agent conve
 
 This approach lets the model "pull" relevant context rather than us "pushing" everything, enabling arbitrarily long conversations while preserving access to all historical information.
 
-**Relationship to Compaction:** Compaction (`specs/compaction.md`) actively reduces message size by stripping reproducible content or summarizing. Infinity Context manages what to send when history is too large. They are complementary and independent — compaction reduces tokens per message, infinity context manages which messages to include.
+**Relationship to Compaction:** Compaction (`specs/compaction.md`) actively reduces what is sent by stripping reproducible tool output (observation masking) and summarizing older turns into an always-present `[CONVERSATION_SUMMARY]`. Infinity Context instead keeps a recent window and exposes evicted history through `query_history` (pull-based retrieval).
+
+These are two answers to the same problem and they are **not** freely composable. Infinity Context evicts older messages during message loading (`post_load`), before compaction runs in the reason atom, so when both are enabled infinity context would destroy history before compaction could summarize it — leaving compaction only the recent window. Therefore:
+
+- **Compaction is the stronger primary strategy** for long-running agents: its summary keeps the gist always present, so the model never has to know to query. Pull-based retrieval has a well-known failure mode — the model does not know what it does not know — and on its own loses the original task once the window slides.
+- **Infinity Context is a backstop**, valuable mainly for its lossless `query_history` search over full storage.
+- When both are enabled, infinity context detects compaction (via the derived `compaction_active` flag set during capability collection) and **defers token-budget eviction to compaction**: it anchors the task, provides `query_history`, and stops trimming, so compaction owns reduction.
 
 ## Problem Statement
 
@@ -77,9 +83,13 @@ When searching history:
   {
     "context_budget_tokens": 100000,
     "min_recent_messages": 10,
-    "max_recent_messages": null
+    "max_recent_messages": null,
+    "keep_first_messages": 1
   }
   ```
+- `keep_first_messages` (default 1) is the number of leading messages always kept
+  as an anchor — the original task/goal. The anchor is **additional** to
+  `max_recent_messages` (which caps only the recent tail).
 
 ## Design
 
@@ -119,37 +129,52 @@ More accurate estimation can use tiktoken for OpenAI or anthropic-tokenizer for 
 
 ### Message Selection Algorithm
 
+Selection is "protect the head + tail, drop the middle" (see
+`anchored_window` in `crates/core/src/message_filter.rs`). The agent system
+prompt is assembled separately and is never part of this list, so the head
+anchor here protects the **first conversation message — the original task/goal**.
+
 ```python
-def select_messages(all_messages, budget_tokens, min_recent):
-    # Always include system message
-    selected = [system_message]
-    budget -= estimate_tokens(system_message)
+def select_messages(all_messages, budget, keep_head, min_tail, max_tail=None):
+    n = len(all_messages)
+    # Always keep the first `keep_head` (the task) and last `min_tail` (recent),
+    # even if they exceed budget. A hard `max_tail` cap bounds the tail.
+    if max_tail is not None:
+        min_tail = min(min_tail, max(max_tail, 1))
+    recent_start = n - min_tail
+    if recent_start <= keep_head:
+        return all_messages, []  # head and tail meet: nothing to drop
 
-    # Always include min_recent most recent messages
-    recent = all_messages[-min_recent:]
-    for msg in recent:
-        selected.append(msg)
-        budget -= estimate_tokens(msg)
-
-    # Add older messages while budget allows (newest first)
-    remaining = all_messages[:-min_recent]
-    for msg in reversed(remaining):
-        msg_tokens = estimate_tokens(msg)
-        if budget - msg_tokens < 0:
+    # Grow the recent block backward (newest-first) while it fits the token
+    # budget and the optional max_tail cap. This keeps a single contiguous tail
+    # so tool-call/result adjacency is preserved.
+    cost = sum_tokens(all_messages[:keep_head]) + sum_tokens(all_messages[recent_start:])
+    tail = min_tail
+    while recent_start > keep_head and (max_tail is None or tail < max_tail):
+        c = estimate_tokens(all_messages[recent_start - 1])
+        if cost + c > budget:
             break
-        selected.insert(1, msg)  # After system, before recent
-        budget -= msg_tokens
+        recent_start -= 1; cost += c; tail += 1
 
-    excluded = [m for m in all_messages if m not in selected]
-    return selected, excluded
+    kept = all_messages[:keep_head] + all_messages[recent_start:]
+    excluded = all_messages[keep_head:recent_start]   # the dropped middle
+    return kept, excluded
 ```
 
-Implementations MAY expose `max_recent_messages` as a hard cap for constrained
-surfaces such as public support chat. When set, the live prompt keeps no more
-than that many persisted messages, even if `context_budget_tokens` would allow
-more. Message limits always mean the latest N messages, returned in
-chronological order; older excluded messages remain available through
-`query_history`.
+The notice is inserted between the anchor and the recent block, so the live
+prompt reads `[task anchor] -> [N earlier messages hidden] -> [recent window]`.
+
+`max_recent_messages` is a hard cap for constrained surfaces such as public
+support chat; it bounds only the recent tail (the head anchor is additional).
+Message limits always mean the latest N messages, returned in chronological
+order; older excluded messages remain available through `query_history`.
+
+**Known limitation:** the anchor is guaranteed only within the candidate load
+window (`resolve_candidate_load_limit`). For conversations longer than that
+window — or when `max_recent_messages` is set very low — the DB loads only the
+latest N messages, so the true first message is never fetched and the anchor
+degrades to the oldest loaded message. Guaranteeing the head for arbitrarily
+long histories needs a head+tail DB fetch (tracked as a follow-up).
 
 ### History Notice Format
 

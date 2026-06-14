@@ -466,6 +466,102 @@ impl MessageQuery {
 }
 
 // ============================================================================
+// AnchoredWindow - "protect head + tail, drop the middle" selection
+// ============================================================================
+
+/// Which messages survive anchored token-budget trimming.
+///
+/// Kept messages are `[0, head_len)` (the anchor: the system goal / original
+/// task) followed by `[recent_start, len)` (recent state). Messages in
+/// `[head_len, recent_start)` — the middle — are dropped. [`Self::hidden`]
+/// reports how many.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AnchoredWindow {
+    /// Number of leading messages kept as the anchor.
+    pub head_len: usize,
+    /// Index where the contiguous recent block begins.
+    pub recent_start: usize,
+}
+
+impl AnchoredWindow {
+    /// Count of messages dropped from the middle.
+    pub fn hidden(&self) -> usize {
+        self.recent_start.saturating_sub(self.head_len)
+    }
+}
+
+/// Select an anchored window over `costs.len()` messages.
+///
+/// Always preserves the first `keep_head` messages (the conversation's goal) and
+/// the last `min_tail` messages (recent state), even if their combined token
+/// `cost` exceeds `budget`. The recent block then grows backward toward the head
+/// while the running total stays within `budget` and the tail stays within
+/// `max_tail` (when set).
+///
+/// This is the "protect head + tail, drop the middle" policy. It keeps a single
+/// contiguous recent block so tool-call/result adjacency and conversational flow
+/// are preserved, leaving at most one gap (between the anchor and the recent
+/// block). Anchoring the head is the conversational analog of StreamingLLM's
+/// attention sinks and the "lost in the middle" finding: the first message (the
+/// task/goal) is the one eviction you never want.
+///
+/// `max_tail` is a hard cap on the recent block and bounds `min_tail`; the head
+/// anchor is additional to it.
+pub fn anchored_window(
+    costs: &[usize],
+    keep_head: usize,
+    min_tail: usize,
+    max_tail: Option<usize>,
+    budget: usize,
+) -> AnchoredWindow {
+    let len = costs.len();
+    let keep_head = keep_head.min(len);
+
+    // A hard recent cap also bounds the guaranteed tail.
+    let mut min_tail = min_tail.min(len);
+    if let Some(max_tail) = max_tail {
+        min_tail = min_tail.min(max_tail.max(1));
+    }
+
+    let mut recent_start = len - min_tail;
+    if recent_start <= keep_head {
+        // Head and tail meet or overlap: keep everything, no middle to drop.
+        return AnchoredWindow {
+            head_len: keep_head,
+            recent_start: keep_head,
+        };
+    }
+
+    let head_cost: usize = costs[..keep_head].iter().sum();
+    let mut window_cost: usize = head_cost + costs[recent_start..].iter().sum::<usize>();
+    let mut tail_count = min_tail;
+
+    // Grow the recent block backward (newest-first) while it fits both the token
+    // budget and the optional hard recent cap. Head + min_tail are guaranteed
+    // even when already over budget.
+    while recent_start > keep_head {
+        if let Some(max_tail) = max_tail
+            && tail_count >= max_tail
+        {
+            break;
+        }
+        let next = recent_start - 1;
+        let next_cost = costs[next];
+        if window_cost + next_cost > budget {
+            break;
+        }
+        recent_start = next;
+        window_cost += next_cost;
+        tail_count += 1;
+    }
+
+    AnchoredWindow {
+        head_len: keep_head,
+        recent_start,
+    }
+}
+
+// ============================================================================
 // MessageFilterProvider - Trait for capabilities to contribute filters
 // ============================================================================
 
@@ -901,6 +997,61 @@ mod tests {
         assert_eq!(low_priority.priority(), -10);
         assert_eq!(high_priority.priority(), 10);
         assert_eq!(default_priority.priority(), 0);
+    }
+
+    #[test]
+    fn test_anchored_window_keeps_head_and_tail_drops_middle() {
+        // 5 messages, anchor 1, min tail 2, tiny budget: only head + tail survive.
+        let costs = [10, 10, 10, 10, 10];
+        let win = anchored_window(&costs, 1, 2, None, 1);
+        assert_eq!(win.head_len, 1);
+        assert_eq!(win.recent_start, 3);
+        assert_eq!(win.hidden(), 2); // messages 1 and 2 dropped
+    }
+
+    #[test]
+    fn test_anchored_window_grows_recent_block_within_budget() {
+        // Generous budget pulls older messages back into the contiguous tail.
+        let costs = [10, 10, 10, 10, 10];
+        let win = anchored_window(&costs, 1, 1, None, 1_000);
+        assert_eq!(win.head_len, 1);
+        assert_eq!(win.recent_start, 1); // everything kept
+        assert_eq!(win.hidden(), 0);
+    }
+
+    #[test]
+    fn test_anchored_window_respects_max_tail_cap() {
+        // max_tail caps the recent block; the head anchor is additional to it.
+        let costs = [10; 10];
+        let win = anchored_window(&costs, 1, 5, Some(2), 1_000);
+        assert_eq!(win.head_len, 1);
+        assert_eq!(win.recent_start, 8); // keep msg 0 + msgs 8,9
+        assert_eq!(win.hidden(), 7);
+    }
+
+    #[test]
+    fn test_anchored_window_keeps_anchor_and_tail_even_when_over_budget() {
+        let costs = [100, 100, 100, 100];
+        // Budget 0 still preserves head (1) and min tail (1): never drops anchors.
+        let win = anchored_window(&costs, 1, 1, None, 0);
+        assert_eq!(win.head_len, 1);
+        assert_eq!(win.recent_start, 3);
+        assert_eq!(win.hidden(), 2);
+    }
+
+    #[test]
+    fn test_anchored_window_no_middle_when_head_and_tail_overlap() {
+        let costs = [10, 10, 10];
+        let win = anchored_window(&costs, 1, 10, None, 1);
+        assert_eq!(win.hidden(), 0);
+    }
+
+    #[test]
+    fn test_anchored_window_empty() {
+        let win = anchored_window(&[], 1, 2, None, 100);
+        assert_eq!(win.head_len, 0);
+        assert_eq!(win.recent_start, 0);
+        assert_eq!(win.hidden(), 0);
     }
 
     #[test]

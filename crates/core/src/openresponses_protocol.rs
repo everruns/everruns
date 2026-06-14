@@ -577,8 +577,13 @@ impl OpenResponsesProtocolChatDriver {
 
         for msg in messages {
             if msg.role == LlmMessageRole::System {
-                // Extract system message as instructions
-                instructions = Some(match &msg.content {
+                // Accumulate system messages into `instructions`. Multiple system
+                // messages legitimately occur in one request — the agent system
+                // prompt plus, e.g., infinity context's hidden-history notice or
+                // compaction's conversation summary. Overwriting would drop the
+                // real system prompt and keep only the last notice, so join them
+                // in order instead.
+                let text = match &msg.content {
                     LlmMessageContent::Text(text) => text.clone(),
                     LlmMessageContent::Parts(parts) => parts
                         .iter()
@@ -588,6 +593,10 @@ impl OpenResponsesProtocolChatDriver {
                         })
                         .collect::<Vec<_>>()
                         .join(""),
+                };
+                instructions = Some(match instructions.take() {
+                    Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
+                    _ => text,
                 });
             } else if msg.role == LlmMessageRole::Assistant {
                 // For assistant messages, emit Reasoning item BEFORE message content if present
@@ -2318,6 +2327,32 @@ mod tests {
             Some("You are a helpful assistant".to_string())
         );
         assert_eq!(input.len(), 1); // Only user message, system converted to instructions
+    }
+
+    #[test]
+    fn test_build_input_concatenates_multiple_system_messages() {
+        // The agent system prompt plus a later system message (e.g. infinity
+        // context's hidden-history notice or compaction's summary) must both
+        // survive — the later one must not overwrite the real system prompt.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are a helpful assistant"),
+            LlmMessage::text(LlmMessageRole::User, "Hello"),
+            LlmMessage::text(
+                LlmMessageRole::System,
+                "[IMPORTANT: 3 earlier messages are NOT visible in this context.]",
+            ),
+        ];
+
+        let (instructions, input) = OpenResponsesProtocolChatDriver::build_input(&messages, false);
+
+        assert_eq!(
+            instructions,
+            Some(
+                "You are a helpful assistant\n\n[IMPORTANT: 3 earlier messages are NOT visible in this context.]"
+                    .to_string()
+            )
+        );
+        assert_eq!(input.len(), 1); // Only the user message remains as input
     }
 
     #[test]

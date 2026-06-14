@@ -31,8 +31,8 @@ Provider cache telemetry feeds this same model-view step. If the previous call r
 - Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
 
 **Infinity Context** (`crates/core/src/capabilities/infinity_context.rs`):
-- Separate, optional capability — not part of compaction. Trims messages + provides `query_history` tool.
-- Complementary to compaction but independent. See `specs/infinity-context.md`.
+- Separate, optional capability — not part of compaction. Keeps a recent window + provides the `query_history` tool.
+- **Not freely composable with compaction.** Infinity context evicts during message loading, before compaction runs, so enabling both naively means compaction only sees the recent window. Compaction is the stronger primary strategy (always-present summary); infinity context is a pull-based backstop. When both are enabled, infinity context defers token-budget eviction to compaction. See `specs/infinity-context.md`.
 
 ### Current Caveats
 
@@ -362,6 +362,14 @@ Tool results from `PROTECTED_TOOL_NAMES` (currently `activate_skill`) are exempt
 3. **Hierarchical memory**: rescued from cold tier into output verbatim
 4. **Summarization**: `skill_instructions` in default preserve list; prompt instructs LLM to include skill content verbatim
 
+### Anchored Task Message
+
+Aggressive trim also anchors the **first conversation message** (the original
+task/goal), reserving its budget alongside protected tool results so it is never
+dropped. Like infinity context's head anchor, losing the opening task leaves the
+model unable to tell what it is doing once the window slides; the system prompt
+is assembled separately and is already exempt.
+
 See `crates/core/src/capabilities/compaction.rs` for implementation (`PROTECTED_TOOL_NAMES`, `is_protected_tool_result`).
 
 ## Summarization
@@ -476,7 +484,7 @@ visibility rather than changing the capability ownership model.
 - [NAACL 2025: Prompt Compression Survey](https://aclanthology.org/2025.naacl-long.368.pdf)
 - [OpenAI: GPT-5.2 Codex Context Compaction](https://openai.com/index/introducing-gpt-5-2/)
 - [Google ADK: Context Compaction](https://google.github.io/adk-docs/context/compaction/)
-- `specs/infinity-context.md` — complementary capability (optional, independent)
+- `specs/infinity-context.md` — pull-based backstop capability; defers to compaction when both are enabled
 - `specs/events.md` — event schema
 - `specs/capabilities.md` — capability system
 - `crates/core/src/llm_driver_registry.rs` — `ChatDriver` trait with `supports_compact()` / `compact()`

@@ -1601,6 +1601,54 @@ impl CollectedModelViewProviders {
     }
 }
 
+/// True when the `compaction` capability is present and available in this set.
+///
+/// Infinity context defers token-budget eviction to compaction when both are
+/// enabled (see specs/infinity-context.md) so that compaction's summary — not a
+/// bare "hidden" notice — covers trimmed history.
+fn compaction_is_enabled(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> bool {
+    capability_configs.iter().any(|cap_config| {
+        cap_config.capability_ref.as_str() == COMPACTION_CAPABILITY_ID
+            && registry
+                .get(cap_config.capability_ref.as_str())
+                .is_some_and(|cap| cap.status() == CapabilityStatus::Available)
+    })
+}
+
+/// Per-agent message-filter config for a capability, injecting the derived
+/// `compaction_active` signal into infinity context when compaction is enabled.
+///
+/// This is the one place capability composition is encoded: infinity context and
+/// compaction are otherwise independent, but if infinity context evicts history
+/// before compaction can summarize it, compaction only ever sees the recent
+/// window. The flag tells infinity context to anchor + provide `query_history`
+/// and let compaction own reduction.
+fn message_filter_config_for(
+    cap_id: &str,
+    base: &serde_json::Value,
+    compaction_on: bool,
+) -> serde_json::Value {
+    if cap_id != INFINITY_CONTEXT_CAPABILITY_ID || !compaction_on {
+        return base.clone();
+    }
+    let mut config = base.clone();
+    match config.as_object_mut() {
+        Some(map) => {
+            map.insert(
+                "compaction_active".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        None => {
+            config = serde_json::json!({ "compaction_active": true });
+        }
+    }
+    config
+}
+
 /// Collect only message filter providers from capabilities, skipping system
 /// prompt contributions, tools, mounts, and other expensive work.
 ///
@@ -1612,6 +1660,7 @@ pub fn collect_message_filters_only(
 ) -> CollectedMessageFilters {
     let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
         Vec::new();
+    let compaction_on = compaction_is_enabled(capability_configs, registry);
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -1625,7 +1674,8 @@ pub fn collect_message_filters_only(
                 .resolve_for_model(None)
                 .unwrap_or_else(|| capability.as_ref());
             if let Some(provider) = effective.message_filter_provider() {
-                message_filter_providers.push((provider, cap_config.config.clone()));
+                let config = message_filter_config_for(cap_id, &cap_config.config, compaction_on);
+                message_filter_providers.push((provider, config));
             }
         }
     }
@@ -2071,6 +2121,7 @@ pub async fn collect_capabilities_with_configs(
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     let mut mcp_servers = ScopedMcpServers::default();
+    let compaction_on = compaction_is_enabled(capability_configs, registry);
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -2234,7 +2285,8 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect message filter provider
             if let Some(provider) = effective.message_filter_provider() {
-                message_filter_providers.push((provider, cap_config.config.clone()));
+                let config = message_filter_config_for(cap_id, &cap_config.config, compaction_on);
+                message_filter_providers.push((provider, config));
             }
 
             applied_ids.push(cap_id.to_string());
@@ -3557,6 +3609,106 @@ mod tests {
 
         assert_eq!(query.filters.len(), 1);
         assert!(matches!(&query.filters[0], MessageFilter::Search(s) if s == "test_query"));
+    }
+
+    #[test]
+    fn test_message_filter_config_injects_compaction_active_for_infinity_context() {
+        let base = serde_json::json!({ "context_budget_tokens": 1000 });
+
+        // Infinity context gets the derived flag only when compaction is enabled.
+        let with = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, true);
+        assert_eq!(with["compaction_active"], serde_json::json!(true));
+        assert_eq!(with["context_budget_tokens"], serde_json::json!(1000));
+
+        let without = message_filter_config_for(INFINITY_CONTEXT_CAPABILITY_ID, &base, false);
+        assert!(without.get("compaction_active").is_none());
+
+        // Other capabilities are never touched.
+        let other = message_filter_config_for("other", &base, true);
+        assert!(other.get("compaction_active").is_none());
+
+        // A null base is upgraded to an object carrying the flag.
+        let null_base = message_filter_config_for(
+            INFINITY_CONTEXT_CAPABILITY_ID,
+            &serde_json::Value::Null,
+            true,
+        );
+        assert_eq!(null_base["compaction_active"], serde_json::json!(true));
+    }
+
+    #[test]
+    fn test_infinity_context_defers_to_compaction_end_to_end() {
+        use crate::message::Message;
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(InfinityContextCapability);
+        registry.register(CompactionCapability);
+
+        let tight = serde_json::json!({
+            "context_budget_tokens": 1,
+            "min_recent_messages": 1
+        });
+
+        // Infinity context alone (tight budget): it trims and injects a notice.
+        let solo = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
+            config: tight.clone(),
+        }];
+        let mut messages = vec![
+            Message::user("task"),
+            Message::assistant("old ".repeat(400)),
+            Message::user("recent"),
+        ];
+        collect_message_filters_only(&solo, &registry).apply_post_load_filters(&mut messages);
+        assert!(
+            messages
+                .iter()
+                .any(|m| m.text().is_some_and(|t| t.contains("NOT visible"))),
+            "infinity context alone should trim and notice"
+        );
+
+        // Infinity context + compaction: infinity context defers, no eviction.
+        let both = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(INFINITY_CONTEXT_CAPABILITY_ID),
+                config: tight,
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
+                config: serde_json::json!({}),
+            },
+        ];
+        let mut messages = vec![
+            Message::user("task"),
+            Message::assistant("old ".repeat(400)),
+            Message::user("recent"),
+        ];
+        collect_message_filters_only(&both, &registry).apply_post_load_filters(&mut messages);
+        assert_eq!(messages.len(), 3, "compaction owns reduction; no eviction");
+        assert!(
+            messages
+                .iter()
+                .all(|m| !m.text().is_some_and(|t| t.contains("NOT visible"))),
+            "no hidden-history notice when compaction is the active reducer"
+        );
+    }
+
+    #[test]
+    fn test_compaction_is_enabled_detects_compaction() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(CompactionCapability);
+
+        let with_compaction = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
+            config: serde_json::json!({}),
+        }];
+        assert!(compaction_is_enabled(&with_compaction, &registry));
+
+        let without = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("current_time"),
+            config: serde_json::json!({}),
+        }];
+        assert!(!compaction_is_enabled(&without, &registry));
     }
 
     #[test]

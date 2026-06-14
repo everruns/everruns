@@ -5,7 +5,9 @@
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::message::{ContentPart, Message, MessageRole};
-use crate::message_filter::{ExcludedNoticeTransform, MessageFilterProvider, MessageQuery};
+use crate::message_filter::{
+    ExcludedNoticeTransform, MessageFilterProvider, MessageQuery, anchored_window,
+};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -89,6 +91,13 @@ impl Capability for InfinityContextCapability {
                     "title": "Maximum recent messages",
                     "description": "Optional hard cap on recent messages kept in the live prompt.",
                     "minimum": 1
+                },
+                "keep_first_messages": {
+                    "type": "integer",
+                    "title": "Anchored first messages",
+                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages.",
+                    "minimum": 0,
+                    "default": default_keep_first_messages()
                 }
             }
         }))
@@ -179,6 +188,20 @@ struct InfinityContextConfig {
     /// when the token-budget estimate would allow more messages.
     #[serde(default)]
     max_recent_messages: Option<usize>,
+
+    /// Number of leading messages always kept as an anchor (the original task /
+    /// goal), regardless of token budget. Defaults to 1 so the model never loses
+    /// what it is doing when the window slides. The anchor is additional to
+    /// `max_recent_messages`.
+    #[serde(default = "default_keep_first_messages")]
+    keep_first_messages: usize,
+
+    /// Derived (not user-facing): set by capability collection when the
+    /// `compaction` capability is also enabled. When true, infinity context
+    /// stops doing token-budget eviction and lets compaction own reduction, so
+    /// compaction's summary — not a bare "hidden" notice — covers old turns.
+    #[serde(default)]
+    compaction_active: bool,
 }
 
 fn default_context_budget_tokens() -> usize {
@@ -189,12 +212,18 @@ fn default_min_recent_messages() -> usize {
     10
 }
 
+fn default_keep_first_messages() -> usize {
+    1
+}
+
 impl Default for InfinityContextConfig {
     fn default() -> Self {
         Self {
             context_budget_tokens: default_context_budget_tokens(),
             min_recent_messages: default_min_recent_messages(),
             max_recent_messages: None,
+            keep_first_messages: default_keep_first_messages(),
+            compaction_active: false,
         }
     }
 }
@@ -218,17 +247,23 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
         let existing_notice_count = take_existing_excluded_notice(messages);
-        let trimmed_count = trim_messages_to_token_budget(messages, &config);
-        let total_excluded_count = existing_notice_count.saturating_add(trimmed_count);
+
+        // P2 composition: when compaction is the active reducer, defer
+        // token-budget eviction to it. Only re-surface any candidate-window
+        // overflow notice (messages the DB load could not fetch).
+        if config.compaction_active {
+            if existing_notice_count > 0 {
+                insert_excluded_notice(messages, config.keep_first_messages, existing_notice_count);
+            }
+            return;
+        }
+
+        let outcome = trim_messages_to_token_budget(messages, &config);
+        let total_excluded_count = existing_notice_count.saturating_add(outcome.hidden_count);
         if total_excluded_count > 0 {
-            messages.insert(
-                0,
-                Message::system(
-                    ExcludedNoticeTransform::infinity_context()
-                        .format
-                        .replace("{}", &total_excluded_count.to_string()),
-                ),
-            );
+            // Place the notice right after the anchored head so the layout reads
+            // [task anchor] -> [N hidden] -> [recent window].
+            insert_excluded_notice(messages, outcome.head_len, total_excluded_count);
         }
     }
 
@@ -327,45 +362,55 @@ fn parse_excluded_notice_count(message: &Message) -> Option<usize> {
     count.parse().ok()
 }
 
+/// Outcome of token-budget trimming.
+#[derive(Default)]
+struct TrimOutcome {
+    /// Messages dropped from the middle.
+    hidden_count: usize,
+    /// Length of the preserved leading anchor (where the notice is inserted).
+    head_len: usize,
+}
+
+/// Insert the hidden-history notice at `position`, clamped to the message list.
+fn insert_excluded_notice(messages: &mut Vec<Message>, position: usize, count: usize) {
+    let text = ExcludedNoticeTransform::infinity_context()
+        .format
+        .replace("{}", &count.to_string());
+    messages.insert(position.min(messages.len()), Message::system(text));
+}
+
+/// Trim the live window to the token budget while always keeping the first
+/// `keep_first_messages` (the original task/goal) and the recent tail. Drops a
+/// single contiguous block from the middle and reports how many were hidden.
 fn trim_messages_to_token_budget(
     messages: &mut Vec<Message>,
     config: &InfinityContextConfig,
-) -> usize {
+) -> TrimOutcome {
     if messages.is_empty() {
-        return 0;
+        return TrimOutcome::default();
     }
 
-    let original_count = messages.len();
-    if let Some(max_recent_messages) = config.max_recent_messages {
-        let max_recent_messages = max_recent_messages.max(1);
-        if messages.len() > max_recent_messages {
-            let drop_count = messages.len() - max_recent_messages;
-            messages.drain(0..drop_count);
-        }
+    let costs: Vec<usize> = messages.iter().map(estimate_message_tokens).collect();
+    let window = anchored_window(
+        &costs,
+        config.keep_first_messages,
+        config.min_recent_messages,
+        config.max_recent_messages,
+        config.context_budget_tokens,
+    );
+
+    let hidden_count = window.hidden();
+    if hidden_count > 0 {
+        // Rebuild as [0, head_len) ++ [recent_start, len) without cloning.
+        let tail = messages.split_off(window.recent_start);
+        messages.truncate(window.head_len);
+        messages.extend(tail);
     }
 
-    let capped_count = messages.len();
-    let min_recent_start = capped_count.saturating_sub(config.min_recent_messages);
-    let mut selected = Vec::new();
-    let mut selected_tokens = 0usize;
-
-    for (idx, message) in messages.iter().enumerate().skip(min_recent_start) {
-        selected.push((idx, message.clone()));
-        selected_tokens = selected_tokens.saturating_add(estimate_message_tokens(message));
+    TrimOutcome {
+        hidden_count,
+        head_len: window.head_len,
     }
-
-    let mut remaining_budget = config.context_budget_tokens.saturating_sub(selected_tokens);
-    for (idx, message) in messages[..min_recent_start].iter().enumerate().rev() {
-        let tokens = estimate_message_tokens(message);
-        if tokens <= remaining_budget {
-            selected.push((idx, message.clone()));
-            remaining_budget -= tokens;
-        }
-    }
-
-    selected.sort_by_key(|(idx, _)| *idx);
-    *messages = selected.into_iter().map(|(_, message)| message).collect();
-    original_count.saturating_sub(messages.len())
 }
 
 /// Tool for querying earlier conversation history.
@@ -799,7 +844,7 @@ mod tests {
     fn test_filter_provider_trims_loaded_messages_by_token_budget() {
         let provider = InfinityContextFilterProvider;
         let mut messages = vec![
-            Message::user("old tiny"),
+            Message::user("the original task"),
             Message::assistant("old ".repeat(400)),
             Message::user("recent one"),
             Message::assistant("recent two"),
@@ -810,13 +855,16 @@ mod tests {
             &json!({"context_budget_tokens": 1, "min_recent_messages": 2}),
         );
 
-        assert_eq!(messages.len(), 3);
+        // Layout: [task anchor] -> [N hidden notice] -> [recent window].
+        // The original task survives even under a 1-token budget.
+        assert_eq!(messages.len(), 4);
+        assert_eq!(extract_text_content(&messages[0]), "the original task");
         assert!(
-            extract_text_content(&messages[0])
-                .contains("earlier messages are NOT visible in this context")
+            extract_text_content(&messages[1])
+                .contains("1 earlier messages are NOT visible in this context")
         );
-        assert_eq!(extract_text_content(&messages[1]), "recent one");
-        assert_eq!(extract_text_content(&messages[2]), "recent two");
+        assert_eq!(extract_text_content(&messages[2]), "recent one");
+        assert_eq!(extract_text_content(&messages[3]), "recent two");
     }
 
     #[test]
@@ -826,6 +874,8 @@ mod tests {
             Message::user("one"),
             Message::assistant("two"),
             Message::user("three"),
+            Message::assistant("four"),
+            Message::user("five"),
         ];
 
         provider.post_load(
@@ -837,41 +887,107 @@ mod tests {
             }),
         );
 
-        assert_eq!(messages.len(), 3);
+        // Hard cap keeps 2 recent; the head anchor ("one") is additional to it.
+        assert_eq!(messages.len(), 4);
+        assert_eq!(extract_text_content(&messages[0]), "one");
         assert!(
-            extract_text_content(&messages[0])
-                .contains("earlier messages are NOT visible in this context")
+            extract_text_content(&messages[1])
+                .contains("2 earlier messages are NOT visible in this context")
         );
-        assert_eq!(extract_text_content(&messages[1]), "two");
-        assert_eq!(extract_text_content(&messages[2]), "three");
+        assert_eq!(extract_text_content(&messages[2]), "four");
+        assert_eq!(extract_text_content(&messages[3]), "five");
     }
 
     #[test]
-    fn test_filter_provider_preserves_hard_cap_notice_through_full_flow() {
+    fn test_filter_provider_anchors_task_through_full_flow() {
         let provider = InfinityContextFilterProvider;
+        // Budget large enough that the candidate load fetches every message, but
+        // small enough that the big middle turns are dropped by token budget.
         let config = json!({
-            "context_budget_tokens": 10_000,
-            "min_recent_messages": 10,
-            "max_recent_messages": 2
+            "context_budget_tokens": 600,
+            "min_recent_messages": 2
         });
         let mut query = MessageQuery::new(SessionId::new());
         provider.apply_filters(&mut query, &config);
         let mut messages = vec![
-            Message::user("one"),
-            Message::assistant("two"),
-            Message::user("three"),
+            Message::user("TASK: build the widget"),
+            Message::assistant("X".repeat(2000)),
+            Message::assistant("Y".repeat(2000)),
+            Message::user("recent a"),
+            Message::assistant("recent b"),
         ];
 
         query.apply_windowing(&mut messages);
         provider.post_load(&mut messages, &config);
 
-        assert_eq!(messages.len(), 3);
+        // The original task is anchored at the front, the notice follows it, and
+        // the recent tail is intact — the model still knows what it is doing.
+        assert_eq!(extract_text_content(&messages[0]), "TASK: build the widget");
         assert!(
-            extract_text_content(&messages[0])
-                .contains("1 earlier messages are NOT visible in this context")
+            extract_text_content(&messages[1])
+                .contains("earlier messages are NOT visible in this context")
         );
-        assert_eq!(extract_text_content(&messages[1]), "two");
-        assert_eq!(extract_text_content(&messages[2]), "three");
+        assert_eq!(extract_text_content(messages.last().unwrap()), "recent b");
+        // The huge first assistant turn was dropped from the middle.
+        assert!(
+            !messages
+                .iter()
+                .any(|m| extract_text_content(m).starts_with("XXX"))
+        );
+    }
+
+    #[test]
+    fn test_filter_provider_defers_eviction_to_compaction() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("task"),
+            Message::assistant("old ".repeat(400)),
+            Message::user("recent one"),
+            Message::assistant("recent two"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &json!({
+                "context_budget_tokens": 1,
+                "min_recent_messages": 2,
+                "compaction_active": true
+            }),
+        );
+
+        // Compaction owns reduction: infinity context neither trims nor injects a
+        // notice when compaction is active.
+        assert_eq!(messages.len(), 4);
+        assert!(
+            messages
+                .iter()
+                .all(|m| !extract_text_content(m).contains("NOT visible"))
+        );
+    }
+
+    #[test]
+    fn test_filter_provider_keep_first_messages_anchors_multiple() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("anchor one"),
+            Message::user("anchor two"),
+            Message::assistant("mid ".repeat(400)),
+            Message::user("recent"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &json!({
+                "context_budget_tokens": 1,
+                "min_recent_messages": 1,
+                "keep_first_messages": 2
+            }),
+        );
+
+        assert_eq!(extract_text_content(&messages[0]), "anchor one");
+        assert_eq!(extract_text_content(&messages[1]), "anchor two");
+        assert!(extract_text_content(&messages[2]).contains("NOT visible"));
+        assert_eq!(extract_text_content(messages.last().unwrap()), "recent");
     }
 
     #[test]
