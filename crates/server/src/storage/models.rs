@@ -520,6 +520,9 @@ pub struct HarnessRow {
     /// Scoped MCP server configs (JSONB in DB)
     #[sqlx(default)]
     pub mcp_servers: serde_json::Value,
+    /// Embedder-supplied metadata for LLM observability (JSONB in DB)
+    #[sqlx(default)]
+    pub embedder_metadata: serde_json::Value,
     pub is_built_in: bool,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -543,6 +546,8 @@ pub struct CreateHarnessRow {
     pub mcp_servers: serde_json::Value,
     /// Network access list (JSONB in DB)
     pub network_access: Option<serde_json::Value>,
+    /// Embedder-supplied metadata for LLM observability (JSONB in DB)
+    pub embedder_metadata: serde_json::Value,
     pub is_built_in: bool,
 }
 
@@ -558,6 +563,7 @@ pub struct UpdateHarness {
     pub initial_files: Option<serde_json::Value>,
     pub mcp_servers: Option<serde_json::Value>,
     pub network_access: Option<Option<serde_json::Value>>,
+    pub embedder_metadata: Option<serde_json::Value>,
     pub status: Option<String>,
 }
 

@@ -339,6 +339,7 @@ impl InMemoryAgenticLoopBuilder {
             mcp_servers: Default::default(),
             initial_files: vec![],
             network_access: None,
+            embedder_metadata: Default::default(),
             is_built_in: false,
             status: crate::harness::HarnessStatus::Active,
             created_at: now,

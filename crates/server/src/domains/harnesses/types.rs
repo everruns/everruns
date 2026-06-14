@@ -3,6 +3,8 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
+use std::collections::HashMap;
+
 use everruns_core::typed_id::{HarnessId, ModelId};
 use everruns_core::{
     AgentCapabilityConfig, HarnessStatus, InitialFile, ScopedMcpServers, ToolDefinition,
@@ -54,6 +56,9 @@ pub struct CreateHarnessRequest {
     /// Network access list controlling which hosts/URLs sessions can reach.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
+    /// Arbitrary key-value metadata injected into LLM requests for observability.
+    #[serde(default)]
+    pub embedder_metadata: HashMap<String, String>,
 }
 
 /// Request to update a harness. Only provided fields will be updated.
@@ -110,6 +115,9 @@ pub struct UpdateHarnessRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Current lifecycle status. Example shape is defined on `HarnessStatus`.
     pub status: Option<HarnessStatus>,
+    /// Replace the embedder metadata map entirely; omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embedder_metadata: Option<HashMap<String, String>>,
 }
 
 /// Request to preview harness shape with capabilities applied

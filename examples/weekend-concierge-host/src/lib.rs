@@ -226,6 +226,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
             is_readonly: true,
         }],
         network_access: None,
+        embedder_metadata: Default::default(),
         is_built_in: false,
         status: HarnessStatus::Active,
         created_at: Utc::now(),

@@ -1429,6 +1429,10 @@ pub struct LlmRequestOptions {
     /// Provider-specific request options that do not warrant dedicated fields.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub provider_options: HashMap<String, Value>,
+    /// General request metadata passed to the LLM provider for tracking and observability.
+    /// Includes embedder-supplied labels merged with system tracking keys (session_id, turn_id, etc.).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub metadata: HashMap<String, String>,
 }
 
 impl LlmRequestOptions {
@@ -1436,6 +1440,7 @@ impl LlmRequestOptions {
         self.prompt_cache.is_none()
             && self.tool_search.is_none()
             && self.provider_options.is_empty()
+            && self.metadata.is_empty()
     }
 }
 
@@ -3282,6 +3287,7 @@ mod tests {
                 threshold: 8,
             }),
             provider_options,
+            metadata: Default::default(),
         });
 
         let json = serde_json::to_value(&data).unwrap();

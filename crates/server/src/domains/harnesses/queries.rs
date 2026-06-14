@@ -35,6 +35,7 @@ pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>)
         network_access: row
             .network_access
             .and_then(|v| serde_json::from_value(v).ok()),
+        embedder_metadata: serde_json::from_value(row.embedder_metadata).unwrap_or_default(),
         is_built_in: row.is_built_in,
         status: HarnessStatus::from(row.status.as_str()),
         created_at: row.created_at,
@@ -291,6 +292,7 @@ pub fn merge_preview_layer(
         initial_files: vec![],
         mcp_servers: Default::default(),
         network_access: None,
+        embedder_metadata: Default::default(),
         is_built_in: false,
         status: HarnessStatus::Active,
         created_at: chrono::Utc::now(),

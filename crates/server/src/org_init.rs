@@ -135,6 +135,7 @@ pub async fn initialize_org_harnesses_with_definitions(
             mcp_servers: serde_json::json!({}),
             is_built_in: true,
             network_access: None,
+            embedder_metadata: serde_json::json!({}),
         };
 
         // Look up by name — every org (including the default org) has the same
@@ -736,6 +737,7 @@ mod tests {
                     initial_files: serde_json::json!([]),
                     mcp_servers: serde_json::json!({}),
                     network_access: None,
+                    embedder_metadata: serde_json::json!({}),
                     is_built_in: true,
                 },
             )

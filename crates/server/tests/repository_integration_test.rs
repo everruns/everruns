@@ -620,6 +620,7 @@ async fn test_session_crud() {
                 initial_files: serde_json::json!([]),
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
+                embedder_metadata: serde_json::json!({}),
                 is_built_in: false,
             },
         )
@@ -718,6 +719,7 @@ async fn test_session_crud() {
                 initial_files: serde_json::json!([]),
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
+                embedder_metadata: serde_json::json!({}),
                 is_built_in: false,
             },
         )

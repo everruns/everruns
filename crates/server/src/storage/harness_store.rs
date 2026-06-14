@@ -91,6 +91,7 @@ impl HarnessStore for DbHarnessStore {
                 network_access: row
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),
+                embedder_metadata: from_json(row.embedder_metadata),
                 is_built_in: row.is_built_in,
                 status: HarnessStatus::from(row.status.as_str()),
                 created_at: row.created_at,

@@ -4,6 +4,8 @@
 // runtime hosts and worker-backed hosts need the same merged view of harness,
 // agent, session, messages, model resolution, and RuntimeAgent construction.
 
+use std::collections::HashMap;
+
 use crate::AgentCapabilityConfig;
 use crate::agent::Agent;
 use crate::capabilities::{
@@ -51,6 +53,8 @@ pub struct AssembledTurnContext {
     pub resolved_locale: Option<String>,
     /// Compaction config extracted from merged capabilities, if present.
     pub compaction_config: Option<CompactionConfig>,
+    /// Embedder metadata folded from the harness chain (root base, leaf wins).
+    pub embedder_metadata: HashMap<String, String>,
 }
 
 /// Shared capability-resolution result for runtime execution.
@@ -239,6 +243,15 @@ async fn assemble_turn_context_with_mode(
     )
     .await?;
 
+    let embedder_metadata = harness_chain.iter().fold(HashMap::new(), |mut acc, h| {
+        acc.extend(
+            h.embedder_metadata
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone())),
+        );
+        acc
+    });
+
     Ok(AssembledTurnContext {
         harness_chain,
         agent,
@@ -251,6 +264,7 @@ async fn assemble_turn_context_with_mode(
         resolved_model_id,
         resolved_locale,
         compaction_config,
+        embedder_metadata,
     })
 }
 
@@ -413,6 +427,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             mcp_servers: Default::default(),
+            embedder_metadata: HashMap::new(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),

@@ -203,6 +203,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 initial_files: serde_json::json!([]),
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
+                embedder_metadata: serde_json::json!({}),
                 is_built_in: false,
             },
         )

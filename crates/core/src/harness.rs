@@ -4,6 +4,8 @@
 // Agent (optional) provides domain-specific customizations on top.
 // Hierarchy: Harness → Agent → Session
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +119,11 @@ pub struct Harness {
         skip_serializing_if = "scoped_mcp_servers_is_empty"
     )]
     pub mcp_servers: ScopedMcpServers,
+    /// Arbitrary key-value metadata injected into LLM requests for observability.
+    /// Keys from system context (session_id, org_id, etc.) always take precedence.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(example = json!({"env": "production", "team": "platform"})))]
+    pub embedder_metadata: HashMap<String, String>,
     /// Whether this harness is built-in (system-managed, readonly).
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.
@@ -172,6 +179,17 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         initial_files: effective.initial_files,
         network_access: effective.network_access,
         mcp_servers: effective.mcp_servers,
+        // embedder_metadata: parent base, child keys win
+        embedder_metadata: {
+            let mut m = parent.embedder_metadata.clone();
+            m.extend(
+                child
+                    .embedder_metadata
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+            m
+        },
     }
 }
 
@@ -200,6 +218,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             mcp_servers: ScopedMcpServers::default(),
+            embedder_metadata: HashMap::new(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),
@@ -264,6 +283,41 @@ mod tests {
         assert_eq!(merged.initial_files.len(), 2);
         assert_eq!(merged.initial_files[0].content, "child");
         assert_eq!(merged.initial_files[1].path, "/notes.txt");
+    }
+
+    #[test]
+    fn merges_embedder_metadata_parent_first_child_wins() {
+        let mut parent = test_harness(1, "Parent.");
+        parent.embedder_metadata = HashMap::from([
+            ("env".to_string(), "production".to_string()),
+            ("team".to_string(), "platform".to_string()),
+        ]);
+
+        let mut child = test_harness(2, "Child.");
+        child.parent_harness_id = Some(parent.id);
+        child.embedder_metadata = HashMap::from([
+            ("team".to_string(), "ai".to_string()), // overrides parent
+            ("experiment".to_string(), "v2".to_string()), // child-only key
+        ]);
+
+        let merged = merge_harness(&parent, &child);
+
+        assert_eq!(
+            merged.embedder_metadata.get("env").map(String::as_str),
+            Some("production")
+        );
+        assert_eq!(
+            merged.embedder_metadata.get("team").map(String::as_str),
+            Some("ai"),
+            "child wins on collision"
+        );
+        assert_eq!(
+            merged
+                .embedder_metadata
+                .get("experiment")
+                .map(String::as_str),
+            Some("v2")
+        );
     }
 
     #[test]

@@ -540,6 +540,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             mcp_servers: Default::default(),
+            embedder_metadata: Default::default(),
             is_built_in: false,
             status: HarnessStatus::Active,
             created_at: Utc::now(),

@@ -824,6 +824,7 @@ mod tests {
                     initial_files: serde_json::json!([]),
                     mcp_servers: serde_json::json!({}),
                     network_access: Some(serde_json::to_value(&harness_network_access).unwrap()),
+                    embedder_metadata: serde_json::json!({}),
                     is_built_in: false,
                 },
             )
