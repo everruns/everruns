@@ -2111,7 +2111,8 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
         for webhook in webhooks {
             let mut req = EgressRequest::new("POST", &webhook.url, EgressRequestKind::Integration)
                 .header("Content-Type", "application/json")
-                .body(body.clone());
+                .body(body.clone())
+                .timeout_ms(10_000);
 
             if let Some(secret) = &webhook.secret {
                 use hmac::{Hmac, Mac};

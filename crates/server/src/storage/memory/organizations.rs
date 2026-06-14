@@ -462,13 +462,14 @@ impl InMemoryDatabase {
     // ============================================
 
     pub async fn list_org_task_webhooks(&self, org_id: i64) -> Result<Vec<OrgTaskWebhookRow>> {
-        let rows = self
+        let mut rows: Vec<_> = self
             .org_task_webhooks
             .read()
             .iter()
             .filter(|w| w.org_id == org_id)
             .cloned()
             .collect();
+        rows.sort_by_key(|w| w.created_at);
         Ok(rows)
     }
 
@@ -476,13 +477,14 @@ impl InMemoryDatabase {
         &self,
         org_id: i64,
     ) -> Result<Vec<OrgTaskWebhookRow>> {
-        let rows = self
+        let mut rows: Vec<_> = self
             .org_task_webhooks
             .read()
             .iter()
             .filter(|w| w.org_id == org_id && w.enabled)
             .cloned()
             .collect();
+        rows.sort_by_key(|w| w.created_at);
         Ok(rows)
     }
 

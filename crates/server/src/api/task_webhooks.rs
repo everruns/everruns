@@ -107,7 +107,10 @@ where
     T: serde::Deserialize<'de>,
     D: serde::Deserializer<'de>,
 {
-    Option::<Option<T>>::deserialize(de)
+    // Deserialize Option<T> and wrap in Some so the outer Option distinguishes
+    // between "field absent" (default None) and "field present with null value"
+    // (Some(None) = clear the secret).
+    Option::<T>::deserialize(de).map(Some)
 }
 
 pub fn routes(state: AppState) -> Router {

@@ -43,7 +43,7 @@ pub trait SessionTaskWaker: Send + Sync {
 /// Fire outbound HTTP webhooks configured for the owning org when a task
 /// reaches a terminal state. Errors are best-effort (logged, never fatal).
 #[async_trait]
-pub trait TaskWebhookNotifier: Send + Sync {
+pub trait TaskWebhookNotifier: Send + Sync + 'static {
     async fn notify(&self, task: &SessionTask) -> anyhow::Result<()>;
 }
 
@@ -196,17 +196,21 @@ impl DbSessionTaskRegistry {
     }
 
     /// Fire webhook notifications for a terminal task transition (best-effort).
-    async fn try_notify_webhooks(&self, task: &SessionTask) {
-        let Some(notifier) = &self.notifier else {
+    /// Spawns a detached task so outbound HTTP latency never blocks task updates.
+    fn try_notify_webhooks(&self, task: &SessionTask) {
+        let Some(notifier) = self.notifier.clone() else {
             return;
         };
-        if let Err(e) = notifier.notify(task).await {
-            tracing::warn!(
-                task_id = %task.id,
-                session_id = %task.session_id,
-                "TaskWebhookNotifier failed (best-effort): {e}"
-            );
-        }
+        let task = task.clone();
+        tokio::spawn(async move {
+            if let Err(e) = notifier.notify(&task).await {
+                tracing::warn!(
+                    task_id = %task.id,
+                    session_id = %task.session_id,
+                    "TaskWebhookNotifier failed (best-effort): {e}"
+                );
+            }
+        });
     }
 }
 
@@ -271,7 +275,7 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
                     self.maybe_wake_on_terminal(prior, task).await;
                     // Webhook notifications fire on the same terminal transition.
                     if !prior.state.is_terminal() && task.state.is_terminal() {
-                        self.try_notify_webhooks(task).await;
+                        self.try_notify_webhooks(task);
                     }
                 }
                 if wants_awaiting_input_wake {
