@@ -38,7 +38,8 @@ export async function getSessionTask(
   return response.data;
 }
 
-/** Post an inbound message (steering or input answer) to a task. */
+/** Post an inbound message (steering or input answer) to a task.
+ *  Not supported for subagent tasks; the server returns 400 for that kind. */
 export async function postSessionTaskMessage(
   sessionId: string,
   taskId: string,
