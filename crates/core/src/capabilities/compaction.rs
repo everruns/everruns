@@ -565,10 +565,13 @@ pub fn aggressive_trim(
         .map(|(i, _)| i)
         .collect();
 
-    // Anchor the first conversation message (the original task / goal). Like
-    // infinity context's head anchor, this is the one eviction we never want:
-    // without it the model loses track of what it is doing once the window
-    // slides. Protecting it reserves its budget first, newest-first if tight.
+    // Anchor the first conversation message (the original task / goal) by
+    // adding it to the protected set, so its budget is reserved before any
+    // non-protected message — like infinity context's head anchor, this is the
+    // eviction we most want to avoid once the window slides. Under extreme
+    // pressure (protected messages alone exceed the budget) the oldest
+    // protected messages, including this one, may still be dropped, matching how
+    // protected tool results are handled.
     if !conversation.is_empty() {
         protected_indices.insert(0);
     }
