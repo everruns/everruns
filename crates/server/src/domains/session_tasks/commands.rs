@@ -514,7 +514,10 @@ mod tests {
             .list_messages(session_id, &task.id, Some(10))
             .await
             .unwrap();
-        assert!(messages.is_empty(), "no message must be persisted for subagent tasks");
+        assert!(
+            messages.is_empty(),
+            "no message must be persisted for subagent tasks"
+        );
     }
 
     // -------------------------------------------------------------------------
