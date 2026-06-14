@@ -16,31 +16,22 @@ description = "OpenRouter provider implementation for Everruns"
 readme = "README.md"
 
 [dependencies]
-# Core dependencies
 async-trait.workspace = true
 
-# Async runtime
-tokio.workspace = true
-futures.workspace = true
-
-# HTTP client
+# HTTP client (model discovery)
 reqwest.workspace = true
-eventsource-stream.workspace = true
 
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
 
-# Date/time
+# Date/time (model `created` timestamps)
 chrono.workspace = true
-
-# Tracing
-tracing.workspace = true
-inventory.workspace = true
 
 # Internal dependencies
 everruns-core.workspace = true
 
 [dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures driver requests.
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"

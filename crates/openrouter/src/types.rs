@@ -110,7 +110,8 @@ impl OpenRouterModelInfo {
         }
     }
 
-    /// Build an [`ModelProfile`] from OpenRouter's advertised metadata.
+    /// Build a [`ModelProfile`](everruns_core::model::ModelProfile) from
+    /// OpenRouter's advertised metadata.
     pub fn to_discovered_profile(&self) -> everruns_core::model::ModelProfile {
         use everruns_core::model::*;
 
