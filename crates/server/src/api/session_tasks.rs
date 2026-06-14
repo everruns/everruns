@@ -122,7 +122,7 @@ pub struct GetTaskQuery {
         ("session_id" = String, Path, description = "Session ID"),
         ("task_id" = String, Path, description = "Task ID"),
         ("after_id" = Option<String>, Query, description = "Return only messages after this message ID (exclusive cursor)"),
-        ("limit" = Option<u32>, Query, description = "Max messages to return (default 50)"),
+        ("limit" = Option<u32>, Query, description = "Max messages to return (default 50, max 500)"),
     ),
     responses(
         (status = 200, description = "Session task detail", body = SessionTaskDetail),

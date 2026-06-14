@@ -120,7 +120,9 @@ impl Command for GetSessionTask {
         let task = q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
             .await?
             .ok_or_else(|| CommandError::not_found("Session task"))?;
-        let limit = self.limit.or(Some(50));
+        const DEFAULT_LIMIT: u32 = 50;
+        const MAX_LIMIT: u32 = 500;
+        let limit = Some(self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT));
         let messages = q::registry_for_ctx(ctx)
             .list_messages(session_id, &self.task_id, limit, self.after_id.as_deref())
             .await
