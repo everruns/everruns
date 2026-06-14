@@ -1250,6 +1250,8 @@ impl Tool for SpawnBackgroundTool {
                     // Only idempotent/readonly tools are safe to re-execute.
                     "reattachable": tool.hints().idempotent.unwrap_or(false)
                         || tool.hints().readonly.unwrap_or(false),
+                    // Persisted so re-attach can restore the original signaling behavior.
+                    "signal_on_completion": signal_on_completion,
                 }),
                 state: crate::session_task::SessionTaskState::Running,
                 links: crate::session_task::TaskLinks::default(),
@@ -1727,13 +1729,29 @@ fn is_canceled_outcome(
 /// paths are generated so old partial artifacts do not conflict.
 ///
 /// Returns an error (→ reaper falls back to orphaned-fail) when:
+/// - `context.file_store` or `context.session_task_registry` is absent
 /// - `spec["tool"]` is absent or empty
 /// - the tool is not in the built-in default registry
 /// - the tool does not implement `BackgroundExecutable`
+/// - the tool's current hints are not `idempotent` or `readonly`
+/// - per-worker or per-session background concurrency caps are exhausted
 pub(crate) async fn reattach_background_run(
     task: &crate::session_task::SessionTask,
     context: &crate::traits::ToolContext,
 ) -> crate::error::Result<()> {
+    // Fail fast before spawning a tokio task so the reaper can fall back to
+    // orphaned-fail rather than leaving the task stuck in Running forever.
+    if context.file_store.is_none() {
+        return Err(crate::error::AgentLoopError::tool(
+            "file store not available; cannot re-attach background run",
+        ));
+    }
+    if context.session_task_registry.is_none() {
+        return Err(crate::error::AgentLoopError::tool(
+            "task registry not available; cannot re-attach background run",
+        ));
+    }
+
     let tool_name: String = task
         .spec
         .get("tool")
@@ -1766,6 +1784,39 @@ pub(crate) async fn reattach_background_run(
         )));
     }
 
+    // Re-verify tool hints from the live registry rather than trusting
+    // spec["reattachable"], which could be forged via task creation APIs.
+    let hints = tool.hints();
+    if !hints.idempotent.unwrap_or(false) && !hints.readonly.unwrap_or(false) {
+        return Err(crate::error::AgentLoopError::tool(format!(
+            "tool '{tool_name}' is not idempotent or readonly; re-attach declined",
+        )));
+    }
+
+    // Enforce the same concurrency caps as spawn_background so many concurrent
+    // re-attaches cannot exhaust worker or session limits.
+    let background_run_permit = ACTIVE_BACKGROUND_RUNS_PER_WORKER
+        .try_acquire()
+        .map_err(|_| {
+            crate::error::AgentLoopError::tool(
+                "worker background run limit reached; re-attach deferred",
+            )
+        })?;
+    let session_run_permit =
+        try_acquire_session_background_permit(task.session_id).map_err(|_| {
+            crate::error::AgentLoopError::tool(
+                "session background run limit reached; re-attach deferred",
+            )
+        })?;
+
+    // Restore original signaling behavior; default true for tasks created before
+    // this field was persisted.
+    let signal_on_completion = task
+        .spec
+        .get("signal_on_completion")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+
     let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
     let artifact_dir = format!("/.background/{run_id}");
     let log_path = format!("{artifact_dir}/output.log");
@@ -1783,7 +1834,7 @@ pub(crate) async fn reattach_background_run(
         tool_name.to_string(),
         log_path,
         result_path,
-        true, // always signal session on re-attach completion
+        signal_on_completion,
         Some(task_id.clone()),
     ));
 
@@ -1791,6 +1842,9 @@ pub(crate) async fn reattach_background_run(
     let run_id_for_log = run_id.clone();
 
     tokio::spawn(async move {
+        // Hold permits for the duration of the re-attached run.
+        let _background_run_permit = background_run_permit;
+        let _session_run_permit = session_run_permit;
         let _ = sink.status("Re-attaching").await;
 
         let outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
@@ -3773,6 +3827,129 @@ mod tests {
                 .as_deref()
                 .unwrap_or_default()
                 .contains("Canceled by request.")
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // reattach_background_run early-guard tests
+    // -------------------------------------------------------------------------
+
+    fn make_reattach_task(spec: serde_json::Value) -> crate::session_task::SessionTask {
+        use crate::session_task::{SessionTaskState, TaskLinks, TaskWakePolicy};
+        crate::session_task::SessionTask {
+            id: "t-reattach".to_string(),
+            session_id: SessionId::new(),
+            kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
+            display_name: "Reattach test".to_string(),
+            spec,
+            state: SessionTaskState::Running,
+            state_detail: None,
+            progress: None,
+            input_request: None,
+            cancel_requested_at: None,
+            summary: None,
+            result_path: None,
+            artifacts: vec![],
+            error: None,
+            attempt: 2,
+            worker_id: None,
+            heartbeat_at: None,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+            created_at: chrono::Utc::now(),
+            started_at: None,
+            finished_at: None,
+            updated_at: chrono::Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn reattach_fails_with_missing_file_store() {
+        let session_id = SessionId::new();
+        // Context with no file_store — only session_task_registry is wired.
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
+        let context =
+            crate::traits::ToolContext::new(session_id).with_session_task_registry(task_registry);
+        let task = make_reattach_task(serde_json::json!({
+            "tool": "get_current_time",
+            "arguments": {},
+            "reattachable": true,
+            "signal_on_completion": true,
+        }));
+        let err = reattach_background_run(&task, &context)
+            .await
+            .expect_err("should fail without file store");
+        assert!(
+            err.to_string().contains("file store"),
+            "error should mention file store, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reattach_fails_with_missing_task_registry() {
+        let session_id = SessionId::new();
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        // Context has a file_store but no session_task_registry.
+        let context =
+            crate::traits::ToolContext::with_stores(session_id, file_store, storage_store);
+        let task = make_reattach_task(serde_json::json!({
+            "tool": "get_current_time",
+            "arguments": {},
+            "reattachable": true,
+            "signal_on_completion": true,
+        }));
+        let err = reattach_background_run(&task, &context)
+            .await
+            .expect_err("should fail without task registry");
+        assert!(
+            err.to_string().contains("task registry"),
+            "error should mention task registry, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reattach_fails_with_unknown_tool_name() {
+        let session_id = SessionId::new();
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
+        let context =
+            crate::traits::ToolContext::with_stores(session_id, file_store, storage_store)
+                .with_session_task_registry(task_registry);
+        // "test_background" is not in ToolRegistry::with_defaults().
+        let task = make_reattach_task(serde_json::json!({
+            "tool": "test_background",
+            "arguments": {},
+            "reattachable": true,
+            "signal_on_completion": true,
+        }));
+        let err = reattach_background_run(&task, &context)
+            .await
+            .expect_err("should fail for unknown tool");
+        assert!(
+            err.to_string().contains("not found in built-in registry"),
+            "error should mention built-in registry, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn reattach_fails_with_missing_tool_spec_field() {
+        let session_id = SessionId::new();
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let task_registry = Arc::new(InMemoryTaskRegistry::default());
+        let context =
+            crate::traits::ToolContext::with_stores(session_id, file_store, storage_store)
+                .with_session_task_registry(task_registry);
+        // Spec has no "tool" field.
+        let task = make_reattach_task(serde_json::json!({ "reattachable": true }));
+        let err = reattach_background_run(&task, &context)
+            .await
+            .expect_err("should fail with missing tool field");
+        assert!(
+            err.to_string().contains("missing 'tool' field"),
+            "error should mention missing tool field, got: {err}"
         );
     }
 }
