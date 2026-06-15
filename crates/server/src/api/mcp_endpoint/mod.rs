@@ -363,6 +363,14 @@ async fn handle_mcp(
     headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
+    if !org.feature_flags.mcp_endpoint {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(JsonRpcResponse::method_not_found(req.id)),
+        )
+            .into_response();
+    }
+
     let protocol_version = if req.method == "initialize" {
         None
     } else {
@@ -535,6 +543,7 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
         state.encryption.clone(),
         state.auth.permission_resolver.clone(),
     )
+    .with_feature_flags(org.feature_flags.clone())
     .with_utility_llm_service(state.utility_llm_service.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());

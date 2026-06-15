@@ -321,7 +321,7 @@ pub async fn create_client_secret(
     Path(session_id): Path<String>,
     Json(req): Json<VoiceClientSecretRequest>,
 ) -> Result<Json<VoiceClientSecretResponse>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
     let normalized = normalize_options(req.options)?;
@@ -386,7 +386,7 @@ pub async fn create_call(
     Path(session_id): Path<String>,
     Json(req): Json<VoiceCallRequest>,
 ) -> Result<Json<VoiceCallResponse>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
     bootstrap_call(&state, &org, session_id, req)
@@ -408,7 +408,7 @@ pub async fn attach_call(
     Path((session_id, voice_connection_id)): Path<(String, String)>,
     Json(req): Json<VoiceAttachRequest>,
 ) -> Result<Json<VoiceAttachResponse>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
     if voice_connection_id.trim().is_empty() || req.provider_call_id.trim().is_empty() {
@@ -470,7 +470,7 @@ pub async fn end_call(
     Path((session_id, voice_connection_id)): Path<(String, String)>,
     Json(req): Json<VoiceEndRequest>,
 ) -> Result<Json<VoiceEndResponse>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
     release_voice_resource(&state, session_id, &voice_connection_id).await?;
@@ -501,7 +501,7 @@ pub async fn create_agent_voice_session(
     (StatusCode, Json<VoiceSessionResponse<VoiceCallResponse>>),
     (StatusCode, Json<ErrorResponse>),
 > {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session = CreateSession(crate::api::sessions::CreateSessionRequest {
         workspace_id: None,
         harness_id: None,
@@ -547,7 +547,7 @@ pub async fn create_chat_voice_session(
     State(state): State<AppState>,
     Json(req): Json<VoiceCallRequest>,
 ) -> Result<Json<VoiceSessionResponse<VoiceCallResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    ensure_voice_enabled(&state)?;
+    ensure_voice_enabled(&org)?;
     let session = GetOrCreateChatSession { locale: None }
         .run(&state.ctx(&org))
         .await?;
@@ -665,8 +665,8 @@ struct NormalizedVoiceOptions {
     instructions: Option<String>,
 }
 
-fn ensure_voice_enabled(state: &AppState) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if state.feature_flags.voice {
+fn ensure_voice_enabled(org: &ResolvedOrg) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if org.feature_flags.voice {
         Ok(())
     } else {
         Err(ErrorResponse::not_found("Voice"))

@@ -7,14 +7,14 @@ use everruns_core::budget::{Budget, BudgetCheckResult, LedgerEntry};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
+fn validate_subject_type(ctx: &Ctx, subject_type: &str) -> Result<(), CommandError> {
     const ALWAYS_ON: &[&str] = &["session", "agent", "user", "org"];
     const APP_BUDGET_TYPES: &[&str] = &["app", "app_channel"];
     if ALWAYS_ON.contains(&subject_type) {
         return Ok(());
     }
     if APP_BUDGET_TYPES.contains(&subject_type) {
-        if everruns_core::FeatureFlags::current().app_budgets {
+        if ctx.feature_flags.app_budgets {
             return Ok(());
         }
         return Err(CommandError::bad_request(
@@ -82,7 +82,7 @@ impl Command for CreateBudget {
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
         require_budget_manage(ctx)?;
         let req = self.0;
-        validate_subject_type(&req.subject_type)?;
+        validate_subject_type(ctx, &req.subject_type)?;
         validate_limit(req.limit, req.soft_limit)?;
 
         let input = CreateBudgetRow {
@@ -613,7 +613,7 @@ impl Command for ListAppBudgets {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
-        if !everruns_core::FeatureFlags::current().app_budgets {
+        if !ctx.feature_flags.app_budgets {
             return Err(CommandError::bad_request(
                 "App-scoped budgets are gated behind the app_budgets feature flag",
             ));
@@ -740,13 +740,34 @@ mod tests {
     #[test]
     fn validate_subject_type_accepts_classic_subjects() {
         for kind in ["session", "agent", "user", "org"] {
-            assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
+            assert!(
+                validate_subject_type(&ctx_for_role(OrgRole::Owner), kind).is_ok(),
+                "expected {kind} ok"
+            );
         }
     }
 
     #[test]
     fn validate_subject_type_rejects_unknown_subjects() {
-        assert!(validate_subject_type("unknown").is_err());
-        assert!(validate_subject_type("").is_err());
+        let ctx = ctx_for_role(OrgRole::Owner);
+        assert!(validate_subject_type(&ctx, "unknown").is_err());
+        assert!(validate_subject_type(&ctx, "").is_err());
+    }
+
+    #[test]
+    fn validate_subject_type_app_budgets_honor_org_flag() {
+        // Default (flag off): app-scoped budget subjects are rejected.
+        let disabled = ctx_for_role(OrgRole::Owner);
+        assert!(validate_subject_type(&disabled, "app").is_err());
+        assert!(validate_subject_type(&disabled, "app_channel").is_err());
+
+        // Flag on (org opted in): app-scoped subjects are accepted.
+        let enabled =
+            ctx_for_role(OrgRole::Owner).with_feature_flags(everruns_core::FeatureFlags {
+                app_budgets: true,
+                ..Default::default()
+            });
+        assert!(validate_subject_type(&enabled, "app").is_ok());
+        assert!(validate_subject_type(&enabled, "app_channel").is_ok());
     }
 }
