@@ -158,9 +158,9 @@ checksum = "cc7bb162ec39d46ab1ca8c77bf72e890535becd1751bb45f64c597edb4c8c6b3"
 
 [[package]]
 name = "alloc-stdlib"
-version = "0.2.2"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94fb8275041c72129eb51b7d0322c29b8387a0386127718b096429201a5d6ece"
+checksum = "0e76a019e91224d279006ff972f1e984179a6e9feb050adba6ce8274aef23195"
 dependencies = [
  "alloc-no-stdlib",
 ]
@@ -1008,9 +1008,9 @@ dependencies = [
 
 [[package]]
 name = "brotli"
-version = "8.0.3"
+version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8119e4516436f5708bbc474a9d395bf12f1b5395e93a92a56e647ac3388c8610"
+checksum = "5cc91aac060a7a1e25823bdccbfb6af1875b88f17c6daac97894eed8207166b3"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -1019,9 +1019,9 @@ dependencies = [
 
 [[package]]
 name = "brotli-decompressor"
-version = "5.0.1"
+version = "5.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5962523e1b92ce1b5e793d9169b9943eece10d39f62550bc04bb605d75b94924"
+checksum = "3a32acac15fe1967bc3986b2a6347dffc965602354ea6f450ad07e8bfd253583"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
@@ -1866,7 +1866,6 @@ version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
 dependencies = [
- "powerfmt",
  "serde_core",
 ]
 
@@ -2303,11 +2302,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.12.0"
+version = "0.13.0"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2323,7 +2322,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2340,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2394,14 +2393,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2421,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2477,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2502,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2516,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2532,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2553,7 +2552,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2568,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2585,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2608,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2623,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2638,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2665,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2682,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2695,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2711,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2728,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2749,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2763,7 +2762,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2783,7 +2782,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2798,11 +2797,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.12.0"
+version = "0.13.0"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2841,7 +2840,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2934,7 +2933,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2951,7 +2950,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.12.0"
+version = "0.13.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3539,9 +3538,9 @@ dependencies = [
 
 [[package]]
 name = "h2"
-version = "0.4.14"
+version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "171fefbc92fe4a4de27e0698d6a5b392d6a0e333506bc49133760b3bcf948733"
+checksum = "6cb093c84e8bd9b188d4c4a8cb6579fc016968d14c99882163cd3ff402a4f155"
 dependencies = [
  "atomic-waker",
  "bytes",
@@ -8078,12 +8077,11 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.3.47"
+version = "0.3.49"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743bd48c283afc0388f9b8827b976905fb217ad9e647fae3a379a9283c4def2c"
+checksum = "711a53c2d47bbd818258c498c8dbfe186a2526c631495cfe7e078567f86b8469"
 dependencies = [
  "deranged",
- "itoa",
  "libc",
  "num-conv",
  "num_threads",
@@ -8095,15 +8093,15 @@ dependencies = [
 
 [[package]]
 name = "time-core"
-version = "0.1.8"
+version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
+checksum = "9e1c906769ad99c88eaa54e728060edef082f8e358ff32030cb7c7d315e81109"
 
 [[package]]
 name = "time-macros"
-version = "0.2.27"
+version = "0.2.29"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e70e4c5a0e0a8a4823ad65dfe1a6930e4f4d756dcd9dd7939022b5e8c501215"
+checksum = "71c652a3727a9cbb9a02f707f530b618ce00d0ccd762009c8c23bd191df3c17d"
 dependencies = [
  "num-conv",
  "time-core",
