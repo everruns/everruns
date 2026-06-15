@@ -30,12 +30,15 @@ use everruns_server::domains::common::{
 use everruns_server::domains::evals::{CreateEvalRun, ListEvals};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
-use everruns_server::domains::session_files::{GetWorkspaceFile, ListWorkspaceFiles};
+use everruns_server::domains::session_files::{
+    CreateWorkspaceFile, GetWorkspaceFile, ListWorkspaceFiles,
+};
 use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
 };
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
+use everruns_server::storage::models::CreateSessionRow;
 use uuid::Uuid;
 
 // ============================================================================
@@ -75,6 +78,34 @@ fn minimal_harness(name: &str) -> CreateHarnessRequest {
     }
 }
 
+fn minimal_session_row(workspace_id: Option<Uuid>) -> CreateSessionRow {
+    CreateSessionRow {
+        workspace_id,
+        org_id: DEFAULT_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id: None,
+        agent_identity_id: None,
+        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        title: Some("Test Session".to_string()),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+    }
+}
+
 /// Denies every permission — models a SaaS tier that blocks all writes.
 struct DenyAllResolver;
 
@@ -84,6 +115,18 @@ impl PermissionResolver for DenyAllResolver {
     }
     fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
         Vec::new()
+    }
+}
+
+/// Grants session management but not workspace management.
+struct SessionsOnlyResolver;
+
+impl PermissionResolver for SessionsOnlyResolver {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        matches!(permission, Permission::OrgSessionsManage)
+    }
+    fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+        vec![Permission::OrgSessionsManage]
     }
 }
 
@@ -430,6 +473,66 @@ async fn eval_manage_without_session_permission_still_allows_list() {
 // A resolver denying OrgSessionsManage must get 403 before any file lookup.
 // (Commands were renamed from ListSessionFiles/GetSessionFile in #2189.)
 // ============================================================================
+
+#[tokio::test]
+async fn session_file_write_alias_requires_workspace_manage_for_shared_workspace() {
+    // Regression for the shared-workspace authorization boundary: session-fs
+    // aliases keep SESSION_MANAGE for default sessions, but must not let that
+    // weaker permission modify an attached shared workspace.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(SessionsOnlyResolver),
+    );
+    let row = ctx
+        .db
+        .create_session(minimal_session_row(Some(Uuid::new_v4())))
+        .await
+        .expect("seed attached session");
+
+    let err = CreateWorkspaceFile {
+        session_id: row.id.to_string(),
+        path: "/shared.txt".to_string(),
+        req: everruns_server::api::session_files::CreateFileRequest {
+            content: Some("blocked".to_string()),
+            encoding: Some("text".to_string()),
+            is_readonly: None,
+            is_directory: None,
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect_err("attached workspace writes must require WORKSPACE_MANAGE");
+    assert_forbidden(err);
+}
+
+#[tokio::test]
+async fn session_file_write_alias_keeps_default_session_manage_behavior() {
+    // Default sessions own a 1:1 workspace keyed by the session UUID, so the
+    // legacy alias remains writable with SESSION_MANAGE.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(SessionsOnlyResolver),
+    );
+    let row = ctx
+        .db
+        .create_session(minimal_session_row(None))
+        .await
+        .expect("seed default session");
+
+    CreateWorkspaceFile {
+        session_id: row.id.to_string(),
+        path: "/default.txt".to_string(),
+        req: everruns_server::api::session_files::CreateFileRequest {
+            content: Some("allowed".to_string()),
+            encoding: Some("text".to_string()),
+            is_readonly: None,
+            is_directory: None,
+        },
+    }
+    .run(&ctx)
+    .await
+    .expect("default session writes should still require only SESSION_MANAGE");
+}
 
 #[tokio::test]
 async fn session_file_read_commands_enforce_session_view_policy() {

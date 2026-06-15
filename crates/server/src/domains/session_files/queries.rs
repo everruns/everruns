@@ -32,6 +32,24 @@ pub async fn verify_session(ctx: &Ctx, session_id: SessionId) -> Result<Uuid, Co
     Ok(row.workspace_id)
 }
 
+/// Verify a session-scoped filesystem write and return the file-store key.
+///
+/// Default 1:1 sessions keep the historical SESSION_MANAGE authorization. When
+/// the alias targets a shared workspace, preserve the workspace write boundary
+/// used by `/v1/workspaces/{workspace_id}/fs/*`.
+pub async fn verify_session_for_write(
+    ctx: &Ctx,
+    session_id: SessionId,
+) -> Result<Uuid, CommandError> {
+    let workspace_key = verify_session(ctx, session_id).await?;
+    if workspace_key != session_id.uuid() {
+        crate::domains::workspaces::WORKSPACE_MANAGE
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| CommandError::forbidden(e.message))?;
+    }
+    Ok(workspace_key)
+}
+
 pub fn normalize_path(path: &str) -> String {
     let path = path.trim_start_matches('/');
     if path.is_empty() {

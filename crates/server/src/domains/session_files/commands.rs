@@ -206,7 +206,7 @@ impl Command for CreateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -299,7 +299,7 @@ impl Command for UpdateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -371,7 +371,7 @@ impl Command for DeleteWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         let deleted = q::service(ctx)
             .delete(workspace_key, &path, self.recursive)
@@ -410,7 +410,7 @@ impl Command for MoveWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         q::service(ctx)
             .move_file(
                 workspace_key,
@@ -454,7 +454,7 @@ impl Command for CopyWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         q::service(ctx)
             .copy_file(
                 workspace_key,
