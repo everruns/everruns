@@ -299,6 +299,62 @@ jobs:
             return 1
           }
 
+          verify_published_package() {
+            local crate="$1"
+            local version="$2"
+            local local_package="target/package/${crate}-${version}.crate"
+
+            python3 - "$crate" "$version" "$local_package" <<'PY'
+          import hashlib
+          import pathlib
+          import sys
+          import time
+          import urllib.error
+          import urllib.request
+
+          crate, version, local_package = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+          if not local_package.is_file():
+              raise SystemExit(f"local package not found: {local_package}")
+
+          hasher = hashlib.sha256()
+          with local_package.open("rb") as handle:
+              for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                  hasher.update(chunk)
+          local_digest = hasher.hexdigest()
+
+          url = f"https://crates.io/api/v1/crates/{crate}/{version}/download"
+          request = urllib.request.Request(url, headers={"User-Agent": "everruns-ci"})
+
+          # Retry transient download failures (timeouts, 5xx, connection resets)
+          # with backoff so a flaky crates.io/CDN response does not fail the
+          # release. A digest mismatch below is NOT retried — it is a real,
+          # fail-closed signal.
+          attempts = 5
+          published_digest = None
+          for attempt in range(1, attempts + 1):
+              hasher = hashlib.sha256()
+              try:
+                  with urllib.request.urlopen(request, timeout=60) as response:
+                      for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                          hasher.update(chunk)
+                  published_digest = hasher.hexdigest()
+                  break
+              except urllib.error.HTTPError as exc:
+                  if exc.code < 500 or attempt == attempts:
+                      raise SystemExit(f"failed to download {crate} {version}: {exc}")
+              except (urllib.error.URLError, TimeoutError) as exc:
+                  if attempt == attempts:
+                      raise SystemExit(f"failed to download {crate} {version}: {exc}")
+              time.sleep(2 ** attempt)
+
+          if published_digest != local_digest:
+              raise SystemExit(
+                  f"published {crate} {version} sha256 {published_digest} "
+                  f"does not match local package sha256 {local_digest}"
+              )
+          PY
+          }
+
           publish_one() {
             # Retries on transient crates.io errors (esp. new-crate rate limit:
             # 5 new crates / 10 min on a default token). Each retry waits
@@ -324,7 +380,9 @@ jobs:
           for crate in "${CRATES[@]}"; do
             status="$(initial_publish_status "$crate" "$VERSION")"
             if [ "$status" = "published" ]; then
-              echo "$crate $VERSION already published; skipping"
+              echo "$crate $VERSION already published; verifying package artifact before skipping"
+              cargo package --locked -p "$crate"
+              verify_published_package "$crate" "$VERSION"
             elif [ "$status" = "missing" ]; then
               echo "Publishing $crate $VERSION"
               cargo package --locked -p "$crate"
