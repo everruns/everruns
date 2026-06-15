@@ -41,6 +41,25 @@ LLM findings can carry a suggested replacement for the offending text; when the 
 
 The reviewed prompt is treated strictly as data: checker outputs are bounded, severities are clamped, and findings are advisory text only.
 
+## Health Checks
+
+A **health check** runs the agent for real. It generates a handful of smoke-test cases from the agent's description, system prompt, and capabilities, runs each as an actual session against the agent's configured model, and scores the result two ways:
+
+- **Deterministic**: the agent produced a non-empty answer and finished within a turn budget.
+- **AI judge**: the platform's utility LLM grades the agent's final response against a rubric generated for that case.
+
+A case passes only when both checks pass. The run surfaces a score card (pass rate, passed count, average score, average turns) and a per-case list — each case links to the real session so you can inspect the full conversation, tool calls, and events.
+
+Health checks are asynchronous (they run several real sessions and take a minute or two). Trigger one and poll for the result:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/agents/{agent_id}/health-checks` | Start a run; returns a pending run with an `id` |
+| `GET` | `/v1/agents/{agent_id}/health-checks/{run_id}` | Poll the run; `status` goes `pending → running → completed`/`failed` |
+| `GET` | `/v1/agents/{agent_id}/health-checks` | List recent runs for the agent |
+
+Runs are stored per agent and keyed by the resolved config hash. Health checks require the utility LLM (`UTILITY_OPENAI_API_KEY`) to generate and judge cases, and the agent's own model must be usable. They are advisory: a low score never blocks anything.
+
 ## Built-in Rules
 
 Checks run against the *resolved* configuration — after harness and capability contributions are merged — so they can catch issues that span layers.
@@ -59,4 +78,4 @@ Checks run against the *resolved* configuration — after harness and capability
 
 ## Roadmap
 
-Later phases add behavioral health checks that run the agent against generated smoke tests, and org-configurable rules.
+A later phase adds org-configurable rules: per-rule enable/severity settings for the built-ins plus custom declarative and natural-language-rubric rules.

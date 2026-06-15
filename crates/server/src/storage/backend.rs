@@ -3296,6 +3296,58 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Agent Health Check Runs (specs/agent-checks.md)
+    // ============================================
+
+    pub async fn create_agent_health_check_run(
+        &self,
+        org_id: i64,
+        input: CreateAgentHealthCheckRunRow,
+    ) -> Result<AgentHealthCheckRunRow> {
+        dispatch!(self, create_agent_health_check_run, org_id, input)
+    }
+
+    pub async fn get_agent_health_check_run(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<AgentHealthCheckRunRow>> {
+        dispatch!(self, get_agent_health_check_run, org_id, public_id)
+    }
+
+    pub async fn list_agent_health_check_runs(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        limit: i64,
+    ) -> Result<Vec<AgentHealthCheckRunRow>> {
+        dispatch!(self, list_agent_health_check_runs, org_id, agent_id, limit)
+    }
+
+    pub async fn latest_agent_health_check_run(
+        &self,
+        org_id: i64,
+        agent_id: Uuid,
+        config_hash: &str,
+    ) -> Result<Option<AgentHealthCheckRunRow>> {
+        dispatch!(
+            self,
+            latest_agent_health_check_run,
+            org_id,
+            agent_id,
+            config_hash
+        )
+    }
+
+    pub async fn update_agent_health_check_run(
+        &self,
+        id: Uuid,
+        input: UpdateAgentHealthCheckRunRow,
+    ) -> Result<Option<AgentHealthCheckRunRow>> {
+        dispatch!(self, update_agent_health_check_run, id, input)
+    }
+
+    // ============================================
     // Eval Case Result CRUD
     // ============================================
 
