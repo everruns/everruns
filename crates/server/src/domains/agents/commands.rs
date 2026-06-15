@@ -1551,12 +1551,20 @@ impl Command for PreviewAgent {
             .map_err(classify_anyhow)?,
         );
         tools.extend(self.tools);
-        let findings = super::checks::run_builtin_checks(
+        // Apply org rule config (phase 4): override built-in severities/enabled
+        // and run custom declarative rules. Defaults to no-op when unconfigured.
+        let rule_config = super::check_rules::load_effective_config(&ctx.db, ctx.org_id()).await;
+        let builtin = super::checks::run_builtin_checks(
             &authored_prompt,
             &prompt,
             &self.capabilities,
             &tools,
         );
+        let mut findings = super::checks::apply_rule_overrides(builtin, &rule_config.overrides);
+        findings.extend(super::checks::run_declarative_rules(
+            &rule_config.declarative,
+            &prompt,
+        ));
         Ok(AgentPreview {
             system_prompt: prompt,
             tools,
@@ -1632,7 +1640,7 @@ impl Command for AnalyzeAgent {
         .execute(ctx)
         .await?;
         let llm_findings = super::analysis::run_llm_checks(
-            service,
+            service.clone(),
             &authored_prompt,
             &preview.system_prompt,
             &preview.tools,
@@ -1641,6 +1649,18 @@ impl Command for AnalyzeAgent {
         .map_err(|e| CommandError::internal(anyhow::anyhow!(e)))?;
         let mut findings = preview.findings;
         findings.extend(llm_findings);
+        // Custom NL-rubric rules (phase 4) are judged by the utility LLM too.
+        let rule_config = super::check_rules::load_effective_config(&ctx.db, ctx.org_id()).await;
+        if !rule_config.nl_rubric.is_empty() {
+            findings.extend(
+                super::analysis::run_custom_nl_rules(
+                    service,
+                    &rule_config.nl_rubric,
+                    &preview.system_prompt,
+                )
+                .await,
+            );
+        }
         Ok(AgentAnalysis { findings })
     }
 }

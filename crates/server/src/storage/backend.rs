@@ -3348,6 +3348,26 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Agent Check Rules (specs/agent-checks.md, phase 4)
+    // ============================================
+
+    pub async fn list_agent_check_rules(&self, org_id: i64) -> Result<Vec<AgentCheckRuleRow>> {
+        dispatch!(self, list_agent_check_rules, org_id)
+    }
+
+    pub async fn upsert_agent_check_rule(
+        &self,
+        org_id: i64,
+        input: UpsertAgentCheckRuleRow,
+    ) -> Result<AgentCheckRuleRow> {
+        dispatch!(self, upsert_agent_check_rule, org_id, input)
+    }
+
+    pub async fn delete_agent_check_rule(&self, org_id: i64, rule_id: &str) -> Result<bool> {
+        dispatch!(self, delete_agent_check_rule, org_id, rule_id)
+    }
+
+    // ============================================
     // Eval Case Result CRUD
     // ============================================
 

@@ -414,6 +414,154 @@ fn check_duplicate_tool_names(tools: &[ToolDefinition], findings: &mut Vec<Findi
     }
 }
 
+// ============================================================================
+// Org-configurable rules (specs/agent-checks.md, phase 4)
+// ============================================================================
+
+/// Static metadata about a built-in rule, for the admin catalog so orgs can
+/// see what they can toggle/override.
+pub struct BuiltinRuleInfo {
+    pub rule_id: &'static str,
+    pub default_severity: FindingSeverity,
+    pub category: FindingCategory,
+    pub description: &'static str,
+}
+
+/// The full set of built-in rules an org can enable/disable or re-severity.
+/// Kept in sync with the `check_*` helpers above.
+pub fn builtin_rule_catalog() -> &'static [BuiltinRuleInfo] {
+    use FindingCategory::*;
+    use FindingSeverity::*;
+    &[
+        BuiltinRuleInfo {
+            rule_id: "prompt.empty",
+            default_severity: Info,
+            category: Completeness,
+            description: "Agent has no system prompt of its own.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.very_long",
+            default_severity: Warning,
+            category: Cost,
+            description: "Authored prompt over 32 KiB, sent every turn.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.resolved_very_long",
+            default_severity: Info,
+            category: Cost,
+            description: "Full prompt over 96 KiB after contributions.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.template_variables",
+            default_severity: Warning,
+            category: Structure,
+            description: "Literal {{placeholder}} text reaches the model.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.duplicate_paragraphs",
+            default_severity: Warning,
+            category: Structure,
+            description: "A paragraph appears more than once.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.restates_contribution",
+            default_severity: Info,
+            category: Structure,
+            description: "Prompt duplicates a harness/capability contribution.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "prompt.conflicting_style",
+            default_severity: Info,
+            category: Structure,
+            description: "Asks for both brevity and detail.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "tools.unknown_reference",
+            default_severity: Info,
+            category: Completeness,
+            description: "Prompt references a tool/capability that is not enabled.",
+        },
+        BuiltinRuleInfo {
+            rule_id: "tools.duplicate_names",
+            default_severity: Warning,
+            category: Completeness,
+            description: "Two tools share a name.",
+        },
+    ]
+}
+
+/// Per-rule override (built-in rules): disable or re-severity.
+#[derive(Debug, Clone)]
+pub struct RuleOverride {
+    pub enabled: bool,
+    pub severity: Option<FindingSeverity>,
+}
+
+/// When a custom declarative rule's regex match produces a finding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MatchMode {
+    /// Flag when the pattern is present in the prompt.
+    Forbidden,
+    /// Flag when the pattern is absent from the prompt.
+    Required,
+}
+
+/// A custom, org-authored deterministic rule: a regex over the resolved prompt.
+#[derive(Debug, Clone)]
+pub struct DeclarativeRule {
+    pub rule_id: String,
+    pub severity: FindingSeverity,
+    pub category: FindingCategory,
+    pub message: String,
+    pub pattern: Regex,
+    pub match_mode: MatchMode,
+}
+
+/// Apply org overrides to built-in findings: drop disabled rules and apply
+/// severity overrides. Findings whose rule has no override pass through.
+pub fn apply_rule_overrides(
+    findings: Vec<Finding>,
+    overrides: &std::collections::HashMap<String, RuleOverride>,
+) -> Vec<Finding> {
+    findings
+        .into_iter()
+        .filter_map(|mut f| {
+            if let Some(ovr) = overrides.get(&f.rule_id) {
+                if !ovr.enabled {
+                    return None;
+                }
+                if let Some(severity) = ovr.severity {
+                    f.severity = severity;
+                }
+            }
+            Some(f)
+        })
+        .collect()
+}
+
+/// Run custom declarative rules against the resolved prompt.
+pub fn run_declarative_rules(rules: &[DeclarativeRule], resolved_prompt: &str) -> Vec<Finding> {
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let matched = rule.pattern.is_match(resolved_prompt);
+            let triggered = match rule.match_mode {
+                MatchMode::Forbidden => matched,
+                MatchMode::Required => !matched,
+            };
+            triggered.then(|| Finding {
+                rule_id: rule.rule_id.clone(),
+                severity: rule.severity,
+                category: rule.category,
+                message: rule.message.clone(),
+                location: None,
+                fix: None,
+                source: FindingSource::Builtin,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
