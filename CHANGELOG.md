@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.13.0] - 2026-06-15
+
+### Highlights
+
+- **Outbound Webhooks for Task Transitions** - Receive webhook callbacks when session tasks reach terminal states (EVE-579).
+- **Agent Behavioral Health Checks** - Phase 3 of automatic behavioral health monitoring, adding scheduled health session runs and scoring for agents ([#2205](https://github.com/everruns/everruns/pull/2205)).
+
+### What's Changed
+
+- feat(agents): behavioral health checks (phase 3) ([#2205](https://github.com/everruns/everruns/pull/2205)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): keep reasoning private by default by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): add embedder_metadata for LLM and observability flows by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): reconcile authoritative generation cost and usage by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): handle Responses [DONE] sentinel + live coverage ([#2225](https://github.com/everruns/everruns/pull/2225)) by [@chaliy](https://github.com/chaliy)
+- fix(context): anchor original task in infinity_context + compaction ([#2224](https://github.com/everruns/everruns/pull/2224)) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): outbound webhooks on terminal task transitions (EVE-579) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): re-attach orphaned background_tool runs after worker loss ([#2222](https://github.com/everruns/everruns/pull/2222)) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): cursor pagination for task messages (EVE-582) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): monitors execute probe tools directly on schedule fire ([#2221](https://github.com/everruns/everruns/pull/2221)) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): reject POST /messages for subagent-kind tasks ([#2219](https://github.com/everruns/everruns/pull/2219)) by [@chaliy](https://github.com/chaliy)
+- refactor(openrouter): move request augmentation behind core seam ([#2218](https://github.com/everruns/everruns/pull/2218)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): session tracking + extract dedicated crate ([#2217](https://github.com/everruns/everruns/pull/2217)) by [@chaliy](https://github.com/chaliy)
+- fix(fs): expose real disk workspace display paths ([#2216](https://github.com/everruns/everruns/pull/2216)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.12.0] - 2026-06-13
 
 ### Highlights
