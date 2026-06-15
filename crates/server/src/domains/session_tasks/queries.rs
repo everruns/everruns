@@ -1,10 +1,10 @@
 use crate::domains::agents::queries::row_to_agent;
 use crate::domains::common::{CommandError, Ctx, classify_anyhow};
-use crate::max_iterations;
 use crate::storage::{
     DbSessionScheduleStore, StorageBackend, create_db_session_storage_store,
     create_db_session_storage_store_without_encryption, session_task_store::DbSessionTaskRegistry,
 };
+use crate::{max_iterations, org_init};
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::session_task::SessionTaskRegistry;
@@ -88,10 +88,18 @@ pub async fn tool_context_for_ctx(
     };
 
     // --- Load harness chain (root-to-leaf) ---
+    // Legacy sessions may have NULL harness_id. Resolve the same base-harness
+    // fallback used by normal session reconstruction before folding ACLs so
+    // executor calls never silently drop the harness policy.
+    let harness_id = match session_row.harness_id {
+        Some(id) => id,
+        None => org_init::base_harness_id(ctx.db.as_ref(), org_id)
+            .await
+            .map_err(classify_anyhow)?,
+    };
     // Mirrors DbHarnessStore::get_harness_chain, using ctx.db directly so
     // both Postgres and InMemory backends are supported.
-    let harness_layers: Vec<Harness> =
-        load_harness_chain(&ctx.db, org_id, session_row.harness_id).await?;
+    let harness_layers: Vec<Harness> = load_harness_chain(&ctx.db, org_id, harness_id).await?;
 
     // --- Load agent (if any) ---
     let agent_layer: Option<everruns_core::Agent> = if let Some(agent_id) = session_row.agent_id {
@@ -160,18 +168,15 @@ pub async fn tool_context_for_ctx(
 
 /// Walk the harness parent chain (leaf → root), then reverse to root-to-leaf.
 ///
-/// Mirrors `DbHarnessStore::get_harness_chain` exactly, including cycle
-/// protection. Returns `Err` if a referenced parent is missing.
-/// Returns an empty vec if the session has no harness_id.
+/// Mirrors `DbHarnessStore::get_harness_chain`'s cycle protection, but
+/// intentionally **fails closed**: where that helper returns an empty chain for
+/// a missing leaf, this returns `Err` if the leaf or any referenced parent is
+/// missing, so executor calls never silently drop the harness ACL.
 async fn load_harness_chain(
     db: &Arc<StorageBackend>,
     org_id: i64,
-    start: Option<HarnessId>,
+    start_id: HarnessId,
 ) -> Result<Vec<Harness>, CommandError> {
-    let Some(start_id) = start else {
-        return Ok(vec![]);
-    };
-
     let mut visited: HashSet<HarnessId> = HashSet::new();
     let mut chain: Vec<Harness> = Vec::new();
     let mut cursor: Option<HarnessId> = Some(start_id);
@@ -188,12 +193,13 @@ async fn load_harness_chain(
             .await
             .map_err(classify_anyhow)?
         else {
-            if chain.is_empty() {
-                // Leaf harness not found — treat as empty chain (no restrictions)
-                return Ok(vec![]);
-            }
+            let kind = if chain.is_empty() {
+                "Leaf harness"
+            } else {
+                "Parent harness"
+            };
             return Err(CommandError::internal(anyhow::anyhow!(
-                "Parent harness not found"
+                "{kind} not found (org_id={org_id}, harness_id={current_id})"
             )));
         };
 

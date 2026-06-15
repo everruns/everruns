@@ -357,7 +357,7 @@ mod tests {
         TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskLinks,
         TaskMessagePart, TaskWakePolicy,
     };
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, HarnessId, PrincipalId};
     use std::sync::Arc;
 
     // -------------------------------------------------------------------------
@@ -369,10 +369,53 @@ mod tests {
         Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db, None)
     }
 
+    async fn ensure_base_harness(
+        db: &Arc<StorageBackend>,
+        network_access: Option<NetworkAccessList>,
+    ) -> HarnessId {
+        if let Some(existing) = db
+            .get_harness_by_name(DEFAULT_ORG_ID, "base")
+            .await
+            .unwrap()
+        {
+            // `org_init::base_harness_id` resolves the *built-in* base harness,
+            // so the helper must guarantee that same row — otherwise a stray
+            // user-created "base" harness would make these tests diverge from
+            // production resolution.
+            assert!(
+                existing.is_built_in,
+                "expected the built-in base harness, found a non-built-in one"
+            );
+            return existing.id;
+        }
+
+        db.create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: "base".to_string(),
+                display_name: Some("Base".to_string()),
+                description: None,
+                system_prompt: String::new(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: network_access.map(|acl| serde_json::to_value(&acl).unwrap()),
+                is_built_in: true,
+                embedder_metadata: Default::default(),
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
     /// Create a session in the in-memory database, returning its ID.
     async fn create_session(db: &Arc<StorageBackend>) -> everruns_core::SessionId {
+        ensure_base_harness(db, None).await;
+
         db.create_session(CreateSessionRow {
-            workspace_id: None,
             org_id: DEFAULT_ORG_ID,
             app_id: None,
             harness_id: None,
@@ -395,6 +438,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            workspace_id: None,
         })
         .await
         .unwrap()
@@ -835,7 +879,6 @@ mod tests {
         let session_network_access = NetworkAccessList::allow_only(["b.example.com"]);
         let session_id = db
             .create_session(CreateSessionRow {
-                workspace_id: None,
                 org_id: DEFAULT_ORG_ID,
                 app_id: None,
                 harness_id: Some(harness.id),
@@ -858,6 +901,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                workspace_id: None,
             })
             .await
             .unwrap()
@@ -886,6 +930,78 @@ mod tests {
         assert!(
             !acl.is_url_allowed("https://other.example.com/ok"),
             "other.example.com must be blocked"
+        );
+    }
+    /// Legacy sessions can have NULL harness_id. The ToolContext builder must
+    /// resolve the normal base-harness fallback so executor ACLs remain scoped.
+    #[tokio::test]
+    async fn tool_context_for_ctx_uses_base_harness_for_null_session_harness() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let base_network_access = NetworkAccessList::allow_only(["base.example.com"]);
+        ensure_base_harness(&db, Some(base_network_access)).await;
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        let tool_ctx = q::tool_context_for_ctx(&ctx, session_id)
+            .await
+            .expect("tool_context_for_ctx must resolve the base harness");
+
+        let acl = tool_ctx
+            .network_access
+            .expect("base harness network_access must be applied");
+        assert!(
+            acl.is_url_allowed("https://base.example.com/ok"),
+            "base harness allowlist must permit listed hosts"
+        );
+        assert!(
+            !acl.is_url_allowed("https://other.example.com/blocked"),
+            "base harness allowlist must block unlisted hosts"
+        );
+    }
+
+    /// A session that references a deleted/stale harness must fail closed rather
+    /// than building an unrestricted ToolContext for executor network calls.
+    #[tokio::test]
+    async fn tool_context_for_ctx_fails_closed_for_missing_session_harness() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let stale_harness_id = HarnessId::new();
+        let session_id = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(stale_harness_id),
+                agent_id: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: Some("stale harness session".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                workspace_id: None,
+            })
+            .await
+            .unwrap()
+            .id;
+        let ctx = test_ctx(db.clone());
+
+        let err = q::tool_context_for_ctx(&ctx, session_id)
+            .await
+            .expect_err("missing harness must fail closed");
+        assert!(
+            err.to_string().contains("Leaf harness not found"),
+            "unexpected error: {err}"
         );
     }
 }
