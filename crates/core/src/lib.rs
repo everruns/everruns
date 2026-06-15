@@ -415,7 +415,8 @@ pub use events::{
     TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use guardrail_checks::{
-    GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail, GuardrailStage, GuardrailsConfig,
+    CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
+    GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
 };
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,
