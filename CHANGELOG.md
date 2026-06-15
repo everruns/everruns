@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Outbound Webhooks for Task Transitions** - Receive webhook callbacks when session tasks reach terminal states (EVE-579).
 - **Agent Behavioral Health Checks** - Phase 3 of automatic behavioral health monitoring, adding scheduled health session runs and scoring for agents ([#2205](https://github.com/everruns/everruns/pull/2205)).
-- **Monitor Probe Execution** - Monitors fire probe tools directly on schedule, enabling tighter feedback loops ([#2221](https://github.com/everruns/everruns/pull/2221)).
-- **Task Worker Resilience** - Background tool runs automatically re-attach after unexpected worker loss ([#2222](https://github.com/everruns/everruns/pull/2222)).
 
 ### What's Changed
 
