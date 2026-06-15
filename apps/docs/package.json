@@ -19,7 +19,7 @@
     "@astrojs/check": "^0.9.7",
     "@astrojs/starlight": "^0.39.2",
     "astro": "^6.3.7",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.2.0",
     "marked": "^18.0.3",
     "sharp": "^0.34.5",
     "shiki": "^4.0.2",
