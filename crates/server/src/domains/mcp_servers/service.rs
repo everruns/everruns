@@ -30,8 +30,15 @@ use uuid::Uuid;
 
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
-/// How long cached tools are considered fresh (1 hour)
+/// How long cached tools are considered fresh (1 hour).
 const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
+
+/// Maximum age for serving stale MCP tool definitions while revalidating.
+///
+/// MCP servers are untrusted inputs to agent tool resolution. Stale caches make
+/// upstream outages less disruptive, but an unbounded stale window would let a
+/// poisoned tool list persist indefinitely if future `tools/list` calls fail.
+const TOOL_CACHE_MAX_STALE: Duration = Duration::from_secs(24 * 3600);
 
 /// Identifies a server's tool cache for single-flight coordination.
 type RefreshKey = (i64, Uuid);
@@ -401,11 +408,16 @@ impl McpServerService {
         if settings.auth_mode == McpServerAuthMode::OAuth {
             let tools: Vec<McpToolDefinition> =
                 serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
-            if !tools.is_empty() {
+            // OAuth servers can't self-refresh here (no user connection token to
+            // mint), so we fall back to the last good cache — but still bound it
+            // by the max-stale window so revoked/poisoned tool metadata can't be
+            // served indefinitely. Past the window the caller must reconnect.
+            if !tools.is_empty() && Self::cache_within_max_stale(&row) {
                 return Ok(tools);
             }
             anyhow::bail!(
-                "OAuth MCP servers require a user connection before tools can be refreshed"
+                "OAuth MCP servers require a user connection before tools can be refreshed \
+                 (or the cached tools have exceeded the maximum stale window)"
             );
         }
 
@@ -454,16 +466,36 @@ impl McpServerService {
         Ok(tools)
     }
 
+    /// Age of a cached tool list, if one exists. A small future timestamp
+    /// (within `CACHE_FUTURE_SKEW`) is tolerated and treated as age zero so
+    /// minor clock skew does not force needless refreshes. A timestamp further
+    /// in the future is treated as invalid (`None`) so a corrupt/skewed
+    /// "future" `cached_at` can't make a cache look perpetually fresh and bypass
+    /// the bounded-stale window.
+    fn cache_age(row: &McpServerRow) -> Option<chrono::Duration> {
+        const CACHE_FUTURE_SKEW_SECS: i64 = 300;
+        let cached_at = row.tools_cached_at?;
+        let age = Utc::now().signed_duration_since(cached_at);
+        if age < chrono::Duration::seconds(-CACHE_FUTURE_SKEW_SECS) {
+            return None;
+        }
+        Some(age.max(chrono::Duration::zero()))
+    }
+
     /// Whether a server row's cached tools are still within the freshness TTL.
     fn cache_fresh(row: &McpServerRow) -> bool {
-        match row.tools_cached_at {
-            Some(cached_at) => {
-                let age = Utc::now().signed_duration_since(cached_at);
-                age < chrono::Duration::from_std(TOOL_CACHE_TTL)
-                    .unwrap_or_else(|_| chrono::Duration::hours(1))
-            }
-            None => false,
-        }
+        Self::cache_age(row).is_some_and(|age| {
+            age < chrono::Duration::from_std(TOOL_CACHE_TTL)
+                .unwrap_or_else(|_| chrono::Duration::hours(1))
+        })
+    }
+
+    /// Whether a stale cache is still young enough to serve while revalidating.
+    fn cache_within_max_stale(row: &McpServerRow) -> bool {
+        Self::cache_age(row).is_some_and(|age| {
+            age < chrono::Duration::from_std(TOOL_CACHE_MAX_STALE)
+                .unwrap_or_else(|_| chrono::Duration::hours(24))
+        })
     }
 
     fn cached_tools(row: &McpServerRow) -> Vec<McpToolDefinition> {
@@ -510,8 +542,9 @@ impl McpServerService {
 
     /// Resolve tools for an already-loaded row, applying stale-while-revalidate
     /// and single-flight refresh. Never errors: a hard refresh failure degrades
-    /// to whatever is cached (possibly empty), matching the batch-load contract
-    /// where one unreachable server must not fail tool resolution for the rest.
+    /// to cached tools only while the cache is inside the maximum stale window,
+    /// matching the batch-load contract without registering indefinitely stale
+    /// tool definitions.
     async fn tools_for_row(&self, org_id: i64, row: &McpServerRow) -> Vec<McpToolDefinition> {
         if Self::cache_fresh(row) {
             return Self::cached_tools(row);
@@ -528,23 +561,32 @@ impl McpServerService {
         {
             Ok(tools) => tools,
             Err(err) => {
-                tracing::warn!(
-                    server_id = %row.id.uuid(),
-                    error = %err,
-                    "Failed to refresh MCP tool cache; serving cached tools"
-                );
-                Self::cached_tools(row)
+                if Self::cache_within_max_stale(row) {
+                    tracing::warn!(
+                        server_id = %row.id.uuid(),
+                        error = %err,
+                        "Failed to refresh MCP tool cache; serving cached tools within max stale window"
+                    );
+                    Self::cached_tools(row)
+                } else {
+                    tracing::warn!(
+                        server_id = %row.id.uuid(),
+                        error = %err,
+                        "Failed to refresh expired MCP tool cache; omitting stale tools"
+                    );
+                    Vec::new()
+                }
             }
         }
     }
 
     /// Stale-while-revalidate is only safe when a real upstream refresh can
-    /// succeed: there must be a prior successful fetch to serve, and the server
-    /// must be self-refreshable (OAuth servers need a user connection token that
-    /// `refresh_tools` cannot mint, so revalidating them in the background would
-    /// just spawn no-op tasks on every call).
+    /// succeed: there must be a recent prior successful fetch to serve, and the
+    /// server must be self-refreshable (OAuth servers need a user connection
+    /// token that `refresh_tools` cannot mint, so revalidating them in the
+    /// background would just spawn no-op tasks on every call).
     fn can_revalidate_in_background(&self, row: &McpServerRow) -> bool {
-        row.tools_cached_at.is_some()
+        Self::cache_within_max_stale(row)
             && Self::settings_from_row(row).auth_mode != McpServerAuthMode::OAuth
     }
 
@@ -577,7 +619,7 @@ impl McpServerService {
 
     /// Trigger a background refresh for a server, deduplicated so at most one
     /// runs per server at a time. Failures are logged, not surfaced: the caller
-    /// has already been served the stale cache.
+    /// has already been served a cache still inside the maximum stale window.
     fn spawn_background_refresh(&self, org_id: i64, id: Uuid) {
         let lock = REFRESH_LOCKS.lock_for((org_id, id));
         let Ok(guard) = lock.try_lock_owned() else {
@@ -592,7 +634,7 @@ impl McpServerService {
                 tracing::warn!(
                     server_id = %id,
                     error = %err,
-                    "Background MCP tool refresh failed; cache left stale"
+                    "Background MCP tool refresh failed; cache remains stale until max stale age"
                 );
             }
         });
@@ -1141,6 +1183,20 @@ mod tests {
         assert!(!McpServerService::cache_fresh(&row));
     }
 
+    #[test]
+    fn cache_within_max_stale_bounds_stale_serving() {
+        let mut row = sample_row();
+
+        row.tools_cached_at = None;
+        assert!(!McpServerService::cache_within_max_stale(&row));
+
+        row.tools_cached_at = Some(Utc::now() - chrono::Duration::hours(2));
+        assert!(McpServerService::cache_within_max_stale(&row));
+
+        row.tools_cached_at = Some(Utc::now() - chrono::Duration::hours(25));
+        assert!(!McpServerService::cache_within_max_stale(&row));
+    }
+
     #[tokio::test]
     async fn keyed_locks_coalesce_and_prune() {
         let locks = KeyedLocks::default();
@@ -1208,6 +1264,93 @@ mod tests {
         let tools = svc.get_tools(&caller, id, false).await.unwrap();
         assert_eq!(tools.len(), 1);
         assert_eq!(tools[0].name, "alpha");
+    }
+
+    #[tokio::test]
+    async fn get_tools_rejects_expired_stale_cache_when_refresh_fails() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let caller = test_caller(1);
+
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "expired-stale-server".into(),
+                    description: None,
+                    url: "http://10.0.0.1/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let id = row.id.uuid();
+
+        db.update_mcp_server_tools(
+            1,
+            id,
+            UpdateMcpServerTools {
+                cached_tools: serde_json::json!([
+                    {"name": "poisoned", "description": "P", "inputSchema": {"type": "object"}}
+                ]),
+            },
+        )
+        .await
+        .unwrap();
+        let StorageBackend::InMemory(mem) = db.as_ref() else {
+            panic!("expected in-memory backend");
+        };
+        mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(25));
+
+        let result = svc.get_tools(&caller, id, false).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn batch_omits_expired_stale_cache_when_refresh_fails() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let caller = test_caller(1);
+
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "expired-batch-server".into(),
+                    description: None,
+                    url: "http://10.0.0.1/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let id = row.id.uuid();
+
+        db.update_mcp_server_tools(
+            1,
+            id,
+            UpdateMcpServerTools {
+                cached_tools: serde_json::json!([
+                    {"name": "poisoned", "description": "P", "inputSchema": {"type": "object"}}
+                ]),
+            },
+        )
+        .await
+        .unwrap();
+        let StorageBackend::InMemory(mem) = db.as_ref() else {
+            panic!("expected in-memory backend");
+        };
+        mem.set_tools_cached_at_for_test(id, Utc::now() - chrono::Duration::hours(25));
+
+        let servers = svc.get_batch_with_tools(&caller, &[id]).await.unwrap();
+        let (_, tools) = servers.get(&id).expect("server is returned");
+        assert!(tools.is_empty());
     }
 
     #[tokio::test]
