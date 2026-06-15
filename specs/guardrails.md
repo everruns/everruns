@@ -96,7 +96,8 @@ excerpt of the content, and returns a structured JSON verdict (`allow` or
   latency impact.
 - **Cost**: flows through utility-LLM accounting, not the session model budget.
 - `prompt` length is bounded by `MAX_JUDGE_PROMPT_LEN` (4 000 bytes). Content
-  sent to the judge is capped at 2 000 characters.
+  sent to the judge is capped at 2 000 bytes (truncated to the nearest UTF-8
+  char boundary).
 - Advisory mode downgrades `block` verdicts to `log` just like other checks.
 
 ### Determinism and the streaming hot path

@@ -424,8 +424,10 @@ impl PreToolUseHook for GuardrailPreToolHook {
             }
         }
         // LLM-judge checks run after deterministic checks; skipped when
-        // the utility LLM is not configured.
-        if let Some(service) = &context.utility_llm_service {
+        // the utility LLM is absent or disabled.
+        if let Some(service) = &context.utility_llm_service
+            && service.is_configured()
+        {
             for (calls, check) in self
                 .compiled
                 .judge_checks_for_stage(GuardrailStage::ToolUse)
@@ -545,8 +547,10 @@ impl PostToolExecHook for GuardrailPostToolHook {
                 }
             }
         }
-        // LLM-judge checks for tool_output; skipped when utility LLM is absent.
-        if let Some(service) = &context.utility_llm_service {
+        // LLM-judge checks for tool_output; skipped when utility LLM is absent or disabled.
+        if let Some(service) = &context.utility_llm_service
+            && service.is_configured()
+        {
             for (calls, check) in self
                 .compiled
                 .judge_checks_for_stage(GuardrailStage::ToolOutput)
@@ -1007,6 +1011,27 @@ mod tests {
         assert!(
             matches!(decision, PreToolUseDecision::Continue(_)),
             "without utility LLM, judge checks are silently skipped"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_skipped_when_service_not_configured() {
+        // Service is present in the context but reports is_configured() == false
+        // (e.g. DisabledUtilityLlmService). Judge checks must be silently skipped.
+        use crate::utility_llm::DisabledUtilityLlmService;
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block everything."}]
+        }));
+        let ctx = ToolContext::new(SessionId::new())
+            .with_utility_llm_service(Arc::new(DisabledUtilityLlmService));
+        let decision = hooks[0]
+            .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "disabled utility LLM service must skip judge checks without warn logs"
         );
     }
 
