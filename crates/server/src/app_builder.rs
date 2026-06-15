@@ -915,7 +915,8 @@ impl ServerAppBuilder {
             auth_state.clone(),
             grade,
             platform_definition.clone(),
-        );
+        )
+        .with_org_rate_limiter(org_rate_limiter.clone());
         let agent_identities_state = api::agent_identities::AppState::new(
             db.clone(),
             capability_service.clone(),
