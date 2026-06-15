@@ -167,7 +167,10 @@ pub struct UpsertCheckRuleRequest {
     /// `builtin_override`, `declarative`, or `nl_rubric`.
     pub kind: String,
     pub enabled: bool,
-    /// Required for custom rules; optional override for built-ins.
+    /// Optional everywhere. For `builtin_override` it overrides the rule's
+    /// default severity; for custom rules it sets the finding severity,
+    /// defaulting to `warning` for `declarative` and `info` for `nl_rubric`
+    /// when omitted.
     #[serde(default)]
     pub severity: Option<String>,
     #[serde(default)]
