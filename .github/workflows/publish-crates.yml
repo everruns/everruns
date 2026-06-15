@@ -148,6 +148,9 @@ jobs:
               "crates/anthropic/Cargo.toml": [
                   "everruns-core",
               ],
+              "crates/openrouter/Cargo.toml": [
+                  "everruns-core",
+              ],
               "crates/bedrock/Cargo.toml": [
                   "everruns-core",
               ],
@@ -224,6 +227,7 @@ jobs:
             everruns-mcp
             everruns-openai
             everruns-anthropic
+            everruns-openrouter
             everruns-bedrock
             everruns-gemini
             everruns-integrations-duckduckgo
