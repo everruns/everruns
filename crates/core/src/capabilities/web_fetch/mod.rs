@@ -600,9 +600,14 @@ impl Tool for WebFetchTool {
         let routed_tool;
         let tool = match &context.egress_service {
             Some(egress) => {
-                routed_tool = self
-                    .builder
-                    .clone()
+                // THREAT[TM-AGENT-018]: Apply the session ACL inside fetchkit before
+                // each hop is DNS-pinned, so redirects to disallowed hosts cannot
+                // leak DNS queries before the egress boundary denies the HTTP hop.
+                let mut builder = self.builder.clone();
+                if let Some(acl) = context.network_access.clone() {
+                    builder = builder.url_policy(move |url| acl.is_url_allowed(url.as_str()));
+                }
+                routed_tool = builder
                     .transport(Arc::new(egress_transport::EgressHttpTransport::new(
                         egress.clone(),
                         context.network_access.clone(),
@@ -2237,6 +2242,72 @@ mod tests {
                 ToolExecutionResult::ToolError(msg) if msg.contains("blocked")
             ),
             "expected SSRF block on egress path, got: {result:?}"
+        );
+    }
+
+    struct RecordingRedirectEgress {
+        requests: std::sync::Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl crate::egress::EgressService for RecordingRedirectEgress {
+        async fn send(
+            &self,
+            request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+            self.requests.lock().unwrap().push(request.url);
+            Ok(crate::egress::EgressResponse {
+                status: 302,
+                headers: [(
+                    "location".to_string(),
+                    "http://93.184.216.35/final".to_string(),
+                )]
+                .into_iter()
+                .collect(),
+                body: Vec::new(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressStreamResponse> {
+            let response = self.send(request).await?;
+            Ok(crate::egress::EgressStreamResponse {
+                status: response.status,
+                headers: response.headers,
+                body: Box::pin(futures::stream::once(async move { Ok(response.body) })),
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_egress_path_blocks_disallowed_redirect_before_transport() {
+        let tool = WebFetchTool::default();
+        let egress = Arc::new(RecordingRedirectEgress {
+            requests: std::sync::Mutex::new(Vec::new()),
+        });
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(egress.clone());
+        context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+            "93.184.216.34",
+        ]));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "http://93.184.216.34/start" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(&result, ToolExecutionResult::ToolError(msg) if msg.contains("blocked by policy")),
+            "expected redirect policy denial, got: {result:?}"
+        );
+        assert_eq!(
+            *egress.requests.lock().unwrap(),
+            vec!["http://93.184.216.34/start".to_string()],
+            "disallowed redirect target must be rejected before transport execution"
         );
     }
 

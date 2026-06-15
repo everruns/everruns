@@ -10,10 +10,10 @@
 //! boundary, where the per-request `NetworkAccessList` and the deployment-wide
 //! system allowlist are enforced (`specs/system-allowlist.md`).
 //!
-//! fetchkit issues one transport call per redirect hop, so egress policy
-//! applies to redirect targets too (TM-SSRF-010 stays in fetchkit; the egress
-//! boundary independently re-denies hops its policy forbids). `pinned_addrs`
-//! carries fetchkit's resolve-then-check result into
+//! fetchkit issues one transport call per redirect hop, and Everruns injects
+//! the session ACL as fetchkit's pre-DNS URL policy before this transport is
+//! called. The egress boundary independently re-denies hops its policy forbids.
+//! `pinned_addrs` carries fetchkit's resolve-then-check result into
 //! `EgressRequest.pinned_addrs`, closing the TOCTOU window at the egress
 //! client (TM-TOOL-018).
 

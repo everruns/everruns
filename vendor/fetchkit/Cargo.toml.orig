@@ -1,0 +1,47 @@
+[package]
+name = "fetchkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+
+[features]
+default = []
+bot-auth = ["dep:ed25519-dalek", "dep:base64", "dep:sha2", "dep:rand"]
+live-tests = []
+
+[dependencies]
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+schemars = { workspace = true }
+url = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+futures = { workspace = true }
+bytes = { workspace = true }
+async-trait = { workspace = true }
+tower = { workspace = true }
+libc = { workspace = true }
+
+# Optional: bot-auth feature
+ed25519-dalek = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+
+[dev-dependencies]
+wiremock = { workspace = true }
+tempfile = { workspace = true }
+tokio-test = "0.4"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ed25519-dalek = { workspace = true }
+base64 = { workspace = true }
+sha2 = { workspace = true }
+rand = { workspace = true }
