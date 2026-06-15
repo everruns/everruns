@@ -287,6 +287,7 @@ pub use session_sql_database::{
 };
 pub use session_storage::{
     KvStoreTool, SESSION_STORAGE_CAPABILITY_ID, SecretStoreTool, SessionStorageCapability,
+    is_internal_session_kv_key,
 };
 pub use session_tasks::{SESSION_TASKS_CAPABILITY_ID, SessionTasksCapability};
 pub use skills::{SKILLS_CAPABILITY_ID, SkillsCapability};

@@ -14,7 +14,21 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+// Reserve the A2A run-record prefix from the user-facing kv_store. Reference
+// the canonical constant so this never drifts from how `a2a_delegation` writes
+// those keys (`run_key`).
+const INTERNAL_KV_PREFIXES: &[&str] = &[super::a2a_delegation::AGENT_RUN_KEY_PREFIX];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:"];
+
+pub fn is_internal_session_kv_key(key: &str) -> bool {
+    INTERNAL_KV_PREFIXES
+        .iter()
+        .any(|prefix| key.starts_with(prefix))
+}
+
+fn reserved_kv_key_error() -> ToolExecutionResult {
+    ToolExecutionResult::tool_error("Key is reserved for internal system use")
+}
 
 fn is_internal_secret_name(name: &str) -> bool {
     INTERNAL_SECRET_PREFIXES
@@ -185,6 +199,9 @@ impl Tool for KvStoreTool {
                 if key.len() > 255 {
                     return ToolExecutionResult::tool_error("Key must be 255 characters or less");
                 }
+                if is_internal_session_kv_key(key) {
+                    return reserved_kv_key_error();
+                }
                 match storage_store
                     .set_value(context.session_id, key, value)
                     .await
@@ -206,6 +223,9 @@ impl Tool for KvStoreTool {
                         );
                     }
                 };
+                if is_internal_session_kv_key(key) {
+                    return reserved_kv_key_error();
+                }
                 match storage_store.get_value(context.session_id, key).await {
                     Ok(Some(value)) => ToolExecutionResult::success(json!({
                         "operation": "get",
@@ -231,6 +251,9 @@ impl Tool for KvStoreTool {
                         );
                     }
                 };
+                if is_internal_session_kv_key(key) {
+                    return reserved_kv_key_error();
+                }
                 match storage_store.delete_value(context.session_id, key).await {
                     Ok(deleted) => ToolExecutionResult::success(json!({
                         "operation": "delete",
@@ -244,6 +267,7 @@ impl Tool for KvStoreTool {
                 Ok(keys) => {
                     let key_list: Vec<Value> = keys
                         .iter()
+                        .filter(|k| !is_internal_session_kv_key(&k.key))
                         .map(|k| {
                             json!({
                                 "key": k.key,
@@ -504,7 +528,77 @@ impl Tool for SecretStoreTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::traits::SessionStorageStore;
     use crate::typed_id::SessionId;
+    use crate::{KeyInfo, Result};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct TestStorageStore {
+        values: Mutex<HashMap<String, String>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionStorageStore for TestStorageStore {
+        async fn set_value(&self, _session_id: SessionId, key: &str, value: &str) -> Result<()> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert(key.to_string(), value.to_string());
+            Ok(())
+        }
+
+        async fn get_value(&self, _session_id: SessionId, key: &str) -> Result<Option<String>> {
+            Ok(self.values.lock().unwrap().get(key).cloned())
+        }
+
+        async fn delete_value(&self, _session_id: SessionId, key: &str) -> Result<bool> {
+            Ok(self.values.lock().unwrap().remove(key).is_some())
+        }
+
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+            let now = chrono::Utc::now();
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .keys()
+                .map(|key| KeyInfo {
+                    key: key.clone(),
+                    created_at: now,
+                    updated_at: now,
+                })
+                .collect())
+        }
+
+        async fn set_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+            _value: &str,
+        ) -> Result<()> {
+            Ok(())
+        }
+
+        async fn get_secret(&self, _session_id: SessionId, _name: &str) -> Result<Option<String>> {
+            Ok(None)
+        }
+
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
+            Ok(false)
+        }
+
+        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<crate::SecretInfo>> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn test_internal_kv_key_filtering() {
+        assert!(is_internal_session_kv_key("agent_run:abc"));
+        assert!(!is_internal_session_kv_key("user:agent_run:abc"));
+    }
 
     #[test]
     fn test_internal_secret_name_filtering() {
@@ -596,6 +690,52 @@ mod tests {
         } else {
             panic!("Expected tool error for missing storage store");
         }
+    }
+
+    #[tokio::test]
+    async fn test_kv_store_rejects_reserved_internal_keys() {
+        let tool = KvStoreTool;
+        let session_id = SessionId::new();
+        let storage = Arc::new(TestStorageStore::default());
+        storage
+            .set_value(session_id, "agent_run:trusted", "trusted-record")
+            .await
+            .unwrap();
+        storage
+            .set_value(session_id, "public", "public-record")
+            .await
+            .unwrap();
+        let context = ToolContext::with_storage_store(session_id, storage.clone());
+
+        for arguments in [
+            json!({"operation": "set", "key": "agent_run:trusted", "value": "forged"}),
+            json!({"operation": "get", "key": "agent_run:trusted"}),
+            json!({"operation": "delete", "key": "agent_run:trusted"}),
+        ] {
+            let result = tool.execute_with_context(arguments, &context).await;
+            assert!(
+                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("reserved")),
+                "expected reserved-key error, got {result:?}"
+            );
+        }
+
+        assert_eq!(
+            storage
+                .get_value(session_id, "agent_run:trusted")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("trusted-record")
+        );
+
+        let result = tool
+            .execute_with_context(json!({"operation": "list"}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected successful list");
+        };
+        assert_eq!(value["count"], 1);
+        assert_eq!(value["keys"][0]["key"], "public");
     }
 
     #[tokio::test]

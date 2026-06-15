@@ -608,14 +608,16 @@ fn require_storage(
     })
 }
 
+/// Prefix shared by all agent run KV keys. Single source of truth: `run_key`
+/// builds keys from it, and `session_storage` reserves it from the user-facing
+/// `kv_store` tool (see `is_internal_session_kv_key`) so session/tool actors
+/// cannot forge or read A2A run records.
+pub(crate) const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+
 /// KV key for a specific agent run record.
 fn run_key(run_id: &str) -> String {
-    format!("agent_run:{run_id}")
+    format!("{AGENT_RUN_KEY_PREFIX}{run_id}")
 }
-
-/// Prefix shared by all agent run KV keys (used in tests to verify prefix-based lookup).
-#[cfg(test)]
-const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
 
 /// List run_ids by prefix-filtering the session's KV keys (test helper).
 #[cfg(test)]
