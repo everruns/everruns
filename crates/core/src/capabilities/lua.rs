@@ -740,12 +740,8 @@ mod engine {
             .egress_service
             .as_ref()
             .ok_or_else(|| "network egress unavailable in this environment".to_string())?;
-        let (validated_url, resolved_addrs) = crate::url_validation::validate_url_dns_pinned(&url)
-            .await
-            .map_err(|e| format!("network egress denied: URL failed SSRF validation: {e}"))?;
-        let pin_host = validated_url.host_str().unwrap_or("").to_string();
         let mut req = EgressRequest::new(method, &url, EgressRequestKind::Capability)
-            .pinned_addrs(pin_host, resolved_addrs)
+            .require_dns_pinning()
             .timeout_ms(15_000);
         if let Some(a) = acl {
             req = req.network_access(Some(a.clone()));
@@ -1586,7 +1582,7 @@ mod tests {
         async fn http_denies_allowlisted_loopback_ip_before_egress() {
             let mut ctx = ToolContext::new(SessionId::new());
             ctx.file_store = Some(Arc::new(EmptyFileStore));
-            ctx.egress_service = Some(Arc::new(MockEgress));
+            ctx.egress_service = Some(Arc::new(crate::egress::DirectEgressService::new()));
             ctx.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
                 "127.0.0.1",
             ]));
@@ -1597,8 +1593,8 @@ mod tests {
                 )
                 .await;
             assert!(
-                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("SSRF validation")),
-                "expected SSRF validation error, got {result:?}"
+                matches!(result, ToolExecutionResult::ToolError(ref msg) if msg.contains("private/internal address")),
+                "expected egress boundary denial, got {result:?}"
             );
         }
 
@@ -1699,8 +1695,13 @@ mod tests {
         impl crate::egress::EgressService for MockEgress {
             async fn send(
                 &self,
-                _request: crate::egress::EgressRequest,
+                request: crate::egress::EgressRequest,
             ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+                if !request.dns_pinning_required {
+                    return Err(crate::egress::EgressError::InvalidRequest(
+                        "missing DNS-pinned validation request".to_string(),
+                    ));
+                }
                 Ok(crate::egress::EgressResponse {
                     status: 200,
                     headers: std::collections::BTreeMap::new(),
