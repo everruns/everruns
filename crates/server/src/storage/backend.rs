@@ -3270,6 +3270,25 @@ impl StorageBackend {
         dispatch!(self, create_eval_run, org_id, input)
     }
 
+    pub async fn create_eval_run_with_case_results(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunRow,
+        eval_target: Option<serde_json::Value>,
+        max_concurrent_runs_per_org: usize,
+        max_cases_per_run: usize,
+    ) -> Result<EvalRunRow> {
+        dispatch!(
+            self,
+            create_eval_run_with_case_results,
+            org_id,
+            input,
+            eval_target,
+            max_concurrent_runs_per_org,
+            max_cases_per_run
+        )
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         dispatch!(self, list_eval_runs, eval_id)
     }

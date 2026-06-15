@@ -12,7 +12,7 @@ use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow,
+    CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
     UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
@@ -370,72 +370,31 @@ impl EvalService {
             .target
             .as_ref()
             .and_then(|v| serde_json::from_value(v.clone()).ok());
-        let run_target: Option<EvalTarget> = req.target.clone();
 
-        // Concurrency cap: reject if org already has too many active eval runs (EVE-509).
-        let running = self
+        // Run quota checks, case snapshot selection, run insertion, and result
+        // insertion must share one storage critical section. Splitting these
+        // steps lets concurrent POST /runs calls all pass the active-run count
+        // before any pending run is inserted.
+        let run_row = self
             .db
-            .count_running_eval_runs_for_org(caller.org_id)
-            .await?;
-        if running >= self.limits.max_concurrent_runs_per_org as i64 {
-            return Err(BadRequestError::new(format!(
-                "Too many concurrent eval runs: org has {} active runs (limit {})",
-                running, self.limits.max_concurrent_runs_per_org
-            ))
-            .into());
-        }
-
-        // Memory cap: count cases before loading to avoid unnecessary DB I/O for oversized runs.
-        let case_count = self.db.count_eval_cases(eval.id).await?;
-        if case_count > self.limits.max_cases_per_run as i64 {
-            return Err(BadRequestError::new(format!(
-                "Eval run too large: {} cases exceeds the per-run limit of {}",
-                case_count, self.limits.max_cases_per_run
-            ))
-            .into());
-        }
-
-        // Create pending case results for each case, resolving target per case.
-        // target_snapshot must always store a concrete resolved target so results
-        // remain reproducible and do not depend on future default changes.
-        let cases = self.db.list_eval_cases(eval.id).await?;
-        let mut resolved_targets = Vec::with_capacity(cases.len());
-        for case in &cases {
-            // Resolve target: run → case → eval. Fail if nothing resolved.
-            let case_target: Option<EvalTarget> = case
-                .target
-                .as_ref()
-                .and_then(|v| serde_json::from_value(v.clone()).ok());
-
-            let resolved = run_target
-                .clone()
-                .or(case_target)
-                .or(eval_target.clone())
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "no eval target configured — set a target on the eval, case, or run"
-                    )
-                })?;
-
-            resolved_targets.push((case.id, serde_json::to_value(&resolved)?));
-        }
-
-        let run_row = self.db.create_eval_run(caller.org_id, input).await?;
-
-        for (case_id, resolved_json) in resolved_targets {
-            let result_uuid = Uuid::now_v7();
-            let result_public_id = EvalResultId::from_uuid(result_uuid);
-
-            let result_input = CreateEvalCaseResultRow {
-                public_id: result_public_id.to_string(),
-                eval_run_id: run_row.id,
-                eval_case_id: case_id,
-                target: Some(resolved_json.clone()),
-                target_snapshot: Some(resolved_json),
-                artifacts: None,
-            };
-            self.db.create_eval_case_result(result_input).await?;
-        }
+            .create_eval_run_with_case_results(
+                caller.org_id,
+                input,
+                eval_target.map(serde_json::to_value).transpose()?,
+                self.limits.max_concurrent_runs_per_org,
+                self.limits.max_cases_per_run,
+            )
+            .await
+            .map_err(|err| {
+                // Map the storage layer's typed quota/validation failures to a
+                // 400 by downcasting the concrete error rather than matching on
+                // message text (which would silently misclassify on rewording).
+                if err.downcast_ref::<CreateEvalRunError>().is_some() {
+                    BadRequestError::new(err.to_string()).into()
+                } else {
+                    err
+                }
+            })?;
 
         // Dispatch background execution if run context is available
         if let Some(run_ctx) = &self.run_context {
@@ -1124,10 +1083,10 @@ mod tests {
         let db = StorageBackend::in_memory();
         let org_id = 1i64;
         let caller = Caller::internal(org_id);
-        let svc = EvalService::new(Arc::new(db)).with_limits(EvalLimits {
+        let svc = Arc::new(EvalService::new(Arc::new(db)).with_limits(EvalLimits {
             max_concurrent_runs_per_org: 2,
             max_cases_per_run: 500,
-        });
+        }));
 
         let eval_id = seed_eval(svc.db.as_ref(), org_id, 1).await;
         let run_req = CreateEvalRunRequest {
@@ -1135,23 +1094,37 @@ mod tests {
             model_override: None,
         };
 
-        // First two runs succeed (stay pending — no run_context to execute them).
-        svc.create_run(&caller, &eval_id, run_req.clone())
-            .await
-            .unwrap();
-        svc.create_run(&caller, &eval_id, run_req.clone())
-            .await
-            .unwrap();
+        let mut tasks = Vec::new();
+        for _ in 0..8 {
+            let svc = Arc::clone(&svc);
+            let caller = caller.clone();
+            let eval_id = eval_id.clone();
+            let run_req = run_req.clone();
+            tasks.push(tokio::spawn(async move {
+                svc.create_run(&caller, &eval_id, run_req).await
+            }));
+        }
 
-        // Third run is rejected.
-        let err = svc
-            .create_run(&caller, &eval_id, run_req)
-            .await
-            .unwrap_err();
-        let msg = err.to_string();
-        assert!(
-            msg.contains("Too many concurrent eval runs"),
-            "Expected concurrency limit error, got: {msg}"
+        let mut successes = 0;
+        let mut limit_errors = 0;
+        for task in tasks {
+            match task.await.unwrap() {
+                Ok(_) => successes += 1,
+                Err(err) if err.to_string().contains("Too many concurrent eval runs") => {
+                    limit_errors += 1
+                }
+                Err(err) => panic!("unexpected error: {err}"),
+            }
+        }
+
+        assert_eq!(successes, 2);
+        assert_eq!(limit_errors, 6);
+        assert_eq!(
+            svc.db
+                .count_running_eval_runs_for_org(org_id)
+                .await
+                .unwrap(),
+            2
         );
     }
 

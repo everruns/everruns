@@ -327,6 +327,107 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn create_eval_run_with_case_results(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunRow,
+        eval_target: Option<serde_json::Value>,
+        max_concurrent_runs_per_org: usize,
+        max_cases_per_run: usize,
+    ) -> Result<EvalRunRow> {
+        let mut tx = self.pool.begin().await?;
+
+        // Serialize quota checks per org. Without this lock, concurrent callers
+        // can all observe the same active-run count before any insert commits.
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('eval_run_quota:' || $1::text, 0))",
+        )
+        .bind(org_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let running: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::bigint FROM eval_runs WHERE org_id = $1 AND status IN ('pending', 'running')",
+        )
+        .bind(org_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if running.0 >= max_concurrent_runs_per_org as i64 {
+            return Err(CreateEvalRunError::TooManyConcurrentRuns {
+                active: running.0,
+                limit: max_concurrent_runs_per_org,
+            }
+            .into());
+        }
+
+        let cases = sqlx::query_as::<_, EvalCaseRow>(
+            r#"
+            SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
+                   max_turns, timeout_seconds, position, created_at, updated_at
+            FROM eval_cases
+            WHERE eval_id = $1
+            ORDER BY position ASC, created_at ASC
+            "#,
+        )
+        .bind(input.eval_id)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        if cases.len() > max_cases_per_run {
+            return Err(CreateEvalRunError::TooManyCases {
+                cases: cases.len(),
+                limit: max_cases_per_run,
+            }
+            .into());
+        }
+
+        let row = sqlx::query_as::<_, EvalRunRow>(
+            r#"
+            INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
+                      triggered_by, started_at, completed_at, summary, created_at, updated_at
+            "#,
+        )
+        .bind(input.eval_id)
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(&input.target)
+        .bind(&input.model_override)
+        .bind(&input.filter_tags)
+        .bind(&input.triggered_by)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        for case in cases {
+            let resolved = input
+                .target
+                .clone()
+                .or(case.target.clone())
+                .or(eval_target.clone())
+                .ok_or(CreateEvalRunError::NoTarget)?;
+            let result_uuid = Uuid::now_v7();
+            let result_public_id = format!("evalresult_{:032x}", result_uuid.as_u128());
+            sqlx::query(
+                r#"
+                INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, artifacts)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+            )
+            .bind(row.id)
+            .bind(case.id)
+            .bind(result_public_id)
+            .bind(&resolved)
+            .bind(&resolved)
+            .bind(Option::<serde_json::Value>::None)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(row)
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         let rows = sqlx::query_as::<_, EvalRunRow>(
             r#"

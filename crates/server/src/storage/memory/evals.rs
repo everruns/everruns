@@ -292,6 +292,109 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    pub async fn create_eval_run_with_case_results(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunRow,
+        eval_target: Option<serde_json::Value>,
+        max_concurrent_runs_per_org: usize,
+        max_cases_per_run: usize,
+    ) -> Result<EvalRunRow> {
+        let mut runs = self.eval_runs.write();
+        let running = runs
+            .values()
+            .filter(|r| r.org_id == org_id && matches!(r.status.as_str(), "pending" | "running"))
+            .count();
+        if running >= max_concurrent_runs_per_org {
+            return Err(CreateEvalRunError::TooManyConcurrentRuns {
+                active: running as i64,
+                limit: max_concurrent_runs_per_org,
+            }
+            .into());
+        }
+
+        let mut cases: Vec<EvalCaseRow> = self
+            .eval_cases
+            .read()
+            .values()
+            .filter(|c| c.eval_id == input.eval_id)
+            .cloned()
+            .collect();
+        cases.sort_by(|a, b| {
+            a.position
+                .cmp(&b.position)
+                .then(a.created_at.cmp(&b.created_at))
+        });
+        if cases.len() > max_cases_per_run {
+            return Err(CreateEvalRunError::TooManyCases {
+                cases: cases.len(),
+                limit: max_cases_per_run,
+            }
+            .into());
+        }
+
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = EvalRunRow {
+            id,
+            eval_id: input.eval_id,
+            org_id,
+            public_id: input.public_id,
+            target: input.target.clone(),
+            model_override: input.model_override,
+            filter_tags: input.filter_tags,
+            status: "pending".to_string(),
+            triggered_by: input.triggered_by,
+            started_at: None,
+            completed_at: None,
+            summary: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        // Build every result row first. Resolving a case target can fail
+        // (`NoTarget`); doing it before any insert keeps this all-or-nothing, so
+        // a rejected run never leaves orphaned `eval_case_results` behind.
+        let mut result_rows = Vec::with_capacity(cases.len());
+        for case in cases {
+            let resolved = input
+                .target
+                .clone()
+                .or(case.target.clone())
+                .or(eval_target.clone())
+                .ok_or(CreateEvalRunError::NoTarget)?;
+            let result_id = Uuid::now_v7();
+            result_rows.push(EvalCaseResultRow {
+                id: result_id,
+                eval_run_id: row.id,
+                eval_case_id: case.id,
+                public_id: format!("evalresult_{:032x}", result_id.as_u128()),
+                session_id: None,
+                target: Some(resolved.clone()),
+                target_snapshot: Some(resolved),
+                status: "pending".to_string(),
+                scores: None,
+                metadata: None,
+                turns: None,
+                latency_ms: None,
+                input_tokens: None,
+                output_tokens: None,
+                error_message: None,
+                artifacts: None,
+                created_at: now,
+                updated_at: now,
+            });
+        }
+
+        // All validations passed — commit the run and its results together.
+        let mut results = self.eval_case_results.write();
+        for result in result_rows {
+            results.insert(result.id, result);
+        }
+        runs.insert(row.id, row.clone());
+        Ok(row)
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         let runs = self.eval_runs.read();
         let mut result: Vec<EvalRunRow> = runs
