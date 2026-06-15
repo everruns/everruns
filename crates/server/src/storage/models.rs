@@ -758,6 +758,20 @@ pub struct UpdateSession {
     pub finished_at: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReserveActiveTurnSlotResult {
+    /// Slot reserved (session marked `active`). Carries the status the session
+    /// held beforehand so a caller can release the reservation on a later
+    /// failure by restoring it.
+    Reserved {
+        previous_status: String,
+    },
+    AtCapacity {
+        active_turns: i64,
+    },
+    SessionNotFound,
+}
+
 // ============================================
 // Event models (source of truth for messages)
 // ============================================
