@@ -110,6 +110,10 @@ const LONG_RESOLVED_PROMPT_BYTES: usize = 96 * 1024;
 /// Paragraphs shorter than this (normalized) are too generic to call
 /// duplicates ("Be helpful." legitimately repeats).
 const DUP_PARAGRAPH_MIN_CHARS: usize = 80;
+/// Keep advisory checks bounded: previews must not amplify a bounded prompt
+/// into an unbounded list of serialized findings.
+const MAX_FINDINGS_PER_RULE: usize = 25;
+const MAX_MESSAGE_SNIPPET_CHARS: usize = 80;
 
 static TEMPLATE_VAR: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\{\{\s*[A-Za-z0-9_.-]+\s*\}\}").expect("valid regex"));
@@ -260,8 +264,12 @@ fn normalize_paragraph(p: &str) -> String {
 }
 
 fn paragraph_preview(normalized: &str) -> String {
-    let preview: String = normalized.chars().take(60).collect();
-    if normalized.chars().count() > 60 {
+    snippet_preview(normalized, 60)
+}
+
+fn snippet_preview(text: &str, max_chars: usize) -> String {
+    let preview: String = text.chars().take(max_chars).collect();
+    if text.chars().count() > max_chars {
         format!("{preview}…")
     } else {
         preview
@@ -270,11 +278,28 @@ fn paragraph_preview(normalized: &str) -> String {
 
 fn check_duplicate_paragraphs(authored: &str, findings: &mut Vec<Finding>) {
     let mut seen: HashSet<String> = HashSet::new();
+    let mut reported = 0;
     for (start, end, normalized) in paragraphs(authored) {
         if normalized.len() < DUP_PARAGRAPH_MIN_CHARS {
             continue;
         }
         if !seen.insert(normalized.clone()) {
+            if reported >= MAX_FINDINGS_PER_RULE {
+                findings.push(
+                    Finding::builtin(
+                        "prompt.duplicate_paragraphs.summary",
+                        FindingSeverity::Info,
+                        FindingCategory::Structure,
+                        format!(
+                            "More than {MAX_FINDINGS_PER_RULE} duplicate paragraphs were found; \
+                             only the first {MAX_FINDINGS_PER_RULE} are shown."
+                        ),
+                    )
+                    .at("system_prompt", None),
+                );
+                break;
+            }
+            reported += 1;
             findings.push(
                 Finding::builtin(
                     "prompt.duplicate_paragraphs",
@@ -370,6 +395,23 @@ fn check_unknown_tool_reference(
     for caps in BACKTICKED_IDENT.captures_iter(authored) {
         let ident = caps.get(1).expect("group 1 exists");
         if !known.contains(ident.as_str()) && reported.insert(ident.as_str()) {
+            if reported.len() > MAX_FINDINGS_PER_RULE {
+                findings.push(
+                    Finding::builtin(
+                        "tools.unknown_reference.summary",
+                        FindingSeverity::Info,
+                        FindingCategory::Completeness,
+                        format!(
+                            "More than {MAX_FINDINGS_PER_RULE} unknown tool or capability \
+                             references were found; only the first {MAX_FINDINGS_PER_RULE} are \
+                             shown."
+                        ),
+                    )
+                    .at("system_prompt", None),
+                );
+                break;
+            }
+            let ident_preview = snippet_preview(ident.as_str(), MAX_MESSAGE_SNIPPET_CHARS);
             findings.push(
                 Finding::builtin(
                     "tools.unknown_reference",
@@ -378,7 +420,7 @@ fn check_unknown_tool_reference(
                     format!(
                         "The prompt references `{}`, but no enabled tool or capability has that \
                          name. The model cannot call it.",
-                        ident.as_str()
+                        ident_preview
                     ),
                 )
                 .at("system_prompt", Some((ident.start(), ident.end()))),
@@ -398,15 +440,31 @@ fn check_duplicate_tool_names(tools: &[ToolDefinition], findings: &mut Vec<Findi
         .map(|(n, _)| n)
         .collect();
     dupes.sort_unstable();
-    for name in dupes {
+    let capped = dupes.len() > MAX_FINDINGS_PER_RULE;
+    for name in dupes.into_iter().take(MAX_FINDINGS_PER_RULE) {
+        let name_preview = snippet_preview(name, MAX_MESSAGE_SNIPPET_CHARS);
         findings.push(
             Finding::builtin(
                 "tools.duplicate_names",
                 FindingSeverity::Warning,
                 FindingCategory::Completeness,
                 format!(
-                    "Multiple tools are named `{name}`. The model cannot distinguish them; \
+                    "Multiple tools are named `{name_preview}`. The model cannot distinguish them; \
                      rename or remove one of the sources."
+                ),
+            )
+            .at("tools", None),
+        );
+    }
+    if capped {
+        findings.push(
+            Finding::builtin(
+                "tools.duplicate_names.summary",
+                FindingSeverity::Info,
+                FindingCategory::Completeness,
+                format!(
+                    "More than {MAX_FINDINGS_PER_RULE} duplicate tool names were found; only the \
+                     first {MAX_FINDINGS_PER_RULE} are shown."
                 ),
             )
             .at("tools", None),
@@ -667,6 +725,104 @@ mod tests {
         let prompt = "Use `search_web` to find current information.";
         let findings = run_builtin_checks(prompt, prompt, &[], &[client_tool("web_fetch")]);
         assert_eq!(rule_ids(&findings), vec!["tools.unknown_reference"]);
+    }
+
+    #[test]
+    fn unknown_backticked_tool_references_are_capped() {
+        let prompt = (0..(MAX_FINDINGS_PER_RULE + 10))
+            .map(|i| format!("`missing_tool_{i}`"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let findings = run_builtin_checks(&prompt, &prompt, &[], &[client_tool("web_fetch")]);
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.rule_id == "tools.unknown_reference")
+                .count(),
+            MAX_FINDINGS_PER_RULE
+        );
+        assert_eq!(
+            findings.last().map(|f| f.rule_id.as_str()),
+            Some("tools.unknown_reference.summary")
+        );
+    }
+
+    #[test]
+    fn unknown_backticked_tool_reference_message_truncates_identifier() {
+        let long_name = format!("missing_{}", "tool".repeat(40));
+        let prompt = format!("Use `{long_name}`.");
+        let findings = run_builtin_checks(&prompt, &prompt, &[], &[client_tool("web_fetch")]);
+
+        assert_eq!(rule_ids(&findings), vec!["tools.unknown_reference"]);
+        assert!(!findings[0].message.contains(&long_name));
+        assert!(findings[0].message.contains('…'));
+    }
+
+    #[test]
+    fn duplicate_paragraphs_are_capped() {
+        // More than MAX_FINDINGS_PER_RULE distinct paragraphs, each repeated
+        // verbatim, so an attacker-controlled prompt cannot amplify into an
+        // unbounded findings list.
+        let unique = MAX_FINDINGS_PER_RULE + 5;
+        let mut paragraphs: Vec<String> = Vec::new();
+        for i in 0..unique {
+            let paragraph = format!(
+                "Paragraph number {i} repeats verbatim with more than enough padding text to \
+                 clear the minimum duplicate-paragraph length threshold used by the checker."
+            );
+            paragraphs.push(paragraph.clone());
+            paragraphs.push(paragraph);
+        }
+        let prompt = paragraphs.join("\n\n");
+        let findings = run_builtin_checks(&prompt, &prompt, &[], &[]);
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.rule_id == "prompt.duplicate_paragraphs")
+                .count(),
+            MAX_FINDINGS_PER_RULE
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule_id == "prompt.duplicate_paragraphs.summary"),
+            "expected a prompt.duplicate_paragraphs.summary finding when capped"
+        );
+    }
+
+    #[test]
+    fn duplicate_tool_names_are_capped() {
+        // More than MAX_FINDINGS_PER_RULE distinct duplicated tool names must
+        // be capped, with a single summary finding.
+        let unique = MAX_FINDINGS_PER_RULE + 5;
+        let mut tools: Vec<ToolDefinition> = Vec::new();
+        for i in 0..unique {
+            let name = format!("dup_tool_{i}");
+            tools.push(client_tool(&name));
+            tools.push(client_tool(&name));
+        }
+        let findings = run_builtin_checks(
+            "You are an assistant.",
+            "You are an assistant.",
+            &[],
+            &tools,
+        );
+
+        assert_eq!(
+            findings
+                .iter()
+                .filter(|f| f.rule_id == "tools.duplicate_names")
+                .count(),
+            MAX_FINDINGS_PER_RULE
+        );
+        assert!(
+            findings
+                .iter()
+                .any(|f| f.rule_id == "tools.duplicate_names.summary"),
+            "expected a tools.duplicate_names.summary finding when capped"
+        );
     }
 
     #[test]
