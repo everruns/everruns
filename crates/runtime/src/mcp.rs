@@ -15,10 +15,13 @@ use everruns_core::{
     Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
-use futures::future::join_all;
+use futures::{StreamExt, stream};
 use uuid::Uuid;
 
 use crate::mcp_cache::McpDiscoveryCache;
+
+/// Maximum scoped MCP server discoveries run concurrently for one turn.
+const MAX_DISCOVERY_CONCURRENCY: usize = 16;
 
 /// Merge harness-chain → agent → session scoped MCP servers (last layer wins).
 pub(crate) fn merge_session_scoped_servers(
@@ -144,7 +147,17 @@ pub(crate) async fn discover_tool_definitions(
                     .await
             }
         });
-    join_all(discoveries).await.into_iter().flatten().collect()
+    stream::iter(discoveries)
+        // `buffered` (not `buffer_unordered`) caps concurrency while preserving
+        // input order, so the merged tool list stays deterministic — scoped MCP
+        // servers iterate from a `BTreeMap`, and stable ordering keeps prompts /
+        // provider KV-cache reuse stable.
+        .buffered(MAX_DISCOVERY_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
 }
 
 /// Map a server's raw `tools/list` result into prefixed tool definitions.

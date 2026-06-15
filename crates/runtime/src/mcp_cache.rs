@@ -34,12 +34,46 @@ use uuid::Uuid;
 /// `TOOL_CACHE_TTL` (#2131) so both paths revalidate on the same cadence.
 pub(crate) const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
 
+/// Maximum cached scoped MCP server discoveries retained by one runtime.
+const MAX_CACHE_ENTRIES: usize = 1024;
+
+/// Maximum number of tools retained for one scoped MCP server.
+const MAX_TOOLS_PER_ENTRY: usize = 256;
+
+/// Maximum serialized size retained for one scoped MCP server discovery.
+const MAX_ENTRY_BYTES: usize = 1024 * 1024;
+
 /// Identifies one server's cache entry: `(session, sanitized server name)`.
 type CacheKey = (Uuid, String);
 
 struct CacheEntry {
     tools: Vec<ToolDefinition>,
     cached_at: Instant,
+    last_used: Instant,
+}
+
+/// Counts serialized bytes without retaining them, erroring once the running
+/// total exceeds `limit`. Used to size-check cache admission without allocating
+/// the full serialized form of attacker-controlled tool definitions.
+struct LimitCountingWriter {
+    written: usize,
+    limit: usize,
+}
+
+impl std::io::Write for LimitCountingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.written = self.written.saturating_add(buf.len());
+        if self.written > self.limit {
+            return Err(std::io::Error::other(
+                "mcp discovery entry exceeds cache byte limit",
+            ));
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Freshness of a cache lookup at a given instant.
@@ -95,23 +129,72 @@ impl McpDiscoveryCache {
 
     /// Classify the entry for `key` at `now`.
     fn classify(&self, key: &CacheKey, now: Instant) -> Freshness {
-        match self.entries().get(key) {
+        match self.entries().get_mut(key) {
             None => Freshness::Cold,
             Some(entry) if now.duration_since(entry.cached_at) < self.ttl => {
+                entry.last_used = now;
                 Freshness::Fresh(entry.tools.clone())
             }
-            Some(entry) => Freshness::Stale(entry.tools.clone()),
+            Some(entry) => {
+                entry.last_used = now;
+                Freshness::Stale(entry.tools.clone())
+            }
         }
     }
 
     fn store(&self, key: CacheKey, tools: Vec<ToolDefinition>, now: Instant) {
-        self.entries().insert(
-            key,
+        if !Self::cacheable(&tools) {
+            tracing::warn!(
+                server = %key.1,
+                tool_count = tools.len(),
+                max_tools = MAX_TOOLS_PER_ENTRY,
+                max_bytes = MAX_ENTRY_BYTES,
+                "scoped MCP tool discovery result exceeds cache limits; skipping cache store"
+            );
+            return;
+        }
+
+        let mut entries = self.entries();
+        entries.insert(
+            key.clone(),
             CacheEntry {
                 tools,
                 cached_at: now,
+                last_used: now,
             },
         );
+        while entries.len() > MAX_CACHE_ENTRIES {
+            let Some(evict_key) = entries
+                .iter()
+                .filter(|(candidate, _)| *candidate != &key)
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(candidate, _)| candidate.clone())
+            else {
+                break;
+            };
+            entries.remove(&evict_key);
+        }
+    }
+
+    fn cacheable(tools: &[ToolDefinition]) -> bool {
+        if tools.len() > MAX_TOOLS_PER_ENTRY {
+            return false;
+        }
+        // Measure the serialized size by streaming into a counting writer that
+        // short-circuits once the running total crosses MAX_ENTRY_BYTES. This
+        // avoids materializing a full serialized buffer per tool just to size
+        // it, so a huge attacker-controlled tool definition can't force a large
+        // transient allocation before the admission check rejects it.
+        let mut writer = LimitCountingWriter {
+            written: 0,
+            limit: MAX_ENTRY_BYTES,
+        };
+        for tool in tools {
+            if serde_json::to_writer(&mut writer, tool).is_err() {
+                return false;
+            }
+        }
+        true
     }
 
     /// Resolve tools for `key`, applying stale-while-revalidate + single-flight.
@@ -295,6 +378,63 @@ mod tests {
             1,
             "single-flight must fetch once"
         );
+    }
+
+    #[test]
+    fn oversized_results_are_not_cached() {
+        let cache = McpDiscoveryCache::with_ttl(TOOL_CACHE_TTL);
+        let tools = (0..=MAX_TOOLS_PER_ENTRY)
+            .map(|i| def(&format!("tool_{i}")))
+            .collect::<Vec<_>>();
+
+        cache.store(key(), tools, Instant::now());
+
+        assert!(matches!(
+            cache.classify(&key(), Instant::now()),
+            Freshness::Cold
+        ));
+    }
+
+    #[test]
+    fn cache_evicts_least_recently_used_entry_at_capacity() {
+        let cache = McpDiscoveryCache::with_ttl(TOOL_CACHE_TTL);
+        let base = Instant::now();
+        let first = (Uuid::from_u128(1), "first".to_string());
+        let recent = (Uuid::from_u128(2), "recent".to_string());
+
+        cache.store(first.clone(), vec![def("first")], base);
+        for i in 2..=MAX_CACHE_ENTRIES {
+            cache.store(
+                (Uuid::from_u128(i as u128), format!("server_{i}")),
+                vec![def("filler")],
+                base + Duration::from_millis(i as u64),
+            );
+        }
+        assert!(matches!(
+            cache.classify(&first, base + Duration::from_millis(1_500)),
+            Freshness::Fresh(_)
+        ));
+        cache.store(
+            recent.clone(),
+            vec![def("recent")],
+            base + Duration::from_millis(2_000),
+        );
+
+        assert!(matches!(
+            cache.classify(&first, base + Duration::from_millis(2_001)),
+            Freshness::Fresh(_)
+        ));
+        assert!(matches!(
+            cache.classify(
+                &(Uuid::from_u128(2), "server_2".to_string()),
+                base + Duration::from_millis(2_001)
+            ),
+            Freshness::Cold
+        ));
+        assert!(matches!(
+            cache.classify(&recent, base + Duration::from_millis(2_001)),
+            Freshness::Fresh(_)
+        ));
     }
 
     /// A stale entry is served immediately and revalidated in the background.
