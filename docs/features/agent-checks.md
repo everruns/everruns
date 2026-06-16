@@ -76,6 +76,8 @@ Checks run against the *resolved* configuration — after harness and capability
 | `tools.unknown_reference` | info | Prompt references a tool that no enabled tool or capability provides |
 | `tools.duplicate_names` | warning | Two tools share a name, so the model cannot distinguish them |
 
+High-cardinality rules (`prompt.duplicate_paragraphs`, `tools.unknown_reference`, `tools.duplicate_names`) cap how many findings they emit. When the cap is exceeded they add a single companion `info` finding with the rule ID suffixed `.summary` (e.g. `prompt.duplicate_paragraphs.summary`) noting that only the first N were shown, so a large prompt cannot amplify into an unbounded response.
+
 ## Roadmap
 
 A later phase adds org-configurable rules: per-rule enable/severity settings for the built-ins plus custom declarative and natural-language-rubric rules.
