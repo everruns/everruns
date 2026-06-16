@@ -372,7 +372,7 @@ impl SystemPromptContext {
 /// Trait for implementing capabilities that extend agent functionality.
 ///
 /// A capability can contribute:
-/// - System prompt additions (prepended to agent's system prompt)
+/// - System prompt additions (appended after the agent's base system prompt)
 /// - Tools (added to agent's available tools)
 ///
 /// # System Prompt Contributions
@@ -578,7 +578,7 @@ pub trait Capability: Send + Sync {
         None
     }
 
-    /// Returns static text to prepend to the agent's system prompt (optional).
+    /// Returns static text to include in the agent's system prompt (optional).
     ///
     /// This is the simple sync path for capabilities with static prompts.
     /// For dynamic content that requires filesystem access, override
@@ -1549,6 +1549,26 @@ impl CollectedCapabilities {
     }
 }
 
+/// Compose the model-visible system prompt from the stable base prompt and
+/// collected capability contributions. Keep the base prompt first so changes in
+/// dynamic capabilities (for example AGENTS.md reads or environment context)
+/// do not invalidate provider prefix caches for the agent's core instructions.
+pub fn compose_system_prompt(base_system_prompt: &str, additions: Option<&str>) -> String {
+    let Some(additions) = additions.filter(|value| !value.is_empty()) else {
+        return base_system_prompt.to_string();
+    };
+
+    if base_system_prompt.is_empty() {
+        return additions.to_string();
+    }
+
+    if base_system_prompt.contains("<system-prompt>") {
+        format!("{base_system_prompt}\n\n{additions}")
+    } else {
+        format!("<system-prompt>\n{base_system_prompt}\n</system-prompt>\n\n{additions}")
+    }
+}
+
 /// Lightweight result containing only message filter providers.
 ///
 /// Used when callers only need message filtering (e.g., message loading in
@@ -2363,7 +2383,7 @@ pub struct AppliedCapabilities {
 ///
 /// This function:
 /// 1. Collects system prompt contributions from capabilities (in order)
-/// 2. Prepends them to the agent's base system prompt
+/// 2. Appends them after the agent's base system prompt
 /// 3. Collects all tools from capabilities
 /// 4. Returns the modified runtime agent and a tool registry
 ///
@@ -2403,14 +2423,11 @@ pub async fn apply_capabilities(
 ) -> AppliedCapabilities {
     let collected = collect_capabilities(capability_ids, registry, ctx).await;
 
-    // Build final system prompt: capability additions + base prompt (wrapped in XML tags)
-    let final_system_prompt = match collected.system_prompt_prefix() {
-        Some(prefix) => format!(
-            "{}\n\n<system-prompt>\n{}\n</system-prompt>",
-            prefix, base_runtime_agent.system_prompt
-        ),
-        None => base_runtime_agent.system_prompt,
-    };
+    // Build final system prompt: base prompt first, then capability additions.
+    let final_system_prompt = compose_system_prompt(
+        &base_runtime_agent.system_prompt,
+        collected.system_prompt_prefix().as_deref(),
+    );
 
     // Build tool registry from collected tools
     let mut tool_registry = ToolRegistry::new();
@@ -3014,6 +3031,7 @@ mod tests {
         .await;
 
         let prompt = &applied.runtime_agent.system_prompt;
+        assert!(prompt.starts_with("<system-prompt>\nYou are helpful.\n</system-prompt>"));
         // Capability wrapped
         assert!(prompt.contains("<capability id=\"stateless_todo_list\">"));
         assert!(prompt.contains("</capability>"));

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-System prompts use XML tags to create clear boundaries between capability instructions, user-provided project instruction files, and the agent's base system prompt. This follows Anthropic's recommendation for multi-component prompts and is the cross-provider consensus for structured prompt formatting.
+System prompts use XML tags to create clear boundaries between the agent's base system prompt, capability instructions, and user-provided project instruction files. This follows Anthropic's recommendation for multi-component prompts and is the cross-provider consensus for structured prompt formatting.
 
 ## Rationale
 
@@ -44,10 +44,9 @@ Three XML tags wrap the three logical sections of the assembled system prompt:
 ### Assembled Prompt Structure
 
 ```xml
-<agent-instructions source="AGENTS.md">
-## Style
-Use snake_case for variables.
-</agent-instructions>
+<system-prompt>
+You are a helpful assistant.
+</system-prompt>
 
 <capability id="session_file_system">
 You have access to file system tools...
@@ -57,18 +56,21 @@ You have access to file system tools...
 You have access to math tools...
 </capability>
 
-<system-prompt>
-You are a helpful assistant.
-</system-prompt>
+<agent-instructions source="AGENTS.md">
+## Style
+Use snake_case for variables.
+</agent-instructions>
 ```
 
 ### Ordering
 
-Top to bottom (matches existing order, unchanged):
+Top to bottom:
 
-1. **Instruction files** — user-provided project instructions (if `agent_instructions` capability enabled and configured files exist)
+1. **Base system prompt** — agent's core behavior prompt
 2. **Capability prompts** — in capability application order (agent caps, then session caps)
-3. **Base system prompt** — agent's core behavior prompt
+3. **Instruction files** — user-provided project instructions, positioned wherever the `agent_instructions` capability appears in that order
+
+The base system prompt is first to maximize provider prefix-cache reuse. Dynamic capability contributions such as `agent_instructions` and environment context should be ordered late by the harness/agent/session configuration when their contents change frequently.
 
 ### Conditional Wrapping
 
@@ -108,30 +110,22 @@ Wraps the base system prompt in `<system-prompt>` tags when capabilities contrib
 
 ```rust
 if let Some(prefix) = collected.system_prompt_prefix() {
-    if !self.runtime_agent.system_prompt.contains("<system-prompt>") {
-        self.runtime_agent.system_prompt = format!(
-            "<system-prompt>\n{}\n</system-prompt>",
-            self.runtime_agent.system_prompt
-        );
-    }
-    self = self.prepend_system_prompt(prefix);
+    self.runtime_agent.system_prompt =
+        compose_system_prompt(&self.runtime_agent.system_prompt, Some(&prefix));
 }
 ```
 
-Double-wrapping is prevented by checking for existing `<system-prompt>` tag (relevant when session capabilities are applied after agent capabilities).
+Double-wrapping is prevented inside `compose_system_prompt` by checking for an existing `<system-prompt>` tag (relevant when session capabilities are applied after agent capabilities).
 
 #### `apply_capabilities()` (mod.rs)
 
 Same wrapping in the standalone `apply_capabilities` path:
 
 ```rust
-let final_system_prompt = match collected.system_prompt_prefix() {
-    Some(prefix) => format!(
-        "{}\n\n<system-prompt>\n{}\n</system-prompt>",
-        prefix, base_runtime_agent.system_prompt
-    ),
-    None => base_runtime_agent.system_prompt,
-};
+let final_system_prompt = compose_system_prompt(
+    &base_runtime_agent.system_prompt,
+    collected.system_prompt_prefix().as_deref(),
+);
 ```
 
 ### UI Impact
