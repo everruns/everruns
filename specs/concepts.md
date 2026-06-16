@@ -234,7 +234,7 @@ A specific model within a provider (e.g., `gpt-4o`, `claude-sonnet-4`).
 A remote server that exposes tools via the Model Context Protocol. Integrated as a virtual capability.
 
 - Becomes a capability with ID `mcp:{server_uuid}`
-- Tools are discovered at runtime and cached with a 24-hour TTL
+- Tools are discovered at runtime, cached with a 1-hour freshness TTL, and have a 24-hour maximum stale-serving window
 - Tool names are prefixed to avoid conflicts: `mcp_{server}__{tool}`
 - Execution happens via HTTP JSON-RPC
 

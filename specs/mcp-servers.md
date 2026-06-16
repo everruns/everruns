@@ -219,16 +219,24 @@ Tools are discovered from MCP servers via the `tools/list` JSON-RPC method:
 ### Tool Caching
 
 Tools are cached per server (`cached_tools` + `tools_cached_at`) and served with
-a stale-while-revalidate strategy so a *stale* cache never blocks agent tool
-resolution on an upstream `tools/list` (cold and forced refreshes still block —
-see below):
+a bounded stale-while-revalidate strategy so recent stale caches avoid blocking
+agent tool resolution on an upstream `tools/list`, while untrusted tool
+definitions cannot remain registered indefinitely after refresh failures:
 
 - **Fresh** (within the 1h TTL): cached tools are returned directly.
-- **Stale** (older than the TTL, with a prior successful fetch): the cached tools
-  are returned immediately and a refresh is kicked off in the background. OAuth
-  servers are excluded — they cannot self-refresh without a user connection
-  token, so they serve cached tools without spawning a no-op background refresh.
-- **Cold** (never fetched) or **forced**: the caller blocks on a refresh.
+- **Stale but within the maximum stale lifetime** (older than the TTL, under 24h,
+  with a prior successful fetch): cached tools are returned immediately and a
+  refresh is kicked off in the background. OAuth servers are excluded — they
+  cannot self-refresh without a user connection token, so they take the blocking
+  path instead of spawning a no-op background refresh.
+- **Expired stale** (24h or older), **cold** (never fetched), or **forced**: the
+  caller blocks on a refresh. Batch agent tool resolution omits expired stale
+  tools if that refresh fails rather than registering the old definitions.
+- The 24h max-stale window also bounds **OAuth** servers: since they can't
+  self-refresh without a user connection token, their cached tools are served
+  only while inside the window. Past 24h the blocking refresh fails (and batch
+  resolution omits them) until the user reconnects — so revoked/poisoned OAuth
+  tool metadata can't be served indefinitely either.
 - Concurrent refreshes for the same server are coalesced (single-flight), so a
   burst of agent runs triggers at most one upstream fetch rather than a herd.
 - Force refresh is available via API.
