@@ -23,7 +23,7 @@ use everruns_core::driver_helpers::{
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
 };
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
@@ -133,19 +133,21 @@ impl GeminiChatDriver {
     }
 
     fn convert_messages(messages: &[LlmMessage]) -> (Option<GeminiContent>, Vec<GeminiContent>) {
-        let mut system_instruction = None;
+        // Accumulate all system messages into Gemini's separate
+        // `system_instruction`. Overwriting on each System message would drop the
+        // agent system prompt whenever a later notice/summary System message is
+        // present (infinity_context / compaction). See `fold_system_messages`.
+        let system_instruction = fold_system_messages(messages).map(|text| GeminiContent {
+            role: None, // system_instruction has no role
+            parts: vec![GeminiPart::Text { text }],
+        });
         let mut contents = Vec::new();
 
         for msg in messages {
             match msg.role {
                 LlmMessageRole::System => {
-                    // Extract system instruction (Gemini handles it separately)
-                    system_instruction = Some(GeminiContent {
-                        role: None, // system_instruction has no role
-                        parts: vec![GeminiPart::Text {
-                            text: msg.content.to_text(),
-                        }],
-                    });
+                    // Folded above into `system_instruction`; never emit
+                    // System-role content into the Gemini `contents` array.
                 }
                 LlmMessageRole::Tool => {
                     // Tool results in Gemini use functionResponse parts
@@ -1112,6 +1114,34 @@ mod tests {
 
         assert!(system.is_some());
         assert_eq!(contents.len(), 1); // Only user message
+    }
+
+    #[test]
+    fn test_convert_messages_accumulates_multiple_system_messages() {
+        // The agent system prompt plus a later notice/summary System message
+        // (infinity_context / compaction) must both land in `system_instruction`,
+        // in order — the later one must not overwrite the agent system prompt.
+        // No System-role content may leak into `contents`.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+        ];
+
+        let (system, contents) = GeminiChatDriver::convert_messages(&messages);
+
+        let system = system.expect("system_instruction present");
+        let text = system
+            .parts
+            .iter()
+            .filter_map(|p| match p {
+                GeminiPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        assert_eq!(text, "A\n\nB");
+        assert_eq!(contents.len(), 1); // Only the user message
     }
 
     #[test]
