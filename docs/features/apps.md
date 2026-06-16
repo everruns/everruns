@@ -1,5 +1,5 @@
 ---
-title: Apps
+title: Everruns Apps for Agent Distribution Channels
 description: Apps bind a Harness and Agent to a distribution channel (Slack, webhook, schedule) and expose a publish/unpublish lifecycle.
 sidebar:
   label: Apps

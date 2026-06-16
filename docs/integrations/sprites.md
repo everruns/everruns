@@ -1,6 +1,8 @@
 ---
-title: Sprites
+title: Sprites MicroVM Sandboxes for Everruns Agents
 description: Integrate Sprites persistent Firecracker microVMs for isolated code execution with filesystem persistence, checkpoints, and HTTP services.
+sidebar:
+  label: Sprites
 ---
 
 Everruns integrates with [Sprites](https://sprites.dev/) to provide persistent, hardware-isolated Linux microVMs powered by Firecracker. Unlike ephemeral sandboxes, Sprites maintain their filesystem across idle periods, support instant checkpoint/restore, and expose public HTTP endpoints.

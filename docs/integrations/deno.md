@@ -1,6 +1,8 @@
 ---
-title: Deno
+title: Deno Deploy Sandboxes for Agent Code Tasks
 description: Integrate Deno cloud sandbox environments for secure, isolated code execution. Configure access tokens, sandbox lifecycle, and session-scoped state.
+sidebar:
+  label: Deno
 ---
 
 Everruns integrates with [Deno Sandboxes](https://docs.deno.com/sandbox/) to provide cloud-based sandbox environments for secure, isolated code execution. Agents can create, manage, and interact with multiple sandboxes per session — each an isolated Linux microVM with network access.

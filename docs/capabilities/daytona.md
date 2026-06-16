@@ -1,5 +1,5 @@
 ---
-title: Daytona Sandboxes for Agent Code Execution
+title: Daytona Cloud Sandbox Capability for Agents
 description: Run agent code in isolated Daytona cloud sandboxes with command execution, file access, workspace downloads, lifecycle controls, and session-scoped environments.
 sidebar:
   label: Daytona
