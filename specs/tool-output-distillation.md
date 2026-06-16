@@ -38,10 +38,10 @@ Both the in-process host and the durable worker assemble hooks through the same 
 1. **Skip** if the tool declares `persist_output: true` (exec/sandbox — handled elsewhere).
 2. **Skip** on error results (kept verbatim — usually small and diagnostically important).
 3. **Skip** if the result already carries `output_files` (already recoverable / distilled).
-4. **Size gate:** skip if the serialized result is below `MIN_DISTILL_BYTES`.
+4. **Bounded size gate:** serialize through a hard-capped writer before cloning or traversal. Skip if the serialized result is below `MIN_DISTILL_BYTES`; also skip if it exceeds `MAX_DISTILL_INPUT_BYTES`, leaving the always-on hard-limit hook to cap the inline output without this hook doing extra large-output work.
 5. **Require a session file store** (reversibility); skip if absent.
-6. Clone the original, then **distill the value in place**. If the shape walker changes nothing (a large result made entirely of sub-threshold fields), **fall back** to a head+tail window over the serialized value — so a large result is always bounded, persisted, and recoverable rather than risking an irrecoverable head-truncation by the 64 KiB hard-limit hook.
-7. **Persist the full original** (pretty-printed JSON) via `persist_output`. On failure, restore the verbatim original and return.
+6. Clone the original, then **distill the value in place**. If the shape walker changes nothing (a large result made entirely of sub-threshold fields), **fall back** to a head+tail window over the bounded serialized value — so a large result is always bounded, persisted, and recoverable rather than risking an irrecoverable head-truncation by the 64 KiB hard-limit hook.
+7. **Persist the full original** using the bounded JSON string already created for the size gate. On failure, restore the verbatim original and return.
 8. **Inject the recovery pointer** (`output_files`, `full_output`, `distilled`, `distill_note`).
 
 ### Content-shape routing (`distill_value`)
@@ -51,11 +51,11 @@ Recursive, bounded by `MAX_DEPTH` and `MAX_NODES`:
 | Shape | Transform |
 |-------|-----------|
 | Long string (> `MAX_FIELD_BYTES`) | `distill_text`: unified-diff → diffstat summary (file/hunk headers + `+a/-r` line counts); otherwise head+tail window with a byte-elision marker (preserves both ends, unlike head truncation). |
-| Large array (len > `SAMPLE_ROWS` and serialized > `MAX_FIELD_BYTES`) | Keep the first `SAMPLE_ROWS` elements (each recursively distilled) + an elision marker `[… N more item(s) elided …]`. |
+| Large array (len > `SAMPLE_ROWS`) | Keep the first `SAMPLE_ROWS` elements (each recursively distilled) + an elision marker `[… N more item(s) elided …]`. The walker never serializes each array in full just to decide whether to sample it. |
 | Object | Recurse into each field; small fields untouched. |
 | Scalar / small value | Unchanged. |
 
-Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`. See `crates/core/src/capabilities/tool_output_distillation.rs`.
+Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_BYTES = 2 KiB`, `SAMPLE_ROWS = 5`, `MAX_DEPTH = 8`, `MAX_NODES = 100_000`, `MAX_DISTILL_INPUT_BYTES = 1 MiB`. See `crates/core/src/capabilities/tool_output_distillation.rs`.
 
 ## Recovery Contract
 
@@ -69,7 +69,7 @@ It is included by default in the **generic harness** (`crates/server/src/harness
 
 ## Security
 
-- **TM-DOS** — traversal is bounded by `MAX_DEPTH` / `MAX_NODES`; persisted size is capped at 1 MiB by `persist_output`. Distillation only ever shrinks the in-context payload.
+- **TM-DOS** — initial serialization is capped before cloning/traversal, traversal is bounded by `MAX_DEPTH` / `MAX_NODES`, arrays are sampled without full per-array serialization, and persisted size is capped at 1 MiB by `persist_output`. Distillation only ever shrinks the in-context payload it processes; oversized inputs fall through to the final hard-limit hook.
 - **TM-FS** — VFS writes reuse `tool_output_persistence::persist_output`, which sanitizes the tool-call id (no path traversal) and is session-scoped.
 - **TM-TOOL / prompt injection** — distillation reduces content; it never executes tool output. Markers and notes are static strings. The result remains untrusted tool output, governed by the same instruction hierarchy as before.
 

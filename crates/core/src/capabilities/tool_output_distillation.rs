@@ -32,7 +32,7 @@
 //   budget + persistence pipeline already solves the problem, and distilling
 //   their already-budgeted inline view would fight that design.
 
-use std::sync::Arc;
+use std::{io, sync::Arc};
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -59,6 +59,11 @@ const MAX_DEPTH: usize = 8;
 
 /// Maximum number of nodes visited while distilling (DoS bound).
 const MAX_NODES: usize = 100_000;
+
+/// Maximum serialized JSON bytes this hook will process before handing off to
+/// the final hard-limit hook. This must be checked before cloning or
+/// pretty-printing attacker-controlled tool output.
+const MAX_DISTILL_INPUT_BYTES: usize = 1024 * 1024;
 
 pub const TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID: &str = "tool_output_distillation";
 
@@ -139,8 +144,12 @@ impl PostToolExecHook for DistillOutputHook {
             return;
         }
 
-        // Size gate: only act on large results.
-        let serialized = serde_json::to_string(result_value).unwrap_or_default();
+        // Size gate: only act on large results. Serialize through a bounded
+        // writer before any clone or traversal so untrusted MCP/web_fetch
+        // output cannot force unbounded allocations in this pre-hard-limit hook.
+        let Ok(serialized) = serialize_json_bounded(result_value, MAX_DISTILL_INPUT_BYTES) else {
+            return;
+        };
         if serialized.len() < MIN_DISTILL_BYTES {
             return;
         }
@@ -165,15 +174,15 @@ impl PostToolExecHook for DistillOutputHook {
             *result_value = Value::String(head_tail(&serialized, MAX_FIELD_BYTES));
         }
 
-        // Persist the full original (pretty-printed JSON) for lossless retrieval.
-        let original_text =
-            serde_json::to_string_pretty(&original).unwrap_or_else(|_| original.to_string());
-        let original_len = original_text.len();
+        // Persist the full original for lossless retrieval. Reuse the bounded
+        // size-gate serialization rather than pretty-printing the original into
+        // a second large string before persistence applies its own cap.
+        let original_len = serialized.len();
         let persisted = persist_output(
             file_store,
             context.session_id,
             &tool_call.id,
-            &original_text,
+            &serialized,
             "",
         )
         .await;
@@ -212,12 +221,9 @@ fn distill_value(value: &mut Value, depth: usize, stats: &mut DistillStats) {
             }
         }
         Value::Array(arr) => {
-            // Only arrays longer than the sample size can ever be sampled, so
-            // check length first and let `&&` short-circuit the O(n)
-            // serialization for small arrays.
-            if arr.len() > SAMPLE_ROWS
-                && serde_json::to_string(arr).map(|s| s.len()).unwrap_or(0) > MAX_FIELD_BYTES
-            {
+            // Avoid serializing the full array while walking untrusted output:
+            // long arrays are sampled based on element count alone.
+            if arr.len() > SAMPLE_ROWS {
                 let omitted = arr.len() - SAMPLE_ROWS;
                 arr.truncate(SAMPLE_ROWS);
                 for el in arr.iter_mut() {
@@ -239,6 +245,48 @@ fn distill_value(value: &mut Value, depth: usize, stats: &mut DistillStats) {
             }
         }
         _ => {}
+    }
+}
+
+fn serialize_json_bounded(value: &Value, max_bytes: usize) -> Result<String, serde_json::Error> {
+    let mut writer = BoundedJsonWriter::new(max_bytes);
+    serde_json::to_writer(&mut writer, value)?;
+    writer.finish().map_err(serde_json::Error::io)
+}
+
+struct BoundedJsonWriter {
+    bytes: Vec<u8>,
+    max_bytes: usize,
+}
+
+impl BoundedJsonWriter {
+    fn new(max_bytes: usize) -> Self {
+        Self {
+            bytes: Vec::with_capacity(max_bytes.min(MIN_DISTILL_BYTES)),
+            max_bytes,
+        }
+    }
+
+    fn finish(self) -> io::Result<String> {
+        String::from_utf8(self.bytes).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }
+}
+
+impl io::Write for BoundedJsonWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.bytes.len().saturating_add(buf.len()) > self.max_bytes {
+            // Intentional policy limit, not a real allocation failure — keep it
+            // out of `OutOfMemory` so OOM telemetry/handling isn't triggered.
+            return Err(io::Error::other(
+                "tool result JSON exceeds distillation byte limit",
+            ));
+        }
+        self.bytes.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }
 
@@ -448,6 +496,22 @@ mod tests {
         distill_value(&mut value, 0, &mut stats);
         assert!(!stats.changed);
         assert_eq!(value["items"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_serialize_json_bounded_rejects_oversized_output() {
+        let value = json!({ "body": "x".repeat(MAX_DISTILL_INPUT_BYTES + 1) });
+        let err = serialize_json_bounded(&value, MAX_DISTILL_INPUT_BYTES).unwrap_err();
+        assert!(err.is_io());
+    }
+
+    #[test]
+    fn test_distill_value_samples_long_array_without_serialized_size_gate() {
+        let mut value = json!({ "rows": [1, 2, 3, 4, 5, 6] });
+        let mut stats = DistillStats::default();
+        distill_value(&mut value, 0, &mut stats);
+        assert!(stats.changed);
+        assert_eq!(value["rows"].as_array().unwrap().len(), SAMPLE_ROWS + 1);
     }
 
     #[test]
