@@ -1394,6 +1394,22 @@ pub async fn trigger_health_check(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> ApiResult<crate::domains::agents::health_check::types::HealthCheckRun> {
+    let ctx = state.ctx(&org);
+
+    // Authorize *before* consuming the org's session-create rate budget.
+    // Otherwise a caller lacking AGENT_HEALTH_CHECK_RUN (a more restrictive
+    // policy than plain session creation) would be rejected by the command yet
+    // still burn the org's quota, starving legitimate session creation — a DoS.
+    // The command re-checks the policy in `run`; paying it twice is cheap and
+    // keeps the command the single source of truth.
+    if let Some(policy) =
+        crate::domains::agents::health_check::commands::TriggerAgentHealthCheck::policy()
+    {
+        policy
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
+    }
+
     if state
         .org_rate_limiter
         .check_session_create(org.org_id)
@@ -1409,7 +1425,7 @@ pub async fn trigger_health_check(
     }
 
     let run = crate::domains::agents::health_check::commands::TriggerAgentHealthCheck { agent_id }
-        .run(&state.ctx(&org))
+        .run(&ctx)
         .await?;
     Ok(Json(run))
 }
