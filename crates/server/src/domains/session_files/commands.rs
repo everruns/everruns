@@ -206,7 +206,7 @@ impl Command for CreateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -299,7 +299,7 @@ impl Command for UpdateWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
@@ -371,7 +371,7 @@ impl Command for DeleteWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
         let deleted = q::service(ctx)
             .delete(workspace_key, &path, self.recursive)
@@ -410,7 +410,7 @@ impl Command for MoveWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         q::service(ctx)
             .move_file(
                 workspace_key,
@@ -454,7 +454,7 @@ impl Command for CopyWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         q::service(ctx)
             .copy_file(
                 workspace_key,
@@ -567,3 +567,168 @@ impl Command for StatWorkspaceFile {
 }
 
 inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
+
+#[cfg(test)]
+mod tests {
+    use super::CreateWorkspaceFile;
+    use crate::domains::common::{Command, CommandErrorKind, Ctx};
+    use crate::domains::session_files::types::CreateFileRequest;
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgRole, Permission, PermissionResolver,
+        PrincipalId,
+    };
+    use serde_json::json;
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    /// Grants only `OrgSessionsManage` — models a caller authorized for session
+    /// management but not for managing shared workspaces (`OrgSettingsManage`).
+    struct SessionsManageOnlyResolver;
+
+    impl PermissionResolver for SessionsManageOnlyResolver {
+        fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+            matches!(permission, Permission::OrgSessionsManage)
+        }
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+            vec![Permission::OrgSessionsManage]
+        }
+    }
+
+    fn session_row(workspace_id: Option<Uuid>) -> CreateSessionRow {
+        CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("session-fs write guard".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            workspace_id,
+        }
+    }
+
+    fn file_req(content: &str) -> CreateFileRequest {
+        CreateFileRequest {
+            content: Some(content.to_string()),
+            encoding: None,
+            is_readonly: None,
+            is_directory: None,
+        }
+    }
+
+    fn owner_caller() -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            user_id: Some(Uuid::nil()),
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+        }
+    }
+
+    /// Active-status gate: once a workspace is archived, legacy session-fs
+    /// writes must be rejected (archived workspaces are read-only).
+    #[tokio::test]
+    async fn legacy_session_file_write_rejects_archived_workspace() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session = db
+            .create_session(session_row(None))
+            .await
+            .expect("create session");
+        let workspace_id = session.workspace_id;
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None);
+
+        CreateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "before.txt".to_string(),
+            req: file_req("before archive"),
+        }
+        .execute(&ctx)
+        .await
+        .expect("write allowed while workspace is active");
+
+        db.archive_workspace(DEFAULT_ORG_ID, workspace_id)
+            .await
+            .expect("archive workspace");
+
+        let err = CreateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "after.txt".to_string(),
+            req: file_req("after archive"),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("write must be rejected after archive");
+        assert!(matches!(err.kind, CommandErrorKind::Forbidden(_)));
+    }
+
+    /// Authorization parity: writing to an attached *shared* workspace requires
+    /// `WORKSPACE_MANAGE`, not just the session policy. A caller with only
+    /// `OrgSessionsManage` must be denied.
+    #[tokio::test]
+    async fn legacy_session_write_to_shared_workspace_requires_workspace_manage() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+
+        let workspace = db
+            .create_workspace(
+                DEFAULT_ORG_ID,
+                CreateWorkspaceRow {
+                    id: None,
+                    public_id: format!("workspace_{:032x}", 1u128),
+                    name: "shared".to_string(),
+                    description: None,
+                    owner_principal_id: None,
+                    resolved_owner_user_id: None,
+                },
+            )
+            .await
+            .expect("create shared workspace");
+        let session = db
+            .create_session(session_row(Some(workspace.id)))
+            .await
+            .expect("create session attached to shared workspace");
+        assert_ne!(
+            session.id.uuid(),
+            workspace.id,
+            "session must attach to a shared (non-1:1) workspace"
+        );
+
+        let ctx = Ctx::new(
+            owner_caller(),
+            db,
+            capability_service,
+            None,
+            Arc::new(SessionsManageOnlyResolver),
+        );
+
+        let err = CreateWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "x.txt".to_string(),
+            req: file_req("x"),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("shared workspace write must require WORKSPACE_MANAGE");
+        assert!(matches!(err.kind, CommandErrorKind::Forbidden(_)));
+    }
+}
