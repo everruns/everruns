@@ -1,6 +1,7 @@
 use super::queries as q;
 use super::types::{BatchSetSecretsResponse, KeyValueInfo, SecretInfo};
 use crate::domains::common::*;
+use everruns_core::capabilities::is_internal_session_kv_key;
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -39,6 +40,10 @@ impl Command for ListSessionStorage {
 
         let mut items = Vec::with_capacity(keys.len());
         for key_info in keys {
+            if is_internal_session_kv_key(&key_info.key) {
+                continue;
+            }
+
             let value = ctx
                 .db
                 .get_session_key_value(session_id.uuid(), &key_info.key)
