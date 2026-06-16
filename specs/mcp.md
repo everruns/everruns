@@ -102,7 +102,8 @@ MCP Client → POST /oauth/register
 
 MCP Client → GET /oauth/authorize?client_id=...&code_challenge=...&state=...&redirect_uri=...
            → Not authenticated → 302 redirect to frontend login with return_to
-           → Authenticated → issue authorization code
+           → Authenticated → show authorization confirmation
+           → User approves → issue authorization code
            ← Redirect to redirect_uri with ?code=...&state=...
 
 MCP Client → POST /oauth/token (grant_type=authorization_code, code=..., code_verifier=...)
@@ -199,8 +200,16 @@ Authorization endpoint. Redirects to login when no session cookie is present.
 1. Check for valid session cookie
 2. Not authenticated → 302 redirect to `{FRONTEND_URL}/login?return_to=/oauth/authorize?...`
 3. User logs in → browser navigates back to `/oauth/authorize?...` (now with cookie)
-4. Authenticated → validate client_id, redirect_uri, generate authorization code
-5. Redirect to `redirect_uri?code=...&state=...` (no consent UI — code is issued immediately)
+4. Authenticated → validate client_id and redirect_uri, then render a confirmation page
+5. User approves → generate authorization code
+6. Redirect to `redirect_uri?code=...&state=...`
+
+The confirmation page is rendered by the backend because `/oauth/*` routes are
+root-level OAuth endpoints, not frontend application routes. It shows the
+registered client name and client ID, signed-in user, selected organization,
+redirect URI, requested scope, and the concrete MCP access being granted.
+Canceling redirects back to the registered redirect URI with
+`error=access_denied` and the original `state`.
 
 Authorization codes: random 32-byte hex, 5-minute TTL, one-time use, stored with PKCE challenge.
 

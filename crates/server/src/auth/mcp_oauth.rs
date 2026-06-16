@@ -467,7 +467,8 @@ async fn oauth_authorize(
         .build();
     let jar = jar.add(csrf_cookie);
 
-    let confirm_page = render_authorize_confirm_page(&query, &csrf_token);
+    let confirm_page =
+        render_authorize_confirm_page(&query, &client.client_name, &user, &csrf_token);
     audit::emit(
         state.db.clone(),
         user.organizations
@@ -601,31 +602,325 @@ async fn issue_authorization_code(
     // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
     // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
     // `...?next=1?code=...` that naive string concatenation would produce.
-    let mut redirect = url::Url::parse(&query.redirect_uri)
-        .map_err(|_| AuthError::unauthorized("Invalid redirect_uri"))?;
-    redirect
-        .query_pairs_mut()
-        .append_pair("code", &code)
-        .append_pair("state", &query.state);
+    build_oauth_redirect_url(
+        &query.redirect_uri,
+        &[("code", &code), ("state", &query.state)],
+    )
+    .map_err(|_| AuthError::unauthorized("Invalid redirect_uri"))
+}
+
+fn build_oauth_redirect_url(
+    redirect_uri: &str,
+    params: &[(&str, &str)],
+) -> Result<String, url::ParseError> {
+    let mut redirect = url::Url::parse(redirect_uri)?;
+    {
+        let mut pairs = redirect.query_pairs_mut();
+        for (key, value) in params {
+            pairs.append_pair(key, value);
+        }
+    }
     Ok(redirect.into())
 }
 
-fn render_authorize_confirm_page(query: &OAuthAuthorizeQuery, csrf_token: &str) -> String {
+fn render_authorize_confirm_page(
+    query: &OAuthAuthorizeQuery,
+    client_name: &str,
+    user: &AuthUser,
+    csrf_token: &str,
+) -> String {
+    let org = user.organizations.first();
+    let org_name = org
+        .map(|org| org.name.as_str())
+        .unwrap_or("Default Organization");
+    let org_public_id = org
+        .map(|org| org.public_id.as_str())
+        .unwrap_or(everruns_core::DEFAULT_ORG_PUBLIC_ID);
+    let org_role = org
+        .map(|org| org.role.to_string())
+        .unwrap_or_else(|| "owner".to_string());
+    let cancel_url = build_oauth_redirect_url(
+        &query.redirect_uri,
+        &[("error", "access_denied"), ("state", &query.state)],
+    )
+    .unwrap_or_else(|_| "#".to_string());
+    let scope_chips = render_scope_chips(&query.scope);
+
+    let stylesheet = r#"
+:root {
+  color-scheme: light;
+  font-family: Geist, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #0a0a0a;
+  background: #f5f5f5;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 32px 16px;
+}
+.shell {
+  width: min(100%, 720px);
+  background: #ffffff;
+  border: 1px solid #d9d9d9;
+  box-shadow: 0 24px 80px rgba(10, 10, 10, 0.12);
+}
+.header {
+  padding: 32px 36px 24px;
+  border-top: 4px solid #d4a43a;
+  border-bottom: 1px solid #e5e5e5;
+}
+.eyebrow {
+  margin: 0 0 12px;
+  color: #666666;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+.client {
+  margin-top: 14px;
+  color: #404040;
+  font-size: 15px;
+  line-height: 1.5;
+}
+.content { padding: 28px 36px 32px; }
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.field {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid #e5e5e5;
+  background: #fafafa;
+}
+.field-label {
+  display: block;
+  margin-bottom: 6px;
+  color: #666666;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.field-value {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.4;
+}
+.scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.scope {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid #d4a43a;
+  background: rgba(212, 164, 58, 0.12);
+  color: #4f3700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  font-weight: 650;
+}
+.grant-list {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 28px;
+  padding: 0;
+  list-style: none;
+}
+.grant-list li {
+  padding: 14px 16px;
+  border-left: 3px solid #d4a43a;
+  background: #f8f8f8;
+}
+.grant-title {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 650;
+}
+.grant-copy {
+  display: block;
+  color: #404040;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.notice {
+  margin: 0 0 28px;
+  padding: 14px 16px;
+  border: 1px solid #d9d9d9;
+  color: #404040;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+button,
+.cancel {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid #0a1636;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 650;
+  text-decoration: none;
+}
+button {
+  background: #0a1636;
+  color: #ffffff;
+  cursor: pointer;
+}
+.cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #0a1636;
+  background: #ffffff;
+}
+@media (max-width: 640px) {
+  body { padding: 0; place-items: stretch; }
+  .shell { width: 100%; min-height: 100vh; border-width: 0; }
+  .header, .content { padding-left: 20px; padding-right: 20px; }
+  .summary { grid-template-columns: 1fr; }
+  h1 { font-size: 25px; }
+  button, .cancel { width: 100%; }
+}
+"#;
+
     format!(
-        "<!doctype html><html><body><h1>Authorize MCP Client</h1><p>Authorize <strong>{}</strong> to access your MCP data?</p><form method=\"post\" action=\"/oauth/authorize\"><input type=\"hidden\" name=\"client_id\" value=\"{}\"/><input type=\"hidden\" name=\"redirect_uri\" value=\"{}\"/><input type=\"hidden\" name=\"response_type\" value=\"{}\"/><input type=\"hidden\" name=\"code_challenge\" value=\"{}\"/><input type=\"hidden\" name=\"code_challenge_method\" value=\"{}\"/><input type=\"hidden\" name=\"state\" value=\"{}\"/><input type=\"hidden\" name=\"scope\" value=\"{}\"/><input type=\"hidden\" name=\"csrf_token\" value=\"{}\"/><button type=\"submit\">Authorize</button></form></body></html>",
-        escape_html_attr(&query.client_id),
-        escape_html_attr(&query.client_id),
-        escape_html_attr(&query.redirect_uri),
-        escape_html_attr(&query.response_type),
-        escape_html_attr(&query.code_challenge),
-        escape_html_attr(&query.code_challenge_method),
-        escape_html_attr(&query.state),
-        escape_html_attr(&query.scope),
-        escape_html_attr(csrf_token),
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Authorize MCP Client</title>
+  <style>{style}</style>
+</head>
+<body>
+  <main class="shell">
+    <section class="header">
+      <p class="eyebrow">Everruns MCP OAuth</p>
+      <h1>Authorize this MCP client?</h1>
+      <p class="client"><strong>{client_name}</strong> is requesting access to Everruns as <strong>{user_name}</strong>.</p>
+    </section>
+    <section class="content">
+      <div class="summary" aria-label="Authorization details">
+        <div class="field">
+          <span class="field-label">Client ID</span>
+          <span class="field-value">{client_id}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Signed in as</span>
+          <span class="field-value">{user_name} &lt;{user_email}&gt;</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Organization</span>
+          <span class="field-value">{org_name} ({org_public_id}, {org_role})</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Redirect URI</span>
+          <span class="field-value">{redirect_uri}</span>
+        </div>
+        <div class="field">
+          <span class="field-label">Requested scope</span>
+          <span class="field-value scope-row">{scope_chips}</span>
+        </div>
+      </div>
+
+      <h2>Approving allows this client to</h2>
+      <ul class="grant-list">
+        <li>
+          <span class="grant-title">Use Everruns MCP</span>
+          <span class="grant-copy">Call MCP tools and read MCP resources exposed for this organization.</span>
+        </li>
+        <li>
+          <span class="grant-title">Act as your signed-in user</span>
+          <span class="grant-copy">Requests are authorized as {user_name} with your current {org_role} role in {org_name}.</span>
+        </li>
+        <li>
+          <span class="grant-title">Keep a connection token</span>
+          <span class="grant-copy">The client receives an access token and refresh token. It does not receive your Everruns password.</span>
+        </li>
+      </ul>
+
+      <p class="notice">Only approve clients you recognize. The client will return to its registered redirect URI after this step.</p>
+
+      <form method="post" action="/oauth/authorize">
+        <input type="hidden" name="client_id" value="{client_id}">
+        <input type="hidden" name="redirect_uri" value="{redirect_uri}">
+        <input type="hidden" name="response_type" value="{response_type}">
+        <input type="hidden" name="code_challenge" value="{code_challenge}">
+        <input type="hidden" name="code_challenge_method" value="{code_challenge_method}">
+        <input type="hidden" name="state" value="{state}">
+        <input type="hidden" name="scope" value="{scope}">
+        <input type="hidden" name="csrf_token" value="{csrf_token}">
+        <div class="actions">
+          <button type="submit">Authorize client</button>
+          <a class="cancel" href="{cancel_url}">Cancel</a>
+        </div>
+      </form>
+    </section>
+  </main>
+</body>
+</html>"#,
+        style = stylesheet,
+        client_name = escape_html(client_name),
+        client_id = escape_html(&query.client_id),
+        user_name = escape_html(&user.name),
+        user_email = escape_html(&user.email),
+        org_name = escape_html(org_name),
+        org_public_id = escape_html(org_public_id),
+        org_role = escape_html(&org_role),
+        redirect_uri = escape_html(&query.redirect_uri),
+        scope_chips = scope_chips,
+        response_type = escape_html(&query.response_type),
+        code_challenge = escape_html(&query.code_challenge),
+        code_challenge_method = escape_html(&query.code_challenge_method),
+        state = escape_html(&query.state),
+        scope = escape_html(&query.scope),
+        csrf_token = escape_html(csrf_token),
+        cancel_url = escape_html(&cancel_url),
     )
 }
 
-fn escape_html_attr(value: &str) -> String {
+fn render_scope_chips(scope: &str) -> String {
+    let scopes: Vec<&str> = scope.split_whitespace().collect();
+    let scopes = if scopes.is_empty() {
+        vec![default_scope()]
+    } else {
+        scopes.into_iter().map(str::to_string).collect()
+    };
+    scopes
+        .iter()
+        .map(|scope| format!(r#"<span class="scope">{}</span>"#, escape_html(scope)))
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+fn escape_html(value: &str) -> String {
     value
         .replace('&', "&amp;")
         .replace('"', "&quot;")
@@ -1023,6 +1318,36 @@ async fn handle_refresh_token_grant(
 mod tests {
     use super::*;
 
+    fn authorize_query() -> OAuthAuthorizeQuery {
+        OAuthAuthorizeQuery {
+            client_id: "mcp_client_test".to_string(),
+            redirect_uri: "https://client.example/callback?next=1".to_string(),
+            response_type: "code".to_string(),
+            code_challenge: "challenge".to_string(),
+            code_challenge_method: "S256".to_string(),
+            state: "state value".to_string(),
+            scope: "mcp".to_string(),
+            resource: None,
+        }
+    }
+
+    fn auth_user_for_render() -> AuthUser {
+        AuthUser {
+            id: uuid::Uuid::nil(),
+            email: "ava@example.com".to_string(),
+            name: "Ava Root".to_string(),
+            roles: vec!["admin".to_string()],
+            is_platform_user: false,
+            auth_method: crate::auth::middleware::AuthMethod::Jwt,
+            organizations: vec![everruns_core::OrgMembership {
+                org_id: 42,
+                public_id: "org_test".to_string(),
+                name: "User Personal".to_string(),
+                role: everruns_core::OrgRole::Admin,
+            }],
+        }
+    }
+
     #[test]
     fn test_generate_random_hex_uniqueness() {
         let a = generate_random_hex();
@@ -1069,13 +1394,11 @@ mod tests {
 
     #[test]
     fn test_redirect_url_with_existing_query_preserves_pairs() {
-        // Simulate the URL builder from `issue_authorization_code` to make
-        // sure a registered redirect URI with an existing query keeps it.
-        let mut url = url::Url::parse("https://app.example.com/cb?next=1").unwrap();
-        url.query_pairs_mut()
-            .append_pair("code", "C&D")
-            .append_pair("state", "x y");
-        let s: String = url.into();
+        let s = build_oauth_redirect_url(
+            "https://app.example.com/cb?next=1",
+            &[("code", "C&D"), ("state", "x y")],
+        )
+        .unwrap();
         assert!(s.starts_with("https://app.example.com/cb?next=1&"));
         assert!(s.contains("code=C%26D"));
         assert!(s.contains("state=x+y"));
@@ -1116,5 +1439,56 @@ mod tests {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         assert!(verify_pkce_s256(verifier, challenge));
+    }
+
+    #[test]
+    fn test_authorize_confirm_page_lists_grant_details() {
+        let html = render_authorize_confirm_page(
+            &authorize_query(),
+            "Cursor",
+            &auth_user_for_render(),
+            "csrf",
+        );
+
+        assert!(html.contains("Authorize this MCP client?"));
+        assert!(html.contains("<strong>Cursor</strong>"));
+        assert!(html.contains("Ava Root &lt;ava@example.com&gt;"));
+        assert!(html.contains("User Personal (org_test, admin)"));
+        assert!(html.contains("Call MCP tools and read MCP resources"));
+        assert!(html.contains("access token and refresh token"));
+        assert!(html.contains(r#"<span class="scope">mcp</span>"#));
+        assert!(html.contains(r#"name="client_id" value="mcp_client_test""#));
+        assert!(
+            html.contains("href=\"https://client.example/callback?next=1&amp;error=access_denied&amp;state=state+value\"")
+        );
+    }
+
+    #[test]
+    fn test_authorize_confirm_page_escapes_dynamic_values() {
+        let mut query = authorize_query();
+        query.client_id = "client_<id>".to_string();
+        query.redirect_uri = "https://client.example/callback?next=<bad>&ok=1".to_string();
+        query.state = "a&b".to_string();
+        query.scope = "mcp custom<scope>".to_string();
+        let mut user = auth_user_for_render();
+        user.name = "Ava \"Root\" <Ops>".to_string();
+        user.email = "ava+ops@example.com".to_string();
+        user.organizations[0].name = "Org <One>".to_string();
+
+        let html = render_authorize_confirm_page(
+            &query,
+            "Cursor <script>alert(\"x\")</script>",
+            &user,
+            "csrf&token",
+        );
+
+        assert!(!html.contains("<script>alert"));
+        assert!(html.contains("Cursor &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;"));
+        assert!(html.contains("client_&lt;id&gt;"));
+        assert!(html.contains("Ava &quot;Root&quot; &lt;Ops&gt;"));
+        assert!(html.contains("Org &lt;One&gt;"));
+        assert!(html.contains("custom&lt;scope&gt;"));
+        assert!(html.contains("csrf&amp;token"));
+        assert!(html.contains("next=%3Cbad%3E&amp;ok=1&amp;error=access_denied&amp;state=a%26b"));
     }
 }
