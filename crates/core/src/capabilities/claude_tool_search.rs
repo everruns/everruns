@@ -16,7 +16,7 @@
 // Claude models and the generic client-side mechanism elsewhere.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::llm_driver_registry::ToolSearchConfig;
+use crate::driver_registry::ToolSearchConfig;
 use async_trait::async_trait;
 
 pub use super::openai_tool_search::DEFAULT_TOOL_SEARCH_THRESHOLD;

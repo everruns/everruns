@@ -1,6 +1,6 @@
 use chrono::Utc;
 use everruns_core::capabilities::TestMathCapability;
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::provider::DriverId;
 use everruns_core::{

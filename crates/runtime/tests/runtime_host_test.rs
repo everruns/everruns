@@ -8,11 +8,11 @@ use everruns_core::capabilities::{
     Capability, CapabilityStatus, SystemPromptContext, TestMathCapability,
     collect_capabilities_with_configs,
 };
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
     InMemoryProviderStore,
 };
-use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionMutator,
     SessionStore,

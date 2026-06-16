@@ -141,7 +141,7 @@ provider id with `register_external`. No core enum changes, and no hijacking a
 built-in provider slot:
 
 ```rust
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, DriverConfig, DriverRegistry,
 };
 
@@ -168,7 +168,7 @@ through `provider_metadata`:
 
 ```rust
 use everruns_core::{LlmProviderType, ModelWithProvider};
-use everruns_core::llm_driver_registry::ProviderMetadata;
+use everruns_core::driver_registry::ProviderMetadata;
 
 let model = ModelWithProvider {
     model: "gpt-5-codex".into(),

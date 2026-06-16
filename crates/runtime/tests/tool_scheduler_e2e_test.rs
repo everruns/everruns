@@ -13,7 +13,7 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};

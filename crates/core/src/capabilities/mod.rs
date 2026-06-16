@@ -1492,9 +1492,9 @@ pub struct CollectedCapabilities {
     /// IDs of capabilities that were collected
     pub applied_ids: Vec<String>,
     /// Tool search configuration (set when openai_tool_search capability is present)
-    pub tool_search: Option<crate::llm_driver_registry::ToolSearchConfig>,
+    pub tool_search: Option<crate::driver_registry::ToolSearchConfig>,
     /// Prompt caching configuration (set when prompt_caching capability is present)
-    pub prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig>,
+    pub prompt_cache: Option<crate::driver_registry::PromptCacheConfig>,
     /// Hooks that transform the final runtime tool definition list.
     pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
     /// Hooks that inspect or transform model-produced tool calls.
@@ -2116,8 +2116,8 @@ pub async fn collect_capabilities_with_configs(
     let mut message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)> =
         Vec::new();
     let mut applied_ids: Vec<String> = Vec::new();
-    let mut tool_search: Option<crate::llm_driver_registry::ToolSearchConfig> = None;
-    let mut prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig> = None;
+    let mut tool_search: Option<crate::driver_registry::ToolSearchConfig> = None;
+    let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     let mut mcp_servers = ScopedMcpServers::default();
@@ -2240,7 +2240,7 @@ pub async fn collect_capabilities_with_configs(
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
                     .unwrap_or(DEFAULT_TOOL_SEARCH_THRESHOLD);
-                tool_search = Some(crate::llm_driver_registry::ToolSearchConfig {
+                tool_search = Some(crate::driver_registry::ToolSearchConfig {
                     enabled: true,
                     threshold,
                 });
@@ -2252,16 +2252,16 @@ pub async fn collect_capabilities_with_configs(
                     .get("strategy")
                     .and_then(|v| v.as_str())
                     .map(|value| match value {
-                        "auto" => crate::llm_driver_registry::PromptCacheStrategy::Auto,
-                        _ => crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                        "auto" => crate::driver_registry::PromptCacheStrategy::Auto,
+                        _ => crate::driver_registry::PromptCacheStrategy::Auto,
                     })
-                    .unwrap_or(crate::llm_driver_registry::PromptCacheStrategy::Auto);
+                    .unwrap_or(crate::driver_registry::PromptCacheStrategy::Auto);
                 let gemini_cached_content = cap_config
                     .config
                     .get("gemini_cached_content")
                     .and_then(|v| v.as_str())
                     .map(str::to_string);
-                prompt_cache = Some(crate::llm_driver_registry::PromptCacheConfig {
+                prompt_cache = Some(crate::driver_registry::PromptCacheConfig {
                     enabled: true,
                     strategy,
                     gemini_cached_content,
@@ -4857,7 +4857,7 @@ mod tests {
         assert!(prompt_cache.enabled);
         assert_eq!(
             prompt_cache.strategy,
-            crate::llm_driver_registry::PromptCacheStrategy::Auto
+            crate::driver_registry::PromptCacheStrategy::Auto
         );
         assert!(prompt_cache.gemini_cached_content.is_none());
     }
@@ -4877,7 +4877,7 @@ mod tests {
         assert!(prompt_cache.enabled);
         assert_eq!(
             prompt_cache.strategy,
-            crate::llm_driver_registry::PromptCacheStrategy::Auto
+            crate::driver_registry::PromptCacheStrategy::Auto
         );
         assert!(prompt_cache.gemini_cached_content.is_none());
     }

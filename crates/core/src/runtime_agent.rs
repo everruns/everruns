@@ -19,8 +19,8 @@ use crate::capabilities::{
     resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
+use crate::driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::harness::Harness;
-use crate::llm_driver_registry::{PromptCacheConfig, ToolSearchConfig};
 use crate::model_profiles::get_model_profile;
 use crate::provider::DriverId;
 use crate::tool_types::ToolDefinition;
@@ -1120,7 +1120,7 @@ mod tests {
             .model("gpt-5.4")
             .prompt_cache(PromptCacheConfig {
                 enabled: true,
-                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             })
             .build();
@@ -1131,7 +1131,7 @@ mod tests {
         assert!(prompt_cache.enabled);
         assert_eq!(
             prompt_cache.strategy,
-            crate::llm_driver_registry::PromptCacheStrategy::Auto
+            crate::driver_registry::PromptCacheStrategy::Auto
         );
     }
 

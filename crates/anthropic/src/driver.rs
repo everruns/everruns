@@ -21,17 +21,17 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::is_provider_quota_message;
-use everruns_core::llm_driver_helpers::{
+use everruns_core::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
     parse_data_url,
 };
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -1064,7 +1064,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 // ============================================================================
 
 fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    if llm_driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS) {
+    if driver_helpers::is_model_not_found(status, error_text, ANTHROPIC_NOT_FOUND_PATTERNS) {
         return true;
     }
     // Compound check: both "model" and "not found" must appear together
@@ -1078,7 +1078,7 @@ fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -
 }
 
 fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    llm_driver_helpers::is_request_too_large(status, error_text, ANTHROPIC_TOO_LARGE_PATTERNS)
+    driver_helpers::is_request_too_large(status, error_text, ANTHROPIC_TOO_LARGE_PATTERNS)
 }
 
 // ============================================================================
@@ -1161,7 +1161,7 @@ enum AnthropicThinking {
 impl AnthropicThinking {
     /// Create a budget-based thinking config from a reasoning effort level
     fn enabled_from_effort(effort: &str) -> Option<Self> {
-        llm_driver_helpers::thinking_budget::from_effort(effort)
+        driver_helpers::thinking_budget::from_effort(effort)
             .map(|budget_tokens| Self::Enabled { budget_tokens })
     }
 

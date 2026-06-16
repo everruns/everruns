@@ -812,7 +812,7 @@ pub fn apply_hierarchical_memory(
 // Protected Tool Detection
 // ============================================================================
 
-use crate::llm_driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
+use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole};
 
 /// Tool names whose results must be protected from compaction.
 ///

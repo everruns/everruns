@@ -7,7 +7,7 @@
 
 #![allow(dead_code)] // Not all test binaries use every constant.
 
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
 

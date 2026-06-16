@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-pub use everruns_core::llm_driver_registry::{
+pub use everruns_core::driver_registry::{
     OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
 };
 use everruns_core::network_access::NetworkAccessList;

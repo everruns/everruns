@@ -27,6 +27,10 @@ use uuid::Uuid;
 
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
+use crate::driver_registry::{
+    DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmStreamEvent, ProviderConfig,
+};
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
     CapabilityUsageData, CapabilityUsageKind, CapabilityUsageRecord, EventContext, EventRequest,
@@ -36,10 +40,6 @@ use crate::events::{
     ReasonRecoveredData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
     TranscriptRepairAction, TranscriptRepairedData,
-};
-use crate::llm_driver_registry::{
-    DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
 use crate::llm_retry::is_transient_error_message;
 use crate::message::{Message, MessageRole};
@@ -431,7 +431,7 @@ fn default_max_iterations() -> usize {
 }
 
 fn build_request_options(
-    config: &crate::llm_driver_registry::LlmCallConfig,
+    config: &crate::driver_registry::LlmCallConfig,
     provider: &str,
 ) -> Option<LlmRequestOptions> {
     let prompt_cache = config
@@ -1788,7 +1788,7 @@ impl ReasonAtom {
                                 },
                             ];
 
-                            let summary_config = crate::llm_driver_registry::LlmCallConfig {
+                            let summary_config = crate::driver_registry::LlmCallConfig {
                                 model: config
                                     .summarization
                                     .model
@@ -2623,7 +2623,7 @@ impl ReasonAtom {
     fn create_chat_driver(
         &self,
         model: &ResolvedModel,
-    ) -> Result<crate::llm_driver_registry::BoxedChatDriver> {
+    ) -> Result<crate::driver_registry::BoxedChatDriver> {
         self.driver_registry
             .create_chat_driver(&ProviderConfig::from(model))
     }
@@ -2702,7 +2702,7 @@ impl ReasonAtom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm_driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
+    use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
     use std::collections::HashMap;
 
     struct BlockWhenDeltaContains {

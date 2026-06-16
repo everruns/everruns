@@ -13,11 +13,11 @@
 
 use crate::capabilities::CapabilityRegistry;
 use crate::command::CommandResult;
-use crate::error::{AgentLoopError, Result};
-use crate::llm_driver_registry::{
+use crate::driver_registry::{
     BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
     LlmMessageRole, LlmResponseStream, ProviderConfig, ToolSearchConfig,
 };
+use crate::error::{AgentLoopError, Result};
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
 use crate::message_retriever::MessageRetriever;
 use crate::runtime_context::{AssembledTurnContext, inspect_turn_context};
@@ -486,12 +486,12 @@ mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};
     use crate::capabilities::TestMathCapability;
+    use crate::driver_registry::LlmStreamEvent;
     use crate::harness::{Harness, HarnessStatus};
     use crate::in_memory::{
         InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
         InMemorySessionStore,
     };
-    use crate::llm_driver_registry::LlmStreamEvent;
     use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
     use crate::message_retriever::InputMessage;
     use crate::provider::DriverId;

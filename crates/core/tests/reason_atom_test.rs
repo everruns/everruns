@@ -11,13 +11,13 @@ use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
+use everruns_core::driver_registry::LlmCallConfigBuilder;
+use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryHarnessStore, InMemoryMessageRetriever, InMemoryProviderStore,
     InMemorySessionStore,
 };
-use everruns_core::llm_driver_registry::LlmCallConfigBuilder;
-use everruns_core::llm_driver_registry::{DriverId, DriverRegistry};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver, register_driver};
 use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
@@ -1105,7 +1105,7 @@ async fn test_driver_registry_integration() {
     assert!(registry.has_driver(&DriverId::LlmSim));
 
     // Create driver via registry
-    let config = everruns_core::llm_driver_registry::ProviderConfig::new(DriverId::LlmSim)
+    let config = everruns_core::driver_registry::ProviderConfig::new(DriverId::LlmSim)
         .with_api_key("test-key");
 
     let driver = registry
@@ -1113,9 +1113,7 @@ async fn test_driver_registry_integration() {
         .expect("Should create LlmSim driver");
 
     // Test the driver
-    use everruns_core::llm_driver_registry::{
-        ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole,
-    };
+    use everruns_core::driver_registry::{ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole};
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
     let call_config = LlmCallConfig {

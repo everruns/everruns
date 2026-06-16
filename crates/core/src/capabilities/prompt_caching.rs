@@ -5,7 +5,7 @@
 // it only configures the outbound LLM request.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::llm_driver_registry::{PromptCacheConfig, PromptCacheStrategy};
+use crate::driver_registry::{PromptCacheConfig, PromptCacheStrategy};
 use async_trait::async_trait;
 
 /// Capability ID for provider prompt caching.

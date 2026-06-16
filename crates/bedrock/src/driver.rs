@@ -21,12 +21,12 @@ use aws_sdk_bedrockruntime::types::{
 use aws_smithy_types::Document;
 use base64::prelude::*;
 use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -749,7 +749,7 @@ mod tests {
 
     #[test]
     fn test_build_messages_system_extracted() {
-        use everruns_core::llm_driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        use everruns_core::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
         let messages = vec![
             LlmMessage {
                 role: LlmMessageRole::System,
@@ -778,7 +778,7 @@ mod tests {
 
     #[test]
     fn test_build_tool_result_block_missing_id_returns_none() {
-        use everruns_core::llm_driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        use everruns_core::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
         let msg = LlmMessage {
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Text("result".to_string()),

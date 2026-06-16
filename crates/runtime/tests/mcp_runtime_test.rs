@@ -8,7 +8,7 @@
 //! without resolving (and the fake egress never actually connects).
 
 use async_trait::async_trait;
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     CapabilityRegistry, DriverId, EgressRequest, EgressResponse, EgressResult, EgressService,

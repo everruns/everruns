@@ -7,7 +7,7 @@
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openrouter --test openrouter_discovery_live -- --ignored --nocapture`
 
-use everruns_core::llm_driver_registry::ChatDriver;
+use everruns_core::driver_registry::ChatDriver;
 use everruns_openrouter::OpenRouterChatDriver;
 
 #[tokio::test]

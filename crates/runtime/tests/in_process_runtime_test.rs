@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::TestMathCapability;
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{

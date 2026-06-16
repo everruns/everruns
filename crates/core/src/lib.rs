@@ -136,11 +136,11 @@ pub mod command_host;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
+pub mod driver_helpers;
+pub mod driver_registry;
 pub mod error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
-pub mod llm_driver_helpers;
-pub mod llm_driver_registry;
 pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
@@ -268,7 +268,7 @@ pub use utility_llm::{
 };
 
 // LLM driver types re-exports
-pub use llm_driver_registry::{
+pub use driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
     DriverFactory, DriverId, DriverRegistry, EmbedRequest, EmbedResponse, EmbeddingsDriver,
     EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig, LlmCallConfigBuilder,

@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use everruns_core::capabilities::AgentInstructionsCapability;
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness,

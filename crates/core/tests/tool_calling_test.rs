@@ -636,7 +636,7 @@ async fn test_tool_result_with_images_message() {
 
 #[tokio::test]
 async fn test_tool_result_with_images_llm_conversion() {
-    use everruns_core::llm_driver_registry::LlmMessage;
+    use everruns_core::driver_registry::LlmMessage;
     use std::collections::HashMap;
 
     let images = vec![
@@ -658,27 +658,27 @@ async fn test_tool_result_with_images_llm_conversion() {
     // Should be Tool role with tool_call_id
     assert_eq!(
         llm_msg.role,
-        everruns_core::llm_driver_registry::LlmMessageRole::Tool
+        everruns_core::driver_registry::LlmMessageRole::Tool
     );
     assert_eq!(llm_msg.tool_call_id, Some("call_456".to_string()));
 
     // Content should have text (JSON result) + 2 images
     match &llm_msg.content {
-        everruns_core::llm_driver_registry::LlmMessageContent::Parts(parts) => {
+        everruns_core::driver_registry::LlmMessageContent::Parts(parts) => {
             assert_eq!(parts.len(), 3, "should have 1 text + 2 images");
             assert!(matches!(
                 &parts[0],
-                everruns_core::llm_driver_registry::LlmContentPart::Text { .. }
+                everruns_core::driver_registry::LlmContentPart::Text { .. }
             ));
             match &parts[1] {
-                everruns_core::llm_driver_registry::LlmContentPart::Image { url } => {
+                everruns_core::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/png;base64,"));
                     assert!(url.contains("AAAA"));
                 }
                 _ => panic!("Expected Image part"),
             }
             match &parts[2] {
-                everruns_core::llm_driver_registry::LlmContentPart::Image { url } => {
+                everruns_core::driver_registry::LlmContentPart::Image { url } => {
                     assert!(url.starts_with("data:image/jpeg;base64,"));
                     assert!(url.contains("BBBB"));
                 }

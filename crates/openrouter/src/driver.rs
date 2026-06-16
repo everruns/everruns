@@ -13,11 +13,11 @@ use chrono::TimeZone;
 
 use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmMessage, LlmResponseStream,
 };
+use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::openai_protocol::{
     apply_models_api_auth, models_api_status_error, models_url_for_api_url, normalize_api_url,
     url_host_eq,
@@ -203,7 +203,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::llm_driver_registry::{DriverId, ProviderConfig, ServiceKind};
+    use everruns_core::driver_registry::{DriverId, ProviderConfig, ServiceKind};
 
     #[test]
     fn test_openrouter_driver_defaults_to_responses_api() {
