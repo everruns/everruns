@@ -24,6 +24,7 @@ use everruns_core::{
     PermissionResolver,
 };
 use everruns_server::api::evals::CreateEvalRunRequest;
+use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
 use everruns_server::domains::common::{
     Command, CommandError, CommandErrorKind, Ctx, catalog_entries, dispatch,
 };
@@ -408,6 +409,24 @@ async fn eval_run_creation_requires_session_permission() {
     .run(&ctx)
     .await
     .expect_err("CreateEvalRun must require OrgSessionsManage");
+    assert_forbidden(err);
+}
+
+#[tokio::test]
+async fn agent_health_check_requires_session_permission() {
+    // Health checks launch real sessions/messages in the background, so an
+    // agent manager without OrgSessionsManage must be blocked before agent
+    // lookup or run creation.
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(AgentsOnlyResolver),
+    );
+    let err = TriggerAgentHealthCheck {
+        agent_id: "agent_nonexistent".to_string(),
+    }
+    .run(&ctx)
+    .await
+    .expect_err("TriggerAgentHealthCheck must require OrgSessionsManage");
     assert_forbidden(err);
 }
 

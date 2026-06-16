@@ -27,6 +27,18 @@ pub const AGENT_MANAGE: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
+/// Policy: Run agent health checks.
+///
+/// Health checks create real sessions and messages in the background, so require
+/// the same session-execution boundary as eval runs.
+pub const AGENT_HEALTH_CHECK_RUN: Policy = Policy {
+    id: "agent.health_check.run",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgSessionsManage),
+    ],
+};
+
 pub const AGENT_DANGEROUS: Policy = Policy {
     id: "agent.dangerous",
     rules: &[

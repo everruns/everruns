@@ -192,7 +192,7 @@ impl Command for TriggerAgentHealthCheck {
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::domains::agents::AGENT_MANAGE)
+        Some(&crate::domains::agents::AGENT_HEALTH_CHECK_RUN)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<HealthCheckRun, CommandError> {

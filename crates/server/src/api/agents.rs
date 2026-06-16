@@ -1,6 +1,7 @@
 // Agent CRUD HTTP routes (M2)
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
+use crate::auth::rate_limit::OrgRateLimiter;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
 use axum::{
@@ -128,6 +129,7 @@ pub struct AppState {
     pub grade: DeploymentGrade,
     pub platform_definition: Arc<PlatformDefinition>,
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    pub org_rate_limiter: OrgRateLimiter,
 }
 
 impl AppState {
@@ -145,6 +147,7 @@ impl AppState {
             grade,
             platform_definition,
             health_check_service: None,
+            org_rate_limiter: OrgRateLimiter::default(),
         }
     }
 
@@ -153,6 +156,11 @@ impl AppState {
         service: Arc<crate::domains::agents::AgentHealthCheckService>,
     ) -> Self {
         self.health_check_service = Some(service);
+        self
+    }
+
+    pub fn with_org_rate_limiter(mut self, limiter: OrgRateLimiter) -> Self {
+        self.org_rate_limiter = limiter;
         self
     }
 
@@ -1386,8 +1394,38 @@ pub async fn trigger_health_check(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> ApiResult<crate::domains::agents::health_check::types::HealthCheckRun> {
+    let ctx = state.ctx(&org);
+
+    // Authorize *before* consuming the org's session-create rate budget.
+    // Otherwise a caller lacking AGENT_HEALTH_CHECK_RUN (a more restrictive
+    // policy than plain session creation) would be rejected by the command yet
+    // still burn the org's quota, starving legitimate session creation — a DoS.
+    // The command re-checks the policy in `run`; paying it twice is cheap and
+    // keeps the command the single source of truth.
+    if let Some(policy) =
+        crate::domains::agents::health_check::commands::TriggerAgentHealthCheck::policy()
+    {
+        policy
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
+    }
+
+    if state
+        .org_rate_limiter
+        .check_session_create(org.org_id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
+
     let run = crate::domains::agents::health_check::commands::TriggerAgentHealthCheck { agent_id }
-        .run(&state.ctx(&org))
+        .run(&ctx)
         .await?;
     Ok(Json(run))
 }
