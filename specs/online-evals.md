@@ -1,8 +1,10 @@
 # Online Evals (Observers)
 
-Status: **Phase 1 implemented** (behind the `observers` feature flag) — turn-scope rule scoring of production sessions, with the design options below recording the broader direction. LLM-judge, session/tool scopes, aggregation, and the Phase 2 improvement loop remain proposed.
+Status: **Phase 1 implemented** (behind the `observers` feature flag) — turn-scope rule **and LLM-judge** scoring of production sessions, with the design options below recording the broader direction. Session/tool scopes, aggregation/alerting, judge usage metering into budgets, and the Phase 2 improvement loop remain proposed.
 
-Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + rule scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/core/src/observer.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migration `056_observers.sql`. API under `/v1/observers`.
+Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers), `trace_scores` queue, an `ObserverMatchListener` on `turn.completed` that samples and enqueues, and a dual-mode `spawn_observer_worker` that drains the queue (durable `FOR UPDATE SKIP LOCKED` in full mode, in-process in dev mode). Code: `crates/core/src/observer.rs`, `crates/server/src/domains/observers/`, `crates/server/src/api/observers.rs`, migrations `059_observers.sql` + `070_observer_llm_judge.sql`. API under `/v1/observers`.
+
+Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Judge usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up.
 
 <!-- Design Decisions (proposed, not yet ratified):
   - Observer is the single user-facing abstraction: create an Observer, configure match rules

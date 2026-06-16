@@ -2542,7 +2542,11 @@ pub struct TraceScoreRow {
     pub attempts: i32,
     pub pass: Option<bool>,
     pub value: Option<f64>,
+    pub label: Option<String>,
     pub reason: Option<String>,
+    pub judge_input_tokens: Option<i64>,
+    pub judge_output_tokens: Option<i64>,
+    pub judge_cost_usd: Option<f64>,
     pub error_message: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -2562,13 +2566,17 @@ pub struct CreateTraceScoreRow {
 }
 
 /// Terminal result written back by the scoring worker.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct CompleteTraceScoreRow {
     /// `completed`, `errored`, or `skipped`.
     pub status: String,
     pub pass: Option<bool>,
     pub value: Option<f64>,
+    pub label: Option<String>,
     pub reason: Option<String>,
+    pub judge_input_tokens: Option<i64>,
+    pub judge_output_tokens: Option<i64>,
+    pub judge_cost_usd: Option<f64>,
     pub error_message: Option<String>,
 }
 

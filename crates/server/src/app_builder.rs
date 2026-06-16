@@ -621,10 +621,11 @@ impl ServerAppBuilder {
             );
         }
 
-        // Observers: tap turn.completed to enqueue scoring; a background worker
-        // drains the queue. Same code path in dev (in-memory) and full mode.
+        // Observers: tap turn.completed to enqueue scoring (the listener needs
+        // only db + wake). The background worker — which may call an LLM judge —
+        // is spawned later, once the driver registry and provider resolver exist.
         // See specs/online-evals.md.
-        if feature_flags.observers {
+        let observer_wake = if feature_flags.observers {
             let observer_wake = Arc::new(tokio::sync::Notify::new());
             let observer_listener: Arc<dyn EventListener> =
                 Arc::new(crate::domains::observers::ObserverMatchListener::new(
@@ -632,13 +633,10 @@ impl ServerAppBuilder {
                     observer_wake.clone(),
                 ));
             event_listeners.push(observer_listener);
-            crate::domains::observers::spawn_observer_worker(
-                db.clone(),
-                observer_wake,
-                crate::domains::observers::ObserverWorkerConfig::default(),
-            );
-            tracing::info!("Observers enabled: scoring worker started");
-        }
+            Some(observer_wake)
+        } else {
+            None
+        };
 
         if let Some(braintrust_listener) = BraintrustListener::from_env() {
             tracing::info!("Braintrust integration enabled");
@@ -802,6 +800,27 @@ impl ServerAppBuilder {
             services::ProviderResolverService::new(db.clone(), encryption.clone())
                 .with_driver_registry((*driver_registry).clone()),
         );
+
+        // Now that the LLM stack exists, spawn the observer scoring worker with
+        // an LLM-judge client backed by the org's own configured providers.
+        if let Some(observer_wake) = observer_wake {
+            let judge: Arc<dyn crate::domains::observers::JudgeClient> =
+                Arc::new(crate::domains::observers::LlmJudgeClient::new(
+                    db.clone(),
+                    driver_registry.clone(),
+                    provider_resolver.clone(),
+                ));
+            crate::domains::observers::spawn_observer_worker(
+                crate::domains::observers::ObserverWorkerDeps {
+                    db: db.clone(),
+                    judge: Some(judge),
+                },
+                observer_wake,
+                crate::domains::observers::ObserverWorkerConfig::default(),
+            );
+            tracing::info!("Observers enabled: scoring worker started");
+        }
+
         let providers_state = api::providers::AppState::new(
             db.clone(),
             encryption.clone(),

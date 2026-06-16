@@ -10,14 +10,24 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use everruns_core::eval::Score;
-use everruns_core::observer::ObserverScorerConfig;
+use everruns_core::observer::{ObserverScorerConfig, ScorerMethod};
 use everruns_core::typed_id::SessionId;
 use tracing::{debug, error, warn};
 
 use crate::domains::evals::runner::{extract_final_assistant_content, extract_tool_calls};
 use crate::domains::evals::scoring::score_rule;
+use crate::domains::observers::judge::{JudgeClient, TurnEvidence};
 use crate::storage::StorageBackend;
 use crate::storage::models::{CompleteTraceScoreRow, EventRow, ListEventsParams, TraceScoreRow};
+
+/// Dependencies the worker loop needs to score: storage plus an optional judge
+/// client. `judge` is `None` when no LLM path is available (e.g. dev without
+/// providers); llm_judge scores are then skipped with a clear reason.
+#[derive(Clone)]
+pub struct ObserverWorkerDeps {
+    pub db: Arc<StorageBackend>,
+    pub judge: Option<Arc<dyn JudgeClient>>,
+}
 
 /// Worker tuning. Conservative defaults; bounded judge fan-out.
 #[derive(Clone, Copy, Debug)]
@@ -46,7 +56,7 @@ impl Default for ObserverWorkerConfig {
 /// Spawn the background scoring worker. Returns immediately; the loop runs
 /// until the process exits.
 pub fn spawn_observer_worker(
-    db: Arc<StorageBackend>,
+    deps: ObserverWorkerDeps,
     wake: Arc<tokio::sync::Notify>,
     config: ObserverWorkerConfig,
 ) {
@@ -55,7 +65,7 @@ pub fn spawn_observer_worker(
         loop {
             // Drain until a claim returns fewer than a full batch.
             loop {
-                match drain_once(&db, config).await {
+                match drain_once(&deps, config).await {
                     Ok(0) => break,
                     Ok(n) => {
                         debug!(scored = n, "Observer scoring batch processed");
@@ -79,8 +89,12 @@ pub fn spawn_observer_worker(
 }
 
 /// Claim and score one batch. Returns the number of scores processed.
-async fn drain_once(db: &StorageBackend, config: ObserverWorkerConfig) -> anyhow::Result<usize> {
-    let claimed = db
+async fn drain_once(
+    deps: &ObserverWorkerDeps,
+    config: ObserverWorkerConfig,
+) -> anyhow::Result<usize> {
+    let claimed = deps
+        .db
         .claim_trace_scores(
             config.batch_size,
             config.stale_after.as_secs() as i64,
@@ -89,7 +103,7 @@ async fn drain_once(db: &StorageBackend, config: ObserverWorkerConfig) -> anyhow
         .await?;
     let count = claimed.len();
     for score in claimed {
-        if let Err(e) = process_score(db, &score).await {
+        if let Err(e) = process_score(deps, &score).await {
             // Leave the row in `scoring`; a later claim retries it (or
             // finalizes it errored once attempts are exhausted).
             warn!(score_id = %score.public_id, error = %e, "Failed to process trace score");
@@ -98,7 +112,8 @@ async fn drain_once(db: &StorageBackend, config: ObserverWorkerConfig) -> anyhow
     Ok(count)
 }
 
-async fn process_score(db: &StorageBackend, score: &TraceScoreRow) -> anyhow::Result<()> {
+async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyhow::Result<()> {
+    let db = &deps.db;
     // Load the observer to recover the scorer config for this key.
     let Some(observer_row) = db.get_observer(score.observer_id).await? else {
         // Observer deleted between enqueue and scoring — skip.
@@ -120,32 +135,62 @@ async fn process_score(db: &StorageBackend, score: &TraceScoreRow) -> anyhow::Re
 
     let final_content = extract_final_assistant_content(&msg_events);
     let tool_calls = extract_tool_calls(&tool_events);
-    let iterations = extract_iterations(&turn_events);
 
-    let result = score_rule(&scorer.rule, &final_content, &tool_calls, iterations);
-    let Some(Score {
-        pass,
-        value,
-        reason,
-    }) = result
-    else {
-        // Rule unsupported for observers (file_contains is rejected at create
-        // time, so this should not happen); mark skipped to avoid retry loops.
-        finalize_skipped(db, score, "scorer rule unsupported for observers").await?;
-        return Ok(());
+    let completion = match scorer.method {
+        ScorerMethod::Rule { rule } => {
+            let iterations = extract_iterations(&turn_events);
+            let Some(Score {
+                pass,
+                value,
+                reason,
+            }) = score_rule(&rule, &final_content, &tool_calls, iterations)
+            else {
+                // file_contains is rejected at create time, so this shouldn't
+                // happen; mark skipped to avoid a retry loop.
+                finalize_skipped(db, score, "scorer rule unsupported for observers").await?;
+                return Ok(());
+            };
+            CompleteTraceScoreRow {
+                status: "completed".to_string(),
+                pass: Some(pass),
+                value: Some(value),
+                reason: Some(reason),
+                ..Default::default()
+            }
+        }
+        ScorerMethod::LlmJudge(judge_config) => {
+            let Some(judge) = deps.judge.clone() else {
+                finalize_skipped(db, score, "llm judge unavailable (no model provider)").await?;
+                return Ok(());
+            };
+            let evidence = TurnEvidence {
+                input_message: extract_input_content(&turn_events),
+                final_answer: final_content,
+                tool_names: tool_calls,
+            };
+            let result = judge
+                .judge(
+                    score.org_id,
+                    judge_config.model_id,
+                    &judge_config.rubric,
+                    &evidence,
+                )
+                .await?;
+            CompleteTraceScoreRow {
+                status: "completed".to_string(),
+                pass: Some(result.value >= judge_config.pass_threshold),
+                value: Some(result.value),
+                label: result.label,
+                reason: Some(result.reasoning),
+                judge_input_tokens: result.input_tokens.map(|t| t as i64),
+                judge_output_tokens: result.output_tokens.map(|t| t as i64),
+                judge_cost_usd: result.cost_usd,
+                error_message: None,
+            }
+        }
     };
 
-    db.complete_trace_score(
-        score.id,
-        CompleteTraceScoreRow {
-            status: "completed".to_string(),
-            pass: Some(pass),
-            value: Some(value),
-            reason: Some(reason),
-            error_message: None,
-        },
-    )
-    .await?;
+    db.complete_trace_score(score.id, completion).await?;
     Ok(())
 }
 
@@ -158,10 +203,8 @@ async fn finalize_skipped(
         score.id,
         CompleteTraceScoreRow {
             status: "skipped".to_string(),
-            pass: None,
-            value: None,
             reason: Some(reason.to_string()),
-            error_message: None,
+            ..Default::default()
         },
     )
     .await?;
@@ -196,17 +239,67 @@ fn extract_iterations(turn_events: &[EventRow]) -> u32 {
         .unwrap_or(1) as u32
 }
 
+/// The user's input text for this turn, carried on `turn.completed`.
+fn extract_input_content(turn_events: &[EventRow]) -> String {
+    turn_events
+        .iter()
+        .rev()
+        .find(|e| e.event_type == "turn.completed")
+        .and_then(|e| e.data.get("input_content"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::observers::judge::{JudgeResult, TurnEvidence};
     use crate::storage::models::{
         CreateEventRow, CreateObserverRow, CreateSessionRow, CreateTraceScoreRow,
     };
-    use everruns_core::observer::{ObserverScope, ObserverScorerConfig};
-    use everruns_core::typed_id::{AgentId, HarnessId, ObserverId, PrincipalId, TraceScoreId};
+    use everruns_core::observer::{
+        LlmJudgeConfig, ObserverScope, ObserverScorerConfig, ScorerMethod,
+    };
+    use everruns_core::typed_id::{
+        AgentId, HarnessId, ModelId, ObserverId, PrincipalId, TraceScoreId,
+    };
     use uuid::Uuid;
 
     const ORG: i64 = 1;
+
+    fn deps(db: &Arc<StorageBackend>) -> ObserverWorkerDeps {
+        ObserverWorkerDeps {
+            db: db.clone(),
+            judge: None,
+        }
+    }
+
+    /// Fake judge returning a fixed grade, for worker dispatch tests.
+    struct FakeJudge {
+        value: f64,
+        label: Option<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl JudgeClient for FakeJudge {
+        async fn judge(
+            &self,
+            _org_id: i64,
+            _model_id: Option<ModelId>,
+            _rubric: &str,
+            _evidence: &TurnEvidence,
+        ) -> anyhow::Result<JudgeResult> {
+            Ok(JudgeResult {
+                value: self.value,
+                label: self.label.clone(),
+                reasoning: "fake".to_string(),
+                input_tokens: Some(42),
+                output_tokens: Some(7),
+                cost_usd: Some(0.001),
+            })
+        }
+    }
 
     fn session_row(agent: AgentId, harness: HarnessId, tags: Vec<String>) -> CreateSessionRow {
         CreateSessionRow {
@@ -269,15 +362,7 @@ mod tests {
         .unwrap();
     }
 
-    fn contains_observer(agent: AgentId, key: &str, text: &str) -> CreateObserverRow {
-        let scorer = ObserverScorerConfig {
-            key: key.to_string(),
-            scope: ObserverScope::Turn,
-            rule: everruns_core::eval::Scorer::Contains {
-                text: text.to_string(),
-                weight: 1.0,
-            },
-        };
+    fn observer_with_scorer(agent: AgentId, scorer: ObserverScorerConfig) -> CreateObserverRow {
         CreateObserverRow {
             public_id: ObserverId::from_uuid(Uuid::now_v7()).to_string(),
             name: "test".to_string(),
@@ -290,6 +375,22 @@ mod tests {
             sampling_rate: 1.0,
             scorers: serde_json::to_value(vec![scorer]).unwrap(),
         }
+    }
+
+    fn contains_observer(agent: AgentId, key: &str, text: &str) -> CreateObserverRow {
+        observer_with_scorer(
+            agent,
+            ObserverScorerConfig {
+                key: key.to_string(),
+                scope: ObserverScope::Turn,
+                method: ScorerMethod::Rule {
+                    rule: everruns_core::eval::Scorer::Contains {
+                        text: text.to_string(),
+                        weight: 1.0,
+                    },
+                },
+            },
+        )
     }
 
     async fn enqueue(
@@ -319,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn drains_and_scores_a_matching_turn() {
-        let db = StorageBackend::in_memory();
+        let db = Arc::new(StorageBackend::in_memory());
         let agent = AgentId::new();
         let harness = HarnessId::new();
         let turn_id = "turn_01933b5a000070008000000000000abc";
@@ -336,7 +437,7 @@ mod tests {
             .unwrap();
         enqueue(&db, observer.id, "greet", session.id, turn_id, agent).await;
 
-        let processed = drain_once(&db, ObserverWorkerConfig::default())
+        let processed = drain_once(&deps(&db), ObserverWorkerConfig::default())
             .await
             .unwrap();
         assert_eq!(processed, 1);
@@ -361,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn scores_failing_rule_as_not_passed() {
-        let db = StorageBackend::in_memory();
+        let db = Arc::new(StorageBackend::in_memory());
         let agent = AgentId::new();
         let harness = HarnessId::new();
         let turn_id = "turn_01933b5a000070008000000000000def";
@@ -378,7 +479,7 @@ mod tests {
             .unwrap();
         enqueue(&db, observer.id, "greet", session.id, turn_id, agent).await;
 
-        drain_once(&db, ObserverWorkerConfig::default())
+        drain_once(&deps(&db), ObserverWorkerConfig::default())
             .await
             .unwrap();
 
@@ -401,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn skips_score_when_scorer_key_removed() {
-        let db = StorageBackend::in_memory();
+        let db = Arc::new(StorageBackend::in_memory());
         let agent = AgentId::new();
         let harness = HarnessId::new();
         let turn_id = "turn_01933b5a000070008000000000000fed";
@@ -429,7 +530,7 @@ mod tests {
         .await
         .unwrap();
 
-        drain_once(&db, ObserverWorkerConfig::default())
+        drain_once(&deps(&db), ObserverWorkerConfig::default())
             .await
             .unwrap();
 
@@ -445,6 +546,91 @@ mod tests {
             )
             .await
             .unwrap();
+        assert_eq!(scores[0].status, "skipped");
+    }
+
+    fn judge_observer(agent: AgentId, key: &str) -> CreateObserverRow {
+        observer_with_scorer(
+            agent,
+            ObserverScorerConfig {
+                key: key.to_string(),
+                scope: ObserverScope::Turn,
+                method: ScorerMethod::LlmJudge(LlmJudgeConfig {
+                    rubric: "Did the agent greet the user?".to_string(),
+                    model_id: None,
+                    pass_threshold: 0.5,
+                }),
+            },
+        )
+    }
+
+    async fn run_judge_observer(judge: Option<Arc<dyn JudgeClient>>) -> Vec<TraceScoreRow> {
+        let db = Arc::new(StorageBackend::in_memory());
+        let agent = AgentId::new();
+        let harness = HarnessId::new();
+        let turn_id = "turn_01933b5a0000700080000000000000aa";
+        let session = db
+            .create_session(session_row(agent, harness, vec![]))
+            .await
+            .unwrap();
+        seed_turn(&db, session.id, turn_id, "hello there").await;
+        let observer = db
+            .create_observer(ORG, judge_observer(agent, "greeted"))
+            .await
+            .unwrap();
+        enqueue(&db, observer.id, "greeted", session.id, turn_id, agent).await;
+
+        let deps = ObserverWorkerDeps {
+            db: db.clone(),
+            judge,
+        };
+        drain_once(&deps, ObserverWorkerConfig::default())
+            .await
+            .unwrap();
+        db.list_trace_scores(
+            ORG,
+            crate::storage::models::ListTraceScoresParams {
+                observer_id: observer.id,
+                session_id: None,
+                limit: 10,
+                offset: 0,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn scores_llm_judge_turn_via_judge_client() {
+        let judge = Arc::new(FakeJudge {
+            value: 0.9,
+            label: Some("greeted".to_string()),
+        });
+        let scores = run_judge_observer(Some(judge)).await;
+        assert_eq!(scores.len(), 1);
+        assert_eq!(scores[0].status, "completed");
+        assert_eq!(scores[0].pass, Some(true));
+        assert_eq!(scores[0].value, Some(0.9));
+        assert_eq!(scores[0].label.as_deref(), Some("greeted"));
+        assert_eq!(scores[0].reason.as_deref(), Some("fake"));
+        assert_eq!(scores[0].judge_input_tokens, Some(42));
+        assert_eq!(scores[0].judge_output_tokens, Some(7));
+    }
+
+    #[tokio::test]
+    async fn llm_judge_below_threshold_does_not_pass() {
+        let judge = Arc::new(FakeJudge {
+            value: 0.2,
+            label: None,
+        });
+        let scores = run_judge_observer(Some(judge)).await;
+        assert_eq!(scores[0].status, "completed");
+        assert_eq!(scores[0].pass, Some(false));
+    }
+
+    #[tokio::test]
+    async fn llm_judge_skipped_when_no_judge_client() {
+        let scores = run_judge_observer(None).await;
         assert_eq!(scores[0].status, "skipped");
     }
 }

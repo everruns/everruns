@@ -22,7 +22,7 @@ async fn create_and_get_observer_roundtrip() {
                 "description": "Watch the support agent",
                 "sampling_rate": 0.25,
                 "scorers": [
-                    { "key": "has_greeting", "rule": { "type": "contains", "text": "hello" } }
+                    { "key": "has_greeting", "method": "rule", "rule": { "type": "contains", "text": "hello" } }
                 ]
             }),
         )
@@ -56,7 +56,7 @@ async fn sampling_rate_defaults_to_ten_percent() {
             json!({
                 "name": "Default sampling",
                 "scorers": [
-                    { "key": "k", "rule": { "type": "contains", "text": "x" } }
+                    { "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }
                 ]
             }),
         )
@@ -74,7 +74,7 @@ async fn list_observers_excludes_archived_by_default() {
             "/v1/observers",
             json!({
                 "name": "Temp",
-                "scorers": [{ "key": "k", "rule": { "type": "contains", "text": "x" } }]
+                "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
             }),
         )
         .await
@@ -118,7 +118,7 @@ async fn update_observer_changes_sampling_and_pause() {
             "/v1/observers",
             json!({
                 "name": "Adjustable",
-                "scorers": [{ "key": "k", "rule": { "type": "contains", "text": "x" } }]
+                "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
             }),
         )
         .await
@@ -147,7 +147,7 @@ async fn rejects_invalid_sampling_rate() {
             json!({
                 "name": "Bad",
                 "sampling_rate": 1.5,
-                "scorers": [{ "key": "k", "rule": { "type": "contains", "text": "x" } }]
+                "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
             }),
         )
         .await
@@ -172,8 +172,8 @@ async fn rejects_duplicate_scorer_keys() {
             json!({
                 "name": "Dupe",
                 "scorers": [
-                    { "key": "k", "rule": { "type": "contains", "text": "a" } },
-                    { "key": "k", "rule": { "type": "contains", "text": "b" } }
+                    { "key": "k", "method": "rule", "rule": { "type": "contains", "text": "a" } },
+                    { "key": "k", "method": "rule", "rule": { "type": "contains", "text": "b" } }
                 ]
             }),
         )
@@ -190,8 +190,49 @@ async fn rejects_file_contains_scorer() {
             json!({
                 "name": "File",
                 "scorers": [
-                    { "key": "f", "rule": { "type": "file_contains", "path": "/x", "text": "y" } }
+                    { "key": "f", "method": "rule", "rule": { "type": "file_contains", "path": "/x", "text": "y" } }
                 ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn creates_llm_judge_scorer() {
+    let server = TestServer::in_memory().await;
+    let created = server
+        .post(
+            "/v1/observers",
+            json!({
+                "name": "Quality",
+                "scorers": [
+                    {
+                        "key": "completeness",
+                        "method": "llm_judge",
+                        "rubric": "Score 1.0 if the answer fully addresses the question.",
+                        "pass_threshold": 0.7
+                    }
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    assert_eq!(created["scorers"][0]["method"], "llm_judge");
+    assert_eq!(created["scorers"][0]["pass_threshold"], 0.7);
+    assert_eq!(created["scorers"][0]["key"], "completeness");
+}
+
+#[tokio::test]
+async fn rejects_llm_judge_with_empty_rubric() {
+    let server = TestServer::in_memory().await;
+    server
+        .post(
+            "/v1/observers",
+            json!({
+                "name": "Bad judge",
+                "scorers": [{ "key": "j", "method": "llm_judge", "rubric": "  " }]
             }),
         )
         .await
@@ -206,7 +247,7 @@ async fn scores_endpoint_returns_empty_for_new_observer() {
             "/v1/observers",
             json!({
                 "name": "Fresh",
-                "scorers": [{ "key": "k", "rule": { "type": "contains", "text": "x" } }]
+                "scorers": [{ "key": "k", "method": "rule", "rule": { "type": "contains", "text": "x" } }]
             }),
         )
         .await

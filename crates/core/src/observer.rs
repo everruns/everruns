@@ -137,8 +137,46 @@ impl std::fmt::Display for ObserverScope {
     }
 }
 
-/// One scoring rule inside an observer. `key` names the score series in
-/// listings and future dashboards; `rule` reuses the eval scorer vocabulary.
+/// Default value at/above which an LLM-judge score is considered a pass.
+fn default_pass_threshold() -> f64 {
+    0.5
+}
+
+/// LLM-as-judge scoring configuration. The judge grades the scoped trace
+/// slice against `rubric` and returns a 0.0–1.0 value, an optional
+/// categorical label, and free-text reasoning.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct LlmJudgeConfig {
+    /// Grading rubric shown to the judge model. Should describe what a high
+    /// vs. low score means.
+    pub rubric: String,
+    /// Org model to judge with. When `None`, the org's default model is used.
+    /// Judge calls go through the org's own providers and are billed to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub model_id: Option<crate::typed_id::ModelId>,
+    /// Score value at/above which `pass` is true.
+    #[serde(default = "default_pass_threshold")]
+    pub pass_threshold: f64,
+}
+
+/// How a scorer grades a trace slice: a deterministic `rule` (reusing the
+/// eval scorer vocabulary) or an `llm_judge`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(tag = "method", rename_all = "snake_case")]
+pub enum ScorerMethod {
+    /// Deterministic rule. `file_contains` is rejected for observers (session
+    /// filesystems are not part of the observable trace contract).
+    Rule { rule: Scorer },
+    /// LLM-as-judge.
+    LlmJudge(LlmJudgeConfig),
+}
+
+/// One scorer inside an observer. `key` names the score series in listings
+/// and future dashboards; `scope` selects the trace slice; `method` is how
+/// it grades.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ObserverScorerConfig {
@@ -147,9 +185,9 @@ pub struct ObserverScorerConfig {
     /// Trace slice this scorer grades.
     #[serde(default)]
     pub scope: ObserverScope,
-    /// Scoring rule. `file_contains` is rejected for observers (session
-    /// filesystems are not part of the observable trace contract).
-    pub rule: Scorer,
+    /// How this scorer grades (rule or llm_judge).
+    #[serde(flatten)]
+    pub method: ScorerMethod,
 }
 
 // ============================================
@@ -275,9 +313,23 @@ pub struct TraceScore {
     /// Score value 0.0–1.0 (set when completed).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<f64>,
-    /// Human-readable explanation (set when completed).
+    /// Optional categorical label from an LLM judge (e.g. `missing_source`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// Human-readable explanation (set when completed). For LLM judges this is
+    /// the judge's reasoning — retained as the raw material for the Phase 2
+    /// improvement loop.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// Judge LLM input tokens (llm_judge scores only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge_input_tokens: Option<u64>,
+    /// Judge LLM output tokens (llm_judge scores only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge_output_tokens: Option<u64>,
+    /// Judge call cost in USD when the provider reports it (llm_judge only).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub judge_cost_usd: Option<f64>,
     /// Error details if errored.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
@@ -377,11 +429,33 @@ mod tests {
     fn scorer_config_serde_defaults_scope() {
         let json = serde_json::json!({
             "key": "greeting",
+            "method": "rule",
             "rule": { "type": "contains", "text": "hello" }
         });
         let config: ObserverScorerConfig = serde_json::from_value(json).unwrap();
         assert_eq!(config.scope, ObserverScope::Turn);
         assert_eq!(config.key, "greeting");
+        assert!(matches!(config.method, ScorerMethod::Rule { .. }));
+    }
+
+    #[test]
+    fn scorer_config_llm_judge_serde() {
+        let json = serde_json::json!({
+            "key": "completeness",
+            "scope": "turn",
+            "method": "llm_judge",
+            "rubric": "Score 1 if the answer fully addresses the question."
+        });
+        let config: ObserverScorerConfig = serde_json::from_value(json).unwrap();
+        assert_eq!(config.key, "completeness");
+        match config.method {
+            ScorerMethod::LlmJudge(j) => {
+                assert!(j.model_id.is_none());
+                assert_eq!(j.pass_threshold, 0.5);
+                assert!(j.rubric.contains("fully addresses"));
+            }
+            _ => panic!("expected llm_judge"),
+        }
     }
 
     #[test]

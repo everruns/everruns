@@ -75,15 +75,26 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
                 scorer.key
             )));
         }
-        // file_contains needs the session filesystem, which is not part of the
-        // observable trace contract. Reject it for observers.
-        if matches!(
-            scorer.rule,
-            everruns_core::eval::Scorer::FileContains { .. }
-        ) {
-            anyhow::bail!(BadRequestError::new(
-                "file_contains scorer is not supported by observers"
-            ));
+        match &scorer.method {
+            ScorerMethod::Rule { rule } => {
+                // file_contains needs the session filesystem, which is not part
+                // of the observable trace contract. Reject it for observers.
+                if matches!(rule, everruns_core::eval::Scorer::FileContains { .. }) {
+                    anyhow::bail!(BadRequestError::new(
+                        "file_contains scorer is not supported by observers"
+                    ));
+                }
+            }
+            ScorerMethod::LlmJudge(judge) => {
+                if judge.rubric.trim().is_empty() {
+                    anyhow::bail!(BadRequestError::new("llm_judge rubric must not be empty"));
+                }
+                if !(0.0..=1.0).contains(&judge.pass_threshold) {
+                    anyhow::bail!(BadRequestError::new(
+                        "llm_judge pass_threshold must be between 0.0 and 1.0"
+                    ));
+                }
+            }
         }
     }
     Ok(())
@@ -285,7 +296,11 @@ pub fn row_to_trace_score(row: TraceScoreRow, observer_id: ObserverId) -> Result
         status: TraceScoreStatus::from(row.status.as_str()),
         pass: row.pass,
         value: row.value,
+        label: row.label,
         reason: row.reason,
+        judge_input_tokens: row.judge_input_tokens.map(|t| t as u64),
+        judge_output_tokens: row.judge_output_tokens.map(|t| t as u64),
+        judge_cost_usd: row.judge_cost_usd,
         error_message: row.error_message,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -297,7 +312,7 @@ mod tests {
     use super::*;
     use crate::api::observers::CreateObserverRequest;
     use crate::storage::models::CreateTraceScoreRow;
-    use everruns_core::observer::{ObserverScope, ObserverScorerConfig};
+    use everruns_core::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
     use everruns_core::typed_id::TraceScoreId;
 
     // The trace_scores row's internal UUID is DB-generated and independent of
@@ -320,9 +335,11 @@ mod tests {
                     scorers: vec![ObserverScorerConfig {
                         key: "k".into(),
                         scope: ObserverScope::Turn,
-                        rule: everruns_core::eval::Scorer::Contains {
-                            text: "x".into(),
-                            weight: 1.0,
+                        method: ScorerMethod::Rule {
+                            rule: everruns_core::eval::Scorer::Contains {
+                                text: "x".into(),
+                                weight: 1.0,
+                            },
                         },
                     }],
                 },
