@@ -11,10 +11,11 @@
 //   2. Microsoft Entra ID OAuth  -> a token is minted from the (mocked) token
 //      endpoint and applied as `Authorization: Bearer <token>`.
 
-use everruns_core::llm_driver_registry::{
-    ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent,
+use everruns_core::DriverRegistry;
+use everruns_core::driver_registry::{
+    ChatDriver, DriverId, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, ProviderConfig,
 };
-use everruns_mai::{EntraOAuthConfig, MaiAuth, MaiChatDriver};
+use everruns_mai::{EntraOAuthConfig, MaiAuth, MaiChatDriver, register_driver};
 use futures::StreamExt;
 use wiremock::matchers::{body_string_contains, header, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -48,7 +49,7 @@ fn sse_chat_response() -> String {
     .join("\n")
 }
 
-async fn drain_text(mut stream: everruns_core::llm_driver_registry::LlmResponseStream) -> String {
+async fn drain_text(mut stream: everruns_core::driver_registry::LlmResponseStream) -> String {
     let mut text = String::new();
     while let Some(event) = stream.next().await {
         match event.expect("stream item should not be a transport error") {
@@ -124,6 +125,63 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
         .await
         .expect("MAI should accept the OAuth bearer authed request");
+
+    assert_eq!(drain_text(stream).await, "pong");
+}
+
+/// The full server path: a provider is configured with an Entra OAuth **JSON
+/// document** in its (encrypted) credential field, and the driver is built via
+/// the registry exactly as model resolution / model sync do. This proves OAuth
+/// works end-to-end without any provider-metadata plumbing.
+#[tokio::test]
+async fn registry_built_driver_uses_oauth_json_credential() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/tenant-9/oauth2/v2.0/token"))
+        .and(body_string_contains("grant_type=client_credentials"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "token_type": "Bearer",
+            "access_token": "cred-doc-token",
+            "expires_in": 3600,
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/openai/v1/chat/completions"))
+        .and(header("authorization", "Bearer cred-doc-token"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_raw(sse_chat_response(), "text/event-stream"),
+        )
+        .mount(&server)
+        .await;
+
+    // OAuth credentials carried as a JSON document in the credential field,
+    // pointing `authority` at the mock token endpoint.
+    let credential = serde_json::json!({
+        "tenant_id": "tenant-9",
+        "client_id": "client-9",
+        "client_secret": "secret-9",
+        "authority": server.uri(),
+    })
+    .to_string();
+
+    let mut registry = DriverRegistry::new();
+    register_driver(&mut registry);
+    let driver = registry
+        .create_chat_driver(
+            &ProviderConfig::new(DriverId::Mai)
+                .with_api_key(credential)
+                .with_base_url(server.uri()),
+        )
+        .expect("registry should build a MAI driver from an OAuth JSON credential");
+
+    let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
+    let stream = driver
+        .chat_completion_stream(messages, &config("mai-code-1-flash"))
+        .await
+        .expect("registry-built MAI driver should authenticate via OAuth");
 
     assert_eq!(drain_text(stream).await, "pong");
 }

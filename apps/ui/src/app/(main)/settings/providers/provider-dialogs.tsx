@@ -43,7 +43,7 @@ function getApiKeyPlaceholder(providerType: DriverId): string {
     case "bedrock":
       return '{"access_key_id":"...","secret_access_key":"...","region":"us-east-1"}';
     case "mai":
-      return "Azure AI Foundry key (or leave blank for Entra ID OAuth)";
+      return 'Foundry key, or {"tenant_id":"...","client_id":"...","client_secret":"..."}';
     default:
       return "your-api-key";
   }

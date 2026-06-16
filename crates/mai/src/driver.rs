@@ -16,11 +16,11 @@ use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
 };
+use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::openai_protocol::{
     AuthHeaderProvider, is_azure_openai_api_url, models_api_status_error, models_url_for_api_url,
 };
@@ -182,9 +182,22 @@ async fn list_foundry_models(
         .await
         .map_err(|e| AgentLoopError::llm(format!("Failed to fetch MAI models: {e}")))?;
 
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    if !status.is_success() {
         let _ = response.bytes().await; // drain body to allow connection reuse
+        // Project-scoped Azure AI Foundry endpoints expose chat completions but
+        // not a `/models` catalog: such an endpoint returns 404 for
+        // `/openai/v1/models` while `/openai/v1/chat/completions` works. Treat a
+        // missing/unimplemented listing endpoint as "discovery not supported"
+        // (Ok(None)) rather than a hard error, so model sync degrades gracefully
+        // instead of reporting a spurious failure. (Verified live against a
+        // project endpoint.)
+        if matches!(
+            status,
+            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::NOT_IMPLEMENTED
+        ) {
+            return Ok(None);
+        }
         return Err(models_api_status_error(status));
     }
 
@@ -266,10 +279,11 @@ fn normalize_mai_url(endpoint: &str) -> String {
     let trimmed = endpoint.trim_end_matches('/');
     if trimmed.ends_with("/chat/completions") {
         trimmed.to_string()
-    } else if trimmed.ends_with("/v1")
-        || trimmed.ends_with("/openai/v1")
-        || trimmed.ends_with("/models")
-    {
+    } else if let Some(base) = trimmed.strip_suffix("/models") {
+        // A models-listing URL was pasted as the endpoint; derive the sibling
+        // chat endpoint by replacing `/models` rather than appending to it.
+        format!("{base}/chat/completions")
+    } else if trimmed.ends_with("/v1") || trimmed.ends_with("/openai/v1") {
         format!("{trimmed}/chat/completions")
     } else {
         format!("{trimmed}/openai/v1/chat/completions")
@@ -284,13 +298,13 @@ fn mai_credential_schema() -> CredentialFormSchema {
         fields: vec![
             FormField {
                 name: "api_key".to_string(),
-                label: "Azure AI Foundry API Key".to_string(),
+                label: "API Key or Entra ID OAuth JSON".to_string(),
                 field_type: FieldType::Password,
-                required: false,
+                required: true,
                 placeholder: None,
                 help_text: Some(
-                    "Leave blank to authenticate with Microsoft Entra ID (OAuth) credentials \
-                     configured in provider metadata."
+                    "An Azure AI Foundry resource key, or a Microsoft Entra ID OAuth JSON \
+                     document: {\"tenant_id\":\"…\",\"client_id\":\"…\",\"client_secret\":\"…\"}."
                         .to_string(),
                 ),
             },
@@ -306,8 +320,8 @@ fn mai_credential_schema() -> CredentialFormSchema {
         instructions_markdown:
             "Configure a Microsoft MAI deployment on [Azure AI Foundry](https://ai.azure.com). \
              Authenticate with the resource API key, or with Microsoft Entra ID OAuth \
-             (client-credentials) by supplying `tenant_id`, `client_id`, and `client_secret` \
-             in the provider metadata."
+             (client-credentials) by entering a JSON document with `tenant_id`, `client_id`, \
+             and `client_secret` in the credential field."
                 .to_string(),
     }
 }
@@ -339,7 +353,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::llm_driver_registry::{ProviderConfig, ProviderMetadata, ServiceKind};
+    use everruns_core::driver_registry::{ProviderConfig, ProviderMetadata, ServiceKind};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -401,6 +415,29 @@ mod tests {
         assert!(discovered[0].created_at.is_some());
     }
 
+    #[tokio::test]
+    async fn discovery_treats_missing_models_endpoint_as_unsupported() {
+        // Project-scoped Foundry endpoints 404 on /openai/v1/models while chat
+        // works; discovery must degrade to Ok(None), not a hard error, so model
+        // sync does not report a spurious failure. (Mirrors live behavior.)
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openai/v1/models"))
+            .respond_with(ResponseTemplate::new(404))
+            .mount(&server)
+            .await;
+
+        let auth = MaiAuth::ApiKey("k".into()).into_provider();
+        let models_url = format!("{}/openai/v1/models", server.uri());
+        let result = list_foundry_models(&reqwest::Client::new(), auth.as_ref(), &models_url)
+            .await
+            .expect("404 on /models should not be a hard error");
+        assert!(
+            result.is_none(),
+            "missing /models endpoint should be Ok(None)"
+        );
+    }
+
     #[test]
     fn normalizes_bare_foundry_host() {
         assert_eq!(
@@ -421,6 +458,20 @@ mod tests {
     fn preserves_full_chat_completions_url() {
         let url = "https://res.services.ai.azure.com/openai/v1/chat/completions";
         assert_eq!(normalize_mai_url(url), url);
+    }
+
+    #[test]
+    fn models_url_is_rewritten_to_chat_completions() {
+        // A pasted models-listing URL must derive the sibling chat endpoint,
+        // not append to `/models`.
+        assert_eq!(
+            normalize_mai_url("https://res.services.ai.azure.com/openai/v1/models"),
+            "https://res.services.ai.azure.com/openai/v1/chat/completions"
+        );
+        assert_eq!(
+            normalize_mai_url("https://res.services.ai.azure.com/api/projects/p/openai/v1/models/"),
+            "https://res.services.ai.azure.com/api/projects/p/openai/v1/chat/completions"
+        );
     }
 
     #[test]

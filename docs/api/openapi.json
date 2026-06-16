@@ -16755,7 +16755,7 @@
       },
       "DriverId": {
         "type": "string",
-        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock. Any other string is treated as an embedder-defined external provider."
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai. Any other string is treated as an embedder-defined external provider."
       },
       "EnqueueTaskOptions": {
         "type": "object",

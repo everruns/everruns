@@ -332,13 +332,26 @@ provider-reported, so neither is used for profiling. The discovery request is
 authenticated with the same `AuthHeaderProvider` as chat (so it works for both
 api-key and OAuth) and is gated to recognized Foundry hosts
 (`*.services.ai.azure.com` / `*.openai.azure.com`); custom proxy URLs return
-`None`. **Caveat:** Azure deployment names are operator-chosen, so a deployment
-id that does not match a known profile (e.g. `mai-code-1-flash`) falls back to a
-minimal profile — the same limitation Azure OpenAI has.
+`None`. Project-scoped Foundry endpoints (`.../api/projects/<project>`) expose
+`/openai/v1/chat/completions` but **not** a `/models` catalog — a 404 (or 501)
+on the listing endpoint is treated as "discovery not supported" (`Ok(None)`),
+not an error, so model sync degrades gracefully. **Caveat:** Azure deployment
+names are operator-chosen, so a deployment id that does not match a known
+profile (e.g. `mai-code-1-flash`) falls back to a minimal profile — the same
+limitation Azure OpenAI has.
 
-> OAuth-only MAI providers do not sync today: server `model_sync` still requires
-> a stored api key and does not forward provider OAuth metadata into the
-> discovery driver. API-key MAI providers sync normally.
+### Authentication storage and end-to-end OAuth
+
+`MaiAuth::from_driver_config` resolves auth in two ways. In-process / embedder
+callers may pass an Entra OAuth block in `ProviderMetadata.extra`. Server-stored
+providers carry their secret in the encrypted credential field (`api_key`),
+which may be **either** a plain Azure AI Foundry key **or** an Entra OAuth JSON
+document (`{tenant_id, client_id, client_secret}`, with optional `scope` /
+`authority`) — mirroring how Bedrock stores its multi-field credential. Because
+the credential always travels through the existing `api_key` field, OAuth works
+end-to-end for **both** chat execution and model sync with no provider-metadata
+forwarding, and the fail-closed key-resolution contract is preserved (a stored
+credential is still required; nothing falls back to env).
 
 ### Pluggable Authentication (`AuthHeaderProvider`)
 
