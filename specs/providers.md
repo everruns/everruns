@@ -233,7 +233,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 Until the refactor lands, current implementations live at:
 
 - `crates/core/src/llm_models.rs` — entity types (to become `Provider`/`Model`/`ModelProfile`)
-- `crates/core/src/driver_registry.rs` — `LlmDriver` trait + `DriverRegistry`
+- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry`
 - `crates/core/src/llm_model_profiles.rs` — built-in profile data
 - `crates/server/src/services/llm_resolver.rs` — fail-closed resolution
 - `crates/server/src/services/model_sync.rs` — model discovery
