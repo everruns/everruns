@@ -13,7 +13,9 @@ repository.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Brave Search web search integration for Everruns"
+description = "Brave Search web search integration for Everruns agents"
+keywords = ["everruns", "brave", "search", "agents"]
+categories = ["api-bindings", "development-tools"]
 documentation = "https://docs.rs/everruns-integrations-brave-search"
 
 [dependencies]
