@@ -6,7 +6,7 @@
 // fields onto the outgoing body. A wiremock server captures the request so we can
 // assert the exact JSON sent.
 
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, OpenRouterDataCollection,
     OpenRouterMaxPrice, OpenRouterPluginConfig, OpenRouterProviderRouting, OpenRouterProviderSort,
     OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,

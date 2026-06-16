@@ -14,7 +14,7 @@
 // Data source: https://github.com/sst/models.dev/tree/dev/providers
 // Cross-referenced with official Anthropic and OpenAI documentation
 
-use crate::llm_driver_registry::ServiceKind;
+use crate::driver_registry::ServiceKind;
 use crate::model::{
     CostTier, DriverId, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile,
     ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,

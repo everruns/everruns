@@ -53,7 +53,7 @@ graph TD
 
 ### ChatDriver Trait
 
-1. **Trait Definition**: See `crates/core/src/llm_driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
+1. **Trait Definition**: See `crates/core/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
@@ -86,7 +86,7 @@ name, declared `ServiceKind`s (see `specs/providers.md`), a credential form
 schema, and per-service factories (chat today). Chat drivers are created
 on-demand from `ProviderConfig`. All real built-in providers require API keys;
 `LlmSim` and `External` drivers are exempted (external drivers may authenticate
-via `ProviderMetadata`). See `crates/core/src/llm_driver_registry.rs` for
+via `ProviderMetadata`). See `crates/core/src/driver_registry.rs` for
 `DriverRegistry` and `DriverDescriptor`.
 
 ### Egress Boundary
@@ -276,7 +276,7 @@ sequenceDiagram
 
 | Component | Location |
 |-----------|----------|
-| ChatDriver trait | `crates/core/src/llm_driver_registry.rs` |
+| ChatDriver trait | `crates/core/src/driver_registry.rs` |
 | AgentLoopError | `crates/core/src/error.rs` |
 | OpenAI driver | `crates/openai/src/driver.rs` |
 | Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
@@ -472,7 +472,7 @@ Drivers parse provider-specific headers to determine retry timing:
 
 ### Retry Metadata
 
-On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/core/src/llm_driver_registry.rs` for `RetryMetadata`.
+On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/core/src/driver_registry.rs` for `RetryMetadata`.
 
 ### Implementation Details
 
@@ -494,7 +494,7 @@ The `/v1/responses/compact` endpoint is a context-compression feature for the Op
 
 ### ChatDriver Compact Methods
 
-The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/llm_driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
+The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
 ### Provider Support
 

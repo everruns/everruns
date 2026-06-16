@@ -1451,7 +1451,7 @@ pub struct LlmPromptCacheInfo {
     /// Whether prompt caching was enabled on the request.
     pub enabled: bool,
     /// Strategy used to enable prompt caching.
-    pub strategy: crate::llm_driver_registry::PromptCacheStrategy,
+    pub strategy: crate::driver_registry::PromptCacheStrategy,
     /// Provider-specific prompt-cache mode used by the driver.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider_mode: Option<String>,
@@ -2950,7 +2950,7 @@ impl EventBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::llm_driver_registry::PromptCacheStrategy;
+    use crate::driver_registry::PromptCacheStrategy;
     use serde_json::json;
     use std::collections::HashMap;
 

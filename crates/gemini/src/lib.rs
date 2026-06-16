@@ -23,4 +23,4 @@ mod driver;
 pub use driver::{GeminiChatDriver, register_driver};
 
 // Re-export core types for convenience
-pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};

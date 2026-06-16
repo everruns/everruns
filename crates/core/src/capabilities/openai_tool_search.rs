@@ -12,7 +12,7 @@
 // this capability is silently ignored — no error, no crash.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
-use crate::llm_driver_registry::ToolSearchConfig;
+use crate::driver_registry::ToolSearchConfig;
 use async_trait::async_trait;
 
 /// Default minimum tool count to activate tool_search.

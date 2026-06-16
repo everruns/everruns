@@ -16,17 +16,17 @@ use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
 use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::is_provider_quota_message;
-use everruns_core::llm_driver_helpers::{
+use everruns_core::driver_helpers::{
     self, AUDIO_CONTENT_PLACEHOLDER, GEMINI_NOT_FOUND_PATTERNS, GEMINI_TOO_LARGE_PATTERNS,
     parse_data_url,
 };
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{LlmRetryConfig, RetryMetadata, is_transient_error};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
@@ -883,11 +883,11 @@ fn extract_sse_event(buffer: &mut String) -> Option<String> {
 // ============================================================================
 
 fn is_gemini_model_not_found(status: reqwest::StatusCode, error_text: &str) -> bool {
-    llm_driver_helpers::is_model_not_found(status, error_text, GEMINI_NOT_FOUND_PATTERNS)
+    driver_helpers::is_model_not_found(status, error_text, GEMINI_NOT_FOUND_PATTERNS)
 }
 
 fn is_gemini_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
-    llm_driver_helpers::is_request_too_large(status, error_text, GEMINI_TOO_LARGE_PATTERNS)
+    driver_helpers::is_request_too_large(status, error_text, GEMINI_TOO_LARGE_PATTERNS)
 }
 
 // ============================================================================

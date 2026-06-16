@@ -22,11 +22,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 
-use crate::error::{AgentLoopError, LlmErrorKind, Result};
-use crate::llm_driver_registry::{
+use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -1672,7 +1672,7 @@ mod tests {
 
     #[test]
     fn drop_orphaned_tool_messages_removes_unmatched_tool_results() {
-        use crate::llm_driver_registry::LlmMessageContent;
+        use crate::driver_registry::LlmMessageContent;
 
         let messages = vec![
             LlmMessage::text(LlmMessageRole::User, "hello"),
@@ -1693,7 +1693,7 @@ mod tests {
 
     #[test]
     fn drop_orphaned_tool_messages_keeps_matched_tool_results() {
-        use crate::llm_driver_registry::LlmMessageContent;
+        use crate::driver_registry::LlmMessageContent;
         use crate::tool_types::ToolCall;
 
         let messages = vec![

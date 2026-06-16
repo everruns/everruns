@@ -14,12 +14,12 @@ use chrono::TimeZone;
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
     DriverId, DriverRegistry, EmbeddingsDriverFactory, LlmCallConfig, LlmMessage,
     LlmResponseStream, ServiceKind,
 };
+use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::openai_protocol::{
     apply_models_api_auth, is_azure_openai_api_url, is_openai_api_url, models_api_status_error,
     models_url_for_api_url, normalize_api_url,

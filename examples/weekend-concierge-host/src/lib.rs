@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::capabilities::{Capability, CapabilityStatus};
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::session_file::InitialFile;
 use everruns_core::tool_types::{ToolCall, ToolHints};

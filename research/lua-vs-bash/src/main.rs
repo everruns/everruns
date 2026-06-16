@@ -12,7 +12,7 @@
 use std::time::Instant;
 
 use everruns_core::capabilities::{LuaCapability, VirtualBashCapability};
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
     AgentId, CapabilityRegistry, HarnessId, DriverId, MessageRole, ResolvedModel,

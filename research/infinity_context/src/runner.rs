@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::Capability;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
 use serde::Serialize;

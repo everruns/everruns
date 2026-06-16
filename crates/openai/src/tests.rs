@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod driver_tests {
     use crate::{DriverRegistry, OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
-    use everruns_core::llm_driver_registry::{DriverId, ProviderConfig};
+    use everruns_core::driver_registry::{DriverId, ProviderConfig};
 
     #[test]
     fn test_driver_with_api_key() {
@@ -194,7 +194,7 @@ mod provider_tests {
 #[cfg(test)]
 mod descriptor_tests {
     use crate::register_driver;
-    use everruns_core::llm_driver_registry::{DriverId, DriverRegistry, ServiceKind};
+    use everruns_core::driver_registry::{DriverId, DriverRegistry, ServiceKind};
 
     #[test]
     fn registered_descriptors_declare_services_and_credentials() {

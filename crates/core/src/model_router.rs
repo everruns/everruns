@@ -16,7 +16,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::llm_driver_registry::OpenRouterRoutingConfig;
+use crate::driver_registry::OpenRouterRoutingConfig;
 use crate::typed_id::{ModelId, ModelRouterId};
 
 #[cfg(feature = "openapi")]
@@ -578,7 +578,7 @@ mod tests {
         );
         assert_eq!(
             routing.route,
-            Some(crate::llm_driver_registry::OpenRouterRoute::Fallback)
+            Some(crate::driver_registry::OpenRouterRoute::Fallback)
         );
     }
 

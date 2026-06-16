@@ -17,13 +17,13 @@ use everruns_core::agent::Agent;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput, ReasonInput};
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::config_layer::AgentConfigOverlay;
+use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
     Event, EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
     ToolCompletedData,
 };
 use everruns_core::harness::Harness;
-use everruns_core::llm_driver_registry::{DriverId, DriverRegistry};
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;

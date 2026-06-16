@@ -20,9 +20,9 @@ use everruns_core::capabilities::{
     ToolOutputPersistenceCapability, WebFetchCapability,
 };
 use everruns_core::command::CommandDescriptor;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::AgentLoopError;
 use everruns_core::in_memory::InMemoryMessageRetriever;
-use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::provider::DriverId;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};

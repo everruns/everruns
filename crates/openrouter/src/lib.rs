@@ -32,4 +32,4 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_core::llm_driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};

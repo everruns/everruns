@@ -30,11 +30,11 @@ use everruns_core::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
     },
     capabilities::CapabilityRegistry,
+    driver_registry::DriverRegistry,
     in_memory::{
         InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
         InMemoryProviderStore, InMemorySessionStore,
     },
-    llm_driver_registry::DriverRegistry,
     session::{Session, SessionStatus},
     tools::{Tool, ToolExecutionResult, ToolRegistry, ToolRegistryBuilder},
     typed_id::{AgentId, HarnessId, PrincipalId, TurnId},

@@ -19,13 +19,13 @@ use crate::atoms::{
     ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
 };
 use crate::capabilities::{AgentCapabilityConfig, Capability, CapabilityRegistry};
+use crate::driver_registry::{DriverId, DriverRegistry};
 use crate::error::Result;
 use crate::events::{Event, EventData, EventRequest, OUTPUT_MESSAGE_COMPLETED};
 use crate::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
     InMemoryProviderStore, InMemorySessionStore,
 };
-use crate::llm_driver_registry::{DriverId, DriverRegistry};
 use crate::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use crate::message::Message;
 use crate::message_retriever::{InputMessage, MessageRetriever};
@@ -258,7 +258,7 @@ impl InMemoryAgenticLoopBuilder {
     /// # Example
     ///
     /// ```ignore
-    /// use everruns_core::llm_driver_registry::DriverRegistry;
+    /// use everruns_core::driver_registry::DriverRegistry;
     ///
     /// let mut driver_registry = DriverRegistry::new();
     /// everruns_anthropic::register_driver(&mut driver_registry);

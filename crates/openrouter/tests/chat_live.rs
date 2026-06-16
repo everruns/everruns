@@ -9,7 +9,7 @@
 //! Ignored by default (requires network + `OPENROUTER_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-openrouter --test chat_live -- --ignored --nocapture`
 
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, LlmStreamEvent, OpenRouterRoute,
     OpenRouterRoutingConfig,
 };

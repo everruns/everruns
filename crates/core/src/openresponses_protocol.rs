@@ -29,11 +29,11 @@ use sha2::{Digest, Sha256};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use crate::error::{AgentLoopError, LlmErrorKind, Result};
-use crate::llm_driver_registry::{
+use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
@@ -2121,9 +2121,9 @@ mod tests {
             metadata,
             previous_response_id: None,
             tool_search: None,
-            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
-                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
@@ -2159,9 +2159,9 @@ mod tests {
             metadata,
             previous_response_id: None,
             tool_search: None,
-            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
-                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
@@ -2210,9 +2210,9 @@ mod tests {
             metadata,
             previous_response_id: None,
             tool_search: None,
-            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
-                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
@@ -2251,9 +2251,9 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
             tool_search: None,
-            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+            prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
-                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                strategy: crate::driver_registry::PromptCacheStrategy::Auto,
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
@@ -3087,7 +3087,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
-            tool_search: Some(crate::llm_driver_registry::ToolSearchConfig {
+            tool_search: Some(crate::driver_registry::ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
             }),
@@ -3122,7 +3122,7 @@ mod tests {
 
     #[tokio::test]
     async fn openai_provider_omits_openrouter_routing_controls() {
-        use crate::llm_driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
+        use crate::driver_registry::{OpenRouterRoute, OpenRouterRoutingConfig};
         use wiremock::matchers::method;
         use wiremock::{Mock, MockServer, ResponseTemplate};
 

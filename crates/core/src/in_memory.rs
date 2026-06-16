@@ -565,10 +565,10 @@ impl ToolExecutor for FailingToolExecutor {
 // MockProvider - Returns predefined responses
 // ============================================================================
 
-use crate::events::{Event, EventRequest};
-use crate::llm_driver_registry::{
+use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmResponseStream, LlmStreamEvent,
 };
+use crate::events::{Event, EventRequest};
 use crate::traits::EventEmitter;
 use futures::stream;
 

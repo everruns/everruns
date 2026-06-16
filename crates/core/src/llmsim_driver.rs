@@ -16,11 +16,11 @@ use futures::stream;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use crate::error::{AgentLoopError, Result};
-use crate::llm_driver_registry::{
+use crate::driver_registry::{
     BoxedChatDriver, ChatDriver, DriverId, DriverRegistry, LlmCallConfig, LlmCompletionMetadata,
     LlmMessage, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
+use crate::error::{AgentLoopError, Result};
 use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
@@ -1422,8 +1422,8 @@ mod tests {
         assert!(registry.has_driver(&DriverId::LlmSim));
 
         // Creating a driver should work (with any API key since it's simulated)
-        let config = crate::llm_driver_registry::ProviderConfig::new(DriverId::LlmSim)
-            .with_api_key("fake-key");
+        let config =
+            crate::driver_registry::ProviderConfig::new(DriverId::LlmSim).with_api_key("fake-key");
         let driver = registry.create_chat_driver(&config);
         assert!(driver.is_ok());
     }
