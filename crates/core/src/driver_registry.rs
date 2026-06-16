@@ -380,6 +380,30 @@ impl LlmMessage {
     }
 }
 
+/// Fold every `System`-role message into a single string, joined in order with
+/// blank lines.
+///
+/// Multiple system messages legitimately occur in one request: the agent system
+/// prompt plus, e.g., `infinity_context`'s hidden-history notice or
+/// `compaction`'s `[CONVERSATION_SUMMARY]`. Drivers that map the system role into
+/// a dedicated top-level field (Anthropic `system`, Gemini `system_instruction`,
+/// OpenResponses `instructions`) must accumulate rather than overwrite — otherwise
+/// the real agent system prompt is silently dropped and only the last notice
+/// survives. Returns `None` when there are no system messages.
+pub fn fold_system_messages(messages: &[LlmMessage]) -> Option<String> {
+    let mut system: Option<String> = None;
+    for msg in messages {
+        if msg.role == LlmMessageRole::System {
+            let text = msg.content.to_text();
+            system = Some(match system.take() {
+                Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
+                _ => text,
+            });
+        }
+    }
+    system
+}
+
 /// Message content - either a simple string or array of content parts
 #[derive(Debug, Clone)]
 pub enum LlmMessageContent {
@@ -1851,6 +1875,54 @@ fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_fold_system_messages_none_when_absent() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::Assistant, "ok"),
+        ];
+        assert_eq!(fold_system_messages(&messages), None);
+    }
+
+    #[test]
+    fn test_fold_system_messages_single() {
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "AGENT-PROMPT"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+        ];
+        assert_eq!(
+            fold_system_messages(&messages),
+            Some("AGENT-PROMPT".to_string())
+        );
+    }
+
+    #[test]
+    fn test_fold_system_messages_accumulates_in_order() {
+        // The agent system prompt plus a later notice/summary System message
+        // (infinity_context / compaction) must both survive, in order — the
+        // later one must not overwrite the real agent system prompt.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::Assistant, "ok"),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+        ];
+        assert_eq!(fold_system_messages(&messages), Some("A\n\nB".to_string()));
+    }
+
+    #[test]
+    fn test_fold_system_messages_concatenates_parts() {
+        let messages = vec![LlmMessage::parts(
+            LlmMessageRole::System,
+            vec![
+                LlmContentPart::text("foo"),
+                LlmContentPart::image("data:image/png;base64,xxx"),
+                LlmContentPart::text("bar"),
+            ],
+        )];
+        assert_eq!(fold_system_messages(&messages), Some("foobar".to_string()));
+    }
 
     #[test]
     fn test_llm_call_config_builder_from_runtime_agent() {
