@@ -182,7 +182,11 @@ impl InMemoryDatabase {
                     attempts: 0,
                     pass: None,
                     value: None,
+                    label: None,
                     reason: None,
+                    judge_input_tokens: None,
+                    judge_output_tokens: None,
+                    judge_cost_usd: None,
                     error_message: None,
                     created_at: now,
                     updated_at: now,
@@ -254,7 +258,11 @@ impl InMemoryDatabase {
         score.status = input.status;
         score.pass = input.pass;
         score.value = input.value;
+        score.label = input.label;
         score.reason = input.reason;
+        score.judge_input_tokens = input.judge_input_tokens;
+        score.judge_output_tokens = input.judge_output_tokens;
+        score.judge_cost_usd = input.judge_cost_usd;
         score.error_message = input.error_message;
         score.updated_at = Self::now();
         Ok(Some(score.clone()))

@@ -252,7 +252,8 @@ impl Database {
             )
             RETURNING id, org_id, public_id, observer_id, scorer_key, session_id,
                       turn_id, agent_id, agent_version_id, harness_id, status, attempts,
-                      pass, value, reason, error_message, created_at, updated_at
+                      pass, value, label, reason, judge_input_tokens, judge_output_tokens,
+                      judge_cost_usd, error_message, created_at, updated_at
             "#,
         )
         .bind(stale_after_seconds as f64)
@@ -271,18 +272,24 @@ impl Database {
         let row = sqlx::query_as::<_, TraceScoreRow>(
             r#"
             UPDATE trace_scores
-            SET status = $2, pass = $3, value = $4, reason = $5, error_message = $6, updated_at = NOW()
+            SET status = $2, pass = $3, value = $4, label = $5, reason = $6, judge_input_tokens = $7,
+                judge_output_tokens = $8, judge_cost_usd = $9, error_message = $10, updated_at = NOW()
             WHERE id = $1
             RETURNING id, org_id, public_id, observer_id, scorer_key, session_id,
                       turn_id, agent_id, agent_version_id, harness_id, status, attempts,
-                      pass, value, reason, error_message, created_at, updated_at
+                      pass, value, label, reason, judge_input_tokens, judge_output_tokens,
+                      judge_cost_usd, error_message, created_at, updated_at
             "#,
         )
         .bind(id)
         .bind(&input.status)
         .bind(input.pass)
         .bind(input.value)
+        .bind(&input.label)
         .bind(&input.reason)
+        .bind(input.judge_input_tokens)
+        .bind(input.judge_output_tokens)
+        .bind(input.judge_cost_usd)
         .bind(&input.error_message)
         .fetch_optional(&self.pool)
         .await?;
@@ -302,7 +309,8 @@ impl Database {
         let sql = format!(
             r#"SELECT id, org_id, public_id, observer_id, scorer_key, session_id,
                       turn_id, agent_id, agent_version_id, harness_id, status, attempts,
-                      pass, value, reason, error_message, created_at, updated_at
+                      pass, value, label, reason, judge_input_tokens, judge_output_tokens,
+                      judge_cost_usd, error_message, created_at, updated_at
                FROM trace_scores
                WHERE org_id = $1 AND observer_id = $2{session_sql}
                ORDER BY created_at DESC
