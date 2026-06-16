@@ -243,7 +243,8 @@ fn extract_tarball_subdir(
     let mut archive = Archive::new(decoder);
 
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
-    let mut total_bytes: usize = 0;
+    let mut plugin_total_bytes: usize = 0;
+    let mut archive_unpacked_bytes: u64 = 0;
 
     let entries = archive
         .entries()
@@ -265,6 +266,31 @@ fn extract_tarball_subdir(
         if !entry_type.is_file() {
             continue;
         }
+
+        let file_size_u64 = header
+            .size()
+            .map_err(|e| format!("cannot read entry size: {e}"))?;
+
+        // Charge the whole-archive budget the unpacked cost of this entry,
+        // including tar framing (a 512-byte header plus the data padded up to a
+        // 512-byte block). Counting framing stops many tiny entries from
+        // forcing unbounded decompression/iteration while staying under a
+        // content-only counter. Work in u64 with checked arithmetic so a forged
+        // oversized header can't truncate (32-bit `as usize`) or wrap past the
+        // limit.
+        let entry_unpacked = 512u64.saturating_add(file_size_u64.div_ceil(512).saturating_mul(512));
+        archive_unpacked_bytes = archive_unpacked_bytes
+            .checked_add(entry_unpacked)
+            .filter(|total| *total <= MAX_TARBALL_UNPACK_BYTES as u64)
+            .ok_or_else(|| {
+                format!(
+                    "tarball unpacked size exceeds {MAX_TARBALL_UNPACK_BYTES} bytes (extraction limit)"
+                )
+            })?;
+
+        // Safe: a single entry larger than the archive budget would have
+        // already tripped the check above, so this fits in usize.
+        let file_size = file_size_u64 as usize;
 
         let raw_path = entry
             .path()
@@ -308,31 +334,18 @@ fn extract_tarball_subdir(
             ));
         }
 
-        // Read the file content.
-        let file_size = header
-            .size()
-            .map_err(|e| format!("cannot read entry size: {e}"))? as usize;
-
         if file_size > MAX_PLUGIN_FILE_BYTES {
             return Err(format!(
                 "plugin file '{relative_path}' is {file_size} bytes, exceeding the {MAX_PLUGIN_FILE_BYTES}-byte limit"
             ));
         }
 
-        total_bytes += file_size;
-        if total_bytes > MAX_PLUGIN_TOTAL_BYTES {
-            return Err(format!(
-                "plugin total size from tarball exceeds {MAX_PLUGIN_TOTAL_BYTES} bytes"
-            ));
-        }
-
-        // Sanity cap on unpacked total (separate from plugin limits — catches
-        // zip-bomb style attacks where many small files accumulate).
-        if total_bytes > MAX_TARBALL_UNPACK_BYTES {
-            return Err(format!(
-                "tarball unpacked size exceeds {MAX_TARBALL_UNPACK_BYTES} bytes (extraction limit)"
-            ));
-        }
+        plugin_total_bytes = plugin_total_bytes
+            .checked_add(file_size)
+            .filter(|total| *total <= MAX_PLUGIN_TOTAL_BYTES)
+            .ok_or_else(|| {
+                format!("plugin total size from tarball exceeds {MAX_PLUGIN_TOTAL_BYTES} bytes")
+            })?;
 
         let mut content = Vec::with_capacity(file_size);
         std::io::Read::read_to_end(&mut entry, &mut content)
@@ -515,6 +528,55 @@ mod tests {
         assert!(
             err.contains("exceeding the"),
             "expected size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn extract_tarball_rejects_oversized_skipped_file() {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Read as _;
+        use tar::{Builder, Header};
+
+        // Build the archive with the oversized entry *streamed* (via
+        // `io::repeat(..).take(..)`) rather than materializing the full
+        // uncompressed payload in a Vec, so this test stays cheap on memory.
+        let enc = GzEncoder::new(Vec::new(), Compression::fast());
+        let mut ar = Builder::new(enc);
+
+        let big_size = MAX_TARBALL_UNPACK_BYTES as u64 + 1;
+        let mut big_header = Header::new_gnu();
+        big_header
+            .set_path("myrepo-abc123/outside-plugin/big.bin")
+            .unwrap();
+        big_header.set_size(big_size);
+        big_header.set_mode(0o644);
+        big_header.set_cksum();
+        ar.append(&big_header, std::io::repeat(b'x').take(big_size))
+            .unwrap();
+
+        let plugin_json = br#"{"name":"my-plugin","version":"1.0.0"}"#;
+        let mut plugin_header = Header::new_gnu();
+        plugin_header
+            .set_path("myrepo-abc123/plugins/my-plugin/.claude-plugin/plugin.json")
+            .unwrap();
+        plugin_header.set_size(plugin_json.len() as u64);
+        plugin_header.set_mode(0o644);
+        plugin_header.set_cksum();
+        ar.append(&plugin_header, &plugin_json[..]).unwrap();
+
+        let tarball = ar.into_inner().unwrap().finish().unwrap();
+
+        let err = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("tarball unpacked size exceeds"),
+            "expected archive-wide unpacked size error, got: {err}"
         );
     }
 
