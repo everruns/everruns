@@ -14,7 +14,7 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use everruns_core::DriverRegistry;
-use everruns_core::llm_driver_registry::{
+use everruns_core::driver_registry::{
     LlmCallConfig, LlmMessage, LlmMessageRole, ProviderConfig,
 };
 use everruns_core::provider::DriverId;
