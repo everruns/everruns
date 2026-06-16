@@ -8,6 +8,7 @@
 // runs (retired as part of the session-tasks dual-write cleanup).
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
+use crate::network_access::NetworkAccessList;
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_EXTERNAL_AGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest,
@@ -540,6 +541,10 @@ struct AgentRunRecord {
     /// in resource metadata is safe. Absent on old records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     agent_config: Option<ExternalA2aAgentConfig>,
+    /// Merged network policy captured at spawn time. Re-attach runs outside
+    /// ActAtom, so it must restore this before rebuilding outbound clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    network_access: Option<NetworkAccessList>,
 }
 
 impl AgentRunRecord {
@@ -567,6 +572,7 @@ impl AgentRunRecord {
             wake_on_completion,
             task_id: None,
             agent_config: Some(agent.clone()),
+            network_access: None,
         }
     }
 
@@ -1285,6 +1291,7 @@ impl Tool for SpawnAgentTool {
             mode.clone(),
             wake_on_completion,
         );
+        record.network_access = context.network_access.clone();
         // Create the session task tracking this run (specs/session-tasks.md).
         // run_id is stored in spec so load_run_for_task can do a direct key lookup.
         if let Some(task_registry) = &context.session_task_registry
@@ -1364,6 +1371,16 @@ impl Tool for SpawnAgentTool {
 
 /// Locate the agent run mirrored by a session task.
 /// The run_id is stored in the task's spec so we can do a direct KV lookup.
+fn reattach_network_access(
+    record: &AgentRunRecord,
+    context: &ToolContext,
+) -> Option<NetworkAccessList> {
+    record
+        .network_access
+        .clone()
+        .or_else(|| context.network_access.clone())
+}
+
 async fn load_run_for_task(
     context: &ToolContext,
     task: &SessionTask,
@@ -1423,10 +1440,13 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         let record = load_run_for_task(context, task)
             .await
             .map_err(crate::error::AgentLoopError::tool)?;
+        let context = context
+            .clone()
+            .with_network_access(reattach_network_access(&record, context));
 
         // If the run is already terminal, just mirror and return.
         if record.status.is_terminal() {
-            mirror_run_to_task(context, &record).await;
+            mirror_run_to_task(&context, &record).await;
             return Ok(());
         }
 
@@ -1445,7 +1465,6 @@ impl TaskExecutor for ExternalAgentTaskExecutor {
         // reaper) for heartbeating so the superseded executor's stale writes
         // are rejected by the fence.
         let heartbeat_attempt = Some(task.attempt);
-        let context = context.clone();
         tokio::spawn(async move {
             background_monitor(
                 context,
@@ -1957,6 +1976,49 @@ mod tests {
         assert!(config.agents[0].validate().is_err());
         config.agents[0].allow_local_urls = true;
         assert!(config.agents[0].validate().is_ok());
+    }
+
+    #[test]
+    fn reattach_network_access_prefers_persisted_run_policy() {
+        use crate::SessionId;
+
+        let config = ExternalA2aAgentConfig {
+            id: "echo".to_string(),
+            name: "Echo".to_string(),
+            description: None,
+            base_url: Some("https://allowed.example.com/a2a".to_string()),
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let mut record = AgentRunRecord::new(
+            "run-policy".to_string(),
+            &config,
+            "instructions".to_string(),
+            AgentRunMode::Background,
+            false,
+        );
+        let persisted_policy =
+            NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]);
+        record.network_access = Some(persisted_policy.clone());
+
+        let reaper_context = ToolContext::new(SessionId::new()).with_network_access(None);
+        assert_eq!(
+            reattach_network_access(&record, &reaper_context),
+            Some(persisted_policy.clone())
+        );
+
+        let fallback_policy =
+            NetworkAccessList::allow_only(vec!["fallback.example.com".to_string()]);
+        let fallback_context =
+            ToolContext::new(SessionId::new()).with_network_access(Some(fallback_policy.clone()));
+        record.network_access = None;
+        assert_eq!(
+            reattach_network_access(&record, &fallback_context),
+            Some(fallback_policy)
+        );
     }
 
     #[test]
