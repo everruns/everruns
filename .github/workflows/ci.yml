@@ -837,11 +837,11 @@ jobs:
           echo "=== Worker logs ==="
           cat worker.log 2>/dev/null || echo "No worker log"
 
-  # Gated to push events: this job launches the PR-built `everruns-server`
-  # binary with DEFAULT_*_API_KEY in env (which map to the same secrets as
-  # workflow-test), so running it on fork PRs would let attacker-controlled
-  # binary code exfil the keys. PR coverage of the CLI is still provided by
-  # the CLI integration tests under `unit-test` (which run without keys).
+  # Runs the PR-built `everruns-server` + CLI binaries under DEV_MODE (LlmSim),
+  # so no real provider keys are needed or injected. Kept push-gated alongside
+  # `workflow-test` to avoid spending the heavy binary e2e on every PR; PR
+  # coverage of the CLI is provided by the CLI integration tests under
+  # `unit-test`.
   cli-e2e-test:
     name: CLI E2E Tests
     runs-on: ubuntu-latest
