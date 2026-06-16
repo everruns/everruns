@@ -8,7 +8,11 @@
 // Because authentication is handled by the auth provider, the underlying
 // protocol driver's own `api_key` field is unused (constructed empty).
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use chrono::TimeZone;
+use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
@@ -16,6 +20,9 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
+};
+use everruns_core::openai_protocol::{
+    AuthHeaderProvider, is_azure_openai_api_url, models_api_status_error, models_url_for_api_url,
 };
 
 use crate::auth::MaiAuth;
@@ -48,6 +55,9 @@ enum DriverState {
     Ready {
         inner: OpenAIProtocolChatDriver,
         api_url: String,
+        /// Retained so model discovery can authenticate the `/models` request
+        /// with the same scheme (api-key or OAuth bearer) as chat requests.
+        auth: Arc<dyn AuthHeaderProvider>,
     },
     Misconfigured(String),
 }
@@ -57,10 +67,15 @@ impl MaiChatDriver {
     /// endpoint. The endpoint is normalized to the chat-completions URL.
     pub fn new(auth: MaiAuth, endpoint: impl Into<String>) -> Self {
         let api_url = normalize_mai_url(&endpoint.into());
-        let inner = OpenAIProtocolChatDriver::with_base_url("", &api_url)
-            .with_auth_provider(auth.into_provider());
+        let auth = auth.into_provider();
+        let inner =
+            OpenAIProtocolChatDriver::with_base_url("", &api_url).with_auth_provider(auth.clone());
         Self {
-            state: DriverState::Ready { inner, api_url },
+            state: DriverState::Ready {
+                inner,
+                api_url,
+                auth,
+            },
         }
     }
 
@@ -116,11 +131,120 @@ impl ChatDriver for MaiChatDriver {
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
-        // MAI deployments on Azure AI Foundry are resource-specific and do not
-        // expose a reliable public `/models` catalog for discovery. Model ids
-        // are well-known and carried by the built-in model profile registry, so
-        // discovery is intentionally skipped.
-        Ok(None)
+        let DriverState::Ready {
+            inner,
+            api_url,
+            auth,
+        } = &self.state
+        else {
+            // Misconfigured providers have nothing to discover.
+            return Ok(None);
+        };
+
+        // Only run discovery against recognized Azure AI Foundry hosts. Custom
+        // proxy URLs may resolve to private infrastructure, so they are skipped
+        // (mirrors the OpenAI/Azure OpenAI driver gating).
+        if !is_azure_openai_api_url(api_url) {
+            return Ok(None);
+        }
+
+        list_foundry_models(
+            inner.client(),
+            auth.as_ref(),
+            &models_url_for_api_url(api_url),
+        )
+        .await
+    }
+}
+
+/// Fetch the Foundry `/models` catalog and map it to [`DiscoveredModel`]s.
+///
+/// Foundry's OpenAI-compatible `/models` endpoint is *bare* (id/created/owned_by
+/// only — no capabilities, limits, or cost), exactly like OpenAI's. So
+/// discovery returns `discovered_profile: None` and relies on the built-in model
+/// profile registry to supply capabilities by matching the model id at sync
+/// time. (Azure deployment names are operator-chosen; a deployment id that does
+/// not match a known profile falls back to a minimal profile — the same caveat
+/// as Azure OpenAI.)
+///
+/// The request is authenticated with the same `AuthHeaderProvider` used for chat
+/// (`api-key` or an Entra ID OAuth bearer), so discovery works for both schemes.
+async fn list_foundry_models(
+    client: &reqwest::Client,
+    auth: &dyn AuthHeaderProvider,
+    models_url: &str,
+) -> Result<Option<Vec<DiscoveredModel>>> {
+    let (header_name, header_value) = auth.auth_header().await?;
+    let response = client
+        .get(models_url)
+        .header(header_name, header_value)
+        .send()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to fetch MAI models: {e}")))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let _ = response.bytes().await; // drain body to allow connection reuse
+        return Err(models_api_status_error(status));
+    }
+
+    let models: FoundryModelsResponse = response
+        .json()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("Failed to parse MAI models response: {e}")))?;
+
+    let discovered = models
+        .data
+        .into_iter()
+        .filter(FoundryModelInfo::is_chat_model)
+        .map(|m| DiscoveredModel {
+            created_at: m
+                .created
+                .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
+            display_name: None,
+            owned_by: m.owned_by,
+            model_id: m.id,
+            discovered_profile: None,
+        })
+        .collect();
+
+    Ok(Some(discovered))
+}
+
+/// Bare Foundry/OpenAI-compatible `/models` list response.
+#[derive(Debug, Deserialize)]
+struct FoundryModelsResponse {
+    data: Vec<FoundryModelInfo>,
+}
+
+/// One entry from the Foundry `/models` list. `created`/`owned_by` are optional
+/// because Foundry variants do not always populate them.
+#[derive(Debug, Deserialize)]
+struct FoundryModelInfo {
+    id: String,
+    #[serde(default)]
+    created: Option<i64>,
+    #[serde(default)]
+    owned_by: Option<String>,
+}
+
+impl FoundryModelInfo {
+    /// Whether this deployment is a chat/completion model. Foundry serves many
+    /// model families (MAI, Llama, Phi, ...) whose ids do not share a prefix, so
+    /// the filter is exclusion-based: drop obvious non-chat services (embeddings,
+    /// speech, image, rerank) and keep everything else.
+    fn is_chat_model(&self) -> bool {
+        let id = self.id.to_ascii_lowercase();
+        !(id.contains("embed")
+            || id.contains("whisper")
+            || id.starts_with("tts")
+            || id.contains("-tts")
+            || id.contains("text-to-speech")
+            || id.contains("speech")
+            || id.contains("dall-e")
+            || id.contains("-image")
+            || id.contains("image-")
+            || id.contains("rerank"))
     }
 }
 
@@ -216,6 +340,66 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 mod tests {
     use super::*;
     use everruns_core::llm_driver_registry::{ProviderConfig, ProviderMetadata, ServiceKind};
+    use wiremock::matchers::{header, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn chat_model_filter_keeps_chat_excludes_embeddings_and_media() {
+        let chat = |id: &str| FoundryModelInfo {
+            id: id.to_string(),
+            created: None,
+            owned_by: None,
+        };
+        assert!(chat("mai-code-1-flash").is_chat_model());
+        assert!(chat("mai-1-preview").is_chat_model());
+        assert!(chat("Phi-4").is_chat_model());
+        assert!(!chat("text-embedding-3-large").is_chat_model());
+        assert!(!chat("whisper-large").is_chat_model());
+        assert!(!chat("tts-1").is_chat_model());
+        assert!(!chat("dall-e-3").is_chat_model());
+        assert!(!chat("cohere-rerank-v3").is_chat_model());
+    }
+
+    #[tokio::test]
+    async fn list_models_skips_non_azure_hosts() {
+        // A custom/proxy (non-Foundry) host must not be probed for discovery.
+        let driver = MaiChatDriver::new(MaiAuth::ApiKey("k".into()), "https://proxy.example.com");
+        assert!(driver.list_models().await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn discovery_fetch_authenticates_filters_and_maps() {
+        // `list_foundry_models` is exercised directly so the Azure-host gate (which
+        // a wiremock 127.0.0.1 host cannot satisfy) does not block the HTTP path.
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/openai/v1/models"))
+            .and(header("api-key", "foundry-secret"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "object": "list",
+                "data": [
+                    { "id": "mai-code-1-flash", "object": "model", "created": 1_700_000_000, "owned_by": "microsoft" },
+                    { "id": "text-embedding-3-large", "object": "model" },
+                ],
+            })))
+            .mount(&server)
+            .await;
+
+        let auth = MaiAuth::ApiKey("foundry-secret".into()).into_provider();
+        let models_url = format!("{}/openai/v1/models", server.uri());
+        let discovered = list_foundry_models(&reqwest::Client::new(), auth.as_ref(), &models_url)
+            .await
+            .expect("discovery request should succeed")
+            .expect("discovery should return a model list");
+
+        // Embedding model filtered out; chat model retained with bare metadata
+        // (no discovered_profile — profiles come from the registry by id).
+        assert_eq!(discovered.len(), 1);
+        assert_eq!(discovered[0].model_id, "mai-code-1-flash");
+        assert_eq!(discovered[0].owned_by.as_deref(), Some("microsoft"));
+        assert!(discovered[0].discovered_profile.is_none());
+        assert!(discovered[0].created_at.is_some());
+    }
 
     #[test]
     fn normalizes_bare_foundry_host() {

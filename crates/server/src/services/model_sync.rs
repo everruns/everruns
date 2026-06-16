@@ -274,6 +274,10 @@ fn supports_sync_with_base_url(provider_type: &DriverId) -> bool {
             | DriverId::OpenRouter
             | DriverId::AzureOpenAI
             | DriverId::OpenAICompletions
+            // MAI providers always carry a base URL (the Azure AI Foundry
+            // resource endpoint); the driver gates discovery to recognized
+            // Foundry hosts internally.
+            | DriverId::Mai
             // External providers are custom by nature: a configured base URL is
             // the embedder's endpoint, so do not skip discovery for them.
             | DriverId::External(_)
@@ -331,6 +335,7 @@ mod tests {
         assert!(supports_sync_with_base_url(&DriverId::OpenAI));
         assert!(supports_sync_with_base_url(&DriverId::OpenRouter));
         assert!(supports_sync_with_base_url(&DriverId::OpenAICompletions));
+        assert!(supports_sync_with_base_url(&DriverId::Mai));
         assert!(!supports_sync_with_base_url(&DriverId::Anthropic));
     }
 

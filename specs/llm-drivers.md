@@ -317,9 +317,28 @@ behind an OpenAI-compatible Chat Completions API. The `everruns-mai` crate is a
 standalone, crates.io-publishable provider crate that wraps the core
 `OpenAIProtocolChatDriver` and tags it with `DriverId::Mai`. Model ids resolve
 to the Microsoft-vendor profiles in `crates/core/src/model_profiles.rs` (the
-`MICROSOFT_MAI` surface). Model discovery is intentionally `None`: Foundry
-deployments are resource-specific and do not expose a reliable public `/models`
-catalog.
+`MICROSOFT_MAI` surface).
+
+### Model Discovery
+
+Foundry exposes an OpenAI-compatible `/models` endpoint, but it is **bare**
+(`id`/`created`/`owned_by` only — no capabilities, limits, or cost), exactly
+like OpenAI's. So `list_models` syncs model/deployment **ids** with
+`discovered_profile: None` and relies on the built-in profile registry to supply
+capabilities by matching the id at sync time (the OpenAI/Azure OpenAI pattern).
+Rich capability metadata lives only in the separate Foundry model *catalog* API
+(different host/auth, reflects the catalog not the deployment) and cost is never
+provider-reported, so neither is used for profiling. The discovery request is
+authenticated with the same `AuthHeaderProvider` as chat (so it works for both
+api-key and OAuth) and is gated to recognized Foundry hosts
+(`*.services.ai.azure.com` / `*.openai.azure.com`); custom proxy URLs return
+`None`. **Caveat:** Azure deployment names are operator-chosen, so a deployment
+id that does not match a known profile (e.g. `mai-code-1-flash`) falls back to a
+minimal profile — the same limitation Azure OpenAI has.
+
+> OAuth-only MAI providers do not sync today: server `model_sync` still requires
+> a stored api key and does not forward provider OAuth metadata into the
+> discovery driver. API-key MAI providers sync normally.
 
 ### Pluggable Authentication (`AuthHeaderProvider`)
 
