@@ -15,7 +15,7 @@ use axum::{
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, AgentVersionId, ModelId};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, Caller, DeploymentGrade, FeatureFlags, InitialFile, OrgRole,
+    Agent, AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole,
     PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
 };
 use futures::future::try_join_all;
@@ -183,9 +183,9 @@ impl AppState {
 }
 
 fn require_agent_versions_enabled(
-    state: &AppState,
+    org: &ResolvedOrg,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if FeatureFlags::from_env(&state.grade).agent_versions {
+    if org.feature_flags.agent_versions {
         Ok(())
     } else {
         Err(ErrorResponse::not_found("Agent versions"))
@@ -596,7 +596,7 @@ pub async fn list_agent_versions(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> ApiResult<Vec<everruns_core::AgentVersion>> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run(crate::domains::agents::ListAgentVersions { agent_id })
@@ -624,7 +624,7 @@ pub async fn create_agent_version(
     Path(agent_id): Path<String>,
     Json(req): Json<CreateAgentVersionRequest>,
 ) -> ApiResult<everruns_core::AgentVersion> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run(crate::domains::agents::CreateAgentVersionCmd { agent_id, req })
@@ -652,7 +652,7 @@ pub async fn set_default_agent_version(
     Path(agent_id): Path<String>,
     Json(req): Json<SetDefaultAgentVersionRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run_with_urls(crate::domains::agents::SetDefaultAgentVersion { agent_id, req })
@@ -681,7 +681,7 @@ pub async fn rollback_agent_version(
     Path((agent_id, version_id)): Path<(String, AgentVersionId)>,
     Json(req): Json<RollbackAgentVersionRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run_with_urls(crate::domains::agents::RollbackAgentVersion {
@@ -714,7 +714,7 @@ pub async fn fork_agent_version(
     Path((agent_id, version_id)): Path<(String, AgentVersionId)>,
     Json(req): Json<ForkAgentVersionRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run_with_urls(crate::domains::agents::ForkAgentVersion {
@@ -749,7 +749,7 @@ pub async fn diff_agent_versions(
         AgentVersionId,
     )>,
 ) -> ApiResult<crate::domains::agents::types::AgentVersionDiffResponse> {
-    require_agent_versions_enabled(&state)?;
+    require_agent_versions_enabled(&org)?;
     state
         .dispatcher(&org)
         .run(crate::domains::agents::DiffAgentVersions {
@@ -1506,7 +1506,7 @@ mod high_risk_admin_gate_tests {
             user_id: None,
             role,
             is_platform_user: false,
-            feature_flags: FeatureFlags::default(),
+            feature_flags: everruns_core::FeatureFlags::default(),
         }
     }
 

@@ -254,6 +254,40 @@ impl TestServer {
         let mut feature_flags = everruns_core::FeatureFlags::from_env(&grade);
         feature_flags.evals = true;
         feature_flags.observers = true;
+        // System side of the experimental gates exercised by integration tests.
+        // Org-effective = system && org-opt-in, so both must be on (see the
+        // org opt-in seeded just below).
+        feature_flags.voice = true;
+        feature_flags.mcp_endpoint = true;
+        feature_flags.agent_versions = true;
+        feature_flags.app_budgets = true;
+
+        // Org-effective flags are `system && org-opt-in`, so opt the default
+        // test org into the experimental flags whose runtime gates now consult
+        // the org-effective flags (evals, voice, mcp_endpoint, agent_versions,
+        // app_budgets). Without this those gates reject requests in tests even
+        // though the system flags are on. Deliberately scoped to these flags —
+        // e.g. `notifications` is left off so tests asserting its default-off
+        // org state still hold.
+        let org_flag_overrides: std::collections::HashMap<String, bool> = [
+            "evals",
+            "voice",
+            "mcp_endpoint",
+            "agent_versions",
+            "app_budgets",
+        ]
+        .into_iter()
+        .map(|name| (name.to_string(), true))
+        .collect();
+        db.replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &org_flag_overrides)
+            .await
+            .expect("seed org feature flags for test org");
+
+        // The auth middleware resolves each request's org-effective flags as
+        // `system && org-opt-in`, taking the system side from
+        // `AuthState::system_feature_flags` (defaults to `FeatureFlags::current()`).
+        // Point it at the harness's system flags so the gates above see them on.
+        let auth_state = auth_state.with_system_feature_flags(feature_flags.clone());
 
         // Create module-specific states
         let sessions_state = api::sessions::AppState::with_platform_definition(

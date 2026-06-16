@@ -58,6 +58,9 @@ impl AppState {
             None,
             self.auth.permission_resolver.clone(),
         )
+        // Seed org-effective flags so the `app_budgets` gate honors org opt-out
+        // rather than falling back to deployment-level `FeatureFlags::current()`.
+        .with_feature_flags(org.feature_flags.clone())
     }
 }
 

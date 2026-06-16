@@ -13,6 +13,14 @@ pub struct EvalArtifactExport {
     pub body: String,
 }
 
+fn require_evals_enabled(ctx: &Ctx) -> Result<(), CommandError> {
+    if ctx.feature_flags.evals {
+        Ok(())
+    } else {
+        Err(CommandError::not_found("Evals"))
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct CreateEval(pub CreateEvalRequest);
 
@@ -40,6 +48,7 @@ impl Command for CreateEval {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
+        require_evals_enabled(ctx)?;
         q::service(ctx)
             .create(&ctx.caller, self.0)
             .await
@@ -80,6 +89,7 @@ impl Command for ListEvals {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Eval>, CommandError> {
+        require_evals_enabled(ctx)?;
         q::service(ctx)
             .list(&ctx.caller, self.search.as_deref(), self.include_archived)
             .await
@@ -116,6 +126,7 @@ impl Command for GetEval {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .get_by_public_id(&ctx.caller, &eval_id.to_string())
@@ -152,6 +163,7 @@ impl Command for UpdateEval {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .update(&ctx.caller, &eval_id.to_string(), self.req)
@@ -186,6 +198,7 @@ impl Command for DeleteEval {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let deleted = q::service(ctx)
             .delete(&ctx.caller, &eval_id.to_string())
@@ -226,6 +239,7 @@ impl Command for CreateEvalCase {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .create_case(&ctx.caller, &eval_id.to_string(), self.req)
@@ -259,6 +273,7 @@ impl Command for ListEvalCases {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCase>, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .list_cases(&ctx.caller, &eval_id.to_string())
@@ -293,6 +308,7 @@ impl Command for GetEvalCase {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let case_id = q::parse_case_id(&self.case_id)?;
         q::service(ctx)
@@ -331,6 +347,7 @@ impl Command for UpdateEvalCase {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let case_id = q::parse_case_id(&self.case_id)?;
         q::service(ctx)
@@ -372,6 +389,7 @@ impl Command for DeleteEvalCase {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let case_id = q::parse_case_id(&self.case_id)?;
         let deleted = q::service(ctx)
@@ -413,6 +431,7 @@ impl Command for CreateEvalRun {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .create_run(&ctx.caller, &eval_id.to_string(), self.req)
@@ -446,6 +465,7 @@ impl Command for ListEvalRuns {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
             .list_runs(&ctx.caller, &eval_id.to_string())
@@ -480,6 +500,7 @@ impl Command for GetEvalRun {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
         q::service(ctx)
@@ -516,6 +537,7 @@ impl Command for ExportEvalRunArtifacts {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalArtifactExport, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
         let run = q::service(ctx)
@@ -562,6 +584,7 @@ impl Command for CancelEvalRun {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
         q::service(ctx)
@@ -601,6 +624,7 @@ impl Command for UpdateEvalResultScores {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCaseResult, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
         let result_id = q::parse_result_id(&self.result_id)?;
@@ -646,6 +670,7 @@ impl Command for BulkUpdateEvalRunScores {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCaseResult>, CommandError> {
+        require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
         q::service(ctx)
