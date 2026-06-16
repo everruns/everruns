@@ -32,6 +32,47 @@ pub async fn verify_session(ctx: &Ctx, session_id: SessionId) -> Result<Uuid, Co
     Ok(row.workspace_id)
 }
 
+/// Resolve the session's workspace for a *write* and enforce the workspace
+/// write boundary, matching the canonical `/v1/workspaces/{workspace_id}/fs/*`
+/// behavior:
+///
+/// * Shared workspaces (where the resolved key differs from the session uuid)
+///   require `WORKSPACE_MANAGE`, not just the session policy. Without this a
+///   caller holding only `SESSION_MANAGE` could mutate an attached shared
+///   workspace through the legacy session-fs alias, bypassing the workspace
+///   authorization boundary.
+/// * Archived (non-`active`) workspaces are read-only per `specs/workspace.md`,
+///   so writes are rejected for default and shared workspaces alike. A deleted
+///   workspace is filtered at the storage layer and treated as gone (404);
+///   an archived one still exists but is read-only (403).
+pub async fn verify_session_for_write(
+    ctx: &Ctx,
+    session_id: SessionId,
+) -> Result<Uuid, CommandError> {
+    let workspace_key = verify_session(ctx, session_id).await?;
+
+    if workspace_key != session_id.uuid() {
+        crate::domains::workspaces::WORKSPACE_MANAGE
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| CommandError::forbidden(e.message))?;
+    }
+
+    let workspace = ctx
+        .db
+        .get_workspace_by_id(ctx.org_id(), workspace_key)
+        .await
+        .map_err(classify_storage)?
+        .ok_or_else(|| CommandError::not_found("Workspace"))?;
+    if workspace.status != "active" {
+        return Err(CommandError::forbidden(format!(
+            "Workspace is {} and cannot be modified",
+            workspace.status
+        )));
+    }
+
+    Ok(workspace_key)
+}
+
 pub fn normalize_path(path: &str) -> String {
     let path = path.trim_start_matches('/');
     if path.is_empty() {
