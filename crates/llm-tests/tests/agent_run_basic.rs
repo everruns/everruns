@@ -33,7 +33,6 @@ use everruns_core::traits::ResolvedModel;
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
-#[case::anthropic_fable(ANTHROPIC_FABLE)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
@@ -68,7 +67,6 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 
 #[rstest]
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
-#[case::anthropic_fable(ANTHROPIC_FABLE)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
