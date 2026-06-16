@@ -8,6 +8,7 @@
 //   - `plugins` — web-search / file-reader activations
 //   - `session_id` — OpenRouter session grouping (the Everruns session id)
 //   - `reasoning.exclude` — keep provider reasoning private by default
+//   - `HTTP-Referer` / `X-Title` — app attribution headers
 
 use std::borrow::Cow;
 
@@ -16,7 +17,13 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
     LlmCallConfig, OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
 };
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
+
+const ATTRIBUTION_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
+const ATTRIBUTION_TITLE_METADATA_KEY: &str = "openrouter.x_title";
+const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");
+const X_TITLE_HEADER: HeaderName = HeaderName::from_static("x-title");
 
 /// Layers OpenRouter-specific fields onto an Open Responses request body.
 #[derive(Debug, Default, Clone)]
@@ -35,6 +42,7 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         if let Some(session_id) = config.metadata.get("session_id") {
             obj.insert("session_id".to_string(), json!(session_id));
         }
+        remove_attribution_metadata(obj);
 
         apply_private_reasoning_policy(obj, config);
 
@@ -70,6 +78,56 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         Ok(())
     }
+
+    fn decorate_headers(&self, headers: &mut HeaderMap, config: &LlmCallConfig) -> Result<()> {
+        insert_metadata_header(
+            headers,
+            HTTP_REFERER_HEADER,
+            config.metadata.get(ATTRIBUTION_REFERER_METADATA_KEY),
+        )?;
+        insert_metadata_header(
+            headers,
+            X_TITLE_HEADER,
+            config.metadata.get(ATTRIBUTION_TITLE_METADATA_KEY),
+        )?;
+
+        Ok(())
+    }
+}
+
+fn remove_attribution_metadata(obj: &mut serde_json::Map<String, Value>) {
+    let Some(Value::Object(metadata)) = obj.get_mut("metadata") else {
+        return;
+    };
+
+    metadata.remove(ATTRIBUTION_REFERER_METADATA_KEY);
+    metadata.remove(ATTRIBUTION_TITLE_METADATA_KEY);
+    if metadata.is_empty() {
+        obj.remove("metadata");
+    }
+}
+
+fn insert_metadata_header(
+    headers: &mut HeaderMap,
+    name: HeaderName,
+    value: Option<&String>,
+) -> Result<()> {
+    let Some(value) = value
+        .map(String::as_str)
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let header_value = HeaderValue::from_str(value).map_err(|e| {
+        AgentLoopError::llm(format!(
+            "Invalid OpenRouter attribution header '{}': {}",
+            name, e
+        ))
+    })?;
+    headers.insert(name, header_value);
+    Ok(())
 }
 
 fn apply_private_reasoning_policy(

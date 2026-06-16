@@ -128,6 +128,86 @@ async fn sends_routing_controls_and_session_id() {
 }
 
 #[tokio::test]
+async fn sends_openrouter_attribution_headers_from_metadata() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&server)
+        .await;
+
+    let api_url = format!("{}/v1/responses", server.uri());
+    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+
+    let mut config = base_config("openai/gpt-5-mini");
+    config.metadata.insert(
+        "openrouter.http_referer".to_string(),
+        "https://app.example".to_string(),
+    );
+    config
+        .metadata
+        .insert("openrouter.x_title".to_string(), "Example App".to_string());
+
+    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let _ = driver.chat_completion_stream(messages, &config).await;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock server recorded requests");
+    assert_eq!(requests.len(), 1, "exactly one request should be sent");
+    assert_eq!(
+        requests[0]
+            .headers
+            .get("http-referer")
+            .and_then(|v| v.to_str().ok()),
+        Some("https://app.example")
+    );
+    assert_eq!(
+        requests[0]
+            .headers
+            .get("x-title")
+            .and_then(|v| v.to_str().ok()),
+        Some("Example App")
+    );
+    let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+    assert!(
+        body.get("metadata").is_none(),
+        "attribution keys are header-only and should not be mirrored in body metadata"
+    );
+}
+
+#[tokio::test]
+async fn skips_blank_openrouter_attribution_metadata() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(""))
+        .mount(&server)
+        .await;
+
+    let api_url = format!("{}/v1/responses", server.uri());
+    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+
+    let mut config = base_config("openai/gpt-5-mini");
+    config
+        .metadata
+        .insert("openrouter.http_referer".to_string(), "  ".to_string());
+    config
+        .metadata
+        .insert("openrouter.x_title".to_string(), "\t".to_string());
+
+    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let _ = driver.chat_completion_stream(messages, &config).await;
+
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock server recorded requests");
+    assert_eq!(requests.len(), 1, "exactly one request should be sent");
+    assert!(requests[0].headers.get("http-referer").is_none());
+    assert!(requests[0].headers.get("x-title").is_none());
+}
+
+#[tokio::test]
 async fn excludes_reasoning_by_default() {
     let config = base_config("nvidia/nemotron-3-super-120b-a12b:free");
 
