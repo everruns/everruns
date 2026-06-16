@@ -736,9 +736,6 @@ jobs:
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
       API_BASE_URL: http://localhost:9000
       WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
@@ -840,11 +837,11 @@ jobs:
           echo "=== Worker logs ==="
           cat worker.log 2>/dev/null || echo "No worker log"
 
-  # Gated to push events: this job launches the PR-built `everruns-server`
-  # binary with DEFAULT_*_API_KEY in env (which map to the same secrets as
-  # workflow-test), so running it on fork PRs would let attacker-controlled
-  # binary code exfil the keys. PR coverage of the CLI is still provided by
-  # the CLI integration tests under `unit-test` (which run without keys).
+  # Runs the PR-built `everruns-server` + CLI binaries under DEV_MODE (LlmSim),
+  # so no real provider keys are needed or injected. Kept push-gated alongside
+  # `workflow-test` to avoid spending the heavy binary e2e on every PR; PR
+  # coverage of the CLI is provided by the CLI integration tests under
+  # `unit-test`.
   cli-e2e-test:
     name: CLI E2E Tests
     runs-on: ubuntu-latest
@@ -859,9 +856,6 @@ jobs:
       AUTH_MODE: none
       API_PREFIX: ""
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      DEFAULT_OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      DEFAULT_ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      DEFAULT_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       EVERRUNS_API_KEY: "cli-e2e-test-key"
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
