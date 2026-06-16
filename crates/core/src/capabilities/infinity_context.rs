@@ -95,7 +95,7 @@ impl Capability for InfinityContextCapability {
                 "keep_first_messages": {
                     "type": "integer",
                     "title": "Anchored first messages",
-                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages.",
+                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages. The anchor is fetched as a head+tail load, so it is guaranteed even for histories far longer than the candidate load window — any value is meaningful, independent of max_recent_messages.",
                     "minimum": 0,
                     "default": default_keep_first_messages()
                 }
