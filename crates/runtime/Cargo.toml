@@ -12,8 +12,10 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-runtime"
-description = "Public in-process runtime for embedding Everruns harnesses"
+description = "In-process Rust runtime for building local agentic systems — coding agents, personal agents, and more — by embedding Everruns agent harnesses"
 readme = "README.md"
+keywords = ["agent", "agentic", "coding-agent", "llm", "ai"]
+categories = ["development-tools", "asynchronous"]
 
 [features]
 default = []

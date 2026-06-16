@@ -8,8 +8,10 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-mcp"
-description = "Transport-agnostic MCP (Model Context Protocol) client shared by the Everruns runtime, worker, and server."
+description = "Transport-agnostic MCP (Model Context Protocol) client for connecting tools to Everruns agents"
 readme = "README.md"
+keywords = ["mcp", "agent", "llm", "ai", "tools"]
+categories = ["api-bindings", "asynchronous"]
 
 [features]
 default = []
