@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
+use crate::storage::blob_store::{image_data_key, image_thumbnail_key};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -251,7 +252,84 @@ impl Database {
     // Images
     // ============================================
 
+    /// Fill image `data`/`thumbnail_data` from the object store when offloaded
+    /// (specs/object-storage.md). No-op for the inline backend.
+    async fn materialize_image_data(&self, row: &mut ImageRow) -> Result<()> {
+        let Some(blob) = self.blob_store() else {
+            return Ok(());
+        };
+        let keys: Option<(String, Option<String>)> =
+            sqlx::query_as("SELECT data_key, thumbnail_key FROM image_blobs WHERE image_id = $1")
+                .bind(row.id.uuid())
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some((data_key, thumbnail_key)) = keys {
+            row.data = blob.get(&data_key).await?.unwrap_or_default();
+            if let Some(tk) = thumbnail_key {
+                row.thumbnail_data = blob.get(&tk).await?;
+            }
+        }
+        Ok(())
+    }
+
     pub async fn create_image(&self, org_id: i64, input: CreateImageRow) -> Result<ImageRow> {
+        // Offload path: store image (and thumbnail) bytes in the object store and
+        // keep the `images.data` column empty.
+        if let Some(blob) = self.blob_store() {
+            let image_id = Uuid::now_v7();
+            let data_key = image_data_key(org_id, image_id);
+            let thumb_key = input
+                .thumbnail_data
+                .as_ref()
+                .map(|_| image_thumbnail_key(org_id, image_id));
+
+            blob.put(&data_key, input.data.clone()).await?;
+            if let (Some(tk), Some(td)) = (&thumb_key, &input.thumbnail_data) {
+                blob.put(tk, td.clone()).await?;
+            }
+
+            let mut row = match sqlx::query_as::<_, ImageRow>(
+                r#"
+                INSERT INTO images (id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
+                VALUES ($1, $2, $3, $4, ''::bytea, NULL, $5, $6)
+                RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+                "#,
+            )
+            .bind(image_id)
+            .bind(org_id)
+            .bind(&input.filename)
+            .bind(&input.content_type)
+            .bind(input.size_bytes)
+            .bind(&input.thumbnail_content_type)
+            .bind(&input.metadata)
+            .fetch_one(&self.pool)
+            .await
+            {
+                Ok(row) => row,
+                Err(e) => {
+                    let _ = blob.delete(&data_key).await;
+                    if let Some(tk) = &thumb_key {
+                        let _ = blob.delete(tk).await;
+                    }
+                    return Err(e.into());
+                }
+            };
+
+            sqlx::query(
+                "INSERT INTO image_blobs (image_id, data_key, thumbnail_key) VALUES ($1, $2, $3)",
+            )
+            .bind(image_id)
+            .bind(&data_key)
+            .bind(&thumb_key)
+            .execute(&self.pool)
+            .await?;
+
+            row.data = input.data;
+            row.thumbnail_data = input.thumbnail_data;
+            return Ok(row);
+        }
+
+        // Inline path.
         let row = sqlx::query_as::<_, ImageRow>(
             r#"
             INSERT INTO images (org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
@@ -274,7 +352,7 @@ impl Database {
     }
 
     pub async fn get_image(&self, org_id: i64, id: Uuid) -> Result<Option<ImageRow>> {
-        let row = sqlx::query_as::<_, ImageRow>(
+        let mut row = sqlx::query_as::<_, ImageRow>(
             r#"
             SELECT id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
             FROM images
@@ -286,6 +364,9 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
+        if let Some(row) = row.as_mut() {
+            self.materialize_image_data(row).await?;
+        }
         Ok(row)
     }
 
@@ -306,6 +387,21 @@ impl Database {
     }
 
     pub async fn delete_image(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        // Remove backing objects first (cascade clears the sidecar row).
+        if let Some(blob) = self.blob_store()
+            && let Some((data_key, thumbnail_key)) = sqlx::query_as::<_, (String, Option<String>)>(
+                "SELECT data_key, thumbnail_key FROM image_blobs WHERE image_id = $1",
+            )
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+        {
+            blob.delete(&data_key).await?;
+            if let Some(tk) = thumbnail_key {
+                blob.delete(&tk).await?;
+            }
+        }
+
         let result = sqlx::query("DELETE FROM images WHERE org_id = $1 AND id = $2")
             .bind(org_id)
             .bind(id)

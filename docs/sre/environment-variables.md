@@ -211,6 +211,43 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 - If `DATABASE_URL` or `DATABASE_UNPOOLED_URL` appears to point at a pooled/proxied endpoint, startup now fails fast with guidance to set a direct listener URL.
 - Ordinary query traffic still uses `DATABASE_URL`.
 
+## Object Storage (S3-compatible blob backend)
+
+Optional backend that offloads workspace-file and image *content bytes* to an
+S3-compatible object store while keeping all metadata in PostgreSQL. Everruns
+remains the proxy for every read/write — no presigned URLs are handed to
+clients or workers. See [specs/object-storage.md](../../specs/object-storage.md).
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `STORAGE_BLOB_BACKEND` | No | `db` | `db` keeps bytes inline in PostgreSQL (current behavior); `s3` offloads to object storage. |
+| `STORAGE_S3_BUCKET` | When `s3` | — | Target bucket name. |
+| `STORAGE_S3_REGION` | No | — | Bucket region / region label. |
+| `STORAGE_S3_ENDPOINT` | No | — | Custom endpoint for S3-compatible stores (MinIO, R2). Unset for AWS S3. |
+| `STORAGE_S3_ACCESS_KEY_ID` | No | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | No | — | Static secret key. |
+| `STORAGE_S3_PREFIX` | No | (empty) | Key prefix isolating multiple deployments within one bucket. |
+| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local MinIO only). |
+| `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by MinIO; harmless on AWS S3). |
+
+**Example (local MinIO via `just minio`):**
+
+```bash
+STORAGE_BLOB_BACKEND=s3
+STORAGE_S3_BUCKET=everruns-dev
+STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
+STORAGE_S3_ACCESS_KEY_ID=minioadmin
+STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+STORAGE_S3_ALLOW_HTTP=true
+```
+
+**Notes:**
+- The backend is selected per process at startup; a deployment runs entirely on
+  `db` or `s3`. Enabling `s3` offloads newly written content; pre-existing inline
+  content is still served transparently.
+- Tenant isolation is by object key (`workspaces/{workspace_id}/…`,
+  `images/org-{org_id}/…`) plus the existing org/workspace authorization layer.
+
 ## NATS_URL
 
 Connection URL for NATS with JetStream, used for push-based event delivery and task notifications.

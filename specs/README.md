@@ -57,6 +57,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
 - `specs/workspace.md` - Session workspace (file surface + tables)
 - `specs/file-store.md` - Pluggable `SessionFileStore` backends
+- `specs/object-storage.md` - Optional S3-compatible blob backend for file/image content
 - `specs/session-sqldb.md` - Session-scoped SQL databases
 - `specs/session-export.md` - Session export to JSONL
 - `specs/knowledge-bases.md` - Curated organization knowledge

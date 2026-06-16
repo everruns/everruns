@@ -350,6 +350,12 @@ impl ServerAppBuilder {
                 .context("Failed to connect to database")?;
             tracing::info!("Connected to PostgreSQL database");
 
+            // Optional S3-compatible blob backend for file/image content offload
+            // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
+            let blob_store = crate::storage::blob_store::blob_store_from_env()
+                .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
+            let backend = backend.with_blob_store(blob_store);
+
             if !self.config.no_migrations {
                 tracing::info!("Running database migrations...");
                 let pool = backend.pool().expect("PostgreSQL backend should have pool");

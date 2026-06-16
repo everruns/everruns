@@ -11,6 +11,7 @@
 
 pub mod agent_store;
 pub mod backend;
+pub mod blob_store;
 pub mod connection_resolver;
 pub mod durable_tool_results;
 pub mod encryption;
