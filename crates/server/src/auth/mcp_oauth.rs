@@ -639,12 +639,13 @@ fn render_authorize_confirm_page(
     let org_role = org
         .map(|org| org.role.to_string())
         .unwrap_or_else(|| "owner".to_string());
+    let normalized_scope = normalize_scope(&query.scope);
     let cancel_url = build_oauth_redirect_url(
         &query.redirect_uri,
         &[("error", "access_denied"), ("state", &query.state)],
     )
     .unwrap_or_else(|_| "#".to_string());
-    let scope_chips = render_scope_chips(&query.scope);
+    let scope_chips = render_scope_chips(&normalized_scope);
 
     let stylesheet = r#"
 :root {
@@ -900,21 +901,24 @@ button {
         code_challenge = escape_html(&query.code_challenge),
         code_challenge_method = escape_html(&query.code_challenge_method),
         state = escape_html(&query.state),
-        scope = escape_html(&query.scope),
+        scope = escape_html(&normalized_scope),
         csrf_token = escape_html(csrf_token),
         cancel_url = escape_html(&cancel_url),
     )
 }
 
-fn render_scope_chips(scope: &str) -> String {
-    let scopes: Vec<&str> = scope.split_whitespace().collect();
-    let scopes = if scopes.is_empty() {
-        vec![default_scope()]
+fn normalize_scope(scope: &str) -> String {
+    let normalized = scope.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        default_scope()
     } else {
-        scopes.into_iter().map(str::to_string).collect()
-    };
-    scopes
-        .iter()
+        normalized
+    }
+}
+
+fn render_scope_chips(scope: &str) -> String {
+    scope
+        .split_whitespace()
         .map(|scope| format!(r#"<span class="scope">{}</span>"#, escape_html(scope)))
         .collect::<Vec<_>>()
         .join("")
@@ -1490,5 +1494,17 @@ mod tests {
         assert!(html.contains("custom&lt;scope&gt;"));
         assert!(html.contains("csrf&amp;token"));
         assert!(html.contains("next=%3Cbad%3E&amp;ok=1&amp;error=access_denied&amp;state=a%26b"));
+    }
+
+    #[test]
+    fn test_authorize_confirm_page_normalizes_empty_scope() {
+        let mut query = authorize_query();
+        query.scope = " \t ".to_string();
+
+        let html =
+            render_authorize_confirm_page(&query, "ChatGPT", &auth_user_for_render(), "csrf");
+
+        assert!(html.contains(r#"<span class="scope">mcp</span>"#));
+        assert!(html.contains(r#"name="scope" value="mcp""#));
     }
 }
