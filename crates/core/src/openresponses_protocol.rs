@@ -586,8 +586,8 @@ impl OpenResponsesProtocolChatDriver {
 
         for msg in messages {
             if msg.role == LlmMessageRole::System {
-                // Folded above into `instructions`; never emit a System/developer
-                // item into the input array.
+                // Folded above into `instructions`; never emit the System message
+                // as a separate input item.
             } else if msg.role == LlmMessageRole::Assistant {
                 // For assistant messages, emit Reasoning item BEFORE message content if present
                 // This is required for o-series and GPT-5 models with extended thinking
