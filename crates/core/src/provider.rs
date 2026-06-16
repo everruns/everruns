@@ -36,6 +36,10 @@ pub enum DriverId {
     LlmSim,
     /// AWS Bedrock Runtime (ConverseStream API)
     Bedrock,
+    /// Microsoft MAI models (e.g. MAI-Code-1-Flash) served via Azure AI Foundry.
+    /// Uses an OpenAI-compatible Chat Completions API and supports either an
+    /// Azure AI Foundry API key or Microsoft Entra ID (OAuth) authentication.
+    Mai,
     /// Embedder-defined provider not compiled into everruns-core. The inner id
     /// is the canonical wire string (e.g. `"openai-codex"`).
     External(std::sync::Arc<str>),
@@ -73,6 +77,7 @@ impl DriverId {
             DriverId::Gemini => "gemini",
             DriverId::LlmSim => "llmsim",
             DriverId::Bedrock => "bedrock",
+            DriverId::Mai => "mai",
             DriverId::External(id) => id.as_ref(),
         }
     }
@@ -95,6 +100,7 @@ impl std::str::FromStr for DriverId {
             "gemini" => DriverId::Gemini,
             "llmsim" => DriverId::LlmSim,
             "bedrock" => DriverId::Bedrock,
+            "mai" => DriverId::Mai,
             _ => DriverId::External(std::sync::Arc::from(lower.as_str())),
         })
     }
@@ -132,7 +138,7 @@ impl utoipa::PartialSchema for DriverId {
             ))
             .description(Some(
                 "LLM provider type. Built-in: openai, openrouter, azure_openai, \
-                 openai_completions, anthropic, gemini, llmsim, bedrock. \
+                 openai_completions, anthropic, gemini, llmsim, bedrock, mai. \
                  Any other string is treated as an embedder-defined external provider.",
             ))
             .build()

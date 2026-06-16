@@ -1,0 +1,47 @@
+# Microsoft MAI Provider Implementation
+# Decision: Microsoft MAI models (e.g. MAI-Code-1-Flash) are served via Azure AI
+# Foundry behind an OpenAI-compatible Chat Completions API. This crate wraps the
+# core Chat Completions protocol driver and adds a pluggable, OAuth-capable auth
+# layer (Azure AI Foundry API key or Microsoft Entra ID client-credentials).
+
+[package]
+name = "everruns-mai"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-mai"
+description = "Microsoft MAI (Azure AI Foundry) provider implementation for Everruns"
+readme = "README.md"
+
+[dependencies]
+async-trait.workspace = true
+
+# Async runtime (token cache mutex lives behind tokio::sync)
+tokio = { workspace = true, features = ["sync", "time"] }
+
+# HTTP client (Entra ID token minting)
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Date/time (OAuth token expiry tracking)
+chrono.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-core.workspace = true
+
+[dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures driver/token requests;
+# futures drains the chat stream.
+tokio = { workspace = true, features = ["full", "test-util"] }
+futures.workspace = true
+wiremock = "0.6"

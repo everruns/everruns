@@ -47,6 +47,27 @@ pub(crate) fn apply_openai_api_auth(
     }
 }
 
+/// Pluggable authentication-header provider for OpenAI-compatible drivers.
+///
+/// When set on an [`OpenAIProtocolChatDriver`] via
+/// [`OpenAIProtocolChatDriver::with_auth_provider`], the driver calls
+/// [`AuthHeaderProvider::auth_header`] before each request and applies the
+/// returned `(name, value)` header instead of the default `api-key` / bearer
+/// logic keyed on the host.
+///
+/// This lets a driver authenticate with short-lived, refreshable tokens —
+/// e.g. Microsoft Entra ID (OAuth) bearer tokens for Azure AI Foundry — without
+/// the generic protocol driver having to know the auth scheme. The provider is
+/// responsible for caching and refreshing tokens; `auth_header` is awaited once
+/// per HTTP attempt, so it should be cheap on the cached path.
+#[async_trait]
+pub trait AuthHeaderProvider: Send + Sync {
+    /// Return the `(header_name, header_value)` pair to apply for
+    /// authentication, refreshing any cached credential as needed. Returning
+    /// `Err` aborts the request before it is sent.
+    async fn auth_header(&self) -> Result<(String, String)>;
+}
+
 pub fn is_azure_openai_api_url(api_url: &str) -> bool {
     Url::parse(api_url)
         .ok()
@@ -168,6 +189,9 @@ pub struct OpenAIProtocolChatDriver {
     api_url: String,
     /// Retry configuration for rate limit errors
     retry_config: LlmRetryConfig,
+    /// Optional pluggable auth-header provider. When set, it overrides the
+    /// default `api-key` / bearer auth (used for OAuth bearer tokens).
+    auth_provider: Option<Arc<dyn AuthHeaderProvider>>,
 }
 
 impl OpenAIProtocolChatDriver {
@@ -178,6 +202,7 @@ impl OpenAIProtocolChatDriver {
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
             retry_config: LlmRetryConfig::default(),
+            auth_provider: None,
         }
     }
 
@@ -195,12 +220,20 @@ impl OpenAIProtocolChatDriver {
             api_key: api_key.into(),
             api_url: api_url.into(),
             retry_config: LlmRetryConfig::default(),
+            auth_provider: None,
         }
     }
 
     /// Configure retry behavior for rate limit errors
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
+        self
+    }
+
+    /// Set a pluggable [`AuthHeaderProvider`] that overrides the default
+    /// `api-key` / bearer auth. Used for OAuth bearer tokens (e.g. Entra ID).
+    pub fn with_auth_provider(mut self, provider: Arc<dyn AuthHeaderProvider>) -> Self {
+        self.auth_provider = Some(provider);
         self
     }
 
@@ -385,16 +418,23 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = apply_openai_api_auth(
-                self.client.post(&self.api_url),
-                &self.api_url,
-                &self.api_key,
-            )
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            // Apply auth: a pluggable provider (e.g. OAuth bearer token) takes
+            // precedence over the default host-keyed `api-key` / bearer logic.
+            let request_builder = self.client.post(&self.api_url);
+            let request_builder = match &self.auth_provider {
+                Some(provider) => {
+                    let (name, value) = provider.auth_header().await?;
+                    request_builder.header(name, value)
+                }
+                None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
+            };
+
+            let response = request_builder
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
 
             let status = response.status();
 

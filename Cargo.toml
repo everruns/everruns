@@ -11,6 +11,7 @@ members = [
     "crates/runtime",
     "crates/openai",
     "crates/openrouter",
+    "crates/mai",
     "crates/anthropic",
     "crates/gemini",
     "crates/internal-protocol",

@@ -57,7 +57,7 @@ graph TD
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
-3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `LlmSim` (testing).
+3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `LlmSim` (testing).
 
 ### Error Types (Contract)
 
@@ -284,6 +284,7 @@ sequenceDiagram
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
 | Gemini driver | `crates/gemini/src/driver.rs` |
 | Bedrock driver | `crates/bedrock/src/driver.rs` |
+| Microsoft MAI driver | `crates/mai/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -308,6 +309,43 @@ The OpenAI crate provides three driver implementations:
 The Responses drivers share the same base URL handling and can work with
 OpenAI-compatible endpoints while keeping provider-specific request features
 gated by the resolved provider type.
+
+## Microsoft MAI Driver (`everruns-mai`)
+
+Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry
+behind an OpenAI-compatible Chat Completions API. The `everruns-mai` crate is a
+standalone, crates.io-publishable provider crate that wraps the core
+`OpenAIProtocolChatDriver` and tags it with `DriverId::Mai`. Model ids resolve
+to the Microsoft-vendor profiles in `crates/core/src/model_profiles.rs` (the
+`MICROSOFT_MAI` surface). Model discovery is intentionally `None`: Foundry
+deployments are resource-specific and do not expose a reliable public `/models`
+catalog.
+
+### Pluggable Authentication (`AuthHeaderProvider`)
+
+Authentication is the reason MAI gets its own crate rather than reusing the
+Azure OpenAI driver: MAI deployments accept either an Azure AI Foundry **API
+key** (`api-key` header) or a Microsoft **Entra ID (OAuth)** bearer token. The
+core Chat Completions driver exposes a generic, async
+`AuthHeaderProvider` hook (`OpenAIProtocolChatDriver::with_auth_provider`); when
+set, it overrides the default host-keyed `api-key`/bearer logic and is awaited
+once per HTTP attempt so providers can refresh short-lived tokens transparently.
+
+The MAI crate ships two providers built on that hook:
+
+- **API key** — emits `("api-key", <key>)`.
+- **Entra ID OAuth** — client-credentials grant against
+  `{authority}/{tenant_id}/oauth2/v2.0/token` (default scope
+  `https://cognitiveservices.azure.com/.default`). Minted bearer tokens are
+  cached and refreshed ~120s before expiry.
+
+`MaiAuth::from_driver_config` selects the scheme: an Entra OAuth block in
+`ProviderMetadata.extra` (`tenant_id`, `client_id`, `client_secret`, optional
+`scope`/`authority`) wins; otherwise the configured `api_key` is used; neither
+present is a fail-closed configuration error. Because OAuth needs no `api_key`,
+`DriverId::Mai` is exempt from the registry's mandatory-api-key check (like
+`External`). New schemes (managed identity, workload identity federation) are
+additive: implement `AuthHeaderProvider` without touching the driver.
 
 ### Model Discovery and Capability Profiles
 

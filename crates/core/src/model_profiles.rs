@@ -227,6 +227,16 @@ const OPENAI_COMPAT: &[DriverId] = &[
 const ANTHROPIC: &[DriverId] = &[DriverId::Anthropic];
 const GEMINI: &[DriverId] = &[DriverId::Gemini];
 const LLMSIM: &[DriverId] = &[DriverId::LlmSim];
+// Microsoft MAI models are served first-party by the dedicated `Mai` driver
+// (Azure AI Foundry) and are also reachable through OpenAI-compatible gateways
+// (e.g. OpenRouter). They are never offered through the Azure OpenAI driver,
+// which targets OpenAI deployments rather than MAI deployments.
+const MICROSOFT_MAI: &[DriverId] = &[
+    DriverId::Mai,
+    DriverId::OpenAI,
+    DriverId::OpenRouter,
+    DriverId::OpenAICompletions,
+];
 
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
@@ -323,7 +333,12 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(
         &["mai-1-preview", "microsoft/mai-1-preview"],
         ModelVendor::Microsoft,
-        OPENAI_COMPAT,
+        MICROSOFT_MAI,
+    ),
+    md(
+        &["mai-code-1-flash", "microsoft/mai-code-1-flash"],
+        ModelVendor::Microsoft,
+        MICROSOFT_MAI,
     ),
     md(
         &["minimax-m3", "minimax/minimax-m3"],
@@ -1933,6 +1948,39 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             temperature: true,
             knowledge: None,
             tool_call: false,
+            structured_output: false,
+            open_weights: false,
+            cost: None,
+            limits: None,
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Microsoft MAI-Code-1-Flash — Microsoft's in-house, latency-optimized
+        // coding model served via Azure AI Foundry (and OpenAI-compatible
+        // gateways). It is a fast, tool-calling code model rather than a graded
+        // reasoning model. Microsoft has not published pricing, context window,
+        // or knowledge cutoff, so cost/limits are left unset rather than guessed
+        // (same policy as MAI-1-preview).
+        "mai-code-1-flash" | "microsoft/mai-code-1-flash" => Some(ModelProfile {
+            name: "MAI-Code-1-Flash".into(),
+            family: "mai-code-1".into(),
+            description: Some(
+                "Microsoft's latency-optimized in-house coding model (Azure AI Foundry).".into(),
+            ),
+            release_date: None,
+            last_updated: None,
+            attachment: false,
+            reasoning: false,
+            temperature: true,
+            knowledge: None,
+            tool_call: true,
             structured_output: false,
             open_weights: false,
             cost: None,
