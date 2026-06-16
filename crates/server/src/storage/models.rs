@@ -2365,6 +2365,19 @@ pub struct CreateEvalRunRow {
     pub triggered_by: String,
 }
 
+/// Typed failures from `create_eval_run_with_case_results`. Returned (boxed in
+/// `anyhow`) so the service layer can `downcast_ref` to map them to HTTP 400
+/// instead of relying on brittle error-message substring matching.
+#[derive(Debug, thiserror::Error)]
+pub enum CreateEvalRunError {
+    #[error("Too many concurrent eval runs: org has {active} active runs (limit {limit})")]
+    TooManyConcurrentRuns { active: i64, limit: usize },
+    #[error("Eval run too large: {cases} cases exceeds the per-run limit of {limit}")]
+    TooManyCases { cases: usize, limit: usize },
+    #[error("no eval target configured — set a target on the eval, case, or run")]
+    NoTarget,
+}
+
 /// Eval case result row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct EvalCaseResultRow {
