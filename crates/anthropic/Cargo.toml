@@ -12,8 +12,10 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-anthropic"
-description = "Anthropic Claude provider implementation for Everruns"
+description = "Anthropic (Claude) provider for Everruns agents"
 readme = "README.md"
+keywords = ["agent", "llm", "ai", "anthropic", "claude"]
+categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
 # Core dependencies

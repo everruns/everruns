@@ -3,9 +3,15 @@ name = "everruns-cli"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Command-line interface for Everruns"
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-cli"
+description = "Command-line interface for Everruns — run and manage agents from your terminal"
+keywords = ["everruns", "agent", "agentic", "cli", "ai"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "everruns"

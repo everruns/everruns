@@ -12,8 +12,10 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-openai"
-description = "OpenAI provider implementation for Everruns"
+description = "OpenAI (GPT) provider for Everruns agents"
 readme = "README.md"
+keywords = ["agent", "llm", "ai", "openai", "gpt"]
+categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
 # Core dependencies

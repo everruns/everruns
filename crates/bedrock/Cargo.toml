@@ -6,6 +6,8 @@
 [package]
 name = "everruns-bedrock"
 readme = "README.md"
+keywords = ["agent", "llm", "ai", "bedrock", "aws"]
+categories = ["api-bindings", "asynchronous"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,7 +16,7 @@ authors.workspace = true
 homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-bedrock"
-description = "AWS Bedrock Runtime provider implementation for Everruns"
+description = "AWS Bedrock provider for Everruns agents"
 
 [dependencies]
 # Core dependencies

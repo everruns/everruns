@@ -12,6 +12,8 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 description = "Cursor Cloud Agents integration for Everruns"
+keywords = ["everruns", "cursor", "agents", "ai"]
+categories = ["api-bindings", "development-tools"]
 documentation = "https://docs.rs/everruns-integrations-cursor"
 
 [dependencies]

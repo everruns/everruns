@@ -5,6 +5,8 @@
 [package]
 name = "everruns-gemini"
 readme = "README.md"
+keywords = ["agent", "llm", "ai", "gemini", "google"]
+categories = ["api-bindings", "asynchronous"]
 version.workspace = true
 rust-version.workspace = true
 homepage.workspace = true
@@ -12,7 +14,7 @@ repository.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Google Gemini provider implementation for Everruns"
+description = "Google Gemini provider for Everruns agents"
 documentation = "https://docs.rs/everruns-gemini"
 
 [dependencies]
