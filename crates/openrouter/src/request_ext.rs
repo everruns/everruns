@@ -15,13 +15,12 @@ use std::borrow::Cow;
 use everruns_core::OpenResponsesRequestExtension;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::llm_driver_registry::{
-    LlmCallConfig, OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
+    LlmCallConfig, OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
+    OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
 };
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
 
-const ATTRIBUTION_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
-const ATTRIBUTION_TITLE_METADATA_KEY: &str = "openrouter.x_title";
 const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");
 const X_TITLE_HEADER: HeaderName = HeaderName::from_static("x-title");
 
@@ -83,12 +82,12 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
         insert_metadata_header(
             headers,
             HTTP_REFERER_HEADER,
-            config.metadata.get(ATTRIBUTION_REFERER_METADATA_KEY),
+            config.metadata.get(OPENROUTER_HTTP_REFERER_METADATA_KEY),
         )?;
         insert_metadata_header(
             headers,
             X_TITLE_HEADER,
-            config.metadata.get(ATTRIBUTION_TITLE_METADATA_KEY),
+            config.metadata.get(OPENROUTER_X_TITLE_METADATA_KEY),
         )?;
 
         Ok(())
@@ -100,8 +99,8 @@ fn remove_attribution_metadata(obj: &mut serde_json::Map<String, Value>) {
         return;
     };
 
-    metadata.remove(ATTRIBUTION_REFERER_METADATA_KEY);
-    metadata.remove(ATTRIBUTION_TITLE_METADATA_KEY);
+    metadata.remove(OPENROUTER_HTTP_REFERER_METADATA_KEY);
+    metadata.remove(OPENROUTER_X_TITLE_METADATA_KEY);
     if metadata.is_empty() {
         obj.remove("metadata");
     }

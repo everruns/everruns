@@ -146,6 +146,9 @@ async fn sends_openrouter_attribution_headers_from_metadata() {
     config
         .metadata
         .insert("openrouter.x_title".to_string(), "Example App".to_string());
+    config
+        .metadata
+        .insert("custom_key".to_string(), "custom_value".to_string());
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
     let _ = driver.chat_completion_stream(messages, &config).await;
@@ -170,9 +173,14 @@ async fn sends_openrouter_attribution_headers_from_metadata() {
         Some("Example App")
     );
     let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+    let metadata = body["metadata"]
+        .as_object()
+        .expect("metadata object remains");
+    assert_eq!(metadata.get("custom_key"), Some(&json!("custom_value")));
     assert!(
-        body.get("metadata").is_none(),
-        "attribution keys are header-only and should not be mirrored in body metadata"
+        !metadata.contains_key("openrouter.http_referer")
+            && !metadata.contains_key("openrouter.x_title"),
+        "attribution keys are header-only and should not be mirrored in body metadata: {metadata:?}"
     );
 }
 

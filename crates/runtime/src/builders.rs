@@ -5,6 +5,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+pub use everruns_core::llm_driver_registry::{
+    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
+};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentId, AgentStatus, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
@@ -12,11 +15,6 @@ use everruns_core::{
     ToolDefinition, plugin_capability_id,
 };
 use uuid::Uuid;
-
-/// Harness metadata key consumed by the OpenRouter driver as `HTTP-Referer`.
-pub const OPENROUTER_HTTP_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
-/// Harness metadata key consumed by the OpenRouter driver as `X-Title`.
-pub const OPENROUTER_X_TITLE_METADATA_KEY: &str = "openrouter.x_title";
 
 /// Builds a [`Harness`] with runtime-friendly defaults.
 ///
