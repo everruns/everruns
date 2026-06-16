@@ -987,6 +987,11 @@ impl OpenRouterPluginConfig {
     }
 }
 
+/// Metadata key consumed by the OpenRouter driver as `HTTP-Referer`.
+pub const OPENROUTER_HTTP_REFERER_METADATA_KEY: &str = "openrouter.http_referer";
+/// Metadata key consumed by the OpenRouter driver as `X-Title`.
+pub const OPENROUTER_X_TITLE_METADATA_KEY: &str = "openrouter.x_title";
+
 /// Configuration for an LLM call
 #[derive(Debug, Clone)]
 pub struct LlmCallConfig {

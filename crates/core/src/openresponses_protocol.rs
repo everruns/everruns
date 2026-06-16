@@ -22,7 +22,7 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::Client;
+use reqwest::{Client, header::HeaderMap};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -77,16 +77,20 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// let driver = OpenResponsesProtocolChatDriver::new("your-api-key")
 ///     .with_retry_config(LlmRetryConfig::aggressive());
 /// ```
-/// Hook for provider-specific augmentation of an Open Responses request body.
+/// Hook for provider-specific augmentation of an Open Responses request.
 ///
 /// The Open Responses request shape this driver builds is vendor-neutral.
 /// Providers reached through it (e.g. OpenRouter) layer extra top-level fields
-/// onto the outgoing JSON via this seam, so the core driver stays free of
-/// provider branching. `decorate` runs once per request, after the base body is
-/// serialized and before it is sent; it may mutate `body` in place and may
-/// return an error to abort the request (e.g. failed routing validation).
+/// onto the outgoing JSON or HTTP headers via this seam, so the core driver
+/// stays free of provider branching. `decorate` and `decorate_headers` run once
+/// per request, after the base body is serialized and before it is sent; either
+/// may return an error to abort the request (e.g. failed routing validation).
 pub trait OpenResponsesRequestExtension: Send + Sync {
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
+
+    fn decorate_headers(&self, _headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Clone)]
@@ -854,11 +858,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         }
 
         // Serialize the vendor-neutral request, then let any provider-specific
-        // extension (e.g. OpenRouter) layer extra top-level fields onto the body.
+        // extension (e.g. OpenRouter) layer extra fields and headers onto it.
         let mut request_body = serde_json::to_value(&request)
             .map_err(|e| AgentLoopError::llm(format!("Failed to serialize request: {}", e)))?;
         if let Some(extension) = &self.request_extension {
             extension.decorate(&mut request_body, config)?;
+        }
+        let mut extension_headers = HeaderMap::new();
+        if let Some(extension) = &self.request_extension {
+            extension.decorate_headers(&mut extension_headers, config)?;
         }
 
         // Retry loop for rate limit (429) and transient errors
@@ -866,16 +874,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response = apply_openai_api_auth(
+            let mut request_builder = apply_openai_api_auth(
                 self.client.post(&self.api_url),
                 &self.api_url,
                 &self.api_key,
             )
-            .header("Content-Type", "application/json")
-            .json(&request_body)
-            .send()
-            .await
-            .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            .header("Content-Type", "application/json");
+            if !extension_headers.is_empty() {
+                request_builder = request_builder.headers(extension_headers.clone());
+            }
+
+            let response = request_builder
+                .json(&request_body)
+                .send()
+                .await
+                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
 
             let status = response.status();
 

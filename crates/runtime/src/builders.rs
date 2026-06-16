@@ -5,6 +5,9 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
+pub use everruns_core::llm_driver_registry::{
+    OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
+};
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentId, AgentStatus, DEFAULT_ORG_PUBLIC_ID, Harness, HarnessId,
@@ -165,6 +168,24 @@ impl HarnessBuilder {
     {
         self.embedder_metadata
             .extend(entries.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self
+    }
+
+    /// Set OpenRouter attribution headers for LLM calls made by this harness.
+    ///
+    /// The values flow through harness embedder metadata and are sent by the
+    /// OpenRouter driver as `HTTP-Referer` and `X-Title`.
+    pub fn openrouter_attribution(
+        mut self,
+        http_referer: impl Into<String>,
+        title: impl Into<String>,
+    ) -> Self {
+        self.embedder_metadata.insert(
+            OPENROUTER_HTTP_REFERER_METADATA_KEY.to_string(),
+            http_referer.into(),
+        );
+        self.embedder_metadata
+            .insert(OPENROUTER_X_TITLE_METADATA_KEY.to_string(), title.into());
         self
     }
 
@@ -748,6 +769,15 @@ impl SingleSessionBuilder {
         self
     }
 
+    pub fn openrouter_attribution(
+        mut self,
+        http_referer: impl Into<String>,
+        title: impl Into<String>,
+    ) -> Self {
+        self.harness = self.harness.openrouter_attribution(http_referer, title);
+        self
+    }
+
     pub fn agent_description(mut self, description: impl Into<String>) -> Self {
         self.agent = self.agent.description(description);
         self
@@ -863,5 +893,54 @@ impl SingleSessionBuilder {
             self.session.build(),
             session_id,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn harness_builder_openrouter_attribution_adds_metadata_keys() {
+        let harness = HarnessBuilder::new("app", "prompt")
+            .openrouter_attribution("https://app.example", "Example App")
+            .build();
+
+        assert_eq!(
+            harness
+                .embedder_metadata
+                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
+                .map(String::as_str),
+            Some("https://app.example")
+        );
+        assert_eq!(
+            harness
+                .embedder_metadata
+                .get(OPENROUTER_X_TITLE_METADATA_KEY)
+                .map(String::as_str),
+            Some("Example App")
+        );
+    }
+
+    #[test]
+    fn single_session_builder_openrouter_attribution_configures_harness() {
+        let (harness, _agent, _session, _session_id) = SingleSessionBuilder::default()
+            .openrouter_attribution("https://single.example", "Single App")
+            .build();
+
+        assert_eq!(
+            harness
+                .embedder_metadata
+                .get(OPENROUTER_HTTP_REFERER_METADATA_KEY)
+                .map(String::as_str),
+            Some("https://single.example")
+        );
+        assert_eq!(
+            harness
+                .embedder_metadata
+                .get(OPENROUTER_X_TITLE_METADATA_KEY)
+                .map(String::as_str),
+            Some("Single App")
+        );
     }
 }
