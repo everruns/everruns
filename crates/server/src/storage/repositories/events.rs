@@ -640,7 +640,10 @@ impl Database {
             }
         }
 
-        let latest_window = query.limit.is_some();
+        let keep_head = query.keep_head.unwrap_or(0);
+        // Whether the final SQL emits rows newest-first (needs reversing back to
+        // chronological order after fetch).
+        let mut needs_reverse = false;
         match (query.offset, query.limit) {
             (Some(offset), Some(limit)) => {
                 sql = format!(
@@ -648,12 +651,31 @@ impl Database {
                     offset.max(0),
                     limit.max(0)
                 );
+                needs_reverse = true;
             }
             (Some(offset), None) => {
                 sql.push_str(&format!(" ORDER BY sequence ASC OFFSET {}", offset.max(0)));
             }
+            (None, Some(limit)) if keep_head > 0 => {
+                // Head+tail load: keep the first `keep_head` (the task anchor) plus
+                // the latest `limit` tail, de-duplicated when the windows overlap.
+                // ROW_NUMBER over both orderings selects each end without a UNION
+                // (avoids equality on jsonb columns), already in chronological order.
+                sql = format!(
+                    "WITH base AS ({sql}), ranked AS (\
+                       SELECT *, \
+                         ROW_NUMBER() OVER (ORDER BY sequence ASC)  AS er_rn_asc, \
+                         ROW_NUMBER() OVER (ORDER BY sequence DESC) AS er_rn_desc \
+                       FROM base) \
+                     SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at \
+                     FROM ranked WHERE er_rn_asc <= {} OR er_rn_desc <= {} ORDER BY sequence ASC",
+                    keep_head as i64,
+                    limit.max(0)
+                );
+            }
             (None, Some(limit)) => {
                 sql.push_str(&format!(" ORDER BY sequence DESC LIMIT {}", limit.max(0)));
+                needs_reverse = true;
             }
             (None, None) => {
                 sql.push_str(" ORDER BY sequence ASC");
@@ -687,7 +709,7 @@ impl Database {
             db_query = db_query.bind(include_ids);
         }
         let mut rows = db_query.fetch_all(&self.pool).await?;
-        if latest_window {
+        if needs_reverse {
             rows.reverse();
         }
 

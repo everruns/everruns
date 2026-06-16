@@ -240,6 +240,13 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
             serde_json::from_value(config.clone()).unwrap_or_default();
 
         query.limit = Some(resolve_candidate_load_limit(&config) as i64);
+        // Always fetch the first `keep_first_messages` alongside the latest-N tail
+        // so the task/goal anchor survives even when the history is far longer than
+        // the candidate load window (the tail-only LIMIT would otherwise never
+        // fetch the genuine first message).
+        if config.keep_first_messages > 0 {
+            query.keep_head = Some(config.keep_first_messages);
+        }
         query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
@@ -775,6 +782,31 @@ mod tests {
 
         assert_eq!(query.limit, Some(16));
         assert!(query.prepend_transform.is_some());
+        // Default keep_first_messages (1) is loaded as a head anchor so the task
+        // goal survives even for histories longer than the candidate window.
+        assert_eq!(query.keep_head, Some(1));
+    }
+
+    #[test]
+    fn test_filter_provider_sets_keep_head_from_keep_first_messages() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({"context_budget_tokens": 1_000, "keep_first_messages": 3}),
+        );
+        assert_eq!(query.keep_head, Some(3));
+    }
+
+    #[test]
+    fn test_filter_provider_omits_keep_head_when_zero() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({"context_budget_tokens": 1_000, "keep_first_messages": 0}),
+        );
+        assert_eq!(query.keep_head, None);
     }
 
     #[test]

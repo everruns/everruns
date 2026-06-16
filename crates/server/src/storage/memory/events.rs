@@ -528,9 +528,13 @@ impl InMemoryDatabase {
         }
         if let Some(limit) = query.limit {
             let limit = limit.max(0) as usize;
-            if result.len() > limit {
-                let skip_count = result.len() - limit;
-                result.drain(0..skip_count);
+            // Head+tail window: keep the first `keep_head` (the task anchor) plus
+            // the latest `limit`, dropping the middle. De-dups on overlap. Mirrors
+            // the Postgres backend so both honor `MessageQuery::keep_head`.
+            let keep_head = query.keep_head.unwrap_or(0).min(result.len());
+            if result.len() > keep_head + limit {
+                let drain_end = result.len() - limit;
+                result.drain(keep_head..drain_end);
             }
         }
 

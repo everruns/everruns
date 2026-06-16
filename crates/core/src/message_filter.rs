@@ -263,6 +263,17 @@ pub struct MessageQuery {
     /// Number of messages to skip
     pub offset: Option<i64>,
 
+    /// Number of leading (oldest) messages to always retain as a head anchor,
+    /// in addition to the latest `limit` tail.
+    ///
+    /// `limit` alone fetches a tail-only window (latest N), so for histories
+    /// longer than that window the genuine first message is never loaded and any
+    /// head anchor silently degrades to the oldest *loaded* message. When
+    /// `keep_head` is set, the head and tail are fetched together (de-duplicated
+    /// on overlap), so the original task/goal survives no matter how long the
+    /// history grows. Used by `infinity_context`'s `keep_first_messages`.
+    pub keep_head: Option<usize>,
+
     /// Optional transform to prepend a message based on filter results.
     /// Applied after filtering, receives context about excluded messages.
     pub prepend_transform: Option<Arc<dyn PrependTransform>>,
@@ -276,6 +287,7 @@ impl Default for MessageQuery {
             injections: Vec::new(),
             limit: None,
             offset: None,
+            keep_head: None,
             prepend_transform: None,
         }
     }
@@ -289,6 +301,7 @@ impl std::fmt::Debug for MessageQuery {
             .field("injections", &self.injections)
             .field("limit", &self.limit)
             .field("offset", &self.offset)
+            .field("keep_head", &self.keep_head)
             .field("prepend_transform", &self.prepend_transform.is_some())
             .finish()
     }
@@ -303,6 +316,7 @@ impl MessageQuery {
             injections: Vec::new(),
             limit: None,
             offset: None,
+            keep_head: None,
             prepend_transform: None,
         }
     }
@@ -352,6 +366,13 @@ impl MessageQuery {
     /// Set the number of messages to skip
     pub fn with_offset(mut self, offset: i64) -> Self {
         self.offset = Some(offset);
+        self
+    }
+
+    /// Set the head-anchor size: always retain the first `keep_head` messages in
+    /// addition to the latest `limit` tail. See [`MessageQuery::keep_head`].
+    pub fn with_keep_head(mut self, keep_head: usize) -> Self {
+        self.keep_head = Some(keep_head);
         self
     }
 
@@ -424,6 +445,12 @@ impl MessageQuery {
     /// `limit` means "keep the latest N messages" while preserving chronological
     /// order in the returned slice. This is the prompt-window behavior expected
     /// by long-context capabilities such as `infinity_context`.
+    ///
+    /// When `keep_head` is set, the first `keep_head` messages are additionally
+    /// retained as an anchor: the kept set is `[first keep_head] + [latest limit]`
+    /// with the middle dropped, de-duplicated when the two windows overlap. This
+    /// mirrors the head+tail load performed by the storage backends so the
+    /// original task/goal survives in histories longer than the tail window.
     pub fn apply_window_bounds(&self, messages: &mut Vec<Message>) {
         if let Some(offset) = self.offset {
             let offset = offset.max(0) as usize;
@@ -436,9 +463,13 @@ impl MessageQuery {
 
         if let Some(limit) = self.limit {
             let limit = limit.max(0) as usize;
-            if messages.len() > limit {
-                let skip_count = messages.len() - limit;
-                messages.drain(0..skip_count);
+            let keep_head = self.keep_head.unwrap_or(0).min(messages.len());
+            // Drop the middle `[keep_head, len - limit)`, keeping the head anchor
+            // and the latest `limit`. When the windows overlap (keep_head + limit
+            // >= len) nothing is dropped and no message is duplicated.
+            if messages.len() > keep_head + limit {
+                let drain_end = messages.len() - limit;
+                messages.drain(keep_head..drain_end);
             }
         }
     }
@@ -700,6 +731,71 @@ mod tests {
         assert_eq!(messages.len(), 2);
         assert_eq!(messages[0].text(), Some("middle"));
         assert_eq!(messages[1].text(), Some("newest"));
+    }
+
+    #[test]
+    fn test_apply_window_bounds_keep_head_anchors_first_messages() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        let query = MessageQuery::new(session_id)
+            .with_limit(2)
+            .with_keep_head(1);
+        let mut messages = vec![
+            Message::user("goal"),
+            Message::user("m1"),
+            Message::user("m2"),
+            Message::user("m3"),
+            Message::user("m4"),
+        ];
+
+        query.apply_window_bounds(&mut messages);
+
+        // First (anchor) + latest 2; the middle is dropped.
+        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
+        assert_eq!(texts, vec!["goal", "m3", "m4"]);
+    }
+
+    #[test]
+    fn test_apply_window_bounds_keep_head_no_duplicate_on_overlap() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        // keep_head + limit >= len -> nothing dropped, no duplication.
+        let query = MessageQuery::new(session_id)
+            .with_limit(3)
+            .with_keep_head(2);
+        let mut messages = vec![Message::user("a"), Message::user("b"), Message::user("c")];
+
+        query.apply_window_bounds(&mut messages);
+
+        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
+        assert_eq!(texts, vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn test_apply_window_bounds_keep_head_zero_matches_tail_only() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        let query = MessageQuery::new(session_id)
+            .with_limit(2)
+            .with_keep_head(0);
+        let mut messages = vec![Message::user("a"), Message::user("b"), Message::user("c")];
+
+        query.apply_window_bounds(&mut messages);
+
+        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
+        assert_eq!(texts, vec!["b", "c"]);
+    }
+
+    #[test]
+    fn test_apply_window_bounds_keep_head_exceeds_total() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        // keep_head larger than the list -> keep everything, no panic/duplication.
+        let query = MessageQuery::new(session_id)
+            .with_limit(1)
+            .with_keep_head(10);
+        let mut messages = vec![Message::user("a"), Message::user("b")];
+
+        query.apply_window_bounds(&mut messages);
+
+        let texts: Vec<_> = messages.iter().filter_map(|m| m.text()).collect();
+        assert_eq!(texts, vec!["a", "b"]);
     }
 
     #[test]
