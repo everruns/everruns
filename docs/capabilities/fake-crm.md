@@ -1,5 +1,5 @@
 ---
-title: Fake CRM Tools for Agent Workflow Demos
+title: Fake CRM Capability for Support Agent Demos
 description: Test support-agent workflows with a simulated CRM capability for mock customers, tickets, interactions, customer search, and session-persisted demo data.
 sidebar:
   label: Fake CRM

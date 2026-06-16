@@ -1,5 +1,5 @@
 ---
-title: Session Metadata Tools for Agents
+title: Session Metadata for Agent Workflow Context
 description: Let agents inspect and update current session metadata, including session IDs, titles, agent names, and context used for logging or conversation organization.
 sidebar:
   label: Session

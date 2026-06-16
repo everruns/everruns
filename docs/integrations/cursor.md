@@ -1,6 +1,8 @@
 ---
-title: Cursor
+title: Cursor Cloud Agents for Everruns Workflows
 description: Launch and manage Cursor Cloud Agents from Everruns agents.
+sidebar:
+  label: Cursor
 ---
 
 Everruns integrates with [Cursor Cloud Agents](https://docs.cursor.com/en/background-agents) so agents can delegate asynchronous coding work to Cursor. A triage agent can inspect a request, split it into focused tasks, launch Cursor agents against GitHub repositories, send follow-ups, and summarize status or results.
