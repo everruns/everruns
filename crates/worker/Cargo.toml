@@ -36,6 +36,7 @@ everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }
+everruns-mai = { path = "../mai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }

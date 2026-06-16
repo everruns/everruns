@@ -11,6 +11,7 @@ use everruns_core::{BoxedChatDriver, DriverId, DriverRegistry, ProviderConfig, R
 /// - OpenAI (Open Responses API - recommended)
 /// - OpenAI Completions (Chat Completions API - backward compatibility)
 /// - OpenRouter (OpenAI-compatible Responses API)
+/// - Microsoft MAI (Azure AI Foundry, OpenAI-compatible Chat Completions)
 /// - Anthropic Claude
 /// - Google Gemini
 /// - LlmSim (for testing)
@@ -18,6 +19,7 @@ pub fn create_driver_registry() -> DriverRegistry {
     let mut registry = DriverRegistry::new();
     everruns_openai::register_driver(&mut registry);
     everruns_openrouter::register_driver(&mut registry);
+    everruns_mai::register_driver(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);

@@ -1604,6 +1604,7 @@ fn default_display_name(id: &DriverId) -> String {
         DriverId::Anthropic => "Anthropic".to_string(),
         DriverId::Gemini => "Google Gemini".to_string(),
         DriverId::Bedrock => "AWS Bedrock".to_string(),
+        DriverId::Mai => "Microsoft MAI".to_string(),
         DriverId::LlmSim => "LLM Simulator".to_string(),
         DriverId::External(id) => id.to_string(),
     }
@@ -1714,10 +1715,11 @@ impl DriverRegistry {
     /// Returns `DriverNotRegistered` error if no driver is registered for the provider type.
     pub fn create_chat_driver(&self, config: &ProviderConfig) -> Result<BoxedChatDriver> {
         // API key is required for real built-in providers, but not for LlmSim
-        // (testing) or External providers (which may use metadata-based auth).
+        // (testing), External providers, or Mai (which may all authenticate via
+        // metadata-based auth — Mai supports Entra ID OAuth without an api_key).
         let requires_api_key = !matches!(
             config.provider_type,
-            DriverId::LlmSim | DriverId::External(_)
+            DriverId::LlmSim | DriverId::External(_) | DriverId::Mai
         );
         if requires_api_key && config.api_key.is_none() {
             return Err(AgentLoopError::llm(

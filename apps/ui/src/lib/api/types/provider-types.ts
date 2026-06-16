@@ -11,7 +11,8 @@ export type DriverId =
   | "openai_completions"
   | "anthropic"
   | "gemini"
-  | "bedrock";
+  | "bedrock"
+  | "mai";
 
 export type ProviderStatus = "active" | "disabled";
 

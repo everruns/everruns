@@ -2747,6 +2747,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-mai"
+version = "0.13.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "futures",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-mcp"
 version = "0.13.0"
 dependencies = [
@@ -2975,6 +2991,7 @@ dependencies = [
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
+ "everruns-mai",
  "everruns-mcp",
  "everruns-openai",
  "everruns-openrouter",

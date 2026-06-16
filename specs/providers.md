@@ -49,7 +49,9 @@ Connectors are the user-scoped sibling concept (see "Providers vs Connections" b
 
 ### Driver
 
-A driver is a code unit registered in `DriverRegistry`, keyed by a **driver id** (`openai`, `azure_openai`, `openai_completions`, `openrouter`, `anthropic`, `gemini`, `bedrock`, `llmsim`). Ids are open, not a closed set: built-in drivers are compiled-in enum variants, and embedder-defined drivers register arbitrary ids via `ProviderType::External` (`register_external`, landed in EVE-561) through `PlatformDefinition` — an embedder adds a vendor without patching core. The database stores the id as a plain string; unknown ids parse to `External` rather than erroring.
+A driver is a code unit registered in `DriverRegistry`, keyed by a **driver id** (`openai`, `azure_openai`, `openai_completions`, `openrouter`, `anthropic`, `gemini`, `bedrock`, `mai`, `llmsim`). Ids are open, not a closed set: built-in drivers are compiled-in enum variants, and embedder-defined drivers register arbitrary ids via `ProviderType::External` (`register_external`, landed in EVE-561) through `PlatformDefinition` — an embedder adds a vendor without patching core. The database stores the id as a plain string; unknown ids parse to `External` rather than erroring.
+
+The `mai` driver (`everruns-mai`) is a publishable example of a first-party built-in driver layered on a generic protocol: Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry behind an OpenAI-compatible Chat Completions API, so the driver wraps `OpenAIProtocolChatDriver` and supplies authentication through the generic `AuthHeaderProvider` hook (see [llm-drivers.md](llm-drivers.md)). It is the only built-in driver besides `llmsim`/`External` that does not require an `api_key` at the registry layer, because it can authenticate via Microsoft Entra ID (OAuth) credentials carried in `ProviderMetadata`.
 
 Each registered driver declares:
 

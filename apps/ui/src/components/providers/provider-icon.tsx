@@ -87,6 +87,21 @@ function AwsBedrockIcon({ size }: { size: number }) {
   );
 }
 
+function MicrosoftIcon({ size }: { size: number }) {
+  // Microsoft's four-square mark, rendered monochrome with a gap.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="currentColor"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path d="M2 2h9.2v9.2H2zM12.8 2H22v9.2h-9.2zM2 12.8h9.2V22H2zM12.8 12.8H22V22h-9.2z" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
   openrouter: Server,
@@ -95,6 +110,7 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
   anthropic: AnthropicIcon,
   gemini: GeminiIcon,
   bedrock: AwsBedrockIcon,
+  mai: MicrosoftIcon,
 };
 
 const PROVIDER_LABELS: Record<DriverId, string> = {
@@ -105,6 +121,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   anthropic: "Anthropic",
   gemini: "Google Gemini",
   bedrock: "AWS Bedrock",
+  mai: "Microsoft MAI",
 };
 
 interface ProviderIconProps {
