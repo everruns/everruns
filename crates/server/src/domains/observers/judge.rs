@@ -13,11 +13,9 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use everruns_core::driver_registry::{
-    DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, ProviderConfig,
-};
 use everruns_core::provider::DriverId;
 use everruns_core::typed_id::ModelId;
+use everruns_core::{DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, ProviderConfig};
 
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;

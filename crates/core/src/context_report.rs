@@ -586,7 +586,7 @@ mod tests {
     fn generation_report_attributes_capability_prompt_blocks() {
         let data = LlmGenerationData::success(
             vec![crate::Message::system(
-                "<capability id=\"agent_instructions\">Rules</capability>\n\n<system-prompt>\nBase\n</system-prompt>",
+                "<system-prompt>\nBase\n</system-prompt>\n\n<capability id=\"agent_instructions\">Rules</capability>",
             )],
             vec![],
             Some("ok".into()),

@@ -519,7 +519,7 @@ impl CapabilityService {
     /// Preview the final agent shape by computing the merged system prompt and tools.
     ///
     /// This collects contributions from all specified capabilities and their dependencies:
-    /// - System prompt additions are prepended to the base prompt
+    /// - System prompt additions are appended after the base prompt
     /// - Tool definitions are collected from all capabilities
     /// - Dependencies are automatically resolved (dependencies before dependents)
     ///
@@ -613,15 +613,11 @@ impl CapabilityService {
         // No additional prompt or tool injection needed here.
 
         // Build final system prompt (XML-wrapped when capabilities contribute prompts)
-        let final_system_prompt = if system_prompt_parts.is_empty() {
-            base_system_prompt.to_string()
-        } else {
-            format!(
-                "{}\n\n<system-prompt>\n{}\n</system-prompt>",
-                system_prompt_parts.join("\n\n"),
-                base_system_prompt
-            )
-        };
+        let additions = (!system_prompt_parts.is_empty()).then(|| system_prompt_parts.join("\n\n"));
+        let final_system_prompt = everruns_core::capabilities::compose_system_prompt(
+            base_system_prompt,
+            additions.as_deref(),
+        );
 
         Ok((final_system_prompt, tool_definitions))
     }

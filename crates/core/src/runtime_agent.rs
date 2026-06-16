@@ -16,7 +16,7 @@
 use crate::agent::Agent;
 use crate::capabilities::{
     CapabilityRegistry, SystemPromptContext, ToolDefinitionHook, collect_capabilities_with_configs,
-    resolve_capability_configs,
+    compose_system_prompt, resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
 use crate::driver_registry::{PromptCacheConfig, ToolSearchConfig};
@@ -192,7 +192,7 @@ impl RuntimeAgentBuilder {
 
     /// Apply an Agent's configuration to this builder.
     ///
-    /// Prepends the agent's system prompt and capabilities on top of the
+    /// Applies the agent's system prompt and capabilities on top of the
     /// existing prompt (typically from a harness). Call after `with_harness()`.
     ///
     /// # Example
@@ -230,7 +230,7 @@ impl RuntimeAgentBuilder {
     /// Resolves dependencies, then collects contributions from capabilities:
     /// - Dependencies are automatically included (topologically sorted)
     /// - `system_prompt_contribution(ctx)` called on each (may read from filesystem)
-    /// - System prompt additions are prepended to the current system prompt
+    /// - System prompt additions are appended after the current system prompt
     /// - Tool definitions are added to the tools list
     ///
     /// # Arguments
@@ -269,17 +269,10 @@ impl RuntimeAgentBuilder {
 
         let collected = collect_capabilities_with_configs(&resolved_configs, registry, ctx).await;
 
-        // Apply system prompt additions (prepend to existing, wrap base in XML tags)
+        // Apply system prompt additions after the stable base prompt.
         if let Some(prefix) = collected.system_prompt_prefix() {
-            if !self.runtime_agent.system_prompt.is_empty()
-                && !self.runtime_agent.system_prompt.contains("<system-prompt>")
-            {
-                self.runtime_agent.system_prompt = format!(
-                    "<system-prompt>\n{}\n</system-prompt>",
-                    self.runtime_agent.system_prompt
-                );
-            }
-            self = self.prepend_system_prompt(prefix);
+            self.runtime_agent.system_prompt =
+                compose_system_prompt(&self.runtime_agent.system_prompt, Some(&prefix));
         }
 
         // Apply tool definitions
@@ -318,18 +311,32 @@ impl RuntimeAgentBuilder {
         self
     }
 
-    /// Prepend locale instructions for session-aware localization.
+    /// Append locale instructions for session-aware localization.
     pub fn with_locale(self, locale: Option<&str>) -> Self {
         let Some(locale) = locale.map(str::trim).filter(|value| !value.is_empty()) else {
             return self;
         };
 
-        self.prepend_system_prompt(format!(
+        self.append_system_prompt(format!(
             "<locale preference=\"{locale}\">\n\
              Default locale for this session: {locale}.\n\
              Unless the user explicitly asks otherwise, respond in this locale and use its language, spelling, and regional formatting conventions for dates, times, numbers, and currency.\n\
              </locale>"
         ))
+    }
+
+    /// Append text to the system prompt
+    pub fn append_system_prompt(mut self, suffix: impl Into<String>) -> Self {
+        let suffix = suffix.into();
+        if !suffix.is_empty() {
+            if self.runtime_agent.system_prompt.is_empty() {
+                self.runtime_agent.system_prompt = suffix;
+            } else {
+                self.runtime_agent.system_prompt =
+                    format!("{}\n\n{}", self.runtime_agent.system_prompt, suffix);
+            }
+        }
+        self
     }
 
     /// Set the model
@@ -556,15 +563,16 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_with_locale_prepends_locale_instructions() {
+    fn test_builder_with_locale_appends_locale_instructions() {
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
             .with_locale(Some("uk-UA"))
             .build();
 
+        assert!(runtime_agent.system_prompt.starts_with("Base prompt."));
         assert!(runtime_agent.system_prompt.contains("<locale"));
         assert!(runtime_agent.system_prompt.contains("uk-UA"));
-        assert!(runtime_agent.system_prompt.contains("Base prompt."));
+        assert!(runtime_agent.system_prompt.ends_with("</locale>"));
     }
 
     #[tokio::test]
@@ -601,7 +609,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_builder_with_capabilities_prepends_system_prompt() {
+    async fn test_builder_with_capabilities_keeps_base_prompt_first() {
         let registry = CapabilityRegistry::with_builtins();
         let runtime_agent = RuntimeAgentBuilder::new()
             .system_prompt("Base prompt.")
@@ -615,7 +623,7 @@ mod tests {
         assert!(
             runtime_agent
                 .system_prompt
-                .ends_with("<system-prompt>\nBase prompt.\n</system-prompt>")
+                .starts_with("<system-prompt>\nBase prompt.\n</system-prompt>")
         );
     }
 
