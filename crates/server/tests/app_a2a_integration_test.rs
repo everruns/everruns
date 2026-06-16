@@ -325,7 +325,15 @@ async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageSt
         .find(|tool| tool.name() == "spawn_agent")
         .expect("spawn_agent tool");
     let storage = Arc::new(TestStorageStore::default());
-    let ctx = ToolContext::with_storage_store(SessionId::new(), storage.clone());
+    // Background spawns are now required to be task-backed (so they can be
+    // controlled via wait_task/message_task/cancel_task), so the ToolContext
+    // must carry a session-task registry. An in-memory one is enough here.
+    let task_registry: Arc<dyn everruns_core::session_task::SessionTaskRegistry> =
+        Arc::new(everruns_server::storage::DbSessionTaskRegistry::new(
+            Arc::new(everruns_server::storage::StorageBackend::in_memory()),
+        ));
+    let ctx = ToolContext::with_storage_store(SessionId::new(), storage.clone())
+        .with_session_task_registry(task_registry);
 
     let result = spawn_tool
         .execute_with_context(

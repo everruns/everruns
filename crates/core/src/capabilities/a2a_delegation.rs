@@ -7,7 +7,10 @@
 // key, so concurrent spawns cannot race. The resource registry is unused for
 // runs (retired as part of the session-tasks dual-write cleanup).
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SESSION_TASKS_CAPABILITY_ID,
+    SystemPromptContext,
+};
 use crate::network_access::NetworkAccessList;
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskState, SessionTaskUpdate,
@@ -246,6 +249,10 @@ impl Capability for A2aAgentDelegationCapability {
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         self.tools_with_config(&Value::Null)
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec![SESSION_TASKS_CAPABILITY_ID]
     }
 
     fn risk_level(&self) -> RiskLevel {
@@ -489,7 +496,7 @@ impl From<&TaskState> for AgentRunStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 enum AgentRunMode {
     Wait,
@@ -1295,30 +1302,52 @@ impl Tool for SpawnAgentTool {
         );
         record.network_access = context.network_access.clone();
         // Create the session task tracking this run (specs/session-tasks.md).
+        // Background runs must be task-backed before any remote work starts so
+        // wait_task/message_task/cancel_task have a usable control handle.
         // run_id is stored in spec so load_run_for_task can do a direct key lookup.
-        if let Some(task_registry) = &context.session_task_registry
-            && let Ok(created) = task_registry
-                .create(CreateSessionTask {
-                    session_id: context.session_id,
-                    id: None,
-                    kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
-                    display_name: agent.name.clone(),
-                    spec: json!({
-                        "run_id": &run_id,
-                        "external_agent_id": agent.id,
-                        "instructions": &instructions,
-                        "mode": &mode,
-                    }),
-                    state: SessionTaskState::Queued,
-                    links: TaskLinks::default(),
-                    wake_policy: match mode {
-                        AgentRunMode::Background => TaskWakePolicy::OnTerminal,
-                        AgentRunMode::Wait => TaskWakePolicy::Silent,
-                    },
-                })
-                .await
-        {
-            record.task_id = Some(created.id);
+        match &context.session_task_registry {
+            Some(task_registry) => {
+                match task_registry
+                    .create(CreateSessionTask {
+                        session_id: context.session_id,
+                        id: None,
+                        kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
+                        display_name: agent.name.clone(),
+                        spec: json!({
+                            "run_id": &run_id,
+                            "external_agent_id": agent.id,
+                            "instructions": &instructions,
+                            "mode": &mode,
+                        }),
+                        state: SessionTaskState::Queued,
+                        links: TaskLinks::default(),
+                        wake_policy: match mode {
+                            AgentRunMode::Background => TaskWakePolicy::OnTerminal,
+                            AgentRunMode::Wait => TaskWakePolicy::Silent,
+                        },
+                    })
+                    .await
+                {
+                    Ok(created) => record.task_id = Some(created.id),
+                    Err(e) if mode == AgentRunMode::Background => {
+                        // Background runs must be task-backed before remote work
+                        // starts; surface this as a user-facing tool error (per
+                        // the capability contract) rather than an internal error,
+                        // and do not launch the run.
+                        return ToolExecutionResult::tool_error(format!(
+                            "Background spawn_agent could not create its session task, so the run \
+                             was not started: {e}"
+                        ));
+                    }
+                    Err(_) => {}
+                }
+            }
+            None if mode == AgentRunMode::Background => {
+                return ToolExecutionResult::tool_error(
+                    "Background spawn_agent requires session_task_registry context so the run can be controlled with wait_task/message_task/cancel_task",
+                );
+            }
+            None => {}
         }
         if let Err(e) = save_run(context, &record).await {
             return ToolExecutionResult::internal_error(e);
@@ -2258,6 +2287,45 @@ mod tests {
         ) -> crate::error::Result<Vec<crate::session_task::TaskMessage>> {
             Ok(vec![])
         }
+    }
+
+    #[test]
+    fn a2a_delegation_depends_on_session_tasks() {
+        let cap = A2aAgentDelegationCapability;
+
+        assert_eq!(cap.dependencies(), vec![SESSION_TASKS_CAPABILITY_ID]);
+    }
+
+    #[tokio::test]
+    async fn background_spawn_requires_task_registry_before_remote_work() {
+        let config = configured_capability("http://127.0.0.1:1".to_string());
+        let spawn = SpawnAgentTool::new(config);
+        let storage_store = Arc::new(TestStorageStore::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let ctx = context(storage_store.clone(), file_store);
+
+        let result = spawn
+            .execute_with_context(
+                json!({
+                    "instructions": "background",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "background"
+                }),
+                &ctx,
+            )
+            .await;
+
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("background spawn should reject missing task registry");
+        };
+        assert!(
+            message.contains("requires session_task_registry"),
+            "unexpected error: {message}"
+        );
+        assert!(
+            storage_store.values.lock().unwrap().is_empty(),
+            "background spawn must not persist or launch remote work without task tracking"
+        );
     }
 
     /// Parity check for the retired `wait_agent`: a background `spawn_agent`
