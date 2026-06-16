@@ -168,14 +168,20 @@ async fn process_score(deps: &ObserverWorkerDeps, score: &TraceScoreRow) -> anyh
                 final_answer: final_content,
                 tool_names: tool_calls,
             };
-            let result = judge
+            let Some(result) = judge
                 .judge(
                     score.org_id,
                     judge_config.model_id,
                     &judge_config.rubric,
                     &evidence,
                 )
-                .await?;
+                .await?
+            else {
+                // Org has no judge model configured — a permanent config
+                // condition, not a transient failure. Skip without retrying.
+                finalize_skipped(db, score, "no judge model configured for org").await?;
+                return Ok(());
+            };
             CompleteTraceScoreRow {
                 status: "completed".to_string(),
                 pass: Some(result.value >= judge_config.pass_threshold),
@@ -275,10 +281,13 @@ mod tests {
         }
     }
 
-    /// Fake judge returning a fixed grade, for worker dispatch tests.
+    /// Fake judge returning a fixed grade (or `None` for "no model"), for
+    /// worker dispatch tests.
     struct FakeJudge {
         value: f64,
         label: Option<String>,
+        /// When false, simulates "no judge model configured" (`Ok(None)`).
+        has_model: bool,
     }
 
     #[async_trait::async_trait]
@@ -289,15 +298,18 @@ mod tests {
             _model_id: Option<ModelId>,
             _rubric: &str,
             _evidence: &TurnEvidence,
-        ) -> anyhow::Result<JudgeResult> {
-            Ok(JudgeResult {
+        ) -> anyhow::Result<Option<JudgeResult>> {
+            if !self.has_model {
+                return Ok(None);
+            }
+            Ok(Some(JudgeResult {
                 value: self.value,
                 label: self.label.clone(),
                 reasoning: "fake".to_string(),
                 input_tokens: Some(42),
                 output_tokens: Some(7),
                 cost_usd: Some(0.001),
-            })
+            }))
         }
     }
 
@@ -605,6 +617,7 @@ mod tests {
         let judge = Arc::new(FakeJudge {
             value: 0.9,
             label: Some("greeted".to_string()),
+            has_model: true,
         });
         let scores = run_judge_observer(Some(judge)).await;
         assert_eq!(scores.len(), 1);
@@ -622,6 +635,7 @@ mod tests {
         let judge = Arc::new(FakeJudge {
             value: 0.2,
             label: None,
+            has_model: true,
         });
         let scores = run_judge_observer(Some(judge)).await;
         assert_eq!(scores[0].status, "completed");
@@ -632,5 +646,21 @@ mod tests {
     async fn llm_judge_skipped_when_no_judge_client() {
         let scores = run_judge_observer(None).await;
         assert_eq!(scores[0].status, "skipped");
+    }
+
+    #[tokio::test]
+    async fn llm_judge_skipped_when_org_has_no_model() {
+        // Judge client present, but the org has no model configured (Ok(None)).
+        let judge = Arc::new(FakeJudge {
+            value: 0.0,
+            label: None,
+            has_model: false,
+        });
+        let scores = run_judge_observer(Some(judge)).await;
+        assert_eq!(scores[0].status, "skipped");
+        assert_eq!(
+            scores[0].reason.as_deref(),
+            Some("no judge model configured for org")
+        );
     }
 }

@@ -61,13 +61,18 @@ pub struct TurnEvidence {
 pub trait JudgeClient: Send + Sync {
     /// Grade `evidence` against `rubric` for `org_id`, using `model_id` (or the
     /// org's default model when `None`).
+    ///
+    /// Returns `Ok(None)` when the org has no judge model configured — a
+    /// permanent, org-specific condition the worker should treat as `skipped`
+    /// rather than a retryable error. `Err` is reserved for transient/real
+    /// failures (provider errors, unparseable responses) that warrant a retry.
     async fn judge(
         &self,
         org_id: i64,
         model_id: Option<ModelId>,
         rubric: &str,
         evidence: &TurnEvidence,
-    ) -> Result<JudgeResult>;
+    ) -> Result<Option<JudgeResult>>;
 }
 
 const JUDGE_SYSTEM_PREAMBLE: &str = "You are an evaluation judge scoring an AI agent's response. \
@@ -171,8 +176,10 @@ impl JudgeClient for LlmJudgeClient {
         model_id: Option<ModelId>,
         rubric: &str,
         evidence: &TurnEvidence,
-    ) -> Result<JudgeResult> {
-        // Resolve the org's model + decrypted provider credentials.
+    ) -> Result<Option<JudgeResult>> {
+        // Resolve the org's model + decrypted provider credentials. A missing
+        // model is a permanent config condition → Ok(None) so the worker skips
+        // (rather than retrying and finally erroring).
         let resolved = match model_id {
             Some(id) => {
                 self.provider_resolver
@@ -180,8 +187,10 @@ impl JudgeClient for LlmJudgeClient {
                     .await?
             }
             None => self.provider_resolver.resolve_default_model(org_id).await?,
-        }
-        .ok_or_else(|| anyhow::anyhow!("no judge model configured for org"))?;
+        };
+        let Some(resolved) = resolved else {
+            return Ok(None);
+        };
 
         // DriverId::from_str is infallible (unknown ids become External).
         let driver_id: DriverId = resolved.provider_type.parse().unwrap();
@@ -218,14 +227,14 @@ impl JudgeClient for LlmJudgeClient {
         let response = driver.chat_completion(messages, &config).await?;
         let parsed = parse_judge_output(&response.text)?;
         let meta = response.metadata;
-        Ok(JudgeResult {
+        Ok(Some(JudgeResult {
             value: parsed.value,
             label: parsed.label,
             reasoning: parsed.reasoning,
             input_tokens: meta.prompt_tokens.map(|t| t as u64),
             output_tokens: meta.completion_tokens.map(|t| t as u64),
             cost_usd: meta.provider_cost_usd,
-        })
+        }))
     }
 }
 
