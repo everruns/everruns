@@ -218,11 +218,7 @@ impl UserFacingError {
     }
 
     pub fn fallback_message(&self) -> String {
-        let base = self.base_fallback_message();
-        match string_field(&self.fields, "detail") {
-            Some(detail) => format!("{base}\n\nDetails: {detail}"),
-            None => base,
-        }
+        self.base_fallback_message()
     }
 
     fn base_fallback_message(&self) -> String {
@@ -622,21 +618,22 @@ mod tests {
     }
 
     #[test]
-    fn disclosure_detailed_attaches_detail_and_renders_it() {
+    fn disclosure_detailed_attaches_detail_without_rendering_it() {
         let error = UserFacingError::new(codes::PROVIDER_QUOTA_EXHAUSTED);
         let disclosed = error.apply_disclosure(
             ErrorDisclosure::Detailed,
-            Some("OpenAI API error (429): insufficient_quota"),
+            Some("OpenAI API error (429): insufficient_quota Authorization: Bearer sk-secret"),
         );
 
         assert_eq!(disclosed.code, codes::PROVIDER_QUOTA_EXHAUSTED);
         assert_eq!(
             string_field(&disclosed.fields, "detail"),
-            Some("OpenAI API error (429): insufficient_quota")
+            Some("OpenAI API error (429): insufficient_quota Authorization: Bearer sk-secret")
         );
         let message = disclosed.fallback_message();
         assert!(message.contains("out of credits or quota"));
-        assert!(message.contains("Details: OpenAI API error (429): insufficient_quota"));
+        assert!(!message.contains("insufficient_quota"));
+        assert!(!message.contains("sk-secret"));
     }
 
     #[test]
