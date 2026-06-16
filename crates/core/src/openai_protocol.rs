@@ -1082,6 +1082,32 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_convert_message_preserves_multiple_system_messages() {
+        // OpenAI chat-completions keeps the system role inline, so both the agent
+        // system prompt and a later notice/summary System message (infinity_context
+        // / compaction) pass through as separate `system` entries — neither is
+        // dropped. Lock that in alongside the "separate system field" drivers.
+        let messages = [
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+        ];
+        let converted: Vec<OpenAiMessage> = messages
+            .iter()
+            .map(OpenAIProtocolChatDriver::convert_message)
+            .collect();
+        let system_texts: Vec<String> = converted
+            .iter()
+            .filter(|m| m.role == "system")
+            .filter_map(|m| match &m.content {
+                Some(OpenAiContent::Text(t)) => Some(t.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(system_texts, vec!["A".to_string(), "B".to_string()]);
+    }
+
+    #[test]
     fn test_driver_with_api_key() {
         let driver = OpenAIProtocolChatDriver::new("test-key");
         assert!(format!("{:?}", driver).contains("OpenAIProtocolChatDriver"));

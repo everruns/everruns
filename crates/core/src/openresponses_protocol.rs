@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
@@ -574,34 +574,20 @@ impl OpenResponsesProtocolChatDriver {
         messages: &[LlmMessage],
         supports_phases: bool,
     ) -> (Option<String>, Vec<ResponsesInputItem>) {
-        let mut instructions: Option<String> = None;
+        // Accumulate all system messages into `instructions`. Multiple system
+        // messages legitimately occur in one request — the agent system prompt
+        // plus, e.g., infinity context's hidden-history notice or compaction's
+        // conversation summary. Overwriting would drop the real system prompt and
+        // keep only the last notice. See `fold_system_messages`.
+        let instructions: Option<String> = fold_system_messages(messages);
         let mut input_items = Vec::new();
         // Counter for generating reasoning item IDs
         let mut reasoning_counter = 0u32;
 
         for msg in messages {
             if msg.role == LlmMessageRole::System {
-                // Accumulate system messages into `instructions`. Multiple system
-                // messages legitimately occur in one request — the agent system
-                // prompt plus, e.g., infinity context's hidden-history notice or
-                // compaction's conversation summary. Overwriting would drop the
-                // real system prompt and keep only the last notice, so join them
-                // in order instead.
-                let text = match &msg.content {
-                    LlmMessageContent::Text(text) => text.clone(),
-                    LlmMessageContent::Parts(parts) => parts
-                        .iter()
-                        .filter_map(|p| match p {
-                            LlmContentPart::Text { text } => Some(text.clone()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join(""),
-                };
-                instructions = Some(match instructions.take() {
-                    Some(existing) if !existing.is_empty() => format!("{existing}\n\n{text}"),
-                    _ => text,
-                });
+                // Folded above into `instructions`; never emit a System/developer
+                // item into the input array.
             } else if msg.role == LlmMessageRole::Assistant {
                 // For assistant messages, emit Reasoning item BEFORE message content if present
                 // This is required for o-series and GPT-5 models with extended thinking
