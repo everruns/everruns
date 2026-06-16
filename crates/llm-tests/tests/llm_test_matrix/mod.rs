@@ -73,6 +73,10 @@ impl std::fmt::Display for ProviderModelConfig {
 // Provider catalogue — add new providers/models here
 // ============================================================================
 
+// Not wired into the live matrix: `claude-fable-5` is listed by the Anthropic
+// `/models` endpoint but returns "Model not available" on inference from the
+// CI key. Re-add the `#[case]` entries once it's usable; Anthropic stays
+// covered via haiku/opus/sonnet below.
 pub const ANTHROPIC_FABLE: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-fable-5", "ANTHROPIC_API_KEY");
 
@@ -88,7 +92,7 @@ pub const ANTHROPIC_OPUS: ProviderModelConfig =
 
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
-    "claude-sonnet-4-20250514",
+    "claude-sonnet-4-6",
     "ANTHROPIC_API_KEY",
 );
 
@@ -105,7 +109,7 @@ pub const OPENAI_GPT55: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY");
 
 pub const GEMINI_FLASH: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::Gemini, "gemini-2.0-flash", "GEMINI_API_KEY");
+    ProviderModelConfig::new(DriverId::Gemini, "gemini-2.5-flash", "GEMINI_API_KEY");
 
 // OpenRouter routes to upstream providers; gpt-4o-mini is cheap and reliably
 // available. Exercises the Open Responses streaming path (incl. the `[DONE]`

@@ -545,12 +545,12 @@ jobs:
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
-      # LLM provider keys are intentionally NOT exposed at job scope:
+      # Neither DOPPLER_TOKEN nor LLM provider keys are exposed at job scope:
       # this job runs PR-controlled cargo test (and therefore arbitrary
-      # build.rs / proc-macro / test code) which would otherwise be able
-      # to read the keys from process env. The single step that needs
-      # them (Run LLM integration tests) is gated to push events and
-      # sets them via step env below.
+      # build.rs / proc-macro / test code) which would otherwise be able to
+      # read them from process env. The two steps that need them (Slack
+      # integration tests + Run LLM integration tests) are gated to push events
+      # and inject DOPPLER_TOKEN via step env below.
 
     steps:
       - uses: actions/checkout@v5
@@ -636,27 +636,20 @@ jobs:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
-      # Gated to push events so PR-controlled cargo test cannot exfiltrate
-      # the LLM provider keys via env. PR coverage of the LLM matrix is
-      # still provided by `unit-test` (mocked) and the weekly live sweep.
+      # Gated to push events so PR-controlled cargo test cannot exfiltrate the
+      # Doppler vault via env (build.rs, proc-macros, test bodies). PR coverage
+      # of the LLM matrix is still mocked in `unit-test`.
       - name: Run LLM integration tests (skips providers without API keys)
         if: github.event_name == 'push'
-        timeout-minutes: 10
-        # Gemini cases chronically hit 429 `RESOURCE_EXHAUSTED` on the shared
-        # CI key regardless of the 2 in-test retries. Skip the `gemini` provider
-        # via the existing `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS` hatch in
-        # `crates/llm-tests/tests/llm_test_matrix/mod.rs` so CI reflects real
-        # regressions, not upstream quota pressure. Revisit when quota is raised.
+        timeout-minutes: 15
+        # Provider API keys come from Doppler (the repo has no per-provider
+        # GitHub secrets), matching the Slack live step above. `doppler run`
+        # injects ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY /
+        # OPENROUTER_API_KEY; the matrix runs every provider and skips only
+        # those whose key is absent from the vault.
         env:
-          SKIP_LLM_INTEGRATION_TESTS_PROVIDERS: gemini
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          # OpenRouter cases skip automatically when this secret is absent
-          # (matrix `model()` filters empty keys), so this is safe to reference
-          # before the secret is provisioned.
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+        run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
