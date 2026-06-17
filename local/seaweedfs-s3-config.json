@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "everruns",
+      "credentials": [
+        { "accessKey": "everruns", "secretKey": "everruns-secret" }
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

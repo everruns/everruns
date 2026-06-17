@@ -1,0 +1,50 @@
+# Local SeaweedFS (S3-compatible object storage) for exercising the optional
+# object-storage blob backend (specs/object-storage.md).
+#
+# This is NOT part of `just start-all` — the core local stack (PostgreSQL,
+# Valkey, NATS) runs as local processes. SeaweedFS is an opt-in dev convenience
+# started via `just seaweedfs`. SeaweedFS speaks the S3 API, so Everruns uses
+# the same S3 client code path as against AWS S3.
+#
+# S3 API: http://127.0.0.1:8333
+# Master:  http://127.0.0.1:9333  (cluster status UI)
+# Filer:   http://127.0.0.1:8888
+#
+# Point the server at it with:
+#   STORAGE_BLOB_BACKEND=s3
+#   STORAGE_S3_BUCKET=everruns-dev
+#   STORAGE_S3_ENDPOINT=http://127.0.0.1:8333
+#   STORAGE_S3_REGION=us-east-1
+#   STORAGE_S3_ACCESS_KEY_ID=everruns
+#   STORAGE_S3_SECRET_ACCESS_KEY=everruns-secret
+#   STORAGE_S3_ALLOW_HTTP=true
+
+services:
+  seaweedfs:
+    image: chrislusf/seaweedfs:latest
+    # All-in-one (master + volume + filer) with the S3 gateway enabled.
+    command: server -dir=/data -s3 -s3.config=/etc/seaweedfs/s3.json
+    ports:
+      - "8333:8333" # S3 API
+      - "9333:9333" # master
+      - "8888:8888" # filer
+    volumes:
+      - everruns-seaweedfs-data:/data
+      - ./seaweedfs-s3-config.json:/etc/seaweedfs/s3.json:ro
+
+  # One-shot: create the dev bucket via the S3 API, then exit.
+  createbucket:
+    image: minio/mc:latest
+    depends_on:
+      - seaweedfs
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://seaweedfs:8333 everruns everruns-secret;
+      until mc mb --ignore-existing local/everruns-dev; do
+        echo 'waiting for seaweedfs s3...'; sleep 2;
+      done;
+      echo 'bucket everruns-dev ready';
+      "
+
+volumes:
+  everruns-seaweedfs-data:

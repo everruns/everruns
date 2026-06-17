@@ -230,16 +230,20 @@ clients or workers. See [specs/object-storage.md](../../specs/object-storage.md)
 | `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local MinIO only). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by MinIO; harmless on AWS S3). |
 
-**Example (local MinIO via `just minio`):**
+**Example (local SeaweedFS via `just seaweedfs`):**
 
 ```bash
 STORAGE_BLOB_BACKEND=s3
 STORAGE_S3_BUCKET=everruns-dev
-STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
-STORAGE_S3_ACCESS_KEY_ID=minioadmin
-STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+STORAGE_S3_ENDPOINT=http://127.0.0.1:8333
+STORAGE_S3_REGION=us-east-1
+STORAGE_S3_ACCESS_KEY_ID=everruns
+STORAGE_S3_SECRET_ACCESS_KEY=everruns-secret
 STORAGE_S3_ALLOW_HTTP=true
 ```
+
+Any S3-compatible store works (AWS S3, SeaweedFS, MinIO, R2); only the endpoint
+and credentials differ.
 
 **Notes:**
 - The backend is selected per process at startup; a deployment runs entirely on

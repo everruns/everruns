@@ -133,17 +133,22 @@ deployment runs entirely on `db` or `s3`.
 
 ## Local development
 
-MinIO provides an S3-compatible endpoint for local testing. `just minio` starts
-it; see `scripts/dev/minio.sh`. Point the server at it with:
+SeaweedFS provides an S3-compatible endpoint for local testing. `just seaweedfs`
+starts it (`local/seaweedfs-compose.yml`); SeaweedFS speaks the S3 API, so the
+exact same client code path as AWS S3 is exercised. Point the server at it with:
 
 ```bash
 export STORAGE_BLOB_BACKEND=s3
 export STORAGE_S3_BUCKET=everruns-dev
-export STORAGE_S3_ENDPOINT=http://127.0.0.1:9000
-export STORAGE_S3_ACCESS_KEY_ID=minioadmin
-export STORAGE_S3_SECRET_ACCESS_KEY=minioadmin
+export STORAGE_S3_ENDPOINT=http://127.0.0.1:8333
+export STORAGE_S3_REGION=us-east-1
+export STORAGE_S3_ACCESS_KEY_ID=everruns
+export STORAGE_S3_SECRET_ACCESS_KEY=everruns-secret
 export STORAGE_S3_ALLOW_HTTP=true
 ```
+
+Any S3-compatible store (AWS S3, SeaweedFS, MinIO, Cloudflare R2, ...) works
+unchanged — only the endpoint and credentials differ.
 
 ## Testing
 

@@ -161,13 +161,13 @@ start-production *args:
 stop-all:
     ./scripts/lib/services.sh stop-all
 
-# Start a local MinIO (S3-compatible) for object-storage testing (specs/object-storage.md)
-minio *args:
-    docker compose -f local/minio-compose.yml up {{args}}
+# Start a local SeaweedFS (S3-compatible) for object-storage testing (specs/object-storage.md)
+seaweedfs *args:
+    docker compose -f local/seaweedfs-compose.yml up {{args}}
 
-# Stop and remove the local MinIO
-minio-stop:
-    docker compose -f local/minio-compose.yml down
+# Stop and remove the local SeaweedFS
+seaweedfs-stop:
+    docker compose -f local/seaweedfs-compose.yml down
 
 # === Load Testing ===
 
