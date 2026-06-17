@@ -323,7 +323,11 @@ impl ProviderResolverService {
         // silently falling through to the active-provider scan
         // (specs/providers.md, EVE-569).
         if let Some(settings) = self.db.get_organization_settings(org_id).await?
-            && let Some(default_id) = settings.default_provider_per_service.0.get(&service).copied()
+            && let Some(default_id) = settings
+                .default_provider_per_service
+                .0
+                .get(&service)
+                .copied()
         {
             let provider = providers
                 .iter()

@@ -223,9 +223,7 @@ describe("ProvidersPage", () => {
     const realtimeSelect = screen.getByLabelText("Default provider for Realtime (voice)");
     expect(realtimeSelect).toBeInTheDocument();
     // Each configured provider is an option in the per-service selector.
-    expect(
-      screen.getAllByRole("option", { name: "OpenAI Production" }).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByRole("option", { name: "OpenAI Production" }).length).toBeGreaterThan(0);
   });
 
   it("shows loading skeleton when providers are loading", () => {

@@ -67,7 +67,8 @@ impl InMemoryDatabase {
         match input.default_provider_per_service {
             everruns_durable::UpdateField::Unchanged => {}
             everruns_durable::UpdateField::Clear => {
-                row.default_provider_per_service = sqlx::types::Json(ServiceProviderDefaults::new());
+                row.default_provider_per_service =
+                    sqlx::types::Json(ServiceProviderDefaults::new());
             }
             everruns_durable::UpdateField::Set(map) => {
                 row.default_provider_per_service = sqlx::types::Json(map);
