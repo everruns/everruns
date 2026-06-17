@@ -28,7 +28,7 @@ use everruns_core::driver_helpers::{
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
 };
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
@@ -214,14 +214,18 @@ impl AnthropicChatDriver {
         messages: &[LlmMessage],
         prompt_cache_enabled: bool,
     ) -> (Option<String>, Vec<AnthropicMessage>) {
-        let mut system_prompt = None;
+        // Accumulate all system messages into Anthropic's separate top-level
+        // `system` field. Overwriting on each System message would drop the agent
+        // system prompt whenever a later notice/summary System message is present
+        // (infinity_context / compaction). See `fold_system_messages`.
+        let system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
 
         for msg in messages {
             match msg.role {
                 LlmMessageRole::System => {
-                    // Extract system prompt (Anthropic handles it separately)
-                    system_prompt = Some(msg.content.to_text());
+                    // Folded above into the top-level `system` field; never emit a
+                    // System-role entry into the Anthropic `messages` array.
                 }
                 LlmMessageRole::Tool => {
                     // Tool results in Anthropic are user messages with tool_result content blocks.
@@ -2165,6 +2169,25 @@ mod tests {
 
         assert_eq!(system, Some("You are helpful".to_string()));
         assert_eq!(converted.len(), 1); // Only user message
+    }
+
+    #[test]
+    fn test_convert_messages_accumulates_multiple_system_messages() {
+        // The agent system prompt plus a later notice/summary System message
+        // (infinity_context / compaction) must both land in the top-level
+        // `system` field, in order — the later one must not overwrite the agent
+        // system prompt. No System-role entry may leak into `messages`.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+        ];
+
+        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+
+        assert_eq!(system, Some("A\n\nB".to_string()));
+        assert_eq!(converted.len(), 1); // Only the user message
+        assert!(converted.iter().all(|m| m.role == "user"));
     }
 
     #[test]

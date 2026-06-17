@@ -777,6 +777,31 @@ mod tests {
     }
 
     #[test]
+    fn test_build_messages_accumulates_multiple_system_messages() {
+        // The agent system prompt plus a later notice/summary System message
+        // (infinity_context / compaction) must both survive as system blocks, in
+        // order — the later one must not overwrite the agent system prompt. No
+        // System-role message may leak into the conversation messages.
+        use everruns_core::driver_registry::{LlmMessage, LlmMessageRole};
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "A"),
+            LlmMessage::text(LlmMessageRole::User, "hi"),
+            LlmMessage::text(LlmMessageRole::System, "B"),
+        ];
+        let (system_blocks, bedrock_msgs) = build_messages(&messages).unwrap();
+        let texts: Vec<&str> = system_blocks
+            .iter()
+            .filter_map(|b| match b {
+                SystemContentBlock::Text(t) => Some(t.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(texts, vec!["A", "B"]);
+        assert_eq!(bedrock_msgs.len(), 1); // Only the user message
+        assert_eq!(bedrock_msgs[0].role, ConversationRole::User);
+    }
+
+    #[test]
     fn test_build_tool_result_block_missing_id_returns_none() {
         use everruns_core::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
         let msg = LlmMessage {
