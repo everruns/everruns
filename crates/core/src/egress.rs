@@ -81,12 +81,16 @@ pub struct EgressRequest {
     pub network_access: Option<NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
+    /// Whether `DirectEgressService` must perform DNS-pinned SSRF validation
+    /// after all egress policies pass and before connecting (TM-TOOL-018).
+    #[serde(default)]
+    pub dns_pinning_required: bool,
     /// Pre-resolved socket addresses for DNS pinning (TM-TOOL-018).
     ///
     /// When set, `DirectEgressService` builds a per-request client pinned to
     /// these addresses via `resolve_to_addrs`, closing the TOCTOU window
-    /// between URL validation and the actual TCP connect.  Obtained from
-    /// `validate_url_dns_pinned`.  Not serialized — runtime-only hint.
+    /// between URL validation and the actual TCP connect.  Not serialized —
+    /// runtime-only hint owned by the egress boundary.
     #[serde(skip)]
     pub pinned_addrs: Option<(String, Vec<std::net::SocketAddr>)>,
 }
@@ -102,14 +106,27 @@ impl EgressRequest {
             signing: EgressSigning::Disabled,
             network_access: None,
             timeout_ms: None,
+            dns_pinning_required: false,
             pinned_addrs: None,
         }
+    }
+
+    /// Require the egress boundary to perform DNS-pinned SSRF validation after
+    /// all egress policy checks pass and before opening a connection.
+    pub fn require_dns_pinning(mut self) -> Self {
+        self.dns_pinning_required = true;
+        self
     }
 
     /// Pin the outbound connection to pre-resolved addresses (TM-TOOL-018).
     ///
     /// No-op when `addrs` is empty (e.g. IP-literal URLs where the static
     /// check already validated the address).
+    ///
+    /// Kept public for callers that resolve-then-check themselves and hand the
+    /// pinned addresses in (e.g. the web_fetch fetchkit transport and the MCP
+    /// client). New direct call sites should prefer `require_dns_pinning()` so
+    /// DNS resolution stays inside the egress boundary, after policy checks.
     pub fn pinned_addrs(
         mut self,
         host: impl Into<String>,
@@ -287,12 +304,25 @@ impl DirectEgressService {
         Ok(())
     }
 
-    fn build_request(&self, request: EgressRequest) -> EgressResult<reqwest::RequestBuilder> {
+    async fn prepare_request(&self, mut request: EgressRequest) -> EgressResult<EgressRequest> {
         self.validate_request(&request)?;
         if request.signing == EgressSigning::Required {
             return Err(EgressError::SigningUnavailable);
         }
+        if request.dns_pinning_required {
+            let (validated_url, resolved_addrs) =
+                crate::url_validation::validate_url_dns_pinned(&request.url)
+                    .await
+                    .map_err(|error| EgressError::NetworkAccessDenied {
+                        url: format!("{} ({error})", request.url),
+                    })?;
+            let pin_host = validated_url.host_str().unwrap_or("").to_string();
+            request = request.pinned_addrs(pin_host, resolved_addrs);
+        }
+        Ok(request)
+    }
 
+    fn build_request(&self, request: EgressRequest) -> EgressResult<reqwest::RequestBuilder> {
         let EgressRequest {
             method,
             url,
@@ -337,6 +367,7 @@ impl DirectEgressService {
 #[async_trait]
 impl EgressService for DirectEgressService {
     async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        let request = self.prepare_request(request).await?;
         let response = self
             .build_request(request)?
             .send()
@@ -367,6 +398,7 @@ impl EgressService for DirectEgressService {
     }
 
     async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        let request = self.prepare_request(request).await?;
         let response = self
             .build_request(request)?
             .send()
@@ -552,6 +584,52 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status, 200);
+    }
+
+    #[tokio::test]
+    async fn dns_pinning_blocks_loopback_after_request_policy_passes() {
+        let error = DirectEgressService::new()
+            .send(
+                EgressRequest::new(
+                    "GET",
+                    "http://127.0.0.1/latest/meta-data",
+                    EgressRequestKind::Capability,
+                )
+                .network_access(Some(NetworkAccessList::allow_only(["127.0.0.1"])))
+                .require_dns_pinning(),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EgressError::NetworkAccessDenied { .. }));
+        assert!(error.to_string().contains("private/internal address"));
+    }
+
+    #[tokio::test]
+    async fn dns_pinning_does_not_run_before_system_allowlist_denial() {
+        use crate::system_allowlist::SystemAllowlist;
+        let allowlist = SystemAllowlist::from_toml(
+            r#"
+            [groups.test]
+            allowed = ["allowed.example.com"]
+            "#,
+        )
+        .unwrap();
+
+        let blocked_url = "https://blocked.invalid/path";
+        let error = DirectEgressService::new()
+            .with_system_allowlist(Some(Arc::new(allowlist)))
+            .send(
+                EgressRequest::new("GET", blocked_url, EgressRequestKind::Capability)
+                    .network_access(Some(NetworkAccessList::allow_only(["blocked.invalid"])))
+                    .require_dns_pinning(),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, EgressError::NetworkAccessDenied { ref url } if url == blocked_url)
+        );
     }
 
     #[tokio::test]
