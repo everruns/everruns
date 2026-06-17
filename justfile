@@ -161,13 +161,9 @@ start-production *args:
 stop-all:
     ./scripts/lib/services.sh stop-all
 
-# Start a local SeaweedFS (S3-compatible) for object-storage testing (specs/object-storage.md)
-seaweedfs *args:
-    docker compose -f local/seaweedfs-compose.yml up {{args}}
-
-# Stop and remove the local SeaweedFS
-seaweedfs-stop:
-    docker compose -f local/seaweedfs-compose.yml down
+# SeaweedFS local S3 for object-storage testing: start|stop|reset|bucket|logs (specs/object-storage.md)
+seaweedfs cmd="start":
+    ./scripts/lib/seaweedfs.sh {{cmd}}
 
 # === Load Testing ===
 

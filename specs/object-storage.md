@@ -134,8 +134,10 @@ deployment runs entirely on `db` or `s3`.
 ## Local development
 
 SeaweedFS provides an S3-compatible endpoint for local testing. `just seaweedfs`
-starts it (`local/seaweedfs-compose.yml`); SeaweedFS speaks the S3 API, so the
-exact same client code path as AWS S3 is exercised. Point the server at it with:
+runs the `weed` binary as a native process (no Docker), via
+`scripts/lib/seaweedfs.sh`, mirroring how PostgreSQL/Valkey/NATS run locally.
+SeaweedFS speaks the S3 API, so the exact same client code path as AWS S3 is
+exercised. Point the server at it with:
 
 ```bash
 export STORAGE_BLOB_BACKEND=s3
@@ -155,7 +157,7 @@ unchanged — only the endpoint and credentials differ.
 - `BlobStore` round-trip, idempotent delete, prefix isolation, key derivation,
   and content hashing are unit-tested against object_store's in-memory backend
   (the production code path), with no network dependency.
-- End-to-end offload (PostgreSQL + MinIO) is validated manually; the PostgreSQL
+- End-to-end offload (PostgreSQL + SeaweedFS) is validated manually; the PostgreSQL
   repository paths are not unit-tested without a database, consistent with the
   rest of the storage layer.
 
