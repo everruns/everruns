@@ -451,7 +451,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 
 For integration testing without real API keys, Everruns uses [llmsim](https://github.com/chaliy/llmsim) - a simulated LLM driver:
 
-1. **Provider Type**: `llmsim` - registered as `LlmProviderType::LlmSim`
+1. **Provider Type**: `llmsim` - registered as `DriverId::LlmSim`
 2. **No API Keys Required**: Tests can run without external dependencies
 3. **Configurable Responses**: Supports fixed responses, echo mode, lorem ipsum generation, and tool call simulation
 4. **Latency Simulation**: Optional latency profiles for realistic timing

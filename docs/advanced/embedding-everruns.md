@@ -167,12 +167,12 @@ Reference the provider from a model by its id, passing any non-API-key auth
 through `provider_metadata`:
 
 ```rust
-use everruns_core::{LlmProviderType, ModelWithProvider};
+use everruns_core::{DriverId, ResolvedModel};
 use everruns_core::driver_registry::ProviderMetadata;
 
-let model = ModelWithProvider {
+let model = ResolvedModel {
     model: "gpt-5-codex".into(),
-    provider_type: LlmProviderType::External("openai-codex".into()),
+    provider_type: DriverId::External("openai-codex".into()),
     api_key: None, // external providers may use metadata-based auth instead
     base_url: None,
     provider_metadata: Some(ProviderMetadata {
@@ -226,7 +226,7 @@ This path is for applications that want to:
 
 ```rust
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
 };
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_runtime::InProcessRuntimeBuilder;
@@ -236,9 +236,9 @@ let platform = PlatformDefinition::new(CapabilityRegistry::new(), DriverRegistry
 let runtime = InProcessRuntimeBuilder::new()
     .platform_definition(platform)
     .llm_sim(LlmSimConfig::fixed("hello from everruns-runtime"))
-    .default_model(ModelWithProvider {
+    .default_model(ResolvedModel {
         model: "llmsim-model".into(),
-        provider_type: LlmProviderType::LlmSim,
+        provider_type: DriverId::LlmSim,
         api_key: Some("fake-key".into()),
         base_url: None,
         provider_metadata: None,
