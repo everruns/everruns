@@ -52,14 +52,22 @@ const META_KIND_KEY: &str = "everruns-kind";
 /// User-metadata key carrying the base64(JSON) recovery record.
 const META_RECOVERY_KEY: &str = "everruns-recovery";
 
-/// Disaster-recovery metadata attached to every stored object as S3 user
-/// metadata (`x-amz-meta-*`).
+/// Disaster-recovery metadata attached to every stored object as object
+/// user-metadata.
+///
+/// Set via object_store's portable `Attribute::Metadata` — the key is just
+/// `everruns-kind` / `everruns-recovery`. On an S3-protocol backend (AWS S3 and
+/// every S3-compatible store: SeaweedFS, MinIO, R2, ...) this surfaces on the
+/// wire as `x-amz-meta-<key>`; a native GCS/Azure backend would map the same
+/// attribute to its own convention. Nothing here is AWS-specific.
 ///
 /// This is **never read on the hot path** — runtime reads/writes ignore it. It
 /// exists purely for redundancy: the bucket becomes self-describing, so a
 /// recovery tool can walk the objects and rebuild the PostgreSQL rows (paths,
-/// owners, sizes, hashes) after a metadata-store loss. See
-/// `specs/object-storage.md`.
+/// owners, sizes, hashes) after a metadata-store loss. It is only visible to
+/// holders of the bucket credentials (the control plane), who can already read
+/// the bytes and the key, so it adds no exposure beyond what already exists.
+/// See `specs/object-storage.md`.
 #[derive(Debug, Clone)]
 pub struct BlobMetadata {
     /// Object kind: `workspace_file` | `image` | `image_thumbnail`.

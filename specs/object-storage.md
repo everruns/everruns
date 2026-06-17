@@ -117,18 +117,35 @@ no S3 URL ever leaves the control plane.
 
 ## Disaster-recovery metadata
 
-Every stored object carries **S3 user metadata** (`x-amz-meta-*`) so the bucket
-is self-describing. This is pure redundancy — it is **never read on the hot
-path**; runtime reads/writes ignore it. Its only purpose is partial recovery if
-the PostgreSQL metadata store is lost or corrupted: a tool can walk the bucket
-and rebuild the `workspace_files` / `images` rows from the objects alone.
+Every stored object carries **object user-metadata** so the bucket is
+self-describing. This is pure redundancy — it is **never read on the hot path**;
+runtime reads/writes ignore it. Its only purpose is partial recovery if the
+PostgreSQL metadata store is lost or corrupted: a tool can walk the bucket and
+rebuild the `workspace_files` / `images` rows from the objects alone.
+
+Metadata is set through object_store's portable `Attribute::Metadata`, so the
+keys are backend-neutral (`everruns-kind`, `everruns-recovery`). On any
+S3-protocol backend — AWS S3 and every S3-compatible store (SeaweedFS, MinIO,
+R2, ...) — these surface on the wire as `x-amz-meta-<key>`; a native GCS/Azure
+backend would map them to that provider's convention. Nothing is AWS-specific.
 
 Each object sets:
 
 - `Content-Type` — the object's media type (when known).
-- `x-amz-meta-everruns-kind` — `workspace_file` | `image` | `image_thumbnail`.
-- `x-amz-meta-everruns-recovery` — base64(JSON) of the owning-row fields.
-  base64 keeps the value header-safe regardless of unicode in paths/filenames.
+- `everruns-kind` — `workspace_file` | `image` | `image_thumbnail`.
+- `everruns-recovery` — base64(JSON) of the owning-row fields. base64 keeps the
+  value header-safe regardless of unicode in paths/filenames.
+
+### Exposure
+
+This metadata is only visible to callers with bucket credentials (the control
+plane). Everruns never presigns object URLs or forwards object response headers
+to clients — `get()` returns raw bytes only — so these values never reach end
+users. Anyone who can read the metadata can already read the object bytes and
+the key (which encodes the tenant ids), so it adds no exposure beyond what
+already exists. `everruns-recovery` carries paths/filenames/hashes at the same
+sensitivity as the data; deployments that treat those as sensitive should keep
+the bucket private (required) and enable bucket-side encryption (SSE/KMS).
 
 Recovery record (JSON, `v:1`):
 
