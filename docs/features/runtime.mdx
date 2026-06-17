@@ -63,7 +63,65 @@ let runtime = InProcessRuntimeBuilder::new()
     .await?;
 ```
 
-Swap `llm_sim(...)` for a real `default_model` (OpenAI, Anthropic, OpenRouter, Ollama, …) to talk to a live provider.
+The quickstart uses the built-in `llmsim` driver for deterministic, offline runs. To talk to a live provider, register that provider's driver and point `default_model` at it — see [Talk to OpenAI](#talk-to-openai) below.
+
+## Talk to OpenAI
+
+A real provider needs two things, not one: the provider's **driver must be registered** in the `DriverRegistry`, *and* `default_model` must select it. Setting `default_model` alone is not enough — the runtime resolves `provider_type` against the registry, so an unregistered driver fails at turn time.
+
+Add the provider crate:
+
+```bash
+cargo add everruns-openai
+```
+
+Then register its driver and select it as the default model:
+
+```rust
+use everruns_core::driver_registry::DriverRegistry;
+use everruns_core::{CapabilityRegistry, DriverId, PlatformDefinition, ResolvedModel};
+use everruns_runtime::InProcessRuntimeBuilder;
+
+// 1. Register the OpenAI driver so `DriverId::OpenAI` can be resolved.
+let mut drivers = DriverRegistry::new();
+everruns_openai::register_driver(&mut drivers);
+
+// 2. Build the platform from that registry.
+let platform = PlatformDefinition::new(CapabilityRegistry::new(), drivers);
+
+// 3. Point the runtime's default model at OpenAI.
+let runtime = InProcessRuntimeBuilder::new()
+    .platform_definition(platform)
+    .default_model(ResolvedModel {
+        model: "gpt-5.5".into(),
+        provider_type: DriverId::OpenAI,
+        api_key: Some(std::env::var("OPENAI_API_KEY")?),
+        base_url: None,
+        provider_metadata: None,
+    })
+    .single_session(|s| {
+        s.harness("assistant", "You are a concise, helpful assistant.")
+            .agent("assistant-agent", "Answer in one short sentence.")
+            .session_title("OpenAI Session")
+    })
+    .build()
+    .await?;
+
+let session_id = runtime.default_session_id().expect("single_session id");
+let result = runtime
+    .run_text_turn(session_id, "Say hello from everruns-runtime in one sentence.")
+    .await?;
+println!("{}", result.response);
+```
+
+The same pattern works for any provider crate — swap `everruns-openai` for `everruns-anthropic` (`DriverId::Anthropic`), `everruns-openrouter` (`DriverId::OpenRouter`), and so on, matching the crate to its `DriverId`. For an arbitrary OpenAI-compatible endpoint (a local gateway, Ollama, …), keep `DriverId::OpenAI` and set `base_url`.
+
+A complete, runnable version lives at `crates/runtime/examples/openai_runtime.rs`:
+
+```bash
+export OPENAI_API_KEY=sk-...
+cargo run -p everruns-runtime --example openai_runtime
+```
 
 ## Inspect the turn context
 
@@ -138,6 +196,7 @@ Run the in-tree examples:
 ```bash
 cargo run -p everruns-runtime --example in_process_runtime
 cargo run -p everruns-runtime --example inspect_context
+cargo run -p everruns-runtime --example openai_runtime   # needs OPENAI_API_KEY
 cargo run --manifest-path examples/coding-cli/Cargo.toml
 cargo run --manifest-path examples/weekend-concierge-host/Cargo.toml
 ```
