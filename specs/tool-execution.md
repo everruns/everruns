@@ -65,9 +65,9 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 
 ### Narration Formatting
 
-Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). The narration system lives in `crates/core/src/tool_narration.rs`.
+Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). The narration system lives in `crates/core/src/tool_narration.rs`. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`specs/tool-narration.md`](tool-narration.md) for the full resolution order, generic pattern rules, the common-tool family catalog, and the truncation/redaction rules for displayed arguments.
 
-**Built-in tools** have hardcoded narration (bash → "Ran `ls`", read_file → "Read AGENTS.md"). Tools that don't match a hardcoded case fall through to the generic path.
+**Built-in tools** have hardcoded narration (bash → "Ran `ls`", read_file → "Read AGENTS.md"). Tools that don't match a hardcoded case fall through to generic pattern rules, then to the generic `narration_noun`/display-name path.
 
 **Operation-based narration via `narration_noun`:** Multi-operation tools (CRUD tools with an `operation`/`action` argument) should set `narration_noun` in their `ToolHints`. The narration system then:
 
