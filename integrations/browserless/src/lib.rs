@@ -165,8 +165,10 @@ impl Capability for BrowserlessCapability {
             .arguments
             .get("url")
             .and_then(|v| v.as_str())
-            .map(|u| truncate_target(u.trim()))
-            .filter(|u| !u.is_empty());
+            .map(|u| u.trim())
+            .filter(|u| !u.is_empty())
+            // host+path only — never expose scheme, userinfo, query, or fragment.
+            .map(everruns_core::tool_narration::url_display);
 
         let (started, completed, failed, target) = match tool_call.name.as_str() {
             "browserless_open_browser" => (
@@ -248,19 +250,6 @@ impl Capability for BrowserlessCapability {
 }
 
 // ============================================================================
-// Narration
-// ============================================================================
-
-fn truncate_target(value: &str) -> String {
-    const MAX_CHARS: usize = 48;
-    let clean = value.trim();
-    if clean.chars().count() <= MAX_CHARS {
-        return clean.to_string();
-    }
-    format!("{}...", clean.chars().take(MAX_CHARS).collect::<String>())
-}
-
-// ============================================================================
 // Tests
 // ============================================================================
 
@@ -285,15 +274,16 @@ mod tests {
         let call = ToolCall {
             id: "call_1".to_string(),
             name: "browserless_navigate".to_string(),
-            arguments: serde_json::json!({ "url": "https://example.com/page" }),
+            arguments: serde_json::json!({ "url": "https://user:tok@example.com/page?token=abc" }),
         };
+        // Narration shows host+path only — no scheme, userinfo, or query.
         assert_eq!(
             cap.narrate(None, &call, ToolNarrationPhase::Started, None),
-            Some("Navigating to https://example.com/page".to_string())
+            Some("Navigating to example.com/page".to_string())
         );
         assert_eq!(
             cap.narrate(None, &call, ToolNarrationPhase::Completed, None),
-            Some("Navigated to https://example.com/page".to_string())
+            Some("Navigated to example.com/page".to_string())
         );
 
         let screenshot = ToolCall {

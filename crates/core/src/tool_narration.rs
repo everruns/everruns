@@ -119,19 +119,35 @@ pub fn truncate(value: &str, max_len: usize) -> String {
     format!("{truncated}...")
 }
 
-/// Display form for a URL argument: host + path, with the scheme, query
-/// string, and fragment stripped (the query may carry tokens). Truncated.
+/// Display form for a URL argument: host + path, with the scheme, `userinfo@`
+/// credentials, query string, and fragment stripped (any of which can carry
+/// secrets). Truncated.
 pub fn url_display(url: &str) -> String {
     let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    // Drop query string and fragment.
     let host_path = without_scheme
         .split(['?', '#'])
         .next()
-        .unwrap_or(without_scheme)
-        .trim_end_matches('/');
-    let cleaned = if host_path.is_empty() {
+        .unwrap_or(without_scheme);
+    // Split authority from path, then strip `user:pass@` userinfo from the
+    // authority (it precedes the first '/').
+    let (authority, path) = match host_path.split_once('/') {
+        Some((authority, path)) => (authority, Some(path)),
+        None => (host_path, None),
+    };
+    let host = authority
+        .rsplit_once('@')
+        .map(|(_, host)| host)
+        .unwrap_or(authority);
+    let rebuilt = match path {
+        Some(path) => format!("{host}/{path}"),
+        None => host.to_string(),
+    };
+    let cleaned = rebuilt.trim_end_matches('/');
+    let cleaned = if cleaned.is_empty() {
         without_scheme
     } else {
-        host_path
+        cleaned
     };
     truncate(cleaned, 48)
 }
@@ -617,32 +633,38 @@ pub fn narrate_write_todos(phase: ToolNarrationPhase, locale: Option<&str>) -> S
 pub fn narrate_web_fetch(
     arguments: &Value,
     phase: ToolNarrationPhase,
-    _locale: Option<&str>,
+    locale: Option<&str>,
 ) -> String {
     let value = safe_arg_str(arguments, &["url", "uri"]).map(url_display);
-    labeled_phrase(
-        "Fetch URL",
-        "Fetched URL",
-        "Could not fetch URL",
-        value,
-        phase,
-    )
+    let verbs = pick(
+        locale,
+        ("Fetch URL", "Fetched URL", "Could not fetch URL"),
+        (
+            "Завантажую URL",
+            "Завантажив URL",
+            "Не вдалося завантажити URL",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, value, phase)
 }
 
-/// `tool_search` narration (English-only for now).
+/// `tool_search` narration.
 pub fn narrate_tool_search(
     arguments: &Value,
     phase: ToolNarrationPhase,
-    _locale: Option<&str>,
+    locale: Option<&str>,
 ) -> String {
     let value = safe_arg_str(arguments, &["query"]).map(|q| truncate(q, 64));
-    labeled_phrase(
-        "Search tools",
-        "Searched tools",
-        "Could not search tools",
-        value,
-        phase,
-    )
+    let verbs = pick(
+        locale,
+        ("Search tools", "Searched tools", "Could not search tools"),
+        (
+            "Шукаю інструменти",
+            "Знайшов інструменти",
+            "Не вдалося знайти інструменти",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, value, phase)
 }
 
 /// Skill family narration: `activate_skill`, `read_skill`, `list_skills`.
@@ -854,6 +876,20 @@ mod tests {
             narrate_web_fetch(&a, ToolNarrationPhase::Completed, None),
             "Fetched URL: example.com/page"
         );
+        // Ukrainian locale must not fall back to English (no mixed-language UI).
+        assert_eq!(
+            narrate_web_fetch(&a, ToolNarrationPhase::Completed, Some("uk")),
+            "Завантажив URL: example.com/page"
+        );
+    }
+
+    #[test]
+    fn url_display_strips_embedded_credentials() {
+        assert_eq!(
+            url_display("https://user:pass@example.com/path?token=abc"),
+            "example.com/path"
+        );
+        assert_eq!(url_display("https://user:pass@example.com"), "example.com");
     }
 
     #[test]
@@ -904,8 +940,16 @@ mod tests {
         });
 
         assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Started),
+            "Creating agent: Neon Cartographer"
+        );
+        assert_eq!(
             render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Completed),
             "Created agent: Neon Cartographer"
+        );
+        assert_eq!(
+            render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Failed),
+            "Failed to create agent: Neon Cartographer"
         );
     }
 
