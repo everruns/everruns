@@ -244,16 +244,6 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
         ))
     }
 
-    fn narrate(
-        &self,
-        _tool_def: Option<&crate::tool_types::ToolDefinition>,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(ListSkillsTool), Box::new(ActivateSkillFromVfsTool)]
     }
@@ -327,6 +317,15 @@ struct ListSkillsTool;
 
 #[async_trait]
 impl Tool for ListSkillsTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "list_skills"
     }
@@ -446,6 +445,15 @@ struct ActivateSkillFromVfsTool;
 
 #[async_trait]
 impl Tool for ActivateSkillFromVfsTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "activate_skill"
     }

@@ -65,9 +65,9 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 
 ### Narration Formatting
 
-Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). Narration is **owned by the capability that contributes the tool**, via `Capability::narrate` — there is no central name-keyed narrator. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`specs/tool-narration.md`](tool-narration.md) for the contract, wiring, reusable phrasing helpers, and the truncation/redaction rules.
+Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). Narration is **owned by the tool**, via `Tool::narrate`, and surfaced by its capability — there is no central name-keyed narrator. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`specs/tool-narration.md`](tool-narration.md) for the contract, wiring, reusable phrasing helpers, and the truncation/redaction rules.
 
-**Capability-owned narration:** Each capability implements `narrate()` for its own tool names (calling the reusable phrasing helpers in `crate::tool_narration`) and returns `None` for the rest. The framework routes every applied capability's `narrate()` through the act atom. Tools whose capability contributes no narration fall through to the generic `narration_noun`/display-name path below.
+**Tool-owned narration:** A tool implements `Tool::narrate` (calling the reusable phrasing helpers in `crate::tool_narration`); `Capability::narrate` defaults to dispatching to the matching tool, so a capability narrates its tools for free. A capability overrides `narrate()` only when narration is config-driven, spans tools, or the tools are dynamic (e.g. proxied MCP tools). The framework routes every applied capability's `narrate()` through the act atom. Tools that contribute no narration fall through to the generic `narration_noun`/display-name path below.
 
 **Operation-based narration via `narration_noun`:** Multi-operation tools (CRUD tools with an `operation`/`action` argument) should set `narration_noun` in their `ToolHints`. The generic fallback then:
 

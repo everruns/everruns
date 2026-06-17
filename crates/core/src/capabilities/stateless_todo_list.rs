@@ -87,19 +87,6 @@ impl Capability for StatelessTodoListCapability {
         Some(SYSTEM_PROMPT)
     }
 
-    fn narrate(
-        &self,
-        _tool_def: Option<&crate::tool_types::ToolDefinition>,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_call.name != "write_todos" {
-            return None;
-        }
-        Some(crate::tool_narration::narrate_write_todos(phase, locale))
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(WriteTodosTool)]
     }
@@ -128,6 +115,15 @@ pub struct WriteTodosTool;
 
 #[async_trait]
 impl Tool for WriteTodosTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_write_todos(phase, locale))
+    }
+
     fn name(&self) -> &str {
         "write_todos"
     }

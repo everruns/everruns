@@ -108,25 +108,6 @@ impl Capability for DenoCapability {
         Some(&SYSTEM_PROMPT)
     }
 
-    fn narrate(
-        &self,
-        tool_def: Option<&everruns_core::tool_types::ToolDefinition>,
-        tool_call: &everruns_core::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_call.name != "deno_exec" {
-            return None;
-        }
-        let fallback = tool_def.and_then(|d| d.display_name()).unwrap_or("Deno");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(DenoCreateSandboxTool),

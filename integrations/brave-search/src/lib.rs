@@ -86,23 +86,6 @@ impl Capability for BraveSearchCapability {
         )
     }
 
-    fn narrate(
-        &self,
-        _tool_def: Option<&everruns_core::tool_types::ToolDefinition>,
-        tool_call: &everruns_core::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_call.name != "brave_search" {
-            return None;
-        }
-        Some(everruns_core::tool_narration::narrate_search_web(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(BraveWebSearchTool)]
     }

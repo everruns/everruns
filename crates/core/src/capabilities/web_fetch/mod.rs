@@ -228,23 +228,6 @@ impl Capability for WebFetchCapability {
         ))
     }
 
-    fn narrate(
-        &self,
-        _tool_def: Option<&crate::tool_types::ToolDefinition>,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_call.name != "web_fetch" {
-            return None;
-        }
-        Some(crate::tool_narration::narrate_web_fetch(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(WebFetchTool::new(false, self.bot_auth.clone()))]
     }
@@ -519,6 +502,19 @@ impl WebFetchTool {
 
 #[async_trait]
 impl Tool for WebFetchTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_web_fetch(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "web_fetch"
     }

@@ -13,31 +13,46 @@ Narration is emitted on tool events (see [`specs/events.md`](events.md) — the
 `narration` field) and is localizable (see [`specs/localization.md`](localization.md),
 `tool.narration.*`).
 
-## Narration is owned by the capability that owns the tool
+## Narration is owned by the tool, aggregated by its capability
 
 There is **no central, name-keyed narrator** that recognizes tools globally.
-Narration is part of the capability contract: a capability narrates the tools
-it contributes, and nothing else. This holds for host-registered capabilities
-too — when a host (e.g. Yolop) adds a capability with its own tools to the
-runtime, that capability narrates them. everruns does not narrate tools it does
-not own; unowned/foreign calls fall back to generic display-name phrasing.
+Narration is owned by the tool that defines it, and surfaced by the capability
+that contributes that tool. This holds for host-registered capabilities too —
+when a host (e.g. Yolop) adds a capability with its own tools to the runtime,
+those tools narrate themselves. everruns does not narrate tools it does not own;
+unowned/foreign calls fall back to generic display-name phrasing.
 
-The contract is [`Capability::narrate`](../crates/core/src/capabilities/mod.rs):
+Two levels:
 
-```rust
-fn narrate(
-    &self,
-    tool_def: Option<&ToolDefinition>,
-    tool_call: &ToolCall,
-    phase: ToolNarrationPhase,
-    locale: Option<&str>,
-) -> Option<String> { None }  // default: contribute nothing
-```
+1. **Tool level (default).** [`Tool::narrate`](../crates/core/src/tools.rs)
+   returns the line for a call to that tool (default `None`). The tool knows its
+   own arguments, so this is the natural home for its wording.
 
-An implementation returns `Some(line)` for its own tool names and `None` for
-everything else, so other capabilities — or the generic fallback — can handle
-the rest. Implementations should match only the tool names the capability
-actually provides.
+   ```rust
+   fn narrate(&self, call: &ToolCall, phase: ToolNarrationPhase, locale: Option<&str>)
+       -> Option<String> { None }
+   ```
+
+2. **Capability level (aggregation + override).**
+   [`Capability::narrate`](../crates/core/src/capabilities/mod.rs) **defaults** to
+   dispatching to the matching tool's `narrate()`:
+
+   ```rust
+   fn narrate(&self, _def, call, phase, locale) -> Option<String> {
+       self.tools().iter()
+           .find(|t| t.name() == call.name)
+           .and_then(|t| t.narrate(call, phase, locale))
+   }
+   ```
+
+   A capability **overrides** this only when narration is config-driven, spans
+   tools, or the tools are dynamic with no local `Tool` struct — e.g. the `mcp`
+   capability narrates proxied `*__search` tools by pattern, and the
+   `browserless`/`cursor` integrations narrate their families in one place.
+
+So adding a tool that implements `Tool::narrate` "just works" — nothing to wire
+in the capability. A capability returns `None` for tools it does not provide, so
+other capabilities or the generic fallback can handle them.
 
 ### Wiring
 
@@ -48,6 +63,10 @@ it on the act atom. These adapters are appended **after** every explicit
 tool-call hook, so model-authored narration (the `human_intent` capability)
 keeps precedence. The first hook to return `Some` wins; if none do, the act
 atom falls back to [`render_tool_narration_with_locale`](../crates/core/src/tool_narration.rs).
+
+The default `Capability::narrate` constructs `self.tools()` per call to find the
+match; narration is low-frequency, but a capability with expensive `tools()` can
+override `narrate()` with a direct match.
 
 ## Reusable phrasing helpers
 
@@ -115,12 +134,13 @@ to a generic localized verb phrase rather than mixing languages.
 
 ## Adding narration for a new tool
 
-1. Implement (or extend) `narrate()` in the **capability that contributes the
-   tool**. Match only that capability's tool names; return `None` otherwise.
-2. Call an existing phrasing helper in `crate::tool_narration` where one fits;
-   add a new helper there only if the wording/localization is reusable.
+1. Implement `Tool::narrate` on the **tool struct**, calling an existing phrasing
+   helper in `crate::tool_narration` where one fits (add a new helper there only
+   if the wording/localization is reusable). The capability surfaces it
+   automatically via the default `Capability::narrate`.
+2. Override `Capability::narrate` instead only when narration is config-driven,
+   spans tools, or the tools are dynamic (no local `Tool` struct).
 3. Apply the truncation and redaction rules; never select a secret-bearing
    field.
-4. Add a unit test in the owning crate asserting `Started`, `Completed`, and
-   `Failed`, including the no-argument fallback, and that the capability returns
-   `None` for tools it does not own.
+4. Add a unit test asserting `Started`, `Completed`, and `Failed`, including the
+   no-argument fallback.

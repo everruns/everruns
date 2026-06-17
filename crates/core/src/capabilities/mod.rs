@@ -877,25 +877,27 @@ pub trait Capability: Send + Sync {
     /// Contribute human-readable narration for one of *this capability's* tool
     /// calls (e.g. "Read AGENTS.md", "Searched tools: router").
     ///
-    /// narration is owned by the capability that contributes the tool: return
-    /// `Some(line)` for tool names this capability provides, and `None` for
-    /// anything else so other capabilities — or the generic display-name
-    /// fallback in [`crate::tool_narration`] — can handle it. The framework
-    /// consults this for every applied capability (see `assemble`/
-    /// `CapabilityNarrationHook`) on the act path.
+    /// The **default** dispatches to the matching tool's
+    /// [`crate::tools::Tool::narrate`], so a capability narrates its tools for
+    /// free — narration lives on the tool that owns it. Override this only when
+    /// narration is config-driven or spans tools, or when the tools are dynamic
+    /// (e.g. proxied MCP tools that have no local `Tool` struct).
     ///
-    /// Implementations should call the reusable phrasing helpers in
-    /// [`crate::tool_narration`] (`narrate_read_file`, `narrate_shell_exec`, …)
-    /// so wording and localization stay consistent. By default, contributes no
-    /// narration.
+    /// Returns `None` for tool names this capability does not provide, so other
+    /// capabilities — or the generic fallback in [`crate::tool_narration`] —
+    /// can handle them. The framework consults this for every applied
+    /// capability (see `assemble`/`CapabilityNarrationHook`) on the act path.
     fn narrate(
         &self,
         _tool_def: Option<&ToolDefinition>,
-        _tool_call: &ToolCall,
-        _phase: crate::tool_narration::ToolNarrationPhase,
-        _locale: Option<&str>,
+        tool_call: &ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
     ) -> Option<String> {
-        None
+        self.tools()
+            .iter()
+            .find(|tool| tool.name() == tool_call.name)
+            .and_then(|tool| tool.narrate(tool_call, phase, locale))
     }
 
     /// Returns user-defined hook specifications contributed by this capability.

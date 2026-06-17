@@ -143,25 +143,6 @@ impl Capability for DockerContainerCapability {
         Some(&SYSTEM_PROMPT)
     }
 
-    fn narrate(
-        &self,
-        tool_def: Option<&everruns_core::tool_types::ToolDefinition>,
-        tool_call: &everruns_core::tool_types::ToolCall,
-        phase: everruns_core::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        if tool_call.name != "docker_exec" {
-            return None;
-        }
-        let fallback = tool_def.and_then(|d| d.display_name()).unwrap_or("Docker");
-        Some(everruns_core::tool_narration::narrate_shell_exec(
-            &tool_call.arguments,
-            fallback,
-            phase,
-            locale,
-        ))
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(DockerExecTool),
@@ -393,6 +374,21 @@ pub struct DockerExecTool;
 
 #[async_trait]
 impl Tool for DockerExecTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("Docker");
+        Some(everruns_core::tool_narration::narrate_shell_exec(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_exec"
     }

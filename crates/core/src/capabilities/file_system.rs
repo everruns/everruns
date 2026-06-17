@@ -504,27 +504,6 @@ impl Capability for FileSystemCapability {
         ))
     }
 
-    fn narrate(
-        &self,
-        _tool_def: Option<&crate::tool_types::ToolDefinition>,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        use crate::tool_narration as tn;
-        let args = &tool_call.arguments;
-        Some(match tool_call.name.as_str() {
-            "read_file" => tn::narrate_read_file(args, phase, locale),
-            "write_file" => tn::narrate_write_file(args, phase, locale),
-            "edit_file" => tn::narrate_edit_file(args, phase, locale),
-            "delete_file" => tn::narrate_delete_file(args, phase, locale),
-            "grep_files" => tn::narrate_grep_files(args, phase, locale),
-            "list_directory" => tn::narrate_list_directory(args, phase, locale),
-            "stat_file" => tn::narrate_stat_file(args, phase, locale),
-            _ => return None,
-        })
-    }
-
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(ReadFileTool),
@@ -551,6 +530,19 @@ pub struct ReadFileTool;
 
 #[async_trait]
 impl Tool for ReadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_read_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "read_file"
     }
@@ -854,6 +846,19 @@ pub struct WriteFileTool;
 
 #[async_trait]
 impl Tool for WriteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_write_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "write_file"
     }
@@ -979,6 +984,19 @@ pub struct EditFileTool;
 
 #[async_trait]
 impl Tool for EditFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_edit_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "edit_file"
     }
@@ -1230,6 +1248,19 @@ pub struct ListDirectoryTool;
 
 #[async_trait]
 impl Tool for ListDirectoryTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_list_directory(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "list_directory"
     }
@@ -1389,6 +1420,19 @@ pub struct GrepFilesTool;
 
 #[async_trait]
 impl Tool for GrepFilesTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_grep_files(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "grep_files"
     }
@@ -1548,6 +1592,19 @@ pub struct DeleteFileTool;
 
 #[async_trait]
 impl Tool for DeleteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_delete_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "delete_file"
     }
@@ -1661,6 +1718,19 @@ pub struct StatFileTool;
 
 #[async_trait]
 impl Tool for StatFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_stat_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "stat_file"
     }
