@@ -99,6 +99,27 @@ impl Database {
         Ok(row)
     }
 
+    /// Mark every non-terminal run (`pending`/`running`) as `failed`. Called
+    /// once on server boot: a fresh process has no run in flight, so any such
+    /// row is an orphan left by a previous process that died mid-run and would
+    /// otherwise show a perpetual spinner. Returns the number of rows reaped.
+    /// See specs/agent-checks.md (durability) and EVE-586.
+    pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            UPDATE agent_health_check_runs
+            SET status = 'failed',
+                error_message = COALESCE(error_message, 'Run interrupted by server restart'),
+                completed_at = COALESCE(completed_at, NOW()),
+                updated_at = NOW()
+            WHERE status IN ('pending', 'running')
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
     pub async fn update_agent_health_check_run(
         &self,
         id: Uuid,

@@ -1871,6 +1871,19 @@ impl ServerAppBuilder {
             });
         }
 
+        // -- Agent health-check reaper (both prod and dev) --
+        // A previous process may have died mid-run, leaving health-check rows
+        // stuck in `running`/`pending` forever (a user-visible perpetual
+        // spinner). A fresh process has no run in flight, so transition every
+        // such orphan to `failed` on boot. See specs/agent-checks.md and EVE-586.
+        match db.reap_running_agent_health_check_runs().await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "Reaped interrupted agent health-check runs"),
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to reap interrupted agent health-check runs")
+            }
+        }
+
         // -- Durable task scheduler (both prod and dev) --
         if let Some(store) = scheduler_store {
             if let Err(e) =

@@ -110,6 +110,18 @@ pub struct HealthCheckRun {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+/// A non-terminal run untouched for longer than this is treated as `failed`
+/// when read. This is defense-in-depth for a process that crashed without
+/// restarting (the startup reaper covers the restart case). The threshold
+/// comfortably exceeds the runner's worst-case wall-clock budget — `updated_at`
+/// is stamped when the run transitions to `running`, and a run finishes well
+/// inside this window — so an in-flight run is never misreported as failed.
+/// See specs/agent-checks.md (durability) and EVE-586.
+const STALE_AFTER_SECS: i64 = 30 * 60;
+
+const STALE_ERROR_MESSAGE: &str =
+    "Run stalled without completing (no progress past the staleness window).";
+
 impl From<AgentHealthCheckRunRow> for HealthCheckRun {
     fn from(row: AgentHealthCheckRunRow) -> Self {
         use everruns_core::typed_id::AgentId;
@@ -125,5 +137,80 @@ impl From<AgentHealthCheckRunRow> for HealthCheckRun {
             created_at: row.created_at,
             completed_at: row.completed_at,
         }
+    }
+}
+
+impl HealthCheckRun {
+    /// Build the API view, applying the staleness guard relative to `now`.
+    ///
+    /// Read paths (`get`/`list`) use this so a run whose process crashed
+    /// mid-flight surfaces as `failed` instead of a perpetual `running`
+    /// spinner, even when the server has not restarted to run the boot reaper.
+    pub fn from_row_at(row: AgentHealthCheckRunRow, now: chrono::DateTime<chrono::Utc>) -> Self {
+        let last_progress = row.updated_at;
+        let mut run = Self::from(row);
+        // Derive "non-terminal" from the same parsed status the API presents
+        // (rather than the raw DB string) so any unexpected status value is
+        // judged for staleness consistently with how it is displayed.
+        let non_terminal = matches!(
+            run.status,
+            HealthCheckStatus::Pending | HealthCheckStatus::Running
+        );
+        if non_terminal && now - last_progress > chrono::TimeDelta::seconds(STALE_AFTER_SECS) {
+            run.status = HealthCheckStatus::Failed;
+            run.error_message
+                .get_or_insert_with(|| STALE_ERROR_MESSAGE.to_string());
+            run.completed_at.get_or_insert(last_progress);
+        }
+        run
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(status: &str, updated_minutes_ago: i64) -> AgentHealthCheckRunRow {
+        let now = chrono::Utc::now();
+        AgentHealthCheckRunRow {
+            id: uuid::Uuid::now_v7(),
+            org_id: 1,
+            public_id: "healthcheck_00000000000000000000000000000001".to_string(),
+            agent_id: None,
+            config_hash: "cfg".to_string(),
+            model_id: None,
+            status: status.to_string(),
+            summary: None,
+            results: None,
+            error_message: None,
+            started_at: None,
+            completed_at: None,
+            created_at: now - chrono::TimeDelta::minutes(updated_minutes_ago),
+            updated_at: now - chrono::TimeDelta::minutes(updated_minutes_ago),
+        }
+    }
+
+    #[test]
+    fn stale_running_run_is_reported_failed() {
+        let now = chrono::Utc::now();
+        let run = HealthCheckRun::from_row_at(row("running", 45), now);
+        assert_eq!(run.status, HealthCheckStatus::Failed);
+        assert!(run.error_message.is_some());
+        assert!(run.completed_at.is_some());
+    }
+
+    #[test]
+    fn fresh_running_run_is_left_running() {
+        let now = chrono::Utc::now();
+        let run = HealthCheckRun::from_row_at(row("running", 2), now);
+        assert_eq!(run.status, HealthCheckStatus::Running);
+        assert!(run.error_message.is_none());
+    }
+
+    #[test]
+    fn terminal_run_is_never_remapped_even_when_old() {
+        let now = chrono::Utc::now();
+        let run = HealthCheckRun::from_row_at(row("completed", 600), now);
+        assert_eq!(run.status, HealthCheckStatus::Completed);
     }
 }

@@ -3399,6 +3399,10 @@ impl StorageBackend {
         dispatch!(self, update_agent_health_check_run, id, input)
     }
 
+    pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
+        dispatch!(self, reap_running_agent_health_check_runs)
+    }
+
     // ============================================
     // Agent Check Rules (specs/agent-checks.md, phase 4)
     // ============================================

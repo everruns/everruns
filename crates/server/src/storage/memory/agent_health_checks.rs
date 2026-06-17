@@ -83,6 +83,28 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// In-memory parity for the Postgres reaper: mark every non-terminal run
+    /// (`pending`/`running`) as `failed`. See specs/agent-checks.md and EVE-586.
+    pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
+        let now = Self::now();
+        let mut guard = self.agent_health_check_runs.write();
+        let mut count = 0u64;
+        for row in guard.values_mut() {
+            if matches!(row.status.as_str(), "pending" | "running") {
+                row.status = "failed".to_string();
+                if row.error_message.is_none() {
+                    row.error_message = Some("Run interrupted by server restart".to_string());
+                }
+                if row.completed_at.is_none() {
+                    row.completed_at = Some(now);
+                }
+                row.updated_at = now;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     pub async fn update_agent_health_check_run(
         &self,
         id: Uuid,
@@ -113,5 +135,76 @@ impl InMemoryDatabase {
         }
         row.updated_at = now;
         Ok(Some(row.clone()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_input(pid: u128) -> CreateAgentHealthCheckRunRow {
+        CreateAgentHealthCheckRunRow {
+            public_id: format!("healthcheck_{pid:032x}"),
+            agent_id: None,
+            config_hash: "cfg".to_string(),
+            model_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn reap_marks_running_failed_and_leaves_terminal_runs() {
+        let db = InMemoryDatabase::new();
+
+        // An orphaned run still marked `running` (simulating a crashed process).
+        let running = db
+            .create_agent_health_check_run(1, create_input(1))
+            .await
+            .unwrap();
+        db.update_agent_health_check_run(
+            running.id,
+            UpdateAgentHealthCheckRunRow {
+                status: Some("running".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        // A run that finished normally must be left untouched.
+        let done = db
+            .create_agent_health_check_run(1, create_input(2))
+            .await
+            .unwrap();
+        db.update_agent_health_check_run(
+            done.id,
+            UpdateAgentHealthCheckRunRow {
+                status: Some("completed".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let reaped = db.reap_running_agent_health_check_runs().await.unwrap();
+        assert_eq!(reaped, 1);
+
+        let running_after = db
+            .get_agent_health_check_run(1, &running.public_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(running_after.status, "failed");
+        assert!(running_after.error_message.is_some());
+        assert!(running_after.completed_at.is_some());
+
+        let done_after = db
+            .get_agent_health_check_run(1, &done.public_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(done_after.status, "completed");
+
+        // Idempotent: a second pass finds nothing left to reap.
+        assert_eq!(db.reap_running_agent_health_check_runs().await.unwrap(), 0);
     }
 }
