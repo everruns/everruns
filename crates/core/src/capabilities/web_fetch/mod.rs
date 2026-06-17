@@ -600,9 +600,16 @@ impl Tool for WebFetchTool {
         let routed_tool;
         let tool = match &context.egress_service {
             Some(egress) => {
+                // The system allowlist is enforced again at the egress boundary,
+                // but fetchkit resolves redirect targets before invoking the transport.
+                // When the allowlist is active, keep redirects on the already
+                // preflighted host so disallowed cross-host redirect labels cannot
+                // leak via DNS before the boundary denies the request.
+                let same_host_redirects_only = self.system_allowlist.is_some();
                 routed_tool = self
                     .builder
                     .clone()
+                    .same_host_redirects_only_if_set(same_host_redirects_only.then_some(true))
                     .transport(Arc::new(egress_transport::EgressHttpTransport::new(
                         egress.clone(),
                         context.network_access.clone(),
@@ -2172,6 +2179,62 @@ mod tests {
         }
     }
 
+    struct RedirectingEgress {
+        requests: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl RedirectingEgress {
+        fn requested_urls(&self) -> Vec<String> {
+            self.requests.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait]
+    impl crate::egress::EgressService for RedirectingEgress {
+        async fn send(
+            &self,
+            request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressResponse> {
+            let url = request.url.clone();
+            self.requests.lock().unwrap().push(request.url);
+            // The final host returns 200; only the initial host issues the
+            // cross-host redirect. Returning 200 on the final URL keeps the test
+            // deterministic — if the same-host-only policy ever regressed, the
+            // second hop would terminate here instead of self-redirecting.
+            if url == "http://93.184.216.35/final" {
+                return Ok(crate::egress::EgressResponse {
+                    status: 200,
+                    headers: [("content-type".to_string(), "text/plain".to_string())]
+                        .into_iter()
+                        .collect(),
+                    body: b"final".to_vec(),
+                });
+            }
+            Ok(crate::egress::EgressResponse {
+                status: 302,
+                headers: [(
+                    "location".to_string(),
+                    "http://93.184.216.35/final".to_string(),
+                )]
+                .into_iter()
+                .collect(),
+                body: Vec::new(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            request: crate::egress::EgressRequest,
+        ) -> crate::egress::EgressResult<crate::egress::EgressStreamResponse> {
+            let response = self.send(request).await?;
+            Ok(crate::egress::EgressStreamResponse {
+                status: response.status,
+                headers: response.headers,
+                body: Box::pin(futures::stream::once(async move { Ok(response.body) })),
+            })
+        }
+    }
+
     #[tokio::test]
     async fn test_execute_with_context_routes_through_egress() {
         let tool = WebFetchTool::default();
@@ -2191,6 +2254,42 @@ mod tests {
         } else {
             panic!("Expected successful egress-path response, got: {result:?}");
         }
+    }
+
+    #[tokio::test]
+    async fn test_egress_path_system_allowlist_blocks_cross_host_redirect_before_second_hop() {
+        use crate::system_allowlist::SystemAllowlist;
+
+        let tool = WebFetchTool {
+            system_allowlist: Some(
+                SystemAllowlist::from_toml("[groups.test]\nallowed = [\"93.184.216.34\"]\n")
+                    .map(Arc::new)
+                    .unwrap(),
+            ),
+            ..Default::default()
+        };
+        let egress = Arc::new(RedirectingEgress {
+            requests: std::sync::Mutex::new(Vec::new()),
+        });
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(egress.clone());
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({ "url": "http://93.184.216.34/start" }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(&result, ToolExecutionResult::ToolError(msg) if msg.contains("blocked")),
+            "expected cross-host redirect denial, got: {result:?}"
+        );
+        assert_eq!(
+            egress.requested_urls(),
+            vec!["http://93.184.216.34/start"],
+            "redirect target must be rejected before a second egress hop can resolve it"
+        );
     }
 
     #[tokio::test]
