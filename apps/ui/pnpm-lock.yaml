@@ -41,8 +41,8 @@ importers:
         specifier: ^5.90.21
         version: 5.100.11(react@19.2.6)
       '@xyflow/react':
-        specifier: ^12.10.1
-        version: 12.10.2(@types/react@19.2.15)(immer@11.1.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+        specifier: ^12.11.0
+        version: 12.11.0(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(immer@11.1.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -2098,14 +2098,21 @@ packages:
   '@x0k/json-schema-merge@1.0.3':
     resolution: {integrity: sha512-lerJC4sI9CNUQWdff3PnU1YJOqazD6TjMcvxZIPXUBjn4j1cUiXE0LvzhMnGYzKKr271TkvXJtH7gEwksrtn+w==}
 
-  '@xyflow/react@12.10.2':
-    resolution: {integrity: sha512-CgIi6HwlcHXwlkTpr0fxLv/0sRVNZ8IdwKLzzeCscaYBwpvfcH1QFOCeaTCuEn1FQEs/B8CjnTSjhs8udgmBgQ==}
+  '@xyflow/react@12.11.0':
+    resolution: {integrity: sha512-na4IO33FSs2OS72hASgZDmTYwFAkef7Z74uBUVrong3ARmQQHfnRUVaCFn1kTt5LbS6pK03TbYjCPGLjLFfziA==}
     peerDependencies:
+      '@types/react': '>=17'
+      '@types/react-dom': '>=17'
       react: '>=17'
       react-dom: '>=17'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
 
-  '@xyflow/system@0.0.76':
-    resolution: {integrity: sha512-hvwvnRS1B3REwVDlWexsq7YQaPZeG3/mKo1jv38UmnpWmxihp14bW6VtEOuHEwJX2FvzFw8k77LyKSk/wiZVNA==}
+  '@xyflow/system@0.0.77':
+    resolution: {integrity: sha512-qCDCMCQAAgUu8yHnhloHG9F5mwPX5E+Wl8McpYIOPSSXfzFJJoZcwOcsDiAjitVKIg2de1WmJbCHfpcvxprsgg==}
 
   agent-base@7.1.4:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
@@ -6201,18 +6208,20 @@ snapshots:
     dependencies:
       '@types/json-schema': 7.0.15
 
-  '@xyflow/react@12.10.2(@types/react@19.2.15)(immer@11.1.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@xyflow/react@12.11.0(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(immer@11.1.8)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
-      '@xyflow/system': 0.0.76
+      '@xyflow/system': 0.0.77
       classcat: 5.0.5
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
       zustand: 4.5.7(@types/react@19.2.15)(immer@11.1.8)(react@19.2.6)
+    optionalDependencies:
+      '@types/react': 19.2.15
+      '@types/react-dom': 19.2.3(@types/react@19.2.15)
     transitivePeerDependencies:
-      - '@types/react'
       - immer
 
-  '@xyflow/system@0.0.76':
+  '@xyflow/system@0.0.77':
     dependencies:
       '@types/d3-drag': 3.0.7
       '@types/d3-interpolate': 3.0.4
