@@ -5,7 +5,10 @@
 Knowledge Bases are org-scoped, named collections of curated text **entries**
 (facts, table docs, business rules, validated SQL templates, runbooks, etc.)
 that users manage through a dedicated UI and that agents can search through a
-`search_knowledge` tool. Knowledge Bases sit alongside one adjacent primitive:
+`search_knowledge` tool. Knowledge Bases interoperate with the [Open Knowledge Format](okf-adoption.md)
+(OKF) for import/export ("knowledge as code"); see `specs/okf-adoption.md`.
+
+Knowledge Bases sit alongside one adjacent primitive:
 
 * **Memory** (`specs/memory.md`) — org-scoped, named stores mountable into
   session workspaces. Files-only today; emphasizes file fidelity and direct
