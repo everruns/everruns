@@ -443,6 +443,102 @@ async fn test_events_sequence() {
 }
 
 #[tokio::test]
+async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
+    use chrono::Utc;
+
+    let db = InMemoryDatabase::new();
+
+    let agent = db
+        .create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: AgentId::new().to_string(),
+                name: "test-agent".to_string(),
+                display_name: Some("Test Agent".to_string()),
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Six messages, far more than the tail window.
+    for i in 0..6 {
+        db.create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({"content": format!("Message {}", i)}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    // limit=2 (tail) + keep_head=1 (anchor): expect sequences [1, 5, 6].
+    let query = MessageQuery::new(session.id)
+        .with_limit(2)
+        .with_keep_head(1);
+    let events = db.list_message_events_filtered(&query).await.unwrap();
+    let seqs: Vec<i32> = events.iter().map(|e| e.sequence).collect();
+    assert_eq!(seqs, vec![1, 5, 6]);
+
+    // keep_head=0 stays tail-only: latest 2.
+    let tail_only = MessageQuery::new(session.id)
+        .with_limit(2)
+        .with_keep_head(0);
+    let events = db.list_message_events_filtered(&tail_only).await.unwrap();
+    let seqs: Vec<i32> = events.iter().map(|e| e.sequence).collect();
+    assert_eq!(seqs, vec![5, 6]);
+
+    // Overlapping windows must not duplicate: keep_head + limit >= total.
+    let overlap = MessageQuery::new(session.id)
+        .with_limit(5)
+        .with_keep_head(3);
+    let events = db.list_message_events_filtered(&overlap).await.unwrap();
+    let seqs: Vec<i32> = events.iter().map(|e| e.sequence).collect();
+    assert_eq!(seqs, vec![1, 2, 3, 4, 5, 6]);
+}
+
+#[tokio::test]
 async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let db = InMemoryDatabase::new();
 

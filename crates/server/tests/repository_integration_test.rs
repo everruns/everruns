@@ -1066,6 +1066,117 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
 }
 
 #[tokio::test]
+async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
+    let backend = create_test_backend().await;
+
+    let agent = backend
+        .create_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: format!("event-anchor-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Event Anchor Test Agent".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .expect("Failed to create agent");
+
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .expect("Failed to create session");
+
+    for text in ["m1", "m2", "m3", "m4", "m5", "m6"] {
+        backend
+            .create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: "input.message".to_string(),
+                ts: Utc::now(),
+                context: json!({"role": "user"}),
+                data: json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": text}]
+                    }
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("Failed to create event");
+    }
+
+    let texts = |events: &[everruns_server::storage::EventRow]| -> Vec<String> {
+        events
+            .iter()
+            .map(|event| {
+                event
+                    .data
+                    .pointer("/message/content/0/text")
+                    .and_then(|value| value.as_str())
+                    .expect("message text")
+                    .to_string()
+            })
+            .collect()
+    };
+
+    // limit=2 tail + keep_head=1 anchor: the genuine first message survives even
+    // though it sits far outside the tail window.
+    let query = MessageQuery::new(session.id)
+        .with_limit(2)
+        .with_keep_head(1);
+    let events = backend
+        .list_message_events_filtered(&query)
+        .await
+        .expect("Failed to list filtered message events");
+    assert_eq!(texts(&events), vec!["m1", "m5", "m6"]);
+
+    // Overlapping windows must not duplicate rows.
+    let overlap = MessageQuery::new(session.id)
+        .with_limit(5)
+        .with_keep_head(3);
+    let events = backend
+        .list_message_events_filtered(&overlap)
+        .await
+        .expect("Failed to list filtered message events");
+    assert_eq!(texts(&events), vec!["m1", "m2", "m3", "m4", "m5", "m6"]);
+}
+
+#[tokio::test]
 async fn test_event_filter_types() {
     let backend = create_test_backend().await;
 

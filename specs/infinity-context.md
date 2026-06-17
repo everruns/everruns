@@ -169,12 +169,17 @@ support chat; it bounds only the recent tail (the head anchor is additional).
 Message limits always mean the latest N messages, returned in chronological
 order; older excluded messages remain available through `query_history`.
 
-**Known limitation:** the anchor is guaranteed only within the candidate load
-window (`resolve_candidate_load_limit`). For conversations longer than that
-window — or when `max_recent_messages` is set very low — the DB loads only the
-latest N messages, so the true first message is never fetched and the anchor
-degrades to the oldest loaded message. Guaranteeing the head for arbitrarily
-long histories needs a head+tail DB fetch (tracked as a follow-up).
+**Head+tail load.** The candidate set is fetched as a head+tail window, not a
+tail-only "latest N". `apply_filters` sets `MessageQuery::keep_head =
+keep_first_messages` alongside the candidate `limit`, and every storage backend
+honors it: the first `keep_head` messages (the task anchor) are loaded **in
+addition to** the latest `limit` tail, de-duplicated when the windows overlap
+and returned in chronological order. So the genuine first message is always
+fetched, and the anchor never silently degrades to a mid-conversation message —
+even for conversations far longer than the candidate window or when
+`max_recent_messages` is set very low. `keep_first_messages` is therefore
+meaningful at any size relative to the candidate window; it does not need to be
+clamped to it.
 
 ### History Notice Format
 

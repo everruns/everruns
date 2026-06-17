@@ -640,7 +640,10 @@ impl Database {
             }
         }
 
-        let latest_window = query.limit.is_some();
+        let keep_head = query.keep_head.unwrap_or(0);
+        // Whether the final SQL emits rows newest-first (needs reversing back to
+        // chronological order after fetch).
+        let mut needs_reverse = false;
         match (query.offset, query.limit) {
             (Some(offset), Some(limit)) => {
                 sql = format!(
@@ -648,12 +651,41 @@ impl Database {
                     offset.max(0),
                     limit.max(0)
                 );
+                needs_reverse = true;
             }
             (Some(offset), None) => {
                 sql.push_str(&format!(" ORDER BY sequence ASC OFFSET {}", offset.max(0)));
             }
+            (None, Some(limit)) if keep_head > 0 => {
+                // Head+tail load: keep the first `keep_head` (the task anchor) plus
+                // the latest `limit` tail, de-duplicated when the windows overlap.
+                //
+                // Select each end with an index-friendly `ORDER BY sequence … LIMIT`
+                // over the (session_id, sequence) index — early-terminating after
+                // keep_head / limit rows — then UNION on `id` (avoids equality on
+                // jsonb columns) and fetch the full rows by primary key. This keeps
+                // the common candidate load at O(keep_head + limit), not
+                // O(total_history): infinity_context sets keep_head > 0 on every
+                // load, so a full-history window sort here would scale with the
+                // entire conversation. The base query is inlined into each end
+                // (rather than a multiply-referenced CTE, which Postgres would
+                // materialize and full-scan) so both ends keep the index. Bound
+                // parameters are referenced by number, so repeating the SQL text
+                // reuses the same bindings.
+                sql = format!(
+                    "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at \
+                     FROM events WHERE id IN (\
+                       (SELECT id FROM ({sql}) head_q ORDER BY sequence ASC LIMIT {}) \
+                       UNION \
+                       (SELECT id FROM ({sql}) tail_q ORDER BY sequence DESC LIMIT {})\
+                     ) ORDER BY sequence ASC",
+                    keep_head as i64,
+                    limit.max(0)
+                );
+            }
             (None, Some(limit)) => {
                 sql.push_str(&format!(" ORDER BY sequence DESC LIMIT {}", limit.max(0)));
+                needs_reverse = true;
             }
             (None, None) => {
                 sql.push_str(" ORDER BY sequence ASC");
@@ -687,7 +719,7 @@ impl Database {
             db_query = db_query.bind(include_ids);
         }
         let mut rows = db_query.fetch_all(&self.pool).await?;
-        if latest_window {
+        if needs_reverse {
             rows.reverse();
         }
 
