@@ -21289,6 +21289,7 @@
               "required": [
                 "id",
                 "name",
+                "default_provider_per_service",
                 "created_at",
                 "updated_at"
               ],
@@ -21318,6 +21319,16 @@
                     "null"
                   ],
                   "description": "Default LLM model for the organization."
+                },
+                "default_provider_per_service": {
+                  "type": "object",
+                  "description": "Org-level default provider per service (EVE-569), keyed by service kind.\nEmpty when no org defaults are configured.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  }
                 },
                 "id": {
                   "type": "string",
@@ -24767,6 +24778,7 @@
         "required": [
           "id",
           "name",
+          "default_provider_per_service",
           "created_at",
           "updated_at"
         ],
@@ -24796,6 +24808,16 @@
               "null"
             ],
             "description": "Default LLM model for the organization."
+          },
+          "default_provider_per_service": {
+            "type": "object",
+            "description": "Org-level default provider per service (EVE-569), keyed by service kind.\nEmpty when no org defaults are configured.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "id": {
             "type": "string",
@@ -31558,6 +31580,19 @@
             ],
             "description": "Default LLM model for this organization. Must be an enabled model.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "default_provider_per_service": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Org-level default provider per service (EVE-569). Maps a service kind\n(`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id\nused as that service's default, consulted after an explicit binding and\nbefore the single-active-provider fallback. When present it **replaces**\nthe whole map; each referenced provider must exist in the org.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "name": {
             "type": [
