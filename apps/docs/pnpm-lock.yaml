@@ -27,6 +27,9 @@ importers:
       marked:
         specifier: ^18.0.5
         version: 18.0.5
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
       sharp:
         specifier: ^0.34.5
         version: 0.34.5
