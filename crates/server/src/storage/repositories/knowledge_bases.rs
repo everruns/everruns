@@ -6,7 +6,8 @@ use anyhow::Result;
 use uuid::Uuid;
 
 const KB_COLUMNS: &str = "id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at, embedding_model_id";
-const ENTRY_COLUMNS: &str = "id, kb_id, public_id, title, body, kind, tags, created_at, updated_at";
+const ENTRY_COLUMNS: &str =
+    "id, kb_id, public_id, title, body, kind, tags, resource, created_at, updated_at";
 
 impl Database {
     // ------------- knowledge_bases -------------
@@ -170,9 +171,9 @@ impl Database {
     ) -> Result<KnowledgeEntryRow> {
         let row = sqlx::query_as::<_, KnowledgeEntryRow>(
             r#"
-            INSERT INTO knowledge_entries (kb_id, public_id, title, body, kind, tags)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, kb_id, public_id, title, body, kind, tags, created_at, updated_at
+            INSERT INTO knowledge_entries (kb_id, public_id, title, body, kind, tags, resource)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, kb_id, public_id, title, body, kind, tags, resource, created_at, updated_at
             "#,
         )
         .bind(kb_id)
@@ -181,6 +182,7 @@ impl Database {
         .bind(&input.body)
         .bind(&input.kind)
         .bind(&input.tags)
+        .bind(&input.resource)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)
@@ -283,9 +285,10 @@ impl Database {
                 body = COALESCE($4, body),
                 kind = COALESCE($5, kind),
                 tags = COALESCE($6, tags),
+                resource = CASE WHEN $7 THEN $8 ELSE resource END,
                 updated_at = NOW()
             WHERE kb_id = $1 AND id = $2
-            RETURNING id, kb_id, public_id, title, body, kind, tags, created_at, updated_at
+            RETURNING id, kb_id, public_id, title, body, kind, tags, resource, created_at, updated_at
             "#,
         )
         .bind(kb_id)
@@ -294,6 +297,8 @@ impl Database {
         .bind(&input.body)
         .bind(&input.kind)
         .bind(&input.tags)
+        .bind(input.resource.is_some())
+        .bind(input.resource.clone().flatten())
         .fetch_optional(&self.pool)
         .await?;
         Ok(row)

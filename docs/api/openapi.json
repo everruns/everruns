@@ -15580,6 +15580,14 @@
             "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "example": "runbook"
           },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional OKF resource URI identifying the underlying asset.",
+            "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
+          },
           "tags": {
             "type": [
               "array",
@@ -19616,6 +19624,14 @@
             "type": "string",
             "description": "Discriminator selecting the variant of this resource."
           },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional OKF resource URI identifying the underlying asset.",
+            "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
+          },
           "tags": {
             "type": "array",
             "items": {
@@ -20883,6 +20899,14 @@
                 "kind": {
                   "type": "string",
                   "description": "Discriminator selecting the variant of this resource."
+                },
+                "resource": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Optional OKF resource URI identifying the underlying asset.",
+                  "example": "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders"
                 },
                 "tags": {
                   "type": "array",
@@ -31305,6 +31329,13 @@
             ],
             "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "example": "runbook"
+          },
+          "resource": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional OKF resource URI. Set to null to clear."
           },
           "tags": {
             "type": [

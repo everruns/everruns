@@ -1270,6 +1270,10 @@ pub struct KnowledgeEntryRow {
     pub body: String,
     pub kind: String,
     pub tags: Vec<String>,
+    /// Optional OKF `resource` URI identifying the underlying asset.
+    /// See specs/okf-adoption.md.
+    #[sqlx(default)]
+    pub resource: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -1281,6 +1285,7 @@ pub struct CreateKnowledgeEntryRow {
     pub body: String,
     pub kind: String,
     pub tags: Vec<String>,
+    pub resource: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1289,6 +1294,8 @@ pub struct UpdateKnowledgeEntry {
     pub body: Option<String>,
     pub kind: Option<String>,
     pub tags: Option<Vec<String>>,
+    /// `None` = unchanged, `Some(None)` = clear, `Some(Some(v))` = set.
+    pub resource: Option<Option<String>>,
 }
 
 // ============================================

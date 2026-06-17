@@ -188,6 +188,7 @@ impl InMemoryDatabase {
             body: input.body,
             kind: input.kind,
             tags: input.tags,
+            resource: input.resource,
             created_at: now,
             updated_at: now,
         };
@@ -294,6 +295,9 @@ impl InMemoryDatabase {
         }
         if let Some(tags) = input.tags {
             entry.tags = tags;
+        }
+        if let Some(resource) = input.resource {
+            entry.resource = resource;
         }
         entry.updated_at = Self::now();
         Ok(Some(entry.clone()))
