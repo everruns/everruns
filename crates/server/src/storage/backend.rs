@@ -672,6 +672,39 @@ impl StorageBackend {
         dispatch!(self, count_active_turns_for_org, org_id)
     }
 
+    pub async fn reserve_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        max_active_turns: i64,
+    ) -> Result<ReserveActiveTurnSlotResult> {
+        dispatch!(
+            self,
+            reserve_active_turn_slot_for_org,
+            org_id,
+            session_id,
+            max_active_turns
+        )
+    }
+
+    /// Release a previously reserved active-turn slot, restoring the session's
+    /// status captured at reservation time (best-effort; only reverts a session
+    /// still `active`).
+    pub async fn release_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        previous_status: &str,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            release_active_turn_slot_for_org,
+            org_id,
+            session_id,
+            previous_status
+        )
+    }
+
     /// Aggregate session and execution stats for an optional agent or harness scope.
     pub async fn session_aggregate_stats(
         &self,

@@ -306,6 +306,84 @@ impl Database {
         Ok(row.0)
     }
 
+    /// Atomically reserve active-turn capacity by marking the accepted
+    /// session active before the user message is persisted.
+    pub async fn reserve_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        max_active_turns: i64,
+    ) -> Result<ReserveActiveTurnSlotResult> {
+        let mut tx = self.pool.begin().await?;
+
+        // Serialize per-org reservations so the soft cap covers accepted queued
+        // turns, not only turns workers have already begun executing.
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(org_id)
+            .execute(&mut *tx)
+            .await?;
+
+        // Verify the session exists and belongs to the org *before* the capacity
+        // check, so a missing/foreign session returns SessionNotFound rather
+        // than a misleading AtCapacity, and capture its prior status so the
+        // reservation can be released on a later failure.
+        let existing: Option<(String,)> =
+            sqlx::query_as("SELECT status FROM sessions WHERE org_id = $1 AND id = $2")
+                .bind(org_id)
+                .bind(session_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        let Some((previous_status,)) = existing else {
+            tx.commit().await?;
+            return Ok(ReserveActiveTurnSlotResult::SessionNotFound);
+        };
+
+        let active_turns: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status = 'active'",
+        )
+        .bind(org_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if active_turns.0 >= max_active_turns {
+            tx.commit().await?;
+            return Ok(ReserveActiveTurnSlotResult::AtCapacity {
+                active_turns: active_turns.0,
+            });
+        }
+
+        sqlx::query("UPDATE sessions SET status = 'active' WHERE org_id = $1 AND id = $2")
+            .bind(org_id)
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+
+        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+    }
+
+    /// Release a previously reserved active-turn slot by restoring the session's
+    /// prior status. Best-effort and idempotent: only reverts a session that is
+    /// still `active`, so it never clobbers a status a worker legitimately
+    /// advanced to after the reservation.
+    pub async fn release_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        previous_status: &str,
+    ) -> Result<()> {
+        sqlx::query(
+            "UPDATE sessions SET status = $3 WHERE org_id = $1 AND id = $2 AND status = 'active'",
+        )
+        .bind(org_id)
+        .bind(session_id)
+        .bind(previous_status)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Aggregate session and turn execution stats for an optional agent or harness scope.
     pub async fn session_aggregate_stats(
         &self,

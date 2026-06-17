@@ -8,10 +8,11 @@
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
 use crate::domains::sessions::limits::OrgCaps;
-use crate::errors::BadRequestError;
+use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::execution_metadata;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
+use crate::storage::models::ReserveActiveTurnSlotResult;
 use anyhow::Result;
 use chrono::Utc;
 use everruns_core::Event;
@@ -85,140 +86,179 @@ impl MessageService {
             "Creating user message"
         );
 
-        // EVE-508: check per-org active turn cap before persisting the message.
-        let active_turns = self.db.count_active_turns_for_org(ctx.org_id).await?;
-        if active_turns >= self.caps.max_active_turns as i64 {
-            return Err(BadRequestError::new(format!(
-                "Too many active turns: org has {} turns executing (limit {}); retry later",
-                active_turns, self.caps.max_active_turns
-            ))
-            .into());
-        }
-
-        // Convert InputContentPart array to ContentPart array
-        let content: Vec<ContentPart> = req
-            .message
-            .content
-            .into_iter()
-            .map(ContentPart::from)
-            .collect();
-
-        // Generate a new message ID
-        let message_id = Uuid::now_v7();
-        let now = Utc::now();
-
-        // Build the core message
-        let core_message = everruns_core::Message {
-            id: message_id.into(),
-            role: everruns_core::MessageRole::User,
-            content: content.clone(),
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: req.controls.clone(),
-            metadata: req.metadata.clone(),
-            external_actor: req.external_actor.clone(),
-            created_at: now,
-        };
-
-        // Convert to typed IDs for emit/runner
-        let session_id_typed = SessionId::from_uuid(ctx.session_id);
-        let harness_id_typed = HarnessId::from_uuid(ctx.harness_id);
-        let agent_id_typed = ctx.agent_id.map(AgentId::from_uuid);
-        let message_id_typed = MessageId::from_uuid(message_id);
-
-        // Emit as typed event using EventService
-        let event_metadata = if let Some(metadata) = ctx.event_metadata {
-            Some(metadata)
-        } else if let Some(user_id) = ctx.user_id {
-            let principal_id = match PrincipalService::new(self.db.clone())
-                .ensure_user_principal(ctx.org_id, user_id)
-                .await
-            {
-                Ok(principal) => Some(principal.id),
-                Err(err) => {
-                    tracing::warn!(
-                        org_id = ctx.org_id,
-                        user_id = %user_id,
-                        session_id = %ctx.session_id,
-                        error = %err,
-                        "Failed to resolve user principal for message metadata"
-                    );
-                    None
-                }
-            };
-            execution_metadata::interactive_user_metadata(Some(user_id), principal_id)
-        } else {
-            None
-        };
-        let mut event_request = EventRequest::new(
-            session_id_typed,
-            EventContext::empty(),
-            InputMessageData::new(core_message),
-        );
-        if let Some(metadata) = event_metadata {
-            event_request = event_request.with_metadata(metadata);
-        }
-        let stored_event = self.event_service.emit(event_request).await?;
-
-        // Construct API Message
-        let message = Message {
-            id: message_id_typed,
-            session_id: session_id_typed,
-            sequence: stored_event.sequence.unwrap_or(0),
-            role: MessageRole::User,
-            content,
-            controls: req.controls,
-            metadata: req.metadata,
-            external_actor: req.external_actor,
-            created_at: now,
-        };
-
-        if self.notifications_enabled
-            && let Some(user_id) = ctx.user_id
+        let previous_status = match self
+            .db
+            .reserve_active_turn_slot_for_org(
+                ctx.org_id,
+                SessionId::from_uuid(ctx.session_id),
+                self.caps.max_active_turns as i64,
+            )
+            .await?
         {
-            self.notification_service
-                .create_turn_request(ctx.org_id, user_id, session_id_typed, message_id_typed)
-                .await?;
-        }
+            ReserveActiveTurnSlotResult::Reserved { previous_status } => previous_status,
+            ReserveActiveTurnSlotResult::AtCapacity { active_turns } => {
+                return Err(BadRequestError::new(format!(
+                    "Too many active turns: org has {} turns executing (limit {}); retry later",
+                    active_turns, self.caps.max_active_turns
+                ))
+                .into());
+            }
+            ReserveActiveTurnSlotResult::SessionNotFound => {
+                return Err(ResourceNotFoundError::new("Session").into());
+            }
+        };
 
-        // Start workflow for user message in background (don't block the response)
-        // The message is already persisted, so we can return immediately
-        let runner = self.runner.clone();
-        let request_id = ctx.request_id.clone();
-        let request_id_str = request_id.as_deref().unwrap_or("").to_string();
-        let session_id_str = ctx.session_id.to_string();
-        let message_id_str = message_id.to_string();
-        tokio::spawn(async move {
-            if let Err(e) = runner
-                .start_run(
-                    ctx.org_id,
-                    session_id_typed,
-                    harness_id_typed,
-                    agent_id_typed,
-                    message_id_typed,
-                    request_id,
+        // The slot is now reserved (session marked `active`). Run the remaining
+        // work under a guard that releases the reservation if anything fails, so
+        // a rejected turn never leaks active-turn capacity.
+        let reservation_org_id = ctx.org_id;
+        let reservation_session_id = SessionId::from_uuid(ctx.session_id);
+        let result: Result<Message> = async {
+            // Convert InputContentPart array to ContentPart array
+            let content: Vec<ContentPart> = req
+                .message
+                .content
+                .into_iter()
+                .map(ContentPart::from)
+                .collect();
+
+            // Generate a new message ID
+            let message_id = Uuid::now_v7();
+            let now = Utc::now();
+
+            // Build the core message
+            let core_message = everruns_core::Message {
+                id: message_id.into(),
+                role: everruns_core::MessageRole::User,
+                content: content.clone(),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+                controls: req.controls.clone(),
+                metadata: req.metadata.clone(),
+                external_actor: req.external_actor.clone(),
+                created_at: now,
+            };
+
+            // Convert to typed IDs for emit/runner
+            let session_id_typed = SessionId::from_uuid(ctx.session_id);
+            let harness_id_typed = HarnessId::from_uuid(ctx.harness_id);
+            let agent_id_typed = ctx.agent_id.map(AgentId::from_uuid);
+            let message_id_typed = MessageId::from_uuid(message_id);
+
+            // Emit as typed event using EventService
+            let event_metadata = if let Some(metadata) = ctx.event_metadata {
+                Some(metadata)
+            } else if let Some(user_id) = ctx.user_id {
+                let principal_id = match PrincipalService::new(self.db.clone())
+                    .ensure_user_principal(ctx.org_id, user_id)
+                    .await
+                {
+                    Ok(principal) => Some(principal.id),
+                    Err(err) => {
+                        tracing::warn!(
+                            org_id = ctx.org_id,
+                            user_id = %user_id,
+                            session_id = %ctx.session_id,
+                            error = %err,
+                            "Failed to resolve user principal for message metadata"
+                        );
+                        None
+                    }
+                };
+                execution_metadata::interactive_user_metadata(Some(user_id), principal_id)
+            } else {
+                None
+            };
+            let mut event_request = EventRequest::new(
+                session_id_typed,
+                EventContext::empty(),
+                InputMessageData::new(core_message),
+            );
+            if let Some(metadata) = event_metadata {
+                event_request = event_request.with_metadata(metadata);
+            }
+            let stored_event = self.event_service.emit(event_request).await?;
+
+            // Construct API Message
+            let message = Message {
+                id: message_id_typed,
+                session_id: session_id_typed,
+                sequence: stored_event.sequence.unwrap_or(0),
+                role: MessageRole::User,
+                content,
+                controls: req.controls,
+                metadata: req.metadata,
+                external_actor: req.external_actor,
+                created_at: now,
+            };
+
+            if self.notifications_enabled
+                && let Some(user_id) = ctx.user_id
+            {
+                self.notification_service
+                    .create_turn_request(ctx.org_id, user_id, session_id_typed, message_id_typed)
+                    .await?;
+            }
+
+            // Start workflow for user message in background (don't block the response)
+            // The message is already persisted, so we can return immediately
+            let runner = self.runner.clone();
+            let request_id = ctx.request_id.clone();
+            let request_id_str = request_id.as_deref().unwrap_or("").to_string();
+            let session_id_str = ctx.session_id.to_string();
+            let message_id_str = message_id.to_string();
+            tokio::spawn(async move {
+                if let Err(e) = runner
+                    .start_run(
+                        ctx.org_id,
+                        session_id_typed,
+                        harness_id_typed,
+                        agent_id_typed,
+                        message_id_typed,
+                        request_id,
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        session_id = %session_id_str,
+                        input_message_id = %message_id_str,
+                        request_id = %request_id_str,
+                        error = %e,
+                        "Failed to start turn workflow"
+                    );
+                } else {
+                    tracing::info!(
+                        session_id = %session_id_str,
+                        input_message_id = %message_id_str,
+                        request_id = %request_id_str,
+                        "Turn workflow started"
+                    );
+                }
+            });
+
+            Ok(message)
+        }
+        .await;
+
+        if result.is_err()
+            && let Err(release_err) = self
+                .db
+                .release_active_turn_slot_for_org(
+                    reservation_org_id,
+                    reservation_session_id,
+                    &previous_status,
                 )
                 .await
-            {
-                tracing::error!(
-                    session_id = %session_id_str,
-                    input_message_id = %message_id_str,
-                    request_id = %request_id_str,
-                    error = %e,
-                    "Failed to start turn workflow"
-                );
-            } else {
-                tracing::info!(
-                    session_id = %session_id_str,
-                    input_message_id = %message_id_str,
-                    request_id = %request_id_str,
-                    "Turn workflow started"
-                );
-            }
-        });
-
-        Ok(message)
+        {
+            tracing::warn!(
+                org_id = reservation_org_id,
+                session_id = %reservation_session_id,
+                error = %release_err,
+                "Failed to release active-turn slot after message-create failure"
+            );
+        }
+        result
     }
 
     /// Access the registered durable runner. Used by sibling callers that
@@ -422,6 +462,39 @@ mod tests {
         }
     }
 
+    async fn create_test_session(
+        db: &StorageBackend,
+        org_id: i64,
+    ) -> crate::storage::models::SessionRow {
+        db.create_session(crate::storage::models::CreateSessionRow {
+            workspace_id: None,
+            org_id,
+            harness_id: None,
+            app_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(org_id as u128),
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .unwrap()
+    }
+
     #[tokio::test]
     async fn active_turn_cap_enforced() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -435,34 +508,7 @@ mod tests {
 
         // Seed an 'active' session so count_active_turns_for_org returns 1.
         // max_active_turns = 1 so 1 active turn exactly hits the cap.
-        let session = db
-            .create_session(crate::storage::models::CreateSessionRow {
-                workspace_id: None,
-                org_id: 1,
-                harness_id: None,
-                app_id: None,
-                agent_id: None,
-                agent_identity_id: None,
-                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-                resolved_owner_user_id: None,
-                title: None,
-                locale: None,
-                tags: vec![],
-                model_id: None,
-                capabilities: serde_json::json!([]),
-                tools: serde_json::json!([]),
-                mcp_servers: serde_json::json!({}),
-                system_prompt: None,
-                initial_files: serde_json::json!([]),
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                blueprint_id: None,
-                blueprint_config: None,
-                parent_session_id: None,
-            })
-            .await
-            .unwrap();
+        let session = create_test_session(&db, 1).await;
         db.update_session(
             1,
             session.id,
@@ -495,6 +541,71 @@ mod tests {
         assert!(
             err.to_string().contains("Too many active turns"),
             "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn active_turn_cap_reserves_started_session_before_persisting() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+
+        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 1,
+        });
+
+        let first = create_test_session(&db, 1).await;
+        let second = create_test_session(&db, 1).await;
+
+        let first_message = svc
+            .create(
+                CreateMessageContext {
+                    org_id: 1,
+                    user_id: None,
+                    harness_id: first.id.uuid(),
+                    agent_id: None,
+                    session_id: first.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                CreateMessageRequest::user("first"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(first_message.session_id, first.id);
+        assert_eq!(db.count_active_turns_for_org(1).await.unwrap(), 1);
+
+        let err = svc
+            .create(
+                CreateMessageContext {
+                    org_id: 1,
+                    user_id: None,
+                    harness_id: second.id.uuid(),
+                    agent_id: None,
+                    session_id: second.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                CreateMessageRequest::user("second"),
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.downcast_ref::<BadRequestError>().is_some(),
+            "expected BadRequestError, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("Too many active turns"),
+            "got: {err}"
+        );
+        assert_eq!(db.count_active_turns_for_org(1).await.unwrap(), 1);
+        assert!(
+            db.list_message_events_limited(second.id, None)
+                .await
+                .unwrap()
+                .is_empty(),
+            "rejected turn must not persist a queued message"
         );
     }
 }

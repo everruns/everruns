@@ -59,12 +59,6 @@ impl Command for CreateMessage {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
-        if session.status == everruns_core::SessionStatus::WaitingForToolResults {
-            let _ = q::session_service(ctx)?
-                .update_status(&ctx.caller, session_id.uuid(), "active".to_string())
-                .await;
-        }
-
         q::message_service(ctx)?
             .create(
                 CreateMessageContext {

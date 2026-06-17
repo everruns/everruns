@@ -222,6 +222,60 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
+    /// Atomically reserve active-turn capacity by marking the accepted
+    /// session active before the user message is persisted.
+    pub async fn reserve_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        max_active_turns: i64,
+    ) -> Result<ReserveActiveTurnSlotResult> {
+        let mut sessions = self.sessions.write();
+
+        // Existence/ownership before capacity (mirror Postgres): capture the
+        // prior status for release, and report a missing/foreign session as
+        // SessionNotFound rather than AtCapacity.
+        let previous_status = match sessions.get(&session_id) {
+            Some(session) if session.org_id == org_id => session.status.clone(),
+            _ => return Ok(ReserveActiveTurnSlotResult::SessionNotFound),
+        };
+
+        let active_turns = sessions
+            .values()
+            .filter(|s| s.org_id == org_id && s.status == "active")
+            .count() as i64;
+
+        if active_turns >= max_active_turns {
+            return Ok(ReserveActiveTurnSlotResult::AtCapacity { active_turns });
+        }
+
+        let session = sessions
+            .get_mut(&session_id)
+            .expect("session presence checked above");
+        session.status = "active".to_string();
+        session.updated_at = Self::now();
+        Ok(ReserveActiveTurnSlotResult::Reserved { previous_status })
+    }
+
+    /// Release a previously reserved active-turn slot by restoring the prior
+    /// status. Best-effort: only reverts a session still in `active`.
+    pub async fn release_active_turn_slot_for_org(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        previous_status: &str,
+    ) -> Result<()> {
+        let mut sessions = self.sessions.write();
+        if let Some(session) = sessions.get_mut(&session_id)
+            && session.org_id == org_id
+            && session.status == "active"
+        {
+            session.status = previous_status.to_string();
+            session.updated_at = Self::now();
+        }
+        Ok(())
+    }
+
     /// Aggregate session and turn execution stats for an optional agent or harness scope.
     pub async fn session_aggregate_stats(
         &self,
