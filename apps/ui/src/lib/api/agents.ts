@@ -10,6 +10,7 @@ import type {
   AgentAnalysisResponse,
   AgentPreviewResponse,
   HealthCheckRun,
+  LatestHealthCheckRun,
   CreateAgentVersionRequest,
   CreateAgentRequest,
   ForkAgentVersionRequest,
@@ -97,6 +98,13 @@ export async function triggerHealthCheck(agentId: string): Promise<HealthCheckRu
 
 export async function getHealthCheckRun(agentId: string, runId: string): Promise<HealthCheckRun> {
   const response = await api.get<HealthCheckRun>(`/v1/agents/${agentId}/health-checks/${runId}`);
+  return response.data;
+}
+
+export async function getLatestHealthCheckRun(agentId: string): Promise<LatestHealthCheckRun> {
+  const response = await api.get<LatestHealthCheckRun>(
+    `/v1/agents/${agentId}/health-checks/latest`,
+  );
   return response.data;
 }
 

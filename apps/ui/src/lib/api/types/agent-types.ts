@@ -239,6 +239,14 @@ export interface HealthCheckRun {
   completed_at?: string;
 }
 
+/** Latest health-check run for an agent plus a stale-config flag (EVE-588) */
+export interface LatestHealthCheckRun {
+  /** The latest run, or absent if the agent has never been health-checked */
+  run?: HealthCheckRun;
+  /** True when the run was executed against a different config than current */
+  config_changed: boolean;
+}
+
 /** Response showing the final agent shape after applying capabilities */
 export interface AgentPreviewResponse {
   /** The full system prompt with capability additions prepended */

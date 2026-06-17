@@ -166,6 +166,21 @@ impl HealthCheckRun {
     }
 }
 
+/// The most recent health-check run for an agent, paired with whether the
+/// agent's current resolved config differs from the config that run was
+/// executed against. Returned by the latest-run endpoint so the agent editor
+/// can show prior results on mount without triggering a new run, and surface a
+/// "config changed since last run" hint. See specs/agent-checks.md and EVE-588.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct LatestHealthCheckRun {
+    /// The latest run, or `None` if the agent has never been health-checked.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<HealthCheckRun>,
+    /// True when `run` exists but was executed against a different resolved
+    /// config than the agent currently has (UI shows a re-run hint).
+    pub config_changed: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
