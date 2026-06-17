@@ -2,6 +2,10 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::knowledge_bases::okf::ImportOkfBundle;
+pub use crate::domains::knowledge_bases::okf::{
+    ImportOkfBundleRequest, OkfFileInput, OkfImportSummary,
+};
 pub use crate::domains::knowledge_bases::types::{
     CreateKnowledgeBaseRequest, CreateKnowledgeEntryRequest, KnowledgeBaseResponse,
     KnowledgeEntryResponse, ListKnowledgeBasesQuery, ListKnowledgeEntriesQuery,
@@ -54,6 +58,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/knowledge-bases/{kb_id}",
             get(get_kb).patch(update_kb).delete(delete_kb),
         )
+        .route("/v1/knowledge-bases/{kb_id}/okf_import", post(import_okf))
         .route(
             "/v1/knowledge-bases/{kb_id}/entries",
             post(create_entry).get(list_entries),
@@ -173,6 +178,33 @@ pub async fn delete_kb(
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteKnowledgeBase { kb_id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    description = "Import an Open Knowledge Format (OKF) bundle into a knowledge base. \
+Idempotent: re-importing converges entries without duplicates. See specs/okf-adoption.md.",
+    post,
+    path = "/v1/knowledge-bases/{kb_id}/okf_import",
+    params(("kb_id" = String, Path, description = "Knowledge base ID")),
+    request_body = ImportOkfBundleRequest,
+    responses(
+        (status = 200, description = "Import summary", body = OkfImportSummary),
+        (status = 400, description = "Invalid bundle or input", body = ErrorResponse),
+        (status = 404, description = "Knowledge base not found", body = ErrorResponse)
+    ),
+    tag = "knowledge_bases"
+)]
+pub async fn import_okf(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(kb_id): Path<String>,
+    Json(request): Json<ImportOkfBundleRequest>,
+) -> ApiResult<OkfImportSummary> {
+    Ok(Json(
+        ImportOkfBundle::from_request(kb_id, request)
+            .run(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 // ------------- entries -------------

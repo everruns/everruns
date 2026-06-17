@@ -3,6 +3,7 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod okf;
 pub mod types;
 
 pub use commands::*;

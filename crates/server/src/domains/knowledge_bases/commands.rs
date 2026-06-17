@@ -446,7 +446,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 /// Resolve a KB's internal UUID. If `require_active` is true, archived KBs
 /// reject the call so write paths honor the lifecycle contract from
 /// `specs/models.md` (archived = read-only).
-async fn resolve_kb_internal_id(
+pub(super) async fn resolve_kb_internal_id(
     ctx: &Ctx,
     kb_id: &str,
     require_active: bool,

@@ -5814,6 +5814,68 @@
         }
       }
     },
+    "/v1/knowledge-bases/{kb_id}/okf_import": {
+      "post": {
+        "tags": [
+          "knowledge_bases"
+        ],
+        "description": "Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See specs/okf-adoption.md.",
+        "operationId": "import_okf",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "description": "Knowledge base ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportOkfBundleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Import summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkfImportSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid bundle or input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge base not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp-servers": {
       "get": {
         "tags": [
@@ -19343,6 +19405,30 @@
           }
         }
       },
+      "ImportOkfBundleRequest": {
+        "type": "object",
+        "description": "Request body for `okf_import`.",
+        "properties": {
+          "bundle_base64": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "A base64-encoded `.tar.gz` OKF bundle. Mutually exclusive with `files`."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OkfFileInput"
+            },
+            "description": "Inline bundle files. Mutually exclusive with `bundle_base64`."
+          },
+          "prune": {
+            "type": "boolean",
+            "description": "When true, delete previously-imported entries absent from this bundle."
+          }
+        }
+      },
       "InitialFile": {
         "type": "object",
         "description": "Starter file copied into a new session from an agent or harness.",
@@ -24742,6 +24828,62 @@
           "blocked": [
             "169.254.169.254"
           ]
+        }
+      },
+      "OkfFileInput": {
+        "type": "object",
+        "description": "A single inline bundle file, for callers that send files as JSON rather\nthan a tarball.",
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Raw markdown file content (frontmatter + body)."
+          },
+          "path": {
+            "type": "string",
+            "description": "Bundle-relative path, e.g. `tables/orders.md`."
+          }
+        }
+      },
+      "OkfImportSummary": {
+        "type": "object",
+        "description": "Outcome of an import run.",
+        "required": [
+          "created",
+          "updated",
+          "skipped",
+          "pruned",
+          "warnings"
+        ],
+        "properties": {
+          "created": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pruned": {
+            "type": "integer",
+            "description": "Entries removed because `prune` was set and they were absent from the bundle.",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "description": "Documents skipped (e.g. oversized body); see `warnings`.",
+            "minimum": 0
+          },
+          "updated": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Non-fatal issues (broken docs, oversized bodies). OKF consumers degrade gracefully."
+          }
         }
       },
       "OrgFeatureFlagSetting": {
