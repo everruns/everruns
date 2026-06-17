@@ -321,10 +321,10 @@ pub async fn import_parsed_bundle(
 
     if prune {
         for (key, entry) in &by_key {
-            if !matched_keys.contains(key) {
-                if db.delete_knowledge_entry(kb_internal_id, entry.id).await? {
-                    summary.pruned += 1;
-                }
+            if !matched_keys.contains(key)
+                && db.delete_knowledge_entry(kb_internal_id, entry.id).await?
+            {
+                summary.pruned += 1;
             }
         }
     }
