@@ -42,9 +42,7 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const configChanged = !runId && !!latest?.run && latest.config_changed;
 
   const isRunning =
-    trigger.isPending ||
-    triggeredRun?.status === "pending" ||
-    triggeredRun?.status === "running";
+    trigger.isPending || triggeredRun?.status === "pending" || triggeredRun?.status === "running";
 
   return (
     <Card>
