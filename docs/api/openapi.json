@@ -5814,6 +5814,44 @@
         }
       }
     },
+    "/v1/knowledge-bases/{kb_id}/okf_export": {
+      "get": {
+        "tags": [
+          "knowledge_bases"
+        ],
+        "description": "Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See specs/okf-adoption.md.",
+        "operationId": "export_okf",
+        "parameters": [
+          {
+            "name": "kb_id",
+            "in": "path",
+            "description": "Knowledge base ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OKF bundle (.tar.gz)",
+            "content": {
+              "application/gzip": {}
+            }
+          },
+          "404": {
+            "description": "Knowledge base not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/knowledge-bases/{kb_id}/okf_import": {
       "post": {
         "tags": [

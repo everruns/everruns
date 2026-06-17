@@ -240,8 +240,9 @@ fn doc_key(doc: &ParsedOkfDoc) -> String {
 /// Build the stored tag set for an imported doc: user tags plus reserved
 /// `okf:type` / `okf:path` tags, capped at the DB tag-count limit.
 fn build_import_tags(doc: &ParsedOkfDoc) -> Vec<String> {
+    // Preserve the raw `type` verbatim (case included) so export reproduces it.
     let mut tags = vec![
-        format!("{OKF_TYPE_TAG_PREFIX}{}", doc.raw_type.to_lowercase()),
+        format!("{OKF_TYPE_TAG_PREFIX}{}", doc.raw_type),
         format!("{OKF_PATH_TAG_PREFIX}{}", doc.source_path),
     ];
     for t in &doc.tags {
@@ -349,6 +350,151 @@ pub fn parse_bundle(
         }
     }
     docs
+}
+
+// ============================================
+// Export: KB entries -> conformant OKF bundle
+// ============================================
+
+/// Default OKF `type` for an entry `kind` when no raw type was preserved.
+fn default_type_for_kind(kind: &str) -> &'static str {
+    match kind {
+        "table" => "Table",
+        "business" => "Business Definition",
+        "query" => "Query",
+        "runbook" => "Runbook",
+        _ => "Note",
+    }
+}
+
+/// Bundle subdirectory for an entry `kind`.
+fn kind_dir(kind: &str) -> &'static str {
+    match kind {
+        "table" => "tables",
+        "business" => "business",
+        "query" => "queries",
+        "runbook" => "runbooks",
+        _ => "notes",
+    }
+}
+
+/// Slugify a title into a filename stem.
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut prev_dash = false;
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            prev_dash = false;
+        } else if !out.is_empty() && !prev_dash {
+            out.push('-');
+            prev_dash = true;
+        }
+    }
+    let trimmed = out.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "entry".to_string()
+    } else {
+        trimmed
+    }
+}
+
+/// Render one entry as an OKF concept document `(path, content)`.
+fn entry_to_okf_file(entry: &KnowledgeEntryRow) -> (String, String) {
+    let raw_type = entry
+        .tags
+        .iter()
+        .find_map(|t| t.strip_prefix(OKF_TYPE_TAG_PREFIX));
+    let type_str = raw_type
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| default_type_for_kind(&entry.kind).to_string());
+
+    let path = entry
+        .tags
+        .iter()
+        .find_map(|t| t.strip_prefix(OKF_PATH_TAG_PREFIX))
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| format!("{}/{}.md", kind_dir(&entry.kind), slugify(&entry.title)));
+
+    // User tags only: drop reserved okf:* round-trip tags.
+    let user_tags: Vec<&str> = entry
+        .tags
+        .iter()
+        .filter(|t| !t.starts_with("okf:"))
+        .map(|s| s.as_str())
+        .collect();
+
+    let mut fm = serde_yaml::Mapping::new();
+    let s = |v: &str| serde_yaml::Value::String(v.to_string());
+    fm.insert(s("type"), s(&type_str));
+    fm.insert(s("title"), s(&entry.title));
+    if let Some(resource) = &entry.resource {
+        fm.insert(s("resource"), s(resource));
+    }
+    if !user_tags.is_empty() {
+        fm.insert(
+            s("tags"),
+            serde_yaml::Value::Sequence(user_tags.iter().map(|t| s(t)).collect()),
+        );
+    }
+    fm.insert(s("timestamp"), s(&entry.updated_at.to_rfc3339()));
+
+    let fm_yaml = serde_yaml::to_string(&fm).unwrap_or_default();
+    let content = format!("---\n{fm_yaml}---\n\n{}\n", entry.body.trim_end());
+    (path, content)
+}
+
+/// Build a root `index.md` listing concepts grouped by kind for progressive
+/// disclosure. Declares the OKF version (only index.md may carry frontmatter).
+fn build_index(files: &[(String, String)]) -> String {
+    let mut out =
+        String::from("---\nokf_version: \"0.1\"\ntype: Index\n---\n\n# Knowledge Bundle\n\n");
+    let mut paths: Vec<&String> = files.iter().map(|(p, _)| p).collect();
+    paths.sort();
+    for p in paths {
+        out.push_str(&format!("- [{p}](/{p})\n"));
+    }
+    out
+}
+
+/// Build the full set of bundle files for a knowledge base's entries,
+/// including the root `index.md`.
+pub fn build_export_files(entries: &[KnowledgeEntryRow]) -> Vec<(String, String)> {
+    let mut files: Vec<(String, String)> = entries.iter().map(entry_to_okf_file).collect();
+    // Guard against duplicate paths (e.g. hand-authored entries with colliding
+    // slugs) by disambiguating with a short id suffix.
+    let mut seen = std::collections::HashSet::new();
+    for (i, (path, _)) in files.iter_mut().enumerate() {
+        if !seen.insert(path.clone()) {
+            let disambiguated = match path.rsplit_once(".md") {
+                Some((stem, _)) => format!("{stem}-{i}.md"),
+                None => format!("{path}-{i}"),
+            };
+            *path = disambiguated;
+            seen.insert(path.clone());
+        }
+    }
+    let index = build_index(&files);
+    files.push(("index.md".to_string(), index));
+    files
+}
+
+/// Encode `(path, content)` files into a gzipped tarball.
+pub fn encode_tar_gz(files: &[(String, String)]) -> Result<Vec<u8>> {
+    let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    {
+        let mut builder = tar::Builder::new(&mut encoder);
+        for (path, content) in files {
+            let mut header = tar::Header::new_gnu();
+            header.set_size(content.len() as u64);
+            header.set_mode(0o644);
+            header.set_mtime(0);
+            header.set_cksum();
+            builder.append_data(&mut header, path, content.as_bytes())?;
+        }
+        builder.finish()?;
+    }
+    Ok(encoder.finish()?)
 }
 
 // ============================================
@@ -640,5 +786,61 @@ tags: [Sales, revenue]\n\
                 .iter()
                 .any(|t| t.starts_with(OKF_PATH_TAG_PREFIX))
         );
+    }
+
+    #[tokio::test]
+    async fn export_round_trips_through_import() {
+        let db = StorageBackend::in_memory();
+        let kb = db
+            .create_knowledge_base(
+                everruns_core::DEFAULT_ORG_ID,
+                crate::storage::models::CreateKnowledgeBaseRow {
+                    public_id: everruns_core::typed_id::KnowledgeBaseId::new().to_string(),
+                    name: "OKF".into(),
+                    description: None,
+                    owner_principal_id: None,
+                    resolved_owner_user_id: None,
+                    embedding_model_id: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        let source = "---\n\
+type: BigQuery Table\n\
+title: Orders\n\
+resource: res://orders\n\
+tags: [sales]\n\
+---\n\
+# Schema\nstuff\n";
+        let mut summary = OkfImportSummary::default();
+        let docs = parse_bundle(
+            vec![("tables/orders.md".into(), source.into())],
+            &mut summary,
+        );
+        import_parsed_bundle(&db, kb.id, docs, false).await.unwrap();
+
+        let entries = db.list_knowledge_entries(kb.id, None, None).await.unwrap();
+        let files = build_export_files(&entries);
+
+        // index.md is present and is not itself a concept document.
+        let index = files.iter().find(|(p, _)| p == "index.md").unwrap();
+        assert!(index.1.contains("okf_version"));
+        assert!(parse_okf_document("index.md", &index.1).unwrap().is_none());
+
+        // The orders concept re-parses to the original values (path, type, etc.).
+        let (path, content) = files.iter().find(|(p, _)| p == "tables/orders.md").unwrap();
+        let reparsed = parse_okf_document(path, content).unwrap().unwrap();
+        assert_eq!(reparsed.raw_type, "BigQuery Table");
+        assert_eq!(reparsed.kind, "table");
+        assert_eq!(reparsed.title, "Orders");
+        assert_eq!(reparsed.resource.as_deref(), Some("res://orders"));
+        assert_eq!(reparsed.tags, vec!["sales".to_string()]);
+
+        // The bundle encodes to a tarball that decodes back to the same files.
+        let bytes = encode_tar_gz(&files).unwrap();
+        let decoded = decode_tar_gz_bundle(&bytes).unwrap();
+        assert!(decoded.iter().any(|(p, _)| p == "tables/orders.md"));
+        assert!(decoded.iter().any(|(p, _)| p == "index.md"));
     }
 }

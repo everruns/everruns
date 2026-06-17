@@ -1,8 +1,9 @@
 // Knowledge Base CRUD HTTP routes. See specs/knowledge-bases.md.
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::classify_anyhow;
 use crate::domains::common::{Command, Ctx};
-use crate::domains::knowledge_bases::okf::ImportOkfBundle;
+use crate::domains::knowledge_bases::okf::{ImportOkfBundle, build_export_files, encode_tar_gz};
 pub use crate::domains::knowledge_bases::okf::{
     ImportOkfBundleRequest, OkfFileInput, OkfImportSummary,
 };
@@ -59,6 +60,7 @@ pub fn routes(state: AppState) -> Router {
             get(get_kb).patch(update_kb).delete(delete_kb),
         )
         .route("/v1/knowledge-bases/{kb_id}/okf_import", post(import_okf))
+        .route("/v1/knowledge-bases/{kb_id}/okf_export", get(export_okf))
         .route(
             "/v1/knowledge-bases/{kb_id}/entries",
             post(create_entry).get(list_entries),
@@ -205,6 +207,50 @@ pub async fn import_okf(
             .run(&state.ctx(&org))
             .await?,
     ))
+}
+
+#[utoipa::path(
+    description = "Export a knowledge base as an Open Knowledge Format (OKF) bundle \
+(a gzipped tarball of markdown files with YAML frontmatter). See specs/okf-adoption.md.",
+    get,
+    path = "/v1/knowledge-bases/{kb_id}/okf_export",
+    params(("kb_id" = String, Path, description = "Knowledge base ID")),
+    responses(
+        (status = 200, description = "OKF bundle (.tar.gz)", content_type = "application/gzip"),
+        (status = 404, description = "Knowledge base not found", body = ErrorResponse)
+    ),
+    tag = "knowledge_bases"
+)]
+pub async fn export_okf(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(kb_id): Path<String>,
+) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
+    use axum::http::header;
+    let ctx = state.ctx(&org);
+    // GetKnowledgeBase enforces the view policy and 404s on missing/other-org KBs.
+    let kb = GetKnowledgeBase {
+        kb_id: kb_id.clone(),
+    }
+    .run(&ctx)
+    .await?;
+    let entries = ctx
+        .db
+        .list_knowledge_entries(kb.internal_id, None, None)
+        .await
+        .map_err(classify_anyhow)?;
+    let files = build_export_files(&entries);
+    let bytes = encode_tar_gz(&files).map_err(classify_anyhow)?;
+
+    let response = axum::response::Response::builder()
+        .header(header::CONTENT_TYPE, "application/gzip")
+        .header(
+            header::CONTENT_DISPOSITION,
+            format!("attachment; filename=\"{}.tar.gz\"", kb.id),
+        )
+        .body(axum::body::Body::from(bytes))
+        .expect("valid response");
+    Ok(response)
 }
 
 // ------------- entries -------------

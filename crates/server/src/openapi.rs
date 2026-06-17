@@ -263,6 +263,7 @@ use utoipa::OpenApi;
         api::knowledge_bases::update_kb,
         api::knowledge_bases::delete_kb,
         api::knowledge_bases::import_okf,
+        api::knowledge_bases::export_okf,
         api::knowledge_bases::create_entry,
         api::knowledge_bases::list_entries,
         api::knowledge_bases::get_entry,
