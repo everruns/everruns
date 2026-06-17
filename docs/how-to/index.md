@@ -14,6 +14,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Define agents as files](/how-to/define-agents-as-files/) — version-controllable agent definitions in Markdown, TOML, or YAML.
 - [Use AGENTS.md for project instructions](/how-to/use-agents-md/) — inject project-level context into the system prompt.
 - [Customize a harness](/how-to/customize-a-harness/) — create your own harness as a starting point for many agents.
+- [Share knowledge with OKF](/how-to/share-knowledge-with-okf/) — import/export Knowledge Bases as Open Knowledge Format bundles, managed like code.
 - [Migrate between LLM providers](/how-to/migrate-providers/) — swap OpenAI ↔ Anthropic ↔ Gemini without rewriting agents.
 
 ## Running agents
