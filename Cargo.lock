@@ -2823,6 +2823,7 @@ dependencies = [
  "chrono",
  "everruns-core",
  "everruns-mcp",
+ "everruns-openai",
  "futures",
  "ignore",
  "serde",
