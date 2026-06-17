@@ -17,6 +17,7 @@ mod evals;
 mod events;
 mod harnesses;
 mod knowledge_bases;
+mod knowledge_indexes;
 mod mcp_servers;
 mod memory;
 mod notifications;

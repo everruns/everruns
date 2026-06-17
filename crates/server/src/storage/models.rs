@@ -1279,6 +1279,76 @@ pub struct UpdateKnowledgeEntry {
 }
 
 // ============================================
+// Knowledge Index models (source-backed embedded collections —
+// see specs/knowledge-indexes.md)
+// ============================================
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct KnowledgeIndexRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub source_type: String,
+    pub source_config: serde_json::Value,
+    pub embedding_model_id: ModelId,
+    pub vector_dim: Option<i32>,
+    pub vector_namespace: Option<String>,
+    pub owner_principal_id: Option<String>,
+    pub resolved_owner_user_id: Option<Uuid>,
+    pub status: String,
+    pub sync_status: String,
+    pub last_synced_at: Option<DateTime<Utc>>,
+    pub last_sync_error: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeIndexRow {
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub source_type: String,
+    pub source_config: serde_json::Value,
+    pub embedding_model_id: ModelId,
+    /// Vector-store namespace assigned at creation. See `index_namespace`.
+    pub vector_namespace: String,
+    pub owner_principal_id: Option<String>,
+    pub resolved_owner_user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateKnowledgeIndex {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub source_config: Option<serde_json::Value>,
+    /// Optional update to the embedding model. `None` = unchanged. The model is
+    /// required on the index, so `Clear` is not representable.
+    pub embedding_model_id: Option<ModelId>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct KnowledgeIndexDocumentRow {
+    pub id: Uuid,
+    pub index_id: Uuid,
+    pub public_id: String,
+    pub source_uri: String,
+    pub title: Option<String>,
+    pub mime_type: Option<String>,
+    pub content_hash: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub chunk_count: i32,
+    pub last_seen_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
 // Session Git models (libgit2 custom ODB/refdb over PostgreSQL)
 // ============================================
 

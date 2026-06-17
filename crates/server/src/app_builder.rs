@@ -1126,6 +1126,8 @@ impl ServerAppBuilder {
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
+        let knowledge_indexes_state =
+            api::knowledge_indexes::AppState::new(db.clone(), auth_state.clone());
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -1280,6 +1282,7 @@ impl ServerAppBuilder {
             .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(memory_files_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
+            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
             .merge(api::payments::routes(payments_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
