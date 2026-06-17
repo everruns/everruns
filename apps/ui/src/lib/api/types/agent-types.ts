@@ -209,6 +209,10 @@ export interface HealthCheckCaseResult {
   deterministic_reason: string;
   turns: number;
   latency_ms: number;
+  /** Input tokens for this case (agent turns + judge). */
+  input_tokens?: number;
+  /** Output tokens for this case (agent turns + judge). */
+  output_tokens?: number;
   error?: string;
 }
 

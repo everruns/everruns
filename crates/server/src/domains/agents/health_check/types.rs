@@ -39,6 +39,12 @@ pub struct HealthCheckCaseResult {
     pub deterministic_reason: String,
     pub turns: u32,
     pub latency_ms: u64,
+    /// Input tokens for this case: the agent session turns plus the judge call.
+    #[serde(default)]
+    pub input_tokens: u32,
+    /// Output tokens for this case: the agent session turns plus the judge call.
+    #[serde(default)]
+    pub output_tokens: u32,
     /// Set when the case errored or timed out instead of completing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,

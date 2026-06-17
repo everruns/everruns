@@ -25,8 +25,8 @@ const completedRun: HealthCheckRun = {
     pass_rate: 0.5,
     avg_score: 0.7,
     avg_turns: 1.5,
-    total_input_tokens: 0,
-    total_output_tokens: 0,
+    total_input_tokens: 1500,
+    total_output_tokens: 300,
   },
   results: [
     {
@@ -74,6 +74,9 @@ describe("AgentHealthCheck", () => {
     expect(screen.getByText("greeting")).toBeInTheDocument();
     expect(screen.getByText("Responded politely.")).toBeInTheDocument();
     expect(screen.getByText("Did not clarify.")).toBeInTheDocument();
+    // Token usage from the summary is surfaced.
+    expect(screen.getByText(/1,500 input/)).toBeInTheDocument();
+    expect(screen.getByText(/300 output tokens/)).toBeInTheDocument();
   });
 
   it("shows the failure reason when the run failed", () => {

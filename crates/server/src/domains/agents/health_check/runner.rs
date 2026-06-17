@@ -230,10 +230,20 @@ async fn run_case(
     // Deterministic checks.
     let (det_pass, det_reason) = deterministic_score(&final_content, turns);
 
-    // LLM judge.
-    let (judge_pass, score, judge_reason) = judge_case(ctx, &case, &final_content)
-        .await
-        .unwrap_or_else(|e| (false, 0.0, format!("judge unavailable: {e}")));
+    // Agent-turn token usage is accumulated on the session row by the runner.
+    let (agent_input, agent_output) = match ctx.db.get_session(org_id, session.id).await {
+        Ok(Some(row)) => (
+            row.total_input_tokens.max(0) as u32,
+            row.total_output_tokens.max(0) as u32,
+        ),
+        _ => (0, 0),
+    };
+
+    // LLM judge (also reports its own token usage).
+    let (judge_pass, score, judge_reason, judge_input, judge_output) =
+        judge_case(ctx, &case, &final_content)
+            .await
+            .unwrap_or_else(|e| (false, 0.0, format!("judge unavailable: {e}"), 0, 0));
 
     HealthCheckCaseResult {
         name: case.name,
@@ -246,6 +256,8 @@ async fn run_case(
         deterministic_reason: det_reason,
         turns,
         latency_ms,
+        input_tokens: agent_input + judge_input,
+        output_tokens: agent_output + judge_output,
         error: None,
     }
 }
@@ -340,11 +352,14 @@ struct JudgeVerdict {
     reason: String,
 }
 
+/// Judge verdict plus the judge call's token usage (input, output).
+type JudgeOutcome = (bool, f64, String, u32, u32);
+
 async fn judge_case(
     ctx: &HealthCheckRunContext,
     case: &HealthCheckCase,
     final_content: &str,
-) -> Result<(bool, f64, String), String> {
+) -> Result<JudgeOutcome, String> {
     let user = format!(
         "<rubric>\n{}\n</rubric>\n<user-message>\n{}\n</user-message>\n<agent-response>\n{}\n\
          </agent-response>",
@@ -367,10 +382,19 @@ async fn judge_case(
     .map_err(|_| "judge timed out".to_string())?
     .map_err(|e| e.to_string())?;
 
+    let judge_input = response.metadata.prompt_tokens.unwrap_or(0);
+    let judge_output = response.metadata.completion_tokens.unwrap_or(0);
+
     let json = super::strip_code_fences(&response.text);
     let verdict: JudgeVerdict =
         serde_json::from_str(json).map_err(|e| format!("invalid judge output: {e}"))?;
-    Ok((verdict.pass, verdict.score.clamp(0.0, 1.0), verdict.reason))
+    Ok((
+        verdict.pass,
+        verdict.score.clamp(0.0, 1.0),
+        verdict.reason,
+        judge_input,
+        judge_output,
+    ))
 }
 
 fn errored_case(
@@ -390,6 +414,8 @@ fn errored_case(
         deterministic_reason: String::new(),
         turns: 0,
         latency_ms: started.elapsed().as_millis() as u64,
+        input_tokens: 0,
+        output_tokens: 0,
         error: Some(error),
     }
 }
@@ -423,8 +449,9 @@ pub(super) fn summarize(results: &[HealthCheckCaseResult]) -> HealthCheckSummary
         },
         avg_score,
         avg_turns,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
+        // Sum agent + judge usage across all cases (errored cases contribute 0).
+        total_input_tokens: results.iter().map(|r| r.input_tokens as u64).sum(),
+        total_output_tokens: results.iter().map(|r| r.output_tokens as u64).sum(),
     }
 }
 
@@ -471,12 +498,15 @@ mod tests {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn result(
         name: &str,
         passed: bool,
         error: bool,
         score: f64,
         turns: u32,
+        input_tokens: u32,
+        output_tokens: u32,
     ) -> HealthCheckCaseResult {
         HealthCheckCaseResult {
             name: name.to_string(),
@@ -489,6 +519,8 @@ mod tests {
             deterministic_reason: String::new(),
             turns,
             latency_ms: 0,
+            input_tokens,
+            output_tokens,
             error: error.then(|| "boom".to_string()),
         }
     }
@@ -503,9 +535,9 @@ mod tests {
     #[test]
     fn summary_counts_pass_fail_error() {
         let results = vec![
-            result("a", true, false, 1.0, 1),
-            result("b", false, false, 0.2, 3),
-            result("c", false, true, 0.0, 0),
+            result("a", true, false, 1.0, 1, 100, 20),
+            result("b", false, false, 0.2, 3, 50, 10),
+            result("c", false, true, 0.0, 0, 0, 0),
         ];
         let s = summarize(&results);
         assert_eq!((s.total, s.passed, s.failed, s.errored), (3, 1, 1, 1));
@@ -513,6 +545,9 @@ mod tests {
         // avg_score/turns computed over non-errored cases only.
         assert!((s.avg_score - 0.6).abs() < 1e-9);
         assert!((s.avg_turns - 2.0).abs() < 1e-9);
+        // Token usage sums agent + judge across every case.
+        assert_eq!(s.total_input_tokens, 150);
+        assert_eq!(s.total_output_tokens, 30);
     }
 
     #[test]
