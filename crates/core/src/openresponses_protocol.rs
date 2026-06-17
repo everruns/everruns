@@ -91,6 +91,15 @@ pub trait OpenResponsesRequestExtension: Send + Sync {
     fn decorate_headers(&self, _headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
         Ok(())
     }
+
+    /// Refine retry metadata from provider-specific rate limit response fields.
+    fn update_rate_limit_info(
+        &self,
+        _info: &mut RateLimitInfo,
+        _headers: &HeaderMap,
+        _error_body: &str,
+    ) {
+    }
 }
 
 #[derive(Clone)]
@@ -469,13 +478,19 @@ impl OpenResponsesProtocolChatDriver {
             // Check if this is a retryable error
             if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
             {
-                let rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_openai_headers(response.headers()))
+                let response_headers = response.headers().clone();
+                let mut rate_limit_info = if is_rate_limit_status(status) {
+                    Some(RateLimitInfo::from_openai_headers(&response_headers))
                 } else {
                     None
                 };
 
                 let error_text = response.text().await.unwrap_or_default();
+                if let (Some(extension), Some(info)) =
+                    (self.request_extension.as_ref(), rate_limit_info.as_mut())
+                {
+                    extension.update_rate_limit_info(info, &response_headers, &error_text);
+                }
 
                 let wait_duration = rate_limit_info
                     .as_ref()
@@ -887,13 +902,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
             {
                 // Parse rate limit info from headers before consuming response body
-                let rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_openai_headers(response.headers()))
+                let response_headers = response.headers().clone();
+                let mut rate_limit_info = if is_rate_limit_status(status) {
+                    Some(RateLimitInfo::from_openai_headers(&response_headers))
                 } else {
                     None
                 };
 
                 let error_text = response.text().await.unwrap_or_default();
+                if let (Some(extension), Some(info)) =
+                    (self.request_extension.as_ref(), rate_limit_info.as_mut())
+                {
+                    extension.update_rate_limit_info(info, &response_headers, &error_text);
+                }
 
                 // Exhausted billing quota is surfaced as a 429 but is not
                 // transient — fail fast instead of burning retries.
