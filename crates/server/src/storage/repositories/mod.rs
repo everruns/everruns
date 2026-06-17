@@ -151,11 +151,33 @@ fn build_search_sql(
 #[derive(Clone)]
 pub struct Database {
     pool: PgPool,
+    /// Optional S3-compatible blob backend. When set, file/image content bytes
+    /// are offloaded to the object store and these tables hold only metadata +
+    /// a pointer (specs/object-storage.md). `None` keeps bytes inline in
+    /// PostgreSQL (default behavior).
+    blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
 }
 
 impl Database {
     pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+        Self {
+            pool,
+            blob_store: None,
+        }
+    }
+
+    /// Attach an object-storage blob backend for content offload.
+    pub fn with_blob_store(
+        mut self,
+        blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
+    ) -> Self {
+        self.blob_store = blob_store;
+        self
+    }
+
+    /// The configured blob backend, if content offload is enabled.
+    pub fn blob_store(&self) -> Option<&crate::storage::blob_store::SharedBlobStore> {
+        self.blob_store.as_ref()
     }
 
     /// Create database connection pool from URL with configurable pool settings.
@@ -212,7 +234,10 @@ impl Database {
             }
         }
 
-        Ok(Self { pool })
+        Ok(Self {
+            pool,
+            blob_store: None,
+        })
     }
 
     pub fn pool(&self) -> &PgPool {
