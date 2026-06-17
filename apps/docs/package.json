@@ -18,7 +18,7 @@
   "dependencies": {
     "@astrojs/check": "^0.9.7",
     "@astrojs/starlight": "^0.39.3",
-    "astro": "^6.3.7",
+    "astro": "^6.4.6",
     "js-yaml": "^4.2.0",
     "marked": "^18.0.5",
     "sharp": "^0.34.5",
