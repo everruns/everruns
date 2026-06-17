@@ -232,14 +232,16 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 ## Source Index
 
-Until the refactor lands, current implementations live at:
+The refactor has landed; current implementations live at:
 
-- `crates/core/src/llm_models.rs` — entity types (to become `Provider`/`Model`/`ModelProfile`)
-- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry`
-- `crates/core/src/llm_model_profiles.rs` — built-in profile data
-- `crates/server/src/services/llm_resolver.rs` — fail-closed resolution
+- `crates/core/src/provider.rs` — `Provider` entity + `DriverId`
+- `crates/core/src/model.rs` — `Model` / `ModelWithProvider` entity types
+- `crates/core/src/model_profiles.rs` — built-in profile data
+- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories)
+- `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
+- `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs` — model discovery
-- `crates/server/src/api/llm_providers.rs`, `crates/server/src/api/llm_models.rs` — REST API
-- `crates/server/src/api/voice.rs` — realtime credential resolution (to be rerouted)
+- `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs` — REST API
+- `crates/server/src/api/voice.rs` — realtime credential resolution (routed through `resolve_service`)
 - `crates/core/src/connector.rs` — connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/` — provider settings UI

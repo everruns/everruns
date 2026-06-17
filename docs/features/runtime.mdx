@@ -38,7 +38,7 @@ Build an in-process runtime with an in-memory backend and a simulated LLM, then 
 
 ```rust
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
 };
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_runtime::InProcessRuntimeBuilder;
@@ -48,11 +48,12 @@ let platform = PlatformDefinition::new(CapabilityRegistry::new(), DriverRegistry
 let runtime = InProcessRuntimeBuilder::new()
     .platform_definition(platform)
     .llm_sim(LlmSimConfig::fixed("hello from everruns-runtime"))
-    .default_model(ModelWithProvider {
+    .default_model(ResolvedModel {
         model: "llmsim-model".into(),
-        provider_type: LlmProviderType::LlmSim,
+        provider_type: DriverId::LlmSim,
         api_key: Some("fake-key".into()),
         base_url: None,
+        provider_metadata: None,
     })
     // .capability(...)
     // .backends(...)
