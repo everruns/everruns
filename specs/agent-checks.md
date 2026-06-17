@@ -117,6 +117,15 @@ Decided ordering (Option A → C → B from the design review):
    in `agent_health_check_runs` (whole run + results as JSONB on one row;
    health checks are not `Eval` entities). Gated on the utility LLM and the
    org default harness being available.
+
+   The background task is fire-and-forget, so a run is made durable against
+   process death two ways: a **boot reaper** transitions every non-terminal
+   (`pending`/`running`) row to `failed` on server startup (a fresh process has
+   no run in flight, so any such row is an orphan), and a **read-path staleness
+   guard** reports a non-terminal run whose `updated_at` is older than a
+   generous window (well beyond the runner's max wall-clock budget) as `failed`
+   even when the server has not restarted. Together these guarantee a run never
+   shows a perpetual `running` spinner.
 4. **Extensible rules.** Org-level rule registry: per-rule enable/severity
    config for built-ins, plus two custom rule types — declarative
    (keyword/regex/structural, no code) and natural-language rubrics judged by

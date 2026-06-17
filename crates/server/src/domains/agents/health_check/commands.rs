@@ -121,7 +121,7 @@ impl AgentHealthCheckService {
             // mismatched URL.
             .filter(|row| row.agent_id == Some(agent.internal_id))
             .ok_or_else(|| CommandError::not_found("Health check run"))?;
-        Ok(HealthCheckRun::from(row))
+        Ok(HealthCheckRun::from_row_at(row, chrono::Utc::now()))
     }
 
     pub async fn list(
@@ -140,7 +140,11 @@ impl AgentHealthCheckService {
             .list_agent_health_check_runs(caller.org_id, agent.internal_id, LIST_LIMIT)
             .await
             .map_err(classify_anyhow)?;
-        Ok(rows.into_iter().map(HealthCheckRun::from).collect())
+        let now = chrono::Utc::now();
+        Ok(rows
+            .into_iter()
+            .map(|row| HealthCheckRun::from_row_at(row, now))
+            .collect())
     }
 }
 

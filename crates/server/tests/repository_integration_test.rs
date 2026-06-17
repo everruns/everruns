@@ -21,11 +21,12 @@ use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateDeclarativeCapabilityRow,
-    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateMcpServerRow, CreateModelRow,
-    CreateOrganizationRow, CreatePrincipalRow, CreateProviderRow, CreateSessionFileRow,
-    CreateSessionRow, CreateSessionScheduleRow, CreateUserConnectionRow, CreateUserRow, Database,
-    StorageBackend, UpdateAgent, UpdateDeclarativeCapability, UpdateModel, UpdateOrganization,
+    CreateAgentCapabilityRow, CreateAgentHealthCheckRunRow, CreateAgentRow, CreateAppRow,
+    CreateDeclarativeCapabilityRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
+    CreateMcpServerRow, CreateModelRow, CreateOrganizationRow, CreatePrincipalRow,
+    CreateProviderRow, CreateSessionFileRow, CreateSessionRow, CreateSessionScheduleRow,
+    CreateUserConnectionRow, CreateUserRow, Database, StorageBackend, UpdateAgent,
+    UpdateAgentHealthCheckRunRow, UpdateDeclarativeCapability, UpdateModel, UpdateOrganization,
     UpdateOrganizationSettings, UpdateProvider, UpdateSession, UpdateSessionFile,
     UpdateSessionScheduleRow,
 };
@@ -2853,4 +2854,76 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             .all(|(_, tid, _)| tid != &malformed_task_id),
         "malformed-spec task must never appear in results"
     );
+}
+
+/// EVE-586: the boot reaper transitions orphaned `running`/`pending` health
+/// check runs to `failed` while leaving terminal runs untouched. Mirrors the
+/// in-memory unit test so both backends are proven to behave identically.
+#[tokio::test]
+async fn test_reap_running_agent_health_check_runs() {
+    let backend = create_test_backend().await;
+
+    let health_check_input = |pid: u128| CreateAgentHealthCheckRunRow {
+        public_id: format!("healthcheck_{pid:032x}"),
+        agent_id: None,
+        config_hash: "cfg".to_string(),
+        model_id: None,
+    };
+
+    // An orphaned run still marked `running`.
+    let running = backend
+        .create_agent_health_check_run(TEST_ORG_ID, health_check_input(Uuid::now_v7().as_u128()))
+        .await
+        .expect("create running health check run");
+    backend
+        .update_agent_health_check_run(
+            running.id,
+            UpdateAgentHealthCheckRunRow {
+                status: Some("running".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("mark running");
+
+    // A run that finished normally must be left untouched.
+    let done = backend
+        .create_agent_health_check_run(TEST_ORG_ID, health_check_input(Uuid::now_v7().as_u128()))
+        .await
+        .expect("create completed health check run");
+    backend
+        .update_agent_health_check_run(
+            done.id,
+            UpdateAgentHealthCheckRunRow {
+                status: Some("completed".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("mark completed");
+
+    let reaped = backend
+        .reap_running_agent_health_check_runs()
+        .await
+        .expect("reap runs");
+    assert!(
+        reaped >= 1,
+        "expected at least the orphaned run to be reaped"
+    );
+
+    let running_after = backend
+        .get_agent_health_check_run(TEST_ORG_ID, &running.public_id)
+        .await
+        .expect("fetch running run")
+        .expect("running run exists");
+    assert_eq!(running_after.status, "failed");
+    assert!(running_after.error_message.is_some());
+    assert!(running_after.completed_at.is_some());
+
+    let done_after = backend
+        .get_agent_health_check_run(TEST_ORG_ID, &done.public_id)
+        .await
+        .expect("fetch completed run")
+        .expect("completed run exists");
+    assert_eq!(done_after.status, "completed");
 }
