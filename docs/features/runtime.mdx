@@ -114,7 +114,7 @@ let result = runtime
 println!("{}", result.response);
 ```
 
-The same pattern works for any provider crate — swap `everruns-openai` for `everruns-anthropic` (`DriverId::Anthropic`), `everruns-openrouter` (`DriverId::OpenRouter`), and so on, matching the crate to its `DriverId`. For an arbitrary OpenAI-compatible endpoint (a local gateway, Ollama, …), keep `DriverId::OpenAI` and set `base_url`.
+The same pattern works for any provider crate — swap `everruns-openai` for `everruns-anthropic` (`DriverId::Anthropic`), `everruns-openrouter` (`DriverId::OpenRouter`), and so on, matching the crate to its `DriverId`. To reach an OpenAI-compatible endpoint (a local gateway, Ollama, …), set `base_url` and pick the `DriverId` that matches the API the server speaks: `DriverId::OpenAI` for the Responses API, or `DriverId::OpenAICompletions` for the Chat Completions API.
 
 A complete, runnable version lives at `crates/runtime/examples/openai_runtime.rs`:
 

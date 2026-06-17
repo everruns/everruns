@@ -143,6 +143,7 @@ futures-util = "0.3"
 everruns-sdk = "0.1.9"
 everruns-core = { path = "crates/core", version = "0.14.0" }
 everruns-mcp = { path = "crates/mcp", version = "0.14.0" }
+everruns-openai = { path = "crates/openai", version = "0.14.0" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

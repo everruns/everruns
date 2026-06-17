@@ -48,6 +48,7 @@ everruns-mcp.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 async-trait.workspace = true
-# Dev-only: powers the `openai_runtime` example. Not a published dependency, so
-# embedders pull in only the provider crates they actually use.
-everruns-openai = { path = "../openai" }
+# Dev-only: powers the `openai_runtime` example. Carries a version (via the
+# workspace dep) so `cargo publish` keeps it resolvable; it is not a published
+# runtime dependency, so embedders pull in only the provider crates they use.
+everruns-openai = { workspace = true }
