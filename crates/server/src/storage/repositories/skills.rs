@@ -291,7 +291,7 @@ impl Database {
             let mut row = match sqlx::query_as::<_, ImageRow>(
                 r#"
                 INSERT INTO images (id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
-                VALUES ($1, $2, $3, $4, ''::bytea, NULL, $5, $6)
+                VALUES ($1, $2, $3, $4, $5, ''::bytea, NULL, $6, $7)
                 RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
                 "#,
             )
