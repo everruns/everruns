@@ -18887,6 +18887,12 @@
             ],
             "description": "Set when the case errored or timed out instead of completing."
           },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Input tokens for this case: the agent session turns plus the judge call.",
+            "minimum": 0
+          },
           "judge_reason": {
             "type": "string",
             "description": "LLM judge explanation."
@@ -18898,6 +18904,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output tokens for this case: the agent session turns plus the judge call.",
+            "minimum": 0
           },
           "passed": {
             "type": "boolean",

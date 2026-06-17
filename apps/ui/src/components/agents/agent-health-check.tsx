@@ -130,6 +130,12 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
           <Metric label="Avg turns" value={summary.avg_turns.toFixed(1)} />
         </div>
       )}
+      {summary && (summary.total_input_tokens > 0 || summary.total_output_tokens > 0) && (
+        <p className="text-xs text-muted-foreground">
+          {summary.total_input_tokens.toLocaleString()} input /{" "}
+          {summary.total_output_tokens.toLocaleString()} output tokens
+        </p>
+      )}
       <ul className="space-y-2">
         {(run.results ?? []).map((result, index) => (
           <CaseRow key={result.session_id ?? `${result.name}-${index}`} result={result} />
