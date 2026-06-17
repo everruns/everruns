@@ -1,6 +1,6 @@
 //! Integration test: verify Cursor plugin and connection provider registration.
 
-use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin, ToolCallHook};
+use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
 use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::tool_narration::ToolNarrationPhase;
@@ -61,11 +61,9 @@ fn cursor_connection_provider_is_submitted() {
 }
 
 #[test]
-fn cursor_narration_hook_names_agent_work() {
-    let cap = everruns_integrations_cursor::CursorCapability;
+fn cursor_narration_names_agent_work() {
     use everruns_core::capabilities::Capability;
-    let hooks = cap.tool_call_hooks();
-    let hook: &dyn ToolCallHook = hooks[0].as_ref();
+    let cap = everruns_integrations_cursor::CursorCapability;
     let call = ToolCall {
         id: "call_1".into(),
         name: "cursor_launch_agent".into(),
@@ -76,8 +74,8 @@ fn cursor_narration_hook_names_agent_work() {
         }),
     };
 
-    let narration = hook
-        .narration(None, &call, ToolNarrationPhase::Started, None)
+    let narration = cap
+        .narrate(None, &call, ToolNarrationPhase::Started, None)
         .expect("narration");
     assert_eq!(narration, "Starting Cursor agent: Fix checkout bug");
 }

@@ -874,6 +874,32 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Contribute human-readable narration for one of *this capability's* tool
+    /// calls (e.g. "Read AGENTS.md", "Searched tools: router").
+    ///
+    /// The **default** dispatches to the matching tool's
+    /// [`crate::tools::Tool::narrate`], so a capability narrates its tools for
+    /// free — narration lives on the tool that owns it. Override this only when
+    /// narration is config-driven or spans tools, or when the tools are dynamic
+    /// (e.g. proxied MCP tools that have no local `Tool` struct).
+    ///
+    /// Returns `None` for tool names this capability does not provide, so other
+    /// capabilities — or the generic fallback in [`crate::tool_narration`] —
+    /// can handle them. The framework consults this for every applied
+    /// capability (see `assemble`/`CapabilityNarrationHook`) on the act path.
+    fn narrate(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        self.tools()
+            .iter()
+            .find(|tool| tool.name() == tool_call.name)
+            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+    }
+
     /// Returns user-defined hook specifications contributed by this capability.
     ///
     /// User hooks are JSON-serializable specs (see
@@ -1016,6 +1042,25 @@ pub trait ToolCallHook: Send + Sync {
 
     fn transform_for_execution(&self, tool_call: ToolCall) -> ToolCall {
         tool_call
+    }
+}
+
+/// Adapts a [`Capability`]'s [`Capability::narrate`] into a [`ToolCallHook`] so
+/// capability-owned narration flows through the same hook channel the act atom
+/// already consults. One is registered per applied capability during
+/// `assemble`, after every explicit tool-call hook, so model-authored
+/// narration (e.g. `human_intent`) still takes precedence.
+pub struct CapabilityNarrationHook(pub Arc<dyn Capability>);
+
+impl ToolCallHook for CapabilityNarrationHook {
+    fn narration(
+        &self,
+        tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        self.0.narrate(tool_def, tool_call, phase, locale)
     }
 }
 
@@ -2141,6 +2186,9 @@ pub async fn collect_capabilities_with_configs(
     let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
+    // Per-capability narration adapters, appended after explicit tool-call
+    // hooks so model-authored narration (human_intent) keeps precedence.
+    let mut narration_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     let mut mcp_servers = ScopedMcpServers::default();
     let compaction_on = compaction_is_enabled(capability_configs, registry);
 
@@ -2230,6 +2278,8 @@ pub async fn collect_capabilities_with_configs(
             tool_definition_hooks
                 .extend(effective.tool_definition_hooks_with_context(ctx, &cap_config.config));
             tool_call_hooks.extend(effective.tool_call_hooks());
+            // Route this capability's `narrate()` through the hook channel.
+            narration_hooks.push(Arc::new(CapabilityNarrationHook(capability.clone())));
             // Output guardrails are NOT collected here — see CollectedCapabilities
             // for rationale. ReasonAtom re-derives them at stream-arming time.
 
@@ -2344,8 +2394,14 @@ pub async fn collect_capabilities_with_configs(
             .with_capability_attribution(BACKGROUND_EXECUTION_CAPABILITY_ID, Some(bg_cap.name()));
             tool_definitions.push(def);
         }
+        narration_hooks.push(Arc::new(CapabilityNarrationHook(bg_cap.clone())));
         applied_ids.push(BACKGROUND_EXECUTION_CAPABILITY_ID.to_string());
     }
+
+    // Append per-capability narration adapters after every explicit tool-call
+    // hook so capability-owned narration is consulted only once model-authored
+    // hooks (human_intent) have had their say.
+    tool_call_hooks.extend(narration_hooks);
 
     // Sort message filter providers by priority (lower = earlier)
     message_filter_providers.sort_by_key(|(p, _)| p.priority());

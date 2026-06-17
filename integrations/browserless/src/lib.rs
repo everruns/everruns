@@ -28,6 +28,8 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
 };
 use everruns_core::connector::ConnectorPlugin;
+use everruns_core::tool_narration::ToolNarrationPhase;
+use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::tools::Tool;
 
 use connection::BrowserlessConnector;
@@ -152,6 +154,80 @@ impl Capability for BrowserlessCapability {
         ]
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        let url = tool_call
+            .arguments
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|u| u.trim())
+            .filter(|u| !u.is_empty())
+            // host+path only — never expose scheme, userinfo, query, or fragment.
+            .map(everruns_core::tool_narration::url_display);
+
+        let (started, completed, failed, target) = match tool_call.name.as_str() {
+            "browserless_open_browser" => (
+                "Opening browser",
+                "Opened browser",
+                "Failed to open browser",
+                url,
+            ),
+            "browserless_close_browser" => (
+                "Closing browser",
+                "Closed browser",
+                "Failed to close browser",
+                None,
+            ),
+            "browserless_navigate" => (
+                "Navigating to",
+                "Navigated to",
+                "Failed to navigate to",
+                url,
+            ),
+            "browserless_screenshot" => (
+                "Taking screenshot",
+                "Took screenshot",
+                "Failed to take screenshot",
+                None,
+            ),
+            "browserless_content" => (
+                "Reading page content",
+                "Read page content",
+                "Failed to read page content",
+                None,
+            ),
+            "browserless_scrape" => (
+                "Scraping page",
+                "Scraped page",
+                "Failed to scrape page",
+                None,
+            ),
+            "browserless_interact" => (
+                "Interacting with page",
+                "Interacted with page",
+                "Failed to interact with page",
+                None,
+            ),
+            _ => return None,
+        };
+
+        let verb = match phase {
+            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => started,
+            ToolNarrationPhase::Completed => completed,
+            ToolNarrationPhase::Failed => failed,
+        };
+
+        Some(match target {
+            Some(target) => format!("{verb} {target}"),
+            None => verb.to_string(),
+        })
+    }
+
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
     }
@@ -190,6 +266,46 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("browserless"));
         assert_eq!(cap.category(), Some("Browser"));
+    }
+
+    #[test]
+    fn capability_narrates_browserless_tools() {
+        let cap = BrowserlessCapability;
+        let call = ToolCall {
+            id: "call_1".to_string(),
+            name: "browserless_navigate".to_string(),
+            arguments: serde_json::json!({ "url": "https://user:tok@example.com/page?token=abc" }),
+        };
+        // Narration shows host+path only — no scheme, userinfo, or query.
+        assert_eq!(
+            cap.narrate(None, &call, ToolNarrationPhase::Started, None),
+            Some("Navigating to example.com/page".to_string())
+        );
+        assert_eq!(
+            cap.narrate(None, &call, ToolNarrationPhase::Completed, None),
+            Some("Navigated to example.com/page".to_string())
+        );
+
+        let screenshot = ToolCall {
+            id: "call_2".to_string(),
+            name: "browserless_screenshot".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        assert_eq!(
+            cap.narrate(None, &screenshot, ToolNarrationPhase::Completed, None),
+            Some("Took screenshot".to_string())
+        );
+
+        // Tools this capability does not own are left to their owner.
+        let other = ToolCall {
+            id: "call_3".to_string(),
+            name: "read_file".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        assert_eq!(
+            cap.narrate(None, &other, ToolNarrationPhase::Started, None),
+            None
+        );
     }
 
     #[test]

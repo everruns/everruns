@@ -496,6 +496,19 @@ impl ToolSearchTool {
 
 #[async_trait]
 impl Tool for ToolSearchTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_tool_search(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         TOOL_SEARCH_TOOL_NAME
     }

@@ -10,11 +10,8 @@ pub mod client;
 pub mod connection;
 mod tools;
 
-use std::sync::Arc;
-
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
-    ToolCallHook,
 };
 use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tool_narration::ToolNarrationPhase;
@@ -108,15 +105,7 @@ impl Capability for CursorCapability {
         ]
     }
 
-    fn tool_call_hooks(&self) -> Vec<Arc<dyn ToolCallHook>> {
-        vec![Arc::new(CursorNarrationHook)]
-    }
-}
-
-struct CursorNarrationHook;
-
-impl ToolCallHook for CursorNarrationHook {
-    fn narration(
+    fn narrate(
         &self,
         _tool_def: Option<&ToolDefinition>,
         tool_call: &ToolCall,

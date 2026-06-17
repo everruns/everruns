@@ -374,6 +374,21 @@ pub struct DockerExecTool;
 
 #[async_trait]
 impl Tool for DockerExecTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("Docker");
+        Some(everruns_core::tool_narration::narrate_shell_exec(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "docker_exec"
     }

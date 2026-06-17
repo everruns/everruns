@@ -62,6 +62,19 @@ pub struct BraveWebSearchTool;
 
 #[async_trait]
 impl Tool for BraveWebSearchTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(everruns_core::tool_narration::narrate_search_web(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "brave_web_search"
     }

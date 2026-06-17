@@ -213,6 +213,19 @@ pub struct SpawnSubagentTool;
 
 #[async_trait]
 impl Tool for SpawnSubagentTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_spawn_subagent(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "spawn_subagent"
     }

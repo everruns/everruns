@@ -65,11 +65,11 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 
 ### Narration Formatting
 
-Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). The narration system lives in `crates/core/src/tool_narration.rs`.
+Every tool call displayed in the UI gets a human-readable narration line (e.g. "Created agent: Neon Cartographer"). Narration is **owned by the tool**, via `Tool::narrate`, and surfaced by its capability — there is no central name-keyed narrator. everruns authors narration in the backend so downstream clients can render with `data.narration.unwrap_or(display_name)` and need no per-tool narration code. See [`specs/tool-narration.md`](tool-narration.md) for the contract, wiring, reusable phrasing helpers, and the truncation/redaction rules.
 
-**Built-in tools** have hardcoded narration (bash → "Ran `ls`", read_file → "Read AGENTS.md"). Tools that don't match a hardcoded case fall through to the generic path.
+**Tool-owned narration:** A tool implements `Tool::narrate` (calling the reusable phrasing helpers in `crate::tool_narration`); `Capability::narrate` defaults to dispatching to the matching tool, so a capability narrates its tools for free. A capability overrides `narrate()` only when narration is config-driven, spans tools, or the tools are dynamic (e.g. proxied MCP tools). The framework routes every applied capability's `narrate()` through the act atom. Tools that contribute no narration fall through to the generic `narration_noun`/display-name path below.
 
-**Operation-based narration via `narration_noun`:** Multi-operation tools (CRUD tools with an `operation`/`action` argument) should set `narration_noun` in their `ToolHints`. The narration system then:
+**Operation-based narration via `narration_noun`:** Multi-operation tools (CRUD tools with an `operation`/`action` argument) should set `narration_noun` in their `ToolHints`. The generic fallback then:
 
 1. Reads the `operation` (or `action`) argument value
 2. Maps it to verb forms: create→Creating/Created, update→Updating/Updated, delete→Deleting/Deleted, copy→Copying/Copied, etc.
