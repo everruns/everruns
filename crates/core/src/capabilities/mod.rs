@@ -108,6 +108,7 @@ mod guardrails;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
+mod knowledge_index;
 mod loop_detection;
 mod lua;
 mod lua_code_mode;
@@ -227,6 +228,10 @@ pub use infinity_context::{
 pub use knowledge_base::{
     KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
     validate_knowledge_base_config,
+};
+pub use knowledge_index::{
+    KNOWLEDGE_INDEX_CAPABILITY_ID, KnowledgeIndexCapability, KnowledgeIndexConfig,
+    validate_knowledge_index_config,
 };
 pub use loop_detection::{LOOP_DETECTION_CAPABILITY_ID, LoopDetectionCapability};
 pub use lua::{LUA_CAPABILITY_ID, LuaCapability, LuaTool, LuaVfs, is_code_mode_eligible};
@@ -1246,6 +1251,9 @@ impl CapabilityRegistry {
 
         // Knowledge bases (curated org knowledge — see specs/knowledge-bases.md)
         registry.register(KnowledgeBaseCapability);
+
+        // Knowledge indexes (source-backed embedded collections — see specs/knowledge-indexes.md)
+        registry.register(KnowledgeIndexCapability);
 
         // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);
@@ -2523,6 +2531,7 @@ mod tests {
             "sample_data",
             "data_knowledge",
             "knowledge_base",
+            "knowledge_index",
             "tool_output_persistence",
             "tool_output_distillation",
             "fake_warehouse",
