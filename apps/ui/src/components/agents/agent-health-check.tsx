@@ -2,7 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useHealthCheckRun, useTriggerHealthCheck } from "@/hooks/use-agents";
+import {
+  useHealthCheckRun,
+  useLatestHealthCheckRun,
+  useTriggerHealthCheck,
+} from "@/hooks/use-agents";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,8 +31,18 @@ interface AgentHealthCheckProps {
 export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const trigger = useTriggerHealthCheck();
   const [runId, setRunId] = useState<string | null>(null);
-  const { data: run } = useHealthCheckRun(agentId, runId);
+  const { data: triggeredRun } = useHealthCheckRun(agentId, runId);
+  const { data: latest } = useLatestHealthCheckRun(agentId);
 
+  // Show a freshly triggered run if there is one; otherwise fall back to the
+  // latest persisted run loaded on mount so prior results appear immediately
+  // without triggering a new LLM run (EVE-588).
+  const run = triggeredRun ?? latest?.run;
+  // Only hint staleness for the mounted latest run, not one we just triggered.
+  const configChanged = !runId && !!latest?.run && latest.config_changed;
+
+  // Consider the displayed run (triggered or the latest loaded on mount): a run
+  // already in progress keeps the button disabled so we don't start a duplicate.
   const isRunning = trigger.isPending || run?.status === "pending" || run?.status === "running";
 
   return (
@@ -74,6 +88,12 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
         {!run && !trigger.error && (
           <p className="text-sm text-muted-foreground italic">
             No health check has been run for this configuration yet.
+          </p>
+        )}
+        {configChanged && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 flex items-center gap-2 mb-3">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            This agent&apos;s configuration changed since this run — re-run to refresh results.
           </p>
         )}
         {run && <HealthCheckResults run={run} />}
