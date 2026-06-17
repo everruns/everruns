@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .platform_definition(platform)
         .default_model(ResolvedModel {
             model: "gpt-5.4-mini".into(),
-            provider_type: DriverId::Openai,
+            provider_type: DriverId::OpenAI,
             api_key: Some(std::env::var("OPENAI_API_KEY")?),
             base_url: None,
             provider_metadata: None,
