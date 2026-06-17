@@ -972,7 +972,7 @@ pub struct CreateProviderRow {
     pub settings: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateProvider {
     pub name: Option<String>,
     pub provider_type: Option<String>,

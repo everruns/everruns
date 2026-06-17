@@ -195,8 +195,10 @@ describe("ProvidersPage", () => {
   it("renders provider cards with correct data", () => {
     render(<ProvidersPage />, { wrapper });
 
-    expect(screen.getByText("OpenAI Production")).toBeInTheDocument();
-    expect(screen.getByText("Anthropic Dev")).toBeInTheDocument();
+    // Provider names also appear as <option>s in the Service Defaults selectors,
+    // so assert on the card heading link specifically.
+    expect(screen.getByRole("link", { name: /OpenAI Production/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Anthropic Dev").length).toBeGreaterThan(0);
   });
 
   it("shows provider model counts and links to filtered models", () => {
