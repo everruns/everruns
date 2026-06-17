@@ -206,7 +206,7 @@ impl RateLimitInfo {
         info
     }
 
-    /// Parse rate limit info from OpenAI response headers
+    /// Parse rate limit info from OpenAI-compatible response headers.
     pub fn from_openai_headers(headers: &reqwest::header::HeaderMap) -> Self {
         let mut info = Self::default();
 

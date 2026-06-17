@@ -11,6 +11,7 @@
 //   - `HTTP-Referer` / `X-Title` — app attribution headers
 
 use std::borrow::Cow;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use everruns_core::OpenResponsesRequestExtension;
 use everruns_core::driver_registry::{
@@ -18,11 +19,14 @@ use everruns_core::driver_registry::{
     OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
 };
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::llm_retry::{RateLimitInfo, RateLimitType};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
 
 const HTTP_REFERER_HEADER: HeaderName = HeaderName::from_static("http-referer");
 const X_TITLE_HEADER: HeaderName = HeaderName::from_static("x-title");
+const X_RATE_LIMIT_REMAINING_HEADER: HeaderName = HeaderName::from_static("x-ratelimit-remaining");
+const X_RATE_LIMIT_RESET_HEADER: HeaderName = HeaderName::from_static("x-ratelimit-reset");
 
 /// Layers OpenRouter-specific fields onto an Open Responses request body.
 #[derive(Debug, Default, Clone)]
@@ -92,6 +96,87 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
 
         Ok(())
     }
+
+    fn update_rate_limit_info(
+        &self,
+        info: &mut RateLimitInfo,
+        headers: &HeaderMap,
+        error_body: &str,
+    ) {
+        let body = serde_json::from_str::<Value>(error_body).ok();
+        let body_headers = body
+            .as_ref()
+            .and_then(|value| value.get("error"))
+            .and_then(|error| error.get("metadata"))
+            .and_then(|metadata| metadata.get("headers"))
+            .and_then(Value::as_object);
+
+        let remaining = header_str(headers, &X_RATE_LIMIT_REMAINING_HEADER).or_else(|| {
+            body_headers.and_then(|headers| json_header_value(headers, "x-ratelimit-remaining"))
+        });
+        let reset = header_str(headers, &X_RATE_LIMIT_RESET_HEADER).or_else(|| {
+            body_headers.and_then(|headers| json_header_value(headers, "x-ratelimit-reset"))
+        });
+
+        apply_rate_limit_values(info, remaining, reset);
+    }
+}
+
+fn apply_rate_limit_values(info: &mut RateLimitInfo, remaining: Option<&str>, reset: Option<&str>) {
+    if let Some(remaining) = remaining
+        && let Ok(parsed) = remaining.parse::<u32>()
+    {
+        info.requests_remaining = Some(parsed);
+        if parsed == 0 {
+            info.limit_type = Some(RateLimitType::Requests);
+        }
+    }
+
+    if let Some(reset) = reset {
+        info.requests_reset = Some(reset.to_string());
+        if info.retry_after_secs.is_none() {
+            info.retry_after_secs = parse_reset(reset);
+        }
+    }
+}
+
+fn header_str<'a>(headers: &'a HeaderMap, name: &HeaderName) -> Option<&'a str> {
+    headers.get(name).and_then(|value| value.to_str().ok())
+}
+
+fn json_header_value<'a>(
+    headers: &'a serde_json::Map<String, Value>,
+    wanted: &str,
+) -> Option<&'a str> {
+    headers
+        .iter()
+        .find(|(key, _)| key.eq_ignore_ascii_case(wanted))
+        .and_then(|(_, value)| value.as_str())
+        .filter(|value| !value.is_empty())
+}
+
+fn parse_reset(value: &str) -> Option<u64> {
+    let reset = value.trim().parse::<u64>().ok()?;
+    let now = unix_epoch_secs()?;
+    reset_wait_secs(reset, now)
+}
+
+fn unix_epoch_secs() -> Option<u64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()
+        .map(|duration| duration.as_secs())
+}
+
+fn reset_wait_secs(reset: u64, now_secs: u64) -> Option<u64> {
+    let reset_secs = if reset >= 1_000_000_000_000 {
+        reset.div_ceil(1000)
+    } else {
+        reset
+    };
+    reset_secs
+        .checked_sub(now_secs)
+        .filter(|seconds| *seconds > 0)
 }
 
 fn remove_attribution_metadata(obj: &mut serde_json::Map<String, Value>) {
@@ -280,5 +365,58 @@ mod tests {
                 json!({ "id": "file" })
             ]
         );
+    }
+
+    #[test]
+    fn reset_wait_secs_accepts_openrouter_epoch_millis() {
+        assert_eq!(reset_wait_secs(1_781_650_680_000, 1_781_650_620), Some(60));
+    }
+
+    #[test]
+    fn update_rate_limit_info_uses_openrouter_headers() {
+        let reset = unix_epoch_secs().expect("system clock") + 45;
+        let mut headers = HeaderMap::new();
+        headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static("0"));
+        headers.insert(
+            X_RATE_LIMIT_RESET_HEADER,
+            HeaderValue::from_str(&reset.to_string()).expect("valid header"),
+        );
+        let mut info = RateLimitInfo::default();
+
+        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, "");
+
+        assert_eq!(info.requests_remaining, Some(0));
+        assert_eq!(info.requests_reset, Some(reset.to_string()));
+        let retry_after = info.retry_after_secs.expect("retry wait");
+        assert!((44..=45).contains(&retry_after));
+        assert_eq!(info.limit_type, Some(RateLimitType::Requests));
+    }
+
+    #[test]
+    fn update_rate_limit_info_uses_openrouter_error_body_headers() {
+        let reset_ms = (unix_epoch_secs().expect("system clock") + 45) * 1000;
+        let body = format!(
+            r#"{{
+                "error": {{
+                    "message": "Rate limit exceeded: free-models-per-min.",
+                    "metadata": {{
+                        "headers": {{
+                            "X-RateLimit-Limit": "16",
+                            "X-RateLimit-Remaining": "0",
+                            "X-RateLimit-Reset": "{reset_ms}"
+                        }}
+                    }}
+                }}
+            }}"#
+        );
+        let mut info = RateLimitInfo::default();
+
+        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &HeaderMap::new(), &body);
+
+        assert_eq!(info.requests_remaining, Some(0));
+        assert_eq!(info.requests_reset, Some(reset_ms.to_string()));
+        let retry_after = info.retry_after_secs.expect("retry wait");
+        assert!((44..=45).contains(&retry_after));
+        assert_eq!(info.limit_type, Some(RateLimitType::Requests));
     }
 }
