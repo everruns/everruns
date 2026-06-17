@@ -105,4 +105,20 @@ describe("AgentHealthCheck", () => {
     // The prior run is still rendered alongside the hint.
     expect(screen.getByText("50%")).toBeInTheDocument();
   });
+
+  it("keeps the run button disabled while the latest run is still in progress", () => {
+    // A run loaded on mount that is still running must not allow a duplicate
+    // trigger, even though nothing was triggered in this session.
+    mockLatest = {
+      run: {
+        id: "healthcheck_3",
+        config_hash: "abc",
+        status: "running",
+        created_at: "2026-06-13T00:00:00Z",
+      },
+      config_changed: false,
+    };
+    render(<AgentHealthCheck agentId="agent_1" />);
+    expect(screen.getByRole("button", { name: /running/i })).toBeDisabled();
+  });
 });

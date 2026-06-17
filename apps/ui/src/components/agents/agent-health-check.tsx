@@ -41,8 +41,9 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   // Only hint staleness for the mounted latest run, not one we just triggered.
   const configChanged = !runId && !!latest?.run && latest.config_changed;
 
-  const isRunning =
-    trigger.isPending || triggeredRun?.status === "pending" || triggeredRun?.status === "running";
+  // Consider the displayed run (triggered or the latest loaded on mount): a run
+  // already in progress keeps the button disabled so we don't start a duplicate.
+  const isRunning = trigger.isPending || run?.status === "pending" || run?.status === "running";
 
   return (
     <Card>
