@@ -142,10 +142,94 @@ fn generic_phrase(
     }
 }
 
+/// `"{verb}: {value}"` when a value is present, otherwise the bare `"{verb}"`.
+/// This is the neutral "Verb: argument" style used by most common tools
+/// (e.g. "Search tools: router", "Activate skill: ship").
+fn labeled_phrase(
+    verb_started: &str,
+    verb_completed: &str,
+    verb_failed: &str,
+    value: Option<String>,
+    phase: ToolNarrationPhase,
+) -> String {
+    let verb = match phase {
+        ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => verb_started,
+        ToolNarrationPhase::Completed => verb_completed,
+        ToolNarrationPhase::Failed => verb_failed,
+    };
+    match value {
+        Some(value) if !value.is_empty() => format!("{verb}: {value}"),
+        _ => verb.to_string(),
+    }
+}
+
+/// Argument key fragments that may carry secrets. Narration never renders the
+/// value of a field whose key contains one of these.
+const SECRET_KEY_FRAGMENTS: &[&str] = &[
+    "token",
+    "api_key",
+    "apikey",
+    "password",
+    "secret",
+    "authorization",
+];
+
+fn is_secret_key(key: &str) -> bool {
+    let lower = key.to_ascii_lowercase();
+    SECRET_KEY_FRAGMENTS
+        .iter()
+        .any(|fragment| lower.contains(fragment))
+}
+
+/// Like [`arg_str`] but never returns the value of a secret-bearing key, so
+/// generic rules that scan loosely-named arguments can't leak credentials.
+fn safe_arg_str<'a>(arguments: &'a Value, keys: &[&str]) -> Option<&'a str> {
+    keys.iter()
+        .filter(|key| !is_secret_key(key))
+        .find_map(|key| arguments.get(*key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+/// Hook identifier for hook tools: prefers a top-level `id`, falling back to a
+/// nested `spec.id`.
+fn hook_id(arguments: &Value) -> Option<String> {
+    safe_arg_str(arguments, &["id"])
+        .or_else(|| {
+            arguments
+                .get("spec")
+                .and_then(|spec| spec.get("id"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+        })
+        .map(|id| truncate(id, 48))
+}
+
+/// Display form for a URL argument: host + path, with the scheme, query
+/// string, and fragment stripped (the query may carry tokens). Truncated.
+fn url_display(url: &str) -> String {
+    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
+    let host_path = without_scheme
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(without_scheme)
+        .trim_end_matches('/');
+    let cleaned = if host_path.is_empty() {
+        without_scheme
+    } else {
+        host_path
+    };
+    truncate(cleaned, 48)
+}
+
 fn is_shell_exec_tool(name: &str) -> bool {
     matches!(
         name,
         "bash"
+            | "shell"
+            | "run_shell"
             | "daytona_exec"
             | "sandbox_exec"
             | "e2b_exec"
@@ -600,61 +684,381 @@ pub fn render_tool_narration_with_locale(
             Some("task list".to_string()),
             phase,
         ),
-        "browserless_open_browser" => {
-            let target = arg_str(args, &["url"]).map(|url| truncate(url, 48));
-            generic_phrase(
-                "Opening browser",
-                "Opened browser",
-                "Failed to open browser",
-                target,
+        // --- Tool discovery and skills ---
+        "tool_search" => {
+            let value = safe_arg_str(args, &["query"]).map(|q| truncate(q, 64));
+            labeled_phrase(
+                "Search tools",
+                "Searched tools",
+                "Could not search tools",
+                value,
                 phase,
             )
         }
-        "browserless_close_browser" => generic_phrase(
-            "Closing browser",
-            "Closed browser",
-            "Failed to close browser",
-            None,
-            phase,
-        ),
-        "browserless_navigate" => {
-            let target = arg_str(args, &["url"]).map(|url| truncate(url, 48));
-            generic_phrase(
-                "Navigating to",
-                "Navigated to",
-                "Failed to navigate to",
-                target,
+        "activate_skill" => {
+            let value = safe_arg_str(args, &["name", "skill", "id"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Activate skill",
+                "Activated skill",
+                "Could not activate skill",
+                value,
                 phase,
             )
         }
-        "browserless_screenshot" => generic_phrase(
-            "Taking screenshot",
-            "Took screenshot",
-            "Failed to take screenshot",
+        "read_skill" => {
+            let value = safe_arg_str(args, &["name", "skill", "id"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Read skill",
+                "Read skill",
+                "Could not read skill",
+                value,
+                phase,
+            )
+        }
+        "list_skills" => generic_phrase(
+            "Listing skills",
+            "Listed skills",
+            "Could not list skills",
             None,
             phase,
         ),
-        "browserless_content" => generic_phrase(
-            "Reading page content",
-            "Read page content",
-            "Failed to read page content",
+        "run_command" | "run_client_command" | "run_yolop_command" => {
+            // Slash-command runner. Show the command name only; never dump the
+            // free-text `arguments` payload.
+            let value = safe_arg_str(args, &["command"]).map(|c| format!("/{}", truncate(c, 48)));
+            labeled_phrase(
+                "Run command",
+                "Ran command",
+                "Could not run command",
+                value,
+                phase,
+            )
+        }
+
+        // --- Code intelligence ---
+        "repo_symbols" => {
+            let query = safe_arg_str(args, &["query", "symbol"]).map(|q| truncate(q, 64));
+            match query {
+                Some(query) => labeled_phrase(
+                    "Search symbols",
+                    "Searched symbols",
+                    "Could not search symbols",
+                    Some(query),
+                    phase,
+                ),
+                None => generic_phrase(
+                    "Listing symbols",
+                    "Listed symbols",
+                    "Could not list symbols",
+                    None,
+                    phase,
+                ),
+            }
+        }
+        "repo_map" => {
+            let value = safe_arg_str(args, &["path"]).map(|p| truncate(p, 48));
+            labeled_phrase(
+                "Build repo map",
+                "Built repo map",
+                "Could not build repo map",
+                value,
+                phase,
+            )
+        }
+        "ast_grep" => {
+            let value = safe_arg_str(args, &["pattern"]).map(|p| truncate(p, 64));
+            labeled_phrase(
+                "Search code",
+                "Searched code",
+                "Could not search code",
+                value,
+                phase,
+            )
+        }
+        "duckduckgo_search" => {
+            let value = safe_arg_str(args, &["query", "q", "search"]).map(|q| truncate(q, 64));
+            labeled_phrase(
+                "Search DuckDuckGo",
+                "Searched DuckDuckGo",
+                "Could not search DuckDuckGo",
+                value,
+                phase,
+            )
+        }
+        "web_fetch" => {
+            let value = safe_arg_str(args, &["url", "uri"]).map(url_display);
+            labeled_phrase(
+                "Fetch URL",
+                "Fetched URL",
+                "Could not fetch URL",
+                value,
+                phase,
+            )
+        }
+
+        // --- Background task family ---
+        "background_run" => {
+            let value = safe_arg_str(args, &["command", "cmd"]).map(|c| truncate(c, 64));
+            labeled_phrase(
+                "Start background command",
+                "Started background command",
+                "Could not start background command",
+                value,
+                phase,
+            )
+        }
+        "background_output" => {
+            let value = safe_arg_str(args, &["task_id", "id"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Read background output",
+                "Read background output",
+                "Could not read background output",
+                value,
+                phase,
+            )
+        }
+        "background_list" => generic_phrase(
+            "Listing background tasks",
+            "Listed background tasks",
+            "Could not list background tasks",
             None,
             phase,
         ),
-        "browserless_scrape" => generic_phrase(
-            "Scraping page",
-            "Scraped page",
-            "Failed to scrape page",
+        "background_cancel" => {
+            let value = safe_arg_str(args, &["task_id", "id"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Cancel background task",
+                "Canceled background task",
+                "Could not cancel background task",
+                value,
+                phase,
+            )
+        }
+        // Never echo the agent prompt/instruction.
+        "background_agent" => generic_phrase(
+            "Starting background agent",
+            "Started background agent",
+            "Could not start background agent",
             None,
             phase,
         ),
-        "browserless_interact" => generic_phrase(
-            "Interacting with page",
-            "Interacted with page",
-            "Failed to interact with page",
+
+        // --- Config and personalization ---
+        "get_config" => {
+            let value = safe_arg_str(args, &["key"]).map(|k| truncate(k, 48));
+            labeled_phrase(
+                "Read config",
+                "Read config",
+                "Could not read config",
+                value,
+                phase,
+            )
+        }
+        "set_config" => {
+            let value = safe_arg_str(args, &["key"]).map(|k| truncate(k, 48));
+            labeled_phrase(
+                "Update config",
+                "Updated config",
+                "Could not update config",
+                value,
+                phase,
+            )
+        }
+        "remember" => {
+            let value = safe_arg_str(args, &["title"]).map(|t| truncate(t, 48));
+            labeled_phrase(
+                "Save memory",
+                "Saved memory",
+                "Could not save memory",
+                value,
+                phase,
+            )
+        }
+        "recall" => {
+            let query = safe_arg_str(args, &["query"]).map(|q| truncate(q, 64));
+            match query {
+                Some(query) => labeled_phrase(
+                    "Search memory",
+                    "Searched memory",
+                    "Could not search memory",
+                    Some(query),
+                    phase,
+                ),
+                None => generic_phrase(
+                    "Reading memory",
+                    "Read memory",
+                    "Could not read memory",
+                    None,
+                    phase,
+                ),
+            }
+        }
+        "forget" => {
+            let value = safe_arg_str(args, &["title", "id"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Delete memory",
+                "Deleted memory",
+                "Could not delete memory",
+                value,
+                phase,
+            )
+        }
+
+        // --- Hooks ---
+        "list_hooks" => generic_phrase(
+            "Listing hooks",
+            "Listed hooks",
+            "Could not list hooks",
             None,
             phase,
         ),
+        "validate_hook" => {
+            let value = hook_id(args);
+            labeled_phrase(
+                "Validate hook",
+                "Validated hook",
+                "Could not validate hook",
+                value,
+                phase,
+            )
+        }
+        "upsert_hook" => {
+            let value = hook_id(args);
+            labeled_phrase(
+                "Save hook",
+                "Saved hook",
+                "Could not save hook",
+                value,
+                phase,
+            )
+        }
+        "remove_hook" => {
+            let value = hook_id(args);
+            labeled_phrase(
+                "Remove hook",
+                "Removed hook",
+                "Could not remove hook",
+                value,
+                phase,
+            )
+        }
+
+        // --- Connectors ---
+        "list_connectors" => generic_phrase(
+            "Listing connectors",
+            "Listed connectors",
+            "Could not list connectors",
+            None,
+            phase,
+        ),
+        "get_connector" => {
+            let value = safe_arg_str(args, &["provider", "name"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Read connector",
+                "Read connector",
+                "Could not read connector",
+                value,
+                phase,
+            )
+        }
+        "connect" => {
+            let value = safe_arg_str(args, &["provider", "name"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Connect provider",
+                "Connected provider",
+                "Could not connect provider",
+                value,
+                phase,
+            )
+        }
+        "disconnect" => {
+            let value = safe_arg_str(args, &["provider", "name"]).map(|v| truncate(v, 48));
+            labeled_phrase(
+                "Disconnect provider",
+                "Disconnected provider",
+                "Could not disconnect provider",
+                value,
+                phase,
+            )
+        }
+
+        // --- Approval and safety ---
+        // Never echo the approved action; it may contain sensitive detail.
+        "record_approval" => generic_phrase(
+            "Recording approval",
+            "Recorded approval",
+            "Could not record approval",
+            None,
+            phase,
+        ),
+        "set_approval_mode" => {
+            let value = safe_arg_str(args, &["mode"]).map(|m| truncate(m, 32));
+            labeled_phrase(
+                "Set approval mode",
+                "Set approval mode",
+                "Could not set approval mode",
+                value,
+                phase,
+            )
+        }
+
+        // --- Generic shape rules (cover unseen sibling tools by name/argument
+        // shape). These run only after every exact rule above misses. ---
+        name if name.contains("fetch") => {
+            let value = safe_arg_str(args, &["url", "uri"]).map(url_display);
+            labeled_phrase(
+                "Fetch URL",
+                "Fetched URL",
+                "Could not fetch URL",
+                value,
+                phase,
+            )
+        }
+        name if name.contains("symbol") => {
+            let value = safe_arg_str(args, &["query", "symbol", "path"]).map(|v| truncate(v, 64));
+            labeled_phrase(
+                "Search symbols",
+                "Searched symbols",
+                "Could not search symbols",
+                value,
+                phase,
+            )
+        }
+        name if name.contains("repo_map") => {
+            let value = safe_arg_str(args, &["path"]).map(|p| truncate(p, 48));
+            labeled_phrase(
+                "Build repo map",
+                "Built repo map",
+                "Could not build repo map",
+                value,
+                phase,
+            )
+        }
+        name if name.contains("config") => {
+            let value = safe_arg_str(args, &["key"]).map(|k| truncate(k, 48));
+            if name.contains("set") || name.contains("update") || name.contains("write") {
+                labeled_phrase(
+                    "Update config",
+                    "Updated config",
+                    "Could not update config",
+                    value,
+                    phase,
+                )
+            } else {
+                labeled_phrase(
+                    "Read config",
+                    "Read config",
+                    "Could not read config",
+                    value,
+                    phase,
+                )
+            }
+        }
+        name if name.ends_with("_search") || name.contains("search") => {
+            let value =
+                safe_arg_str(args, &["query", "q", "search", "pattern"]).map(|v| truncate(v, 64));
+            labeled_phrase("Search", "Searched", "Could not search", value, phase)
+        }
         _ => {
             if let Some(narration) = tool_def
                 .and_then(|def| def.hints().narration_noun.as_deref())
@@ -1072,6 +1476,298 @@ mod tests {
         assert_eq!(
             render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Completed),
             "Ran Manage Agents"
+        );
+    }
+
+    fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
+        ToolCall {
+            id: "call_1".to_string(),
+            name: name.to_string(),
+            arguments,
+        }
+    }
+
+    fn narrate(name: &str, args: serde_json::Value, phase: ToolNarrationPhase) -> String {
+        render_tool_narration(None, &call(name, args), phase)
+    }
+
+    #[test]
+    fn renders_tool_search_narration() {
+        assert_eq!(
+            narrate(
+                "tool_search",
+                json!({ "query": "router" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search tools: router"
+        );
+        assert_eq!(
+            narrate(
+                "tool_search",
+                json!({ "query": "router" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Searched tools: router"
+        );
+        assert_eq!(
+            narrate("tool_search", json!({}), ToolNarrationPhase::Failed),
+            "Could not search tools"
+        );
+    }
+
+    #[test]
+    fn renders_skill_family_narration() {
+        assert_eq!(
+            narrate(
+                "activate_skill",
+                json!({ "name": "ship" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Activated skill: ship"
+        );
+        assert_eq!(
+            narrate(
+                "read_skill",
+                json!({ "name": "ship" }),
+                ToolNarrationPhase::Started
+            ),
+            "Read skill: ship"
+        );
+        assert_eq!(
+            narrate("list_skills", json!({}), ToolNarrationPhase::Completed),
+            "Listed skills"
+        );
+    }
+
+    #[test]
+    fn renders_run_command_shows_slash_and_hides_arguments() {
+        assert_eq!(
+            narrate(
+                "run_command",
+                json!({ "command": "deploy", "arguments": "--prod secret-token" }),
+                ToolNarrationPhase::Started
+            ),
+            "Run command: /deploy"
+        );
+    }
+
+    #[test]
+    fn renders_repo_symbols_search_and_list() {
+        assert_eq!(
+            narrate(
+                "repo_symbols",
+                json!({ "query": "Router" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Searched symbols: Router"
+        );
+        assert_eq!(
+            narrate("repo_symbols", json!({}), ToolNarrationPhase::Completed),
+            "Listed symbols"
+        );
+    }
+
+    #[test]
+    fn renders_ast_grep_as_code_search() {
+        assert_eq!(
+            narrate(
+                "ast_grep",
+                json!({ "pattern": "fn $NAME()", "language": "rust" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search code: fn $NAME()"
+        );
+    }
+
+    #[test]
+    fn renders_web_fetch_strips_scheme_and_query() {
+        assert_eq!(
+            narrate(
+                "web_fetch",
+                json!({ "url": "https://example.com/page?token=abc#frag" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Fetched URL: example.com/page"
+        );
+    }
+
+    #[test]
+    fn renders_background_task_family() {
+        assert_eq!(
+            narrate(
+                "background_run",
+                json!({ "command": "cargo build" }),
+                ToolNarrationPhase::Started
+            ),
+            "Start background command: cargo build"
+        );
+        assert_eq!(
+            narrate(
+                "background_output",
+                json!({ "task_id": "task-1" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Read background output: task-1"
+        );
+        assert_eq!(
+            narrate("background_list", json!({}), ToolNarrationPhase::Completed),
+            "Listed background tasks"
+        );
+        assert_eq!(
+            narrate(
+                "background_cancel",
+                json!({ "id": "task-1" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Canceled background task: task-1"
+        );
+    }
+
+    #[test]
+    fn background_agent_never_echoes_instruction() {
+        assert_eq!(
+            narrate(
+                "background_agent",
+                json!({ "instruction": "do a very long secret thing" }),
+                ToolNarrationPhase::Started
+            ),
+            "Starting background agent"
+        );
+    }
+
+    #[test]
+    fn renders_config_and_memory_family() {
+        assert_eq!(
+            narrate(
+                "get_config",
+                json!({ "key": "providers.openai.model" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Read config: providers.openai.model"
+        );
+        assert_eq!(
+            narrate(
+                "set_config",
+                json!({ "key": "default_model" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Updated config: default_model"
+        );
+        assert_eq!(
+            narrate(
+                "remember",
+                json!({ "title": "User preference" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Saved memory: User preference"
+        );
+        assert_eq!(
+            narrate(
+                "recall",
+                json!({ "query": "preferences" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search memory: preferences"
+        );
+        assert_eq!(
+            narrate(
+                "recall",
+                json!({ "id": "mem_1" }),
+                ToolNarrationPhase::Started
+            ),
+            "Reading memory"
+        );
+        assert_eq!(
+            narrate(
+                "forget",
+                json!({ "title": "Old note" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Deleted memory: Old note"
+        );
+    }
+
+    #[test]
+    fn renders_hook_family_with_nested_spec_id() {
+        assert_eq!(
+            narrate(
+                "validate_hook",
+                json!({ "spec": { "id": "block-git" } }),
+                ToolNarrationPhase::Completed
+            ),
+            "Validated hook: block-git"
+        );
+        assert_eq!(
+            narrate(
+                "upsert_hook",
+                json!({ "id": "block-git" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Saved hook: block-git"
+        );
+    }
+
+    #[test]
+    fn renders_connector_and_approval_family() {
+        assert_eq!(
+            narrate(
+                "connect",
+                json!({ "provider": "daytona" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Connected provider: daytona"
+        );
+        assert_eq!(
+            narrate(
+                "set_approval_mode",
+                json!({ "mode": "protective" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Set approval mode: protective"
+        );
+        // The approved action is never echoed.
+        assert_eq!(
+            narrate(
+                "record_approval",
+                json!({ "action": "delete everything" }),
+                ToolNarrationPhase::Completed
+            ),
+            "Recorded approval"
+        );
+    }
+
+    #[test]
+    fn generic_search_rule_covers_unseen_tools() {
+        assert_eq!(
+            narrate(
+                "duckduckgo_search",
+                json!({ "query": "rust docs" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search DuckDuckGo: rust docs"
+        );
+        // Unseen sibling caught by the generic *_search rule.
+        assert_eq!(
+            narrate(
+                "wikipedia_search",
+                json!({ "query": "rust" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search: rust"
+        );
+    }
+
+    #[test]
+    fn never_renders_secret_argument_values() {
+        // A generic search whose only scannable value is a secret-named field
+        // falls back to the bare verb rather than leaking the value.
+        assert_eq!(
+            narrate(
+                "vault_search",
+                json!({ "token": "super-secret" }),
+                ToolNarrationPhase::Started
+            ),
+            "Search"
         );
     }
 

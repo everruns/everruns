@@ -23,11 +23,16 @@ pub mod state;
 mod tools;
 mod validation;
 
+use std::sync::Arc;
+
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
+    ToolCallHook,
 };
 use everruns_core::connector::ConnectorPlugin;
+use everruns_core::tool_narration::ToolNarrationPhase;
+use everruns_core::tool_types::{ToolCall, ToolDefinition};
 use everruns_core::tools::Tool;
 
 use connection::BrowserlessConnector;
@@ -152,6 +157,10 @@ impl Capability for BrowserlessCapability {
         ]
     }
 
+    fn tool_call_hooks(&self) -> Vec<Arc<dyn ToolCallHook>> {
+        vec![Arc::new(BrowserlessNarrationHook)]
+    }
+
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_storage"]
     }
@@ -174,6 +183,98 @@ impl Capability for BrowserlessCapability {
 }
 
 // ============================================================================
+// Narration
+// ============================================================================
+
+/// Backend-authored narration for the `browserless_*` tools. Lives here, in the
+/// owning capability, rather than in core's central narration engine — core
+/// keeps only generic and conventional-name rules. See `specs/tool-narration.md`.
+struct BrowserlessNarrationHook;
+
+impl ToolCallHook for BrowserlessNarrationHook {
+    fn narration(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        let url = tool_call
+            .arguments
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|u| truncate_target(u.trim()))
+            .filter(|u| !u.is_empty());
+
+        let (started, completed, failed, target) = match tool_call.name.as_str() {
+            "browserless_open_browser" => (
+                "Opening browser",
+                "Opened browser",
+                "Failed to open browser",
+                url,
+            ),
+            "browserless_close_browser" => (
+                "Closing browser",
+                "Closed browser",
+                "Failed to close browser",
+                None,
+            ),
+            "browserless_navigate" => (
+                "Navigating to",
+                "Navigated to",
+                "Failed to navigate to",
+                url,
+            ),
+            "browserless_screenshot" => (
+                "Taking screenshot",
+                "Took screenshot",
+                "Failed to take screenshot",
+                None,
+            ),
+            "browserless_content" => (
+                "Reading page content",
+                "Read page content",
+                "Failed to read page content",
+                None,
+            ),
+            "browserless_scrape" => (
+                "Scraping page",
+                "Scraped page",
+                "Failed to scrape page",
+                None,
+            ),
+            "browserless_interact" => (
+                "Interacting with page",
+                "Interacted with page",
+                "Failed to interact with page",
+                None,
+            ),
+            _ => return None,
+        };
+
+        let verb = match phase {
+            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => started,
+            ToolNarrationPhase::Completed => completed,
+            ToolNarrationPhase::Failed => failed,
+        };
+
+        Some(match target {
+            Some(target) => format!("{verb} {target}"),
+            None => verb.to_string(),
+        })
+    }
+}
+
+fn truncate_target(value: &str) -> String {
+    const MAX_CHARS: usize = 48;
+    let clean = value.trim();
+    if clean.chars().count() <= MAX_CHARS {
+        return clean.to_string();
+    }
+    format!("{}...", clean.chars().take(MAX_CHARS).collect::<String>())
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -190,6 +291,45 @@ mod tests {
         assert_eq!(cap.status(), CapabilityStatus::Available);
         assert_eq!(cap.icon(), Some("browserless"));
         assert_eq!(cap.category(), Some("Browser"));
+    }
+
+    #[test]
+    fn narration_hook_renders_browserless_tools() {
+        let hook = BrowserlessNarrationHook;
+        let call = ToolCall {
+            id: "call_1".to_string(),
+            name: "browserless_navigate".to_string(),
+            arguments: serde_json::json!({ "url": "https://example.com/page" }),
+        };
+        assert_eq!(
+            hook.narration(None, &call, ToolNarrationPhase::Started, None),
+            Some("Navigating to https://example.com/page".to_string())
+        );
+        assert_eq!(
+            hook.narration(None, &call, ToolNarrationPhase::Completed, None),
+            Some("Navigated to https://example.com/page".to_string())
+        );
+
+        let screenshot = ToolCall {
+            id: "call_2".to_string(),
+            name: "browserless_screenshot".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        assert_eq!(
+            hook.narration(None, &screenshot, ToolNarrationPhase::Completed, None),
+            Some("Took screenshot".to_string())
+        );
+
+        // Tools outside the family are left for the central engine.
+        let other = ToolCall {
+            id: "call_3".to_string(),
+            name: "read_file".to_string(),
+            arguments: serde_json::json!({}),
+        };
+        assert_eq!(
+            hook.narration(None, &other, ToolNarrationPhase::Started, None),
+            None
+        );
     }
 
     #[test]
