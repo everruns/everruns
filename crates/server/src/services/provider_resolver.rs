@@ -317,8 +317,48 @@ impl ProviderResolverService {
             });
         }
 
-        // Tier 2 (org-level default provider per service) is not implemented
-        // yet; no consumer requires it. See specs/providers.md follow-ups.
+        // Tier 2: an org-level default provider pinned for this service. When a
+        // default is configured it is authoritative and fail-closed — a missing,
+        // inactive, or service-incompatible default surfaces an error rather than
+        // silently falling through to the active-provider scan
+        // (specs/providers.md, EVE-569).
+        if let Some(settings) = self.db.get_organization_settings(org_id).await?
+            && let Some(default_id) = settings
+                .default_provider_per_service
+                .0
+                .get(&service)
+                .copied()
+        {
+            let provider = providers
+                .iter()
+                .find(|provider| provider.id == default_id)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "org default provider {default_id} for the {service} service not found"
+                    )
+                })?;
+            if !provider.status.eq_ignore_ascii_case("active") {
+                return Err(anyhow::anyhow!(
+                    "org default provider {default_id} for the {service} service is not active"
+                ));
+            }
+            if !self.driver_supports(&provider.provider_type, service) {
+                return Err(anyhow::anyhow!(
+                    "org default provider {default_id} does not provide the {service} service"
+                ));
+            }
+            let api_key = self.resolve_api_key(provider)?.ok_or_else(|| {
+                anyhow::anyhow!("no credentials configured for org default provider {default_id}")
+            })?;
+            return Ok(ResolvedServiceProvider {
+                provider_type: provider.provider_type.clone(),
+                provider_id: provider.id.to_string(),
+                credentials: ResolvedProviderCredentials {
+                    api_key,
+                    base_url: provider.base_url.clone(),
+                },
+            });
+        }
 
         // Tier 3: the first active provider whose driver declares the service.
         for provider in providers
@@ -1193,5 +1233,138 @@ mod tests {
             .expect("explicit binding resolves");
         assert_eq!(resolved.provider_id, second.to_string());
         assert_ne!(resolved.provider_id, first.to_string());
+    }
+
+    // --- Tier 2: org-level default provider per service (EVE-569) ---
+
+    /// Pin `provider` as the org default for `service`.
+    async fn set_service_default(
+        db: &StorageBackend,
+        service: ServiceKind,
+        provider: everruns_core::ProviderId,
+    ) {
+        let mut defaults = crate::storage::models::ServiceProviderDefaults::new();
+        defaults.insert(service, provider);
+        db.patch_organization_settings(
+            DEFAULT_ORG_ID,
+            crate::storage::models::UpdateOrganizationSettings {
+                default_provider_per_service: everruns_durable::UpdateField::Set(defaults),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    #[test]
+    fn service_provider_defaults_json_round_trips() {
+        // The Postgres path stores this map as JSONB; assert ServiceKind keys
+        // serialize snake_case and ProviderId values round-trip as strings.
+        let mut map = crate::storage::models::ServiceProviderDefaults::new();
+        let pid = everruns_core::ProviderId::new();
+        map.insert(ServiceKind::Realtime, pid);
+        let value = serde_json::to_value(&map).unwrap();
+        assert_eq!(value, serde_json::json!({ "realtime": pid.to_string() }));
+        let back: crate::storage::models::ServiceProviderDefaults =
+            serde_json::from_value(value).unwrap();
+        assert_eq!(back.get(&ServiceKind::Realtime), Some(&pid));
+    }
+
+    #[tokio::test]
+    async fn resolve_service_uses_org_default_before_active_fallback() {
+        // Two realtime-capable providers; the org default (tier 2) must win over
+        // the first-active scan (tier 3).
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let _first = seed_active_provider(&db, &encryption, "openai").await;
+        let second = seed_active_provider(&db, &encryption, "openai").await;
+        set_service_default(&db, ServiceKind::Realtime, second).await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let resolved = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect("org default resolves");
+        assert_eq!(resolved.provider_id, second.to_string());
+    }
+
+    #[tokio::test]
+    async fn resolve_service_binding_overrides_org_default() {
+        // Precedence: explicit binding (tier 1) wins over the org default (tier 2).
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let bound = seed_active_provider(&db, &encryption, "openai").await;
+        let default = seed_active_provider(&db, &encryption, "openai").await;
+        set_service_default(&db, ServiceKind::Realtime, default).await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let resolved = resolver
+            .resolve_service(
+                DEFAULT_ORG_ID,
+                ServiceKind::Realtime,
+                Some(&bound.to_string()),
+            )
+            .await
+            .expect("binding resolves");
+        assert_eq!(resolved.provider_id, bound.to_string());
+        assert_ne!(resolved.provider_id, default.to_string());
+    }
+
+    #[tokio::test]
+    async fn resolve_service_org_default_fails_closed_when_missing() {
+        // A default that points at a non-existent provider must error, not
+        // silently fall through to an otherwise-usable active provider.
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        seed_active_provider(&db, &encryption, "openai").await;
+        set_service_default(&db, ServiceKind::Realtime, everruns_core::ProviderId::new()).await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect_err("missing org default fails closed");
+        assert!(err.to_string().contains("not found"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_org_default_fails_closed_when_inactive() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let provider = seed_active_provider(&db, &encryption, "openai").await;
+        set_service_default(&db, ServiceKind::Realtime, provider).await;
+        db.update_provider(
+            DEFAULT_ORG_ID,
+            provider.uuid(),
+            crate::storage::models::UpdateProvider {
+                status: Some("inactive".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect_err("inactive org default fails closed");
+        assert!(err.to_string().contains("not active"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_org_default_fails_closed_when_service_unsupported() {
+        // openrouter is chat-only; pinning it as the Realtime default is invalid.
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let provider = seed_active_provider(&db, &encryption, "openrouter").await;
+        set_service_default(&db, ServiceKind::Realtime, provider).await;
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(DEFAULT_ORG_ID, ServiceKind::Realtime, None)
+            .await
+            .expect_err("incompatible org default fails closed");
+        assert!(err.to_string().contains("does not provide"), "got: {err}");
     }
 }

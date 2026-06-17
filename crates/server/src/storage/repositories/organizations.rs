@@ -16,7 +16,7 @@ impl Database {
         org_id: i64,
     ) -> Result<Option<OrganizationSettingsRow>> {
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
-            "SELECT org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at FROM organization_settings WHERE org_id = $1",
+            "SELECT org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at FROM organization_settings WHERE org_id = $1",
         )
         .bind(org_id)
         .fetch_optional(&self.pool)
@@ -37,7 +37,7 @@ impl Database {
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = EXCLUDED.default_model_id,
                 updated_at = NOW()
-            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at
+            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -52,10 +52,20 @@ impl Database {
         org_id: i64,
         input: UpdateOrganizationSettings,
     ) -> Result<OrganizationSettingsRow> {
+        // The per-service default map is replaced wholesale: `Set` overwrites,
+        // `Clear` resets to `{}`, `Unchanged` keeps the stored value. A NULL bind
+        // (Unchanged/Clear) collapses to `{}` only when the CASE selects it.
+        let default_providers_changed = input.default_provider_per_service.is_changed();
+        let default_providers_json: Option<serde_json::Value> =
+            match input.default_provider_per_service.clone().into_value() {
+                Some(map) => Some(serde_json::to_value(map)?),
+                None => None,
+            };
+
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             r#"
-            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id)
-            VALUES ($1, $2, $4, $6)
+            INSERT INTO organization_settings (org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service)
+            VALUES ($1, $2, $4, $6, COALESCE($9, '{}'::jsonb))
             ON CONFLICT (org_id) DO UPDATE SET
                 default_model_id = CASE
                     WHEN $3 THEN $2
@@ -69,8 +79,12 @@ impl Database {
                     WHEN $7 THEN $6
                     ELSE organization_settings.base_harness_id
                 END,
+                default_provider_per_service = CASE
+                    WHEN $8 THEN COALESCE($9, '{}'::jsonb)
+                    ELSE organization_settings.default_provider_per_service
+                END,
                 updated_at = NOW()
-            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, created_at, updated_at
+            RETURNING org_id, default_model_id, default_harness_id, base_harness_id, default_provider_per_service, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -80,6 +94,8 @@ impl Database {
         .bind(input.default_harness_id.is_changed())
         .bind(input.base_harness_id.clone().into_value().map(|id| id.uuid()))
         .bind(input.base_harness_id.is_changed())
+        .bind(default_providers_changed)
+        .bind(default_providers_json)
         .fetch_one(&self.pool)
         .await?;
         Ok(row)

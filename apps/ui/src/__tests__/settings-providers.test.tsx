@@ -195,8 +195,10 @@ describe("ProvidersPage", () => {
   it("renders provider cards with correct data", () => {
     render(<ProvidersPage />, { wrapper });
 
-    expect(screen.getByText("OpenAI Production")).toBeInTheDocument();
-    expect(screen.getByText("Anthropic Dev")).toBeInTheDocument();
+    // Provider names also appear as <option>s in the Service Defaults selectors,
+    // so assert on the card heading link specifically.
+    expect(screen.getByRole("link", { name: /OpenAI Production/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Anthropic Dev").length).toBeGreaterThan(0);
   });
 
   it("shows provider model counts and links to filtered models", () => {
@@ -212,6 +214,16 @@ describe("ProvidersPage", () => {
       "href",
       "/models?provider=provider-1",
     );
+  });
+
+  it("renders the per-service default provider selectors with provider options", () => {
+    render(<ProvidersPage />, { wrapper });
+
+    expect(screen.getByRole("heading", { name: "Service Defaults" })).toBeInTheDocument();
+    const realtimeSelect = screen.getByLabelText("Default provider for Realtime (voice)");
+    expect(realtimeSelect).toBeInTheDocument();
+    // Each configured provider is an option in the per-service selector.
+    expect(screen.getAllByRole("option", { name: "OpenAI Production" }).length).toBeGreaterThan(0);
   });
 
   it("shows loading skeleton when providers are loading", () => {
