@@ -223,33 +223,33 @@ reflects what has shipped on the OKF-adoption branch.
 5. ◑ **`data_knowledge` consumer** — shipped: OKF-framed static mount
    (`index.md` navigation + `okf_version`, prompt framing). **Deferred:**
    rendering the mount from a bound KB (needs session-mount-time DB access).
-6. ◑ **Showcase** — shipped: how-to guide, API round-trip test case, and a
-   Data Analyst showcase test case. **Blocked on (7-pre):** true agent
-   consumption needs the `search_knowledge` runtime tool (below).
-7. ⏳ **Landing announcement** — `everruns/landing` post + example + recording.
-   Requires adding `everruns/landing` to the working scope and a running stack
-   for the recording.
+6. ◑ **Showcase** — shipped: how-to guide, API round-trip test case, Data
+   Analyst showcase test case, and the `search_knowledge` runtime tool (below)
+   so agents actually consume imported OKF knowledge. **Pending:** a live
+   end-to-end run + recording need a running stack.
+7. ⏳ **Landing announcement** — `everruns/landing` PR + example + recording.
+   Requires `everruns/landing` access and a running stack for the recording.
 
-### Deferred follow-up: the `search_knowledge` runtime tool
+### `search_knowledge` runtime tool (shipped)
 
-The agent-facing `search_knowledge` tool (defined as pending in
-`specs/knowledge-bases.md`) is what lets an agent *read* imported OKF knowledge.
-It is a cross-crate vertical slice, scoped here so it can be picked up cleanly:
+The agent-facing `search_knowledge` tool lets an agent *read* imported OKF
+knowledge. Implemented as a cross-crate slice:
 
-* A new core trait (e.g. `KnowledgeStore`) with a `search_knowledge(org_id,
-  kb_public_ids, query, kind, tags, limit)` method returning a core result type
-  — `crates/core/src/traits.rs`.
-* A field on `ToolContext` (`crates/core/src/traits.rs`), initialised in
-  `ToolContext::new`, and threaded through the execution path that assembles the
-  context (`crates/core/src/atoms/act.rs`) and the server/worker store providers
-  (`crates/server/src/direct_worker_adapters.rs`, worker grpc adapters).
-* A server impl over `StorageBackend` that resolves each KB public id within the
-  caller's org (reusing `get_knowledge_base_by_public_id`, so cross-org ids are
-  silently skipped — no existence leak) and calls the existing
-  `search_knowledge_entries`.
-* The tool itself on `KnowledgeBaseCapability::tools_with_config`
+* Core trait `KnowledgeStore` + `KnowledgeSearchHit` result type
+  (`crates/core/src/traits.rs`), with a `knowledge_store` field on `ToolContext`
+  threaded through `ActAtom` (`crates/core/src/atoms/act.rs`) and the host
+  adapter (`crates/runtime/src/host.rs`, `WorkerAdapters` →
+  `crates/worker/src/runtime_host.rs`).
+* Server impl over `StorageBackend`
+  (`crates/server/src/knowledge_store.rs`), wired via `DirectWorkerAdapters`. It
+  resolves each KB public id within the caller's org (cross-org ids silently
+  skipped — no existence leak) and calls `search_knowledge_entries`. Public
+  org-id → internal id uses `org_internal_id_from_public`.
+* The tool on `KnowledgeBaseCapability::tools_with_config`
   (`crates/core/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
-  from config, plus unit tests against a mock `KnowledgeStore`.
+  from config, unit-tested against a mock `KnowledgeStore`.
+* The embedded `InProcessRuntime` path is not yet wired (returns no store), so
+  the tool is currently active on the server/worker execution path.
 
 ## Security
 

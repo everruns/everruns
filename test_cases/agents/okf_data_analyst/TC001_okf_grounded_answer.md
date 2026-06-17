@@ -17,10 +17,8 @@ walkthrough/recording. See specs/okf-adoption.md and the
 - LLM API key configured
 - Built-in `data-analyst` harness provisioned (automatic on org init)
 - **Agent-side retrieval:** the agent consumes the Knowledge Base via the
-  `knowledge_base` capability's `search_knowledge` tool. That runtime tool is a
-  follow-up slice (see `specs/knowledge-bases.md`); until it lands, run the
-  import/export portion via `test_cases/api/knowledge_bases/TC001` and verify the
-  Data Analyst reads its OKF-framed `/knowledge` mount (`data_knowledge`).
+  `knowledge_base` capability's `search_knowledge` tool, bound to the KB created
+  in step 1.
 
 ## Test Data
 

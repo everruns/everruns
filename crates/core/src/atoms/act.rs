@@ -232,6 +232,8 @@ where
     schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
     /// Optional platform store for org-level management tools
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    /// Optional knowledge store backing the `search_knowledge` tool
+    knowledge_store: Option<Arc<dyn crate::traits::KnowledgeStore>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional session resource registry
@@ -305,6 +307,7 @@ where
             agent_store: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -347,6 +350,7 @@ where
             agent_store: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -409,6 +413,12 @@ where
     /// Set the image artifact store on this atom
     pub fn with_image_store(mut self, store: Arc<dyn crate::traits::ImageArtifactStore>) -> Self {
         self.image_store = Some(store);
+        self
+    }
+
+    /// Set the knowledge store on this atom (backs `search_knowledge`).
+    pub fn with_knowledge_store(mut self, store: Arc<dyn crate::traits::KnowledgeStore>) -> Self {
+        self.knowledge_store = Some(store);
         self
     }
 
@@ -1511,6 +1521,9 @@ where
         }
         if let Some(ref store) = self.platform_store {
             tool_context.platform_store = Some(store.clone());
+        }
+        if let Some(ref store) = self.knowledge_store {
+            tool_context.knowledge_store = Some(store.clone());
         }
         if let Some(ref store) = self.leased_resource_store {
             tool_context.leased_resource_store = Some(store.clone());

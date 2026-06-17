@@ -58,6 +58,7 @@ pub mod harnesses;
 // Direct worker adapters for in-process task worker
 pub mod direct_worker_adapters;
 pub mod execution_metadata;
+pub mod knowledge_store;
 pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod max_iterations;
 

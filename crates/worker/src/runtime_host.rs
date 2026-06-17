@@ -209,6 +209,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.storage_store())
     }
 
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+        self.adapters.knowledge_store()
+    }
+
     fn connection_resolver(
         &self,
     ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {

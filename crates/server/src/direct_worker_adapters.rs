@@ -1446,6 +1446,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .expect("DirectWorkerAdapters: storage_store not set (call with_storage_store)")
     }
 
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+        Some(Arc::new(
+            crate::knowledge_store::StorageBackendKnowledgeStore::new(self.db.clone()),
+        ))
+    }
+
     fn image_artifact_store(&self, org_id: i64) -> Arc<dyn ImageArtifactStore> {
         Arc::new(DirectImageArtifactStore {
             db: self.db.clone(),

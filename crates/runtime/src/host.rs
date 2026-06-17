@@ -123,6 +123,11 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Knowledge store backing the `search_knowledge` tool. Default: none.
+    fn knowledge_store(&self) -> Option<Arc<dyn everruns_core::traits::KnowledgeStore>> {
+        None
+    }
+
     fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
         None
     }
@@ -1147,6 +1152,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);
+    }
+    if let Some(knowledge_store) = adapter.knowledge_store() {
+        atom = atom.with_knowledge_store(knowledge_store);
     }
     if let Some(image_store) = adapter.image_artifact_store(org_id) {
         atom = atom.with_image_store(image_store);
