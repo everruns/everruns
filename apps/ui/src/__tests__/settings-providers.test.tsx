@@ -214,6 +214,18 @@ describe("ProvidersPage", () => {
     );
   });
 
+  it("renders the per-service default provider selectors with provider options", () => {
+    render(<ProvidersPage />, { wrapper });
+
+    expect(screen.getByRole("heading", { name: "Service Defaults" })).toBeInTheDocument();
+    const realtimeSelect = screen.getByLabelText("Default provider for Realtime (voice)");
+    expect(realtimeSelect).toBeInTheDocument();
+    // Each configured provider is an option in the per-service selector.
+    expect(
+      screen.getAllByRole("option", { name: "OpenAI Production" }).length,
+    ).toBeGreaterThan(0);
+  });
+
   it("shows loading skeleton when providers are loading", () => {
     mockUseProviders.mockReturnValue({
       data: [],

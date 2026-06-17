@@ -97,6 +97,15 @@ pub struct UpdateOrganizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000601")]
     pub base_harness_id: Option<everruns_core::HarnessId>,
+    /// Org-level default provider per service (EVE-569). Maps a service kind
+    /// (`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id
+    /// used as that service's default, consulted after an explicit binding and
+    /// before the single-active-provider fallback. When present it **replaces**
+    /// the whole map; each referenced provider must exist in the org.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<std::collections::HashMap<String, String>>)]
+    pub default_provider_per_service:
+        Option<std::collections::HashMap<everruns_core::ServiceKind, everruns_core::ProviderId>>,
 }
 
 /// Response for organization operations
@@ -115,6 +124,11 @@ pub struct OrganizationResponse {
     /// Base harness used when session creation omits harness_id.
     #[schema(value_type = Option<String>)]
     pub base_harness_id: Option<everruns_core::HarnessId>,
+    /// Org-level default provider per service (EVE-569), keyed by service kind.
+    /// Empty when no org defaults are configured.
+    #[schema(value_type = std::collections::HashMap<String, String>)]
+    pub default_provider_per_service:
+        std::collections::HashMap<everruns_core::ServiceKind, everruns_core::ProviderId>,
     /// When the organization was created
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
@@ -382,7 +396,8 @@ pub async fn update_organization(
     let updates_org_settings = req.default_model_id.is_some()
         || req.default_harness_id.is_some()
         || req.default_harness_name.is_some()
-        || req.base_harness_id.is_some();
+        || req.base_harness_id.is_some()
+        || req.default_provider_per_service.is_some();
 
     // Validate format
     if !validate_org_public_id(&org_public_id) {
@@ -438,6 +453,7 @@ pub async fn update_organization(
         mut default_harness_id,
         default_harness_name,
         base_harness_id,
+        default_provider_per_service,
     } = req;
 
     // Resolve default_harness_name to default_harness_id (mutually exclusive)
@@ -492,6 +508,22 @@ pub async fn update_organization(
             .log_internal_error_json("resolve base harness")?
             .ok_or_not_found_json("Harness")?;
     }
+    // Validate every pinned provider exists in the org. Capability (the driver
+    // actually declaring the service) is enforced fail-closed at resolve time in
+    // ProviderResolverService::resolve_service, so we only guard existence here.
+    if let Some(ref defaults) = default_provider_per_service {
+        for provider_id in defaults.values() {
+            state
+                .db
+                .get_provider(org_row.org_id, provider_id.uuid())
+                .await
+                .log_internal_error_json("resolve org default provider")?
+                .ok_or_else(|| {
+                    ErrorResponse::new(format!("Provider {provider_id} not found"))
+                        .into_response(StatusCode::BAD_REQUEST)
+                })?;
+        }
+    }
 
     // Update organization
     let input = UpdateOrganization { name };
@@ -503,7 +535,11 @@ pub async fn update_organization(
         .log_internal_error_json("update organization")?
         .ok_or_not_found_json("Organization")?;
 
-    if default_model_id.is_some() || default_harness_id.is_some() || base_harness_id.is_some() {
+    if default_model_id.is_some()
+        || default_harness_id.is_some()
+        || base_harness_id.is_some()
+        || default_provider_per_service.is_some()
+    {
         state
             .db
             .patch_organization_settings(
@@ -514,6 +550,8 @@ pub async fn update_organization(
                     default_harness_id: default_harness_id
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
                     base_harness_id: base_harness_id
+                        .map_or(UpdateField::Unchanged, UpdateField::Set),
+                    default_provider_per_service: default_provider_per_service
                         .map_or(UpdateField::Unchanged, UpdateField::Set),
                 },
             )
@@ -586,6 +624,10 @@ async fn build_organization_response(
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
+        default_provider_per_service: settings
+            .as_ref()
+            .map(|s| s.default_provider_per_service.0.clone())
+            .unwrap_or_default(),
         created_at: org.created_at,
         updated_at: org.updated_at,
     })
@@ -902,6 +944,7 @@ mod tests {
             default_model_id: None,
             default_harness_id: Some("harness_01933b5a000070008000000000000602".parse().unwrap()),
             base_harness_id: Some("harness_01933b5a000070008000000000000601".parse().unwrap()),
+            default_provider_per_service: std::collections::HashMap::new(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         };

@@ -32,6 +32,7 @@ impl InMemoryDatabase {
                 default_model_id: None,
                 default_harness_id: None,
                 base_harness_id: None,
+                default_provider_per_service: sqlx::types::Json(ServiceProviderDefaults::new()),
                 created_at: now,
                 updated_at: now,
             });
@@ -54,6 +55,7 @@ impl InMemoryDatabase {
                 default_model_id: None,
                 default_harness_id: None,
                 base_harness_id: None,
+                default_provider_per_service: sqlx::types::Json(ServiceProviderDefaults::new()),
                 created_at: now,
                 updated_at: now,
             });
@@ -61,6 +63,16 @@ impl InMemoryDatabase {
         input.default_model_id.apply(&mut row.default_model_id);
         input.default_harness_id.apply(&mut row.default_harness_id);
         input.base_harness_id.apply(&mut row.base_harness_id);
+        // The per-service default map is replaced wholesale (mirrors the SQL path).
+        match input.default_provider_per_service {
+            everruns_durable::UpdateField::Unchanged => {}
+            everruns_durable::UpdateField::Clear => {
+                row.default_provider_per_service = sqlx::types::Json(ServiceProviderDefaults::new());
+            }
+            everruns_durable::UpdateField::Set(map) => {
+                row.default_provider_per_service = sqlx::types::Json(map);
+            }
+        }
 
         row.updated_at = now;
         Ok(row.clone())

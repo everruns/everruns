@@ -80,6 +80,8 @@ export interface Organization {
   default_model_id: string | null;
   default_harness_id: string | null;
   base_harness_id: string | null;
+  /** Org-level default provider per service (EVE-569): service kind -> provider id. */
+  default_provider_per_service?: Record<string, string>;
   created_at: string;
   updated_at: string;
 }
@@ -95,6 +97,11 @@ export interface UpdateOrganizationRequest {
   default_model_id?: string;
   default_harness_id?: string;
   base_harness_id?: string;
+  /**
+   * Org-level default provider per service (EVE-569): service kind -> provider id.
+   * When present it replaces the whole map.
+   */
+  default_provider_per_service?: Record<string, string>;
 }
 
 export interface UserInfoResponse {
