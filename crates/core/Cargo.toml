@@ -22,7 +22,7 @@ categories = ["development-tools", "asynchronous"]
 
 [dependencies]
 # Core dependencies
-everruns-config = { path = "../config", version = "0.13.0" }
+everruns-config = { path = "../config", version = "0.14.0" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
@@ -111,10 +111,10 @@ inventory.workspace = true
 llmsim = "0.4.0"
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.13.0", optional = true }
+everruns-openui = { path = "../openui", version = "0.14.0", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.13.0", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.14.0", optional = true }
 
 # A2A outbound agent delegation
 a2a.workspace = true
