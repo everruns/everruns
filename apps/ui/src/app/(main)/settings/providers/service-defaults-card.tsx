@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
 import type { Provider } from "@/lib/api/types";
@@ -21,15 +22,27 @@ export function ServiceDefaultsCard({ providers }: { providers: Provider[] }) {
   const { data: org } = useOrganization();
   const updateOrg = useUpdateOrganization();
 
-  const defaults = org?.default_provider_per_service ?? {};
+  // The PATCH API replaces the whole map, and the mutation only invalidates the
+  // org query (no optimistic update). A local draft keeps the latest selections
+  // so rapid edits patch from the freshest state rather than a stale refetch,
+  // then re-syncs when the server response lands.
+  const [draft, setDraft] = useState<Record<string, string>>(
+    () => org?.default_provider_per_service ?? {},
+  );
+  useEffect(() => {
+    if (org?.default_provider_per_service) {
+      setDraft(org.default_provider_per_service);
+    }
+  }, [org?.default_provider_per_service]);
 
   const handleChange = async (service: string, providerId: string) => {
-    const next: Record<string, string> = { ...defaults };
+    const next: Record<string, string> = { ...draft };
     if (providerId) {
       next[service] = providerId;
     } else {
       delete next[service];
     }
+    setDraft(next);
     await updateOrg.mutateAsync({ default_provider_per_service: next });
   };
 
@@ -54,7 +67,7 @@ export function ServiceDefaultsCard({ providers }: { providers: Provider[] }) {
             <select
               aria-label={`Default provider for ${service.label}`}
               className="border rounded-md px-3 py-2 text-sm bg-background min-w-56"
-              value={defaults[service.key] ?? ""}
+              value={draft[service.key] ?? ""}
               disabled={updateOrg.isPending}
               onChange={(event) => handleChange(service.key, event.target.value)}
             >

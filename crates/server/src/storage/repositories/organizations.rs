@@ -56,11 +56,11 @@ impl Database {
         // `Clear` resets to `{}`, `Unchanged` keeps the stored value. A NULL bind
         // (Unchanged/Clear) collapses to `{}` only when the CASE selects it.
         let default_providers_changed = input.default_provider_per_service.is_changed();
-        let default_providers_json: Option<serde_json::Value> = input
-            .default_provider_per_service
-            .clone()
-            .into_value()
-            .map(|map| serde_json::to_value(map).unwrap_or_else(|_| serde_json::json!({})));
+        let default_providers_json: Option<serde_json::Value> =
+            match input.default_provider_per_service.clone().into_value() {
+                Some(map) => Some(serde_json::to_value(map)?),
+                None => None,
+            };
 
         let row = sqlx::query_as::<_, OrganizationSettingsRow>(
             r#"
