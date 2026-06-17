@@ -141,7 +141,11 @@ fn apply_rate_limit_values(info: &mut RateLimitInfo, remaining: Option<&str>, re
 }
 
 fn header_str<'a>(headers: &'a HeaderMap, name: &HeaderName) -> Option<&'a str> {
-    headers.get(name).and_then(|value| value.to_str().ok())
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
 }
 
 fn json_header_value<'a>(
@@ -152,6 +156,7 @@ fn json_header_value<'a>(
         .iter()
         .find(|(key, _)| key.eq_ignore_ascii_case(wanted))
         .and_then(|(_, value)| value.as_str())
+        .map(str::trim)
         .filter(|value| !value.is_empty())
 }
 
@@ -390,6 +395,21 @@ mod tests {
         let retry_after = info.retry_after_secs.expect("retry wait");
         assert!((44..=45).contains(&retry_after));
         assert_eq!(info.limit_type, Some(RateLimitType::Requests));
+    }
+
+    #[test]
+    fn update_rate_limit_info_ignores_blank_openrouter_headers() {
+        let mut headers = HeaderMap::new();
+        headers.insert(X_RATE_LIMIT_REMAINING_HEADER, HeaderValue::from_static(" "));
+        headers.insert(X_RATE_LIMIT_RESET_HEADER, HeaderValue::from_static("\t"));
+        let mut info = RateLimitInfo::default();
+
+        OpenRouterRequestExtension.update_rate_limit_info(&mut info, &headers, "");
+
+        assert_eq!(info.requests_remaining, None);
+        assert_eq!(info.requests_reset, None);
+        assert_eq!(info.retry_after_secs, None);
+        assert_eq!(info.limit_type, None);
     }
 
     #[test]
