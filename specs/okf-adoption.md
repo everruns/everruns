@@ -206,17 +206,50 @@ adding the `everruns/landing` repo to the working scope.
 
 ## Delivery Plan
 
-Each item is an independently reviewable change (committed PR-sized).
+Each item is an independently reviewable change (committed PR-sized). Status
+reflects what has shipped on the OKF-adoption branch.
 
-1. **This spec + terminology** — `specs/okf-adoption.md`, README index entry,
-   cross-links from `knowledge-bases.md` and `integrations.md`.
-2. **Gap closure** — additive migration (`resource`, `knowledge_entry_links`),
-   models, storage parity, API surface, OpenAPI.
-3. **Importer** — parser, idempotent upsert/prune, HTTP surface, tests.
-4. **Exporter** — bundle writer, round-trip tests.
-5. **`data_knowledge` consumer** — OKF-framed mount + KB-rendered bundle.
-6. **Showcase agent** — seeded bundle, agent config, manual UI test, recording.
-7. **Landing announcement** — `everruns/landing` post + example + recording.
+1. ✅ **This spec + terminology** — `specs/okf-adoption.md`, README index entry,
+   cross-link from `knowledge-bases.md`.
+2. ◑ **Gap closure** — shipped: additive migration `073` adds `resource` to
+   entries (models, storage parity, API, OpenAPI); `index.md`/`log.md` reserved
+   semantics handled by importer/exporter. **Deferred:** the
+   `knowledge_entry_links` relationship table (export emits a flat bundle; links
+   are not yet modeled).
+3. ✅ **Importer** — `POST …/okf_import`: parser, idempotent upsert/prune,
+   inline + base64 tarball, hardening, unit + idempotency tests.
+4. ✅ **Exporter** — `GET …/okf_export`: bundle writer + root `index.md`,
+   round-trip test.
+5. ◑ **`data_knowledge` consumer** — shipped: OKF-framed static mount
+   (`index.md` navigation + `okf_version`, prompt framing). **Deferred:**
+   rendering the mount from a bound KB (needs session-mount-time DB access).
+6. ◑ **Showcase** — shipped: how-to guide, API round-trip test case, and a
+   Data Analyst showcase test case. **Blocked on (7-pre):** true agent
+   consumption needs the `search_knowledge` runtime tool (below).
+7. ⏳ **Landing announcement** — `everruns/landing` post + example + recording.
+   Requires adding `everruns/landing` to the working scope and a running stack
+   for the recording.
+
+### Deferred follow-up: the `search_knowledge` runtime tool
+
+The agent-facing `search_knowledge` tool (defined as pending in
+`specs/knowledge-bases.md`) is what lets an agent *read* imported OKF knowledge.
+It is a cross-crate vertical slice, scoped here so it can be picked up cleanly:
+
+* A new core trait (e.g. `KnowledgeStore`) with a `search_knowledge(org_id,
+  kb_public_ids, query, kind, tags, limit)` method returning a core result type
+  — `crates/core/src/traits.rs`.
+* A field on `ToolContext` (`crates/core/src/traits.rs`), initialised in
+  `ToolContext::new`, and threaded through the execution path that assembles the
+  context (`crates/core/src/atoms/act.rs`) and the server/worker store providers
+  (`crates/server/src/direct_worker_adapters.rs`, worker grpc adapters).
+* A server impl over `StorageBackend` that resolves each KB public id within the
+  caller's org (reusing `get_knowledge_base_by_public_id`, so cross-org ids are
+  silently skipped — no existence leak) and calls the existing
+  `search_knowledge_entries`.
+* The tool itself on `KnowledgeBaseCapability::tools_with_config`
+  (`crates/core/src/capabilities/knowledge_base.rs`), reading `bases`/`kinds`
+  from config, plus unit tests against a mock `KnowledgeStore`.
 
 ## Security
 
