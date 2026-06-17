@@ -190,6 +190,27 @@ impl Capability for BashkitShellCapability {
         Some(&TOOL_SYSTEM_PROMPT)
     }
 
+    fn narrate(
+        &self,
+        tool_def: Option<&crate::tool_types::ToolDefinition>,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_call.name != "bash" {
+            return None;
+        }
+        let fallback = tool_def
+            .and_then(|def| def.display_name())
+            .unwrap_or("Bash");
+        Some(crate::tool_narration::narrate_shell_exec(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(BashTool)]
     }

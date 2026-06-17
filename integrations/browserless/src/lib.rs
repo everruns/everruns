@@ -23,12 +23,9 @@ pub mod state;
 mod tools;
 mod validation;
 
-use std::sync::Arc;
-
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, IntegrationPlugin, RiskLevel,
-    ToolCallHook,
 };
 use everruns_core::connector::ConnectorPlugin;
 use everruns_core::tool_narration::ToolNarrationPhase;
@@ -157,42 +154,7 @@ impl Capability for BrowserlessCapability {
         ]
     }
 
-    fn tool_call_hooks(&self) -> Vec<Arc<dyn ToolCallHook>> {
-        vec![Arc::new(BrowserlessNarrationHook)]
-    }
-
-    fn dependencies(&self) -> Vec<&'static str> {
-        vec!["session_storage"]
-    }
-
-    fn features(&self) -> Vec<&'static str> {
-        vec![LEASED_RESOURCES_FEATURE]
-    }
-
-    fn localizations(&self) -> Vec<CapabilityLocalization> {
-        vec![CapabilityLocalization::text(
-            "uk",
-            "Browserless",
-            "Хмарна автоматизація браузера на основі Browserless. Робіть знімки екрана, \
-             читайте вміст DOM, збирайте структуровані дані та взаємодійте з вебсторінками \
-             (кліки, введення тексту, клавіатура, миша, дотики). Підтримує постійні сесії \
-             браузера через CDP для сценаріїв входу. Сценарії використання: тестування \
-             доступності, регресійне тестування, вебскрейпінг, перевірка інтерфейсу.",
-        )]
-    }
-}
-
-// ============================================================================
-// Narration
-// ============================================================================
-
-/// Backend-authored narration for the `browserless_*` tools. Lives here, in the
-/// owning capability, rather than in core's central narration engine — core
-/// keeps only generic and conventional-name rules. See `specs/tool-narration.md`.
-struct BrowserlessNarrationHook;
-
-impl ToolCallHook for BrowserlessNarrationHook {
-    fn narration(
+    fn narrate(
         &self,
         _tool_def: Option<&ToolDefinition>,
         tool_call: &ToolCall,
@@ -263,7 +225,31 @@ impl ToolCallHook for BrowserlessNarrationHook {
             None => verb.to_string(),
         })
     }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        vec!["session_storage"]
+    }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec![LEASED_RESOURCES_FEATURE]
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Browserless",
+            "Хмарна автоматизація браузера на основі Browserless. Робіть знімки екрана, \
+             читайте вміст DOM, збирайте структуровані дані та взаємодійте з вебсторінками \
+             (кліки, введення тексту, клавіатура, миша, дотики). Підтримує постійні сесії \
+             браузера через CDP для сценаріїв входу. Сценарії використання: тестування \
+             доступності, регресійне тестування, вебскрейпінг, перевірка інтерфейсу.",
+        )]
+    }
 }
+
+// ============================================================================
+// Narration
+// ============================================================================
 
 fn truncate_target(value: &str) -> String {
     const MAX_CHARS: usize = 48;
@@ -294,19 +280,19 @@ mod tests {
     }
 
     #[test]
-    fn narration_hook_renders_browserless_tools() {
-        let hook = BrowserlessNarrationHook;
+    fn capability_narrates_browserless_tools() {
+        let cap = BrowserlessCapability;
         let call = ToolCall {
             id: "call_1".to_string(),
             name: "browserless_navigate".to_string(),
             arguments: serde_json::json!({ "url": "https://example.com/page" }),
         };
         assert_eq!(
-            hook.narration(None, &call, ToolNarrationPhase::Started, None),
+            cap.narrate(None, &call, ToolNarrationPhase::Started, None),
             Some("Navigating to https://example.com/page".to_string())
         );
         assert_eq!(
-            hook.narration(None, &call, ToolNarrationPhase::Completed, None),
+            cap.narrate(None, &call, ToolNarrationPhase::Completed, None),
             Some("Navigated to https://example.com/page".to_string())
         );
 
@@ -316,18 +302,18 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         assert_eq!(
-            hook.narration(None, &screenshot, ToolNarrationPhase::Completed, None),
+            cap.narrate(None, &screenshot, ToolNarrationPhase::Completed, None),
             Some("Took screenshot".to_string())
         );
 
-        // Tools outside the family are left for the central engine.
+        // Tools this capability does not own are left to their owner.
         let other = ToolCall {
             id: "call_3".to_string(),
             name: "read_file".to_string(),
             arguments: serde_json::json!({}),
         };
         assert_eq!(
-            hook.narration(None, &other, ToolNarrationPhase::Started, None),
+            cap.narrate(None, &other, ToolNarrationPhase::Started, None),
             None
         );
     }

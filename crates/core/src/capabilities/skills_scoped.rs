@@ -286,6 +286,16 @@ impl Capability for ScopedSkillsCapability {
         ))
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&crate::tool_types::ToolDefinition>,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
+    }
+
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         let mut tools: Vec<Box<dyn Tool>> = vec![
             Box::new(ListSkillsTool {

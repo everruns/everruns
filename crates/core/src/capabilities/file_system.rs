@@ -504,6 +504,27 @@ impl Capability for FileSystemCapability {
         ))
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&crate::tool_types::ToolDefinition>,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        use crate::tool_narration as tn;
+        let args = &tool_call.arguments;
+        Some(match tool_call.name.as_str() {
+            "read_file" => tn::narrate_read_file(args, phase, locale),
+            "write_file" => tn::narrate_write_file(args, phase, locale),
+            "edit_file" => tn::narrate_edit_file(args, phase, locale),
+            "delete_file" => tn::narrate_delete_file(args, phase, locale),
+            "grep_files" => tn::narrate_grep_files(args, phase, locale),
+            "list_directory" => tn::narrate_list_directory(args, phase, locale),
+            "stat_file" => tn::narrate_stat_file(args, phase, locale),
+            _ => return None,
+        })
+    }
+
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(ReadFileTool),
@@ -1731,6 +1752,32 @@ impl Tool for StatFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool_narration::ToolNarrationPhase;
+    use crate::tool_types::ToolCall;
+
+    #[test]
+    fn capability_narrates_its_own_tools_only() {
+        let cap = FileSystemCapability;
+        let read = ToolCall {
+            id: "c1".to_string(),
+            name: "read_file".to_string(),
+            arguments: serde_json::json!({ "path": "/workspace/AGENTS.md" }),
+        };
+        assert_eq!(
+            cap.narrate(None, &read, ToolNarrationPhase::Completed, None),
+            Some("Read AGENTS.md".to_string())
+        );
+        // A tool this capability does not own returns None for its owner to handle.
+        let bash = ToolCall {
+            id: "c2".to_string(),
+            name: "bash".to_string(),
+            arguments: serde_json::json!({ "command": "ls" }),
+        };
+        assert_eq!(
+            cap.narrate(None, &bash, ToolNarrationPhase::Started, None),
+            None
+        );
+    }
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::traits::SessionFileSystem;

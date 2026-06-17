@@ -73,6 +73,23 @@ impl Capability for SubagentCapability {
         Some(SUBAGENT_SYSTEM_PROMPT)
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&crate::tool_types::ToolDefinition>,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_call.name != "spawn_subagent" {
+            return None;
+        }
+        Some(crate::tool_narration::narrate_spawn_subagent(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(SpawnSubagentTool)]
     }
