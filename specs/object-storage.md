@@ -100,7 +100,8 @@ untouched.
 ### Multitenancy
 
 Object keys embed the tenant partition (`workspace_id` for files, `org_id` for
-images). Authorization is unchanged and enforced above the storage layer
+images), and the same ids are duplicated in the object's recovery metadata (see
+below). Authorization is unchanged and enforced above the storage layer
 (`get_workspace(org_id, …) → 404`, image org scoping). The blob backend never
 mixes keys across callers, and a per-deployment `STORAGE_S3_PREFIX` allows one
 bucket to host multiple isolated Everruns deployments.
@@ -113,6 +114,33 @@ Images keep their existing flow: `GET /v1/images/{id}` streams bytes the server
 fetched from PostgreSQL or the blob store, and workers fetch via the
 HMAC-signed `/internal/images/{id}` endpoint — both proxy through Everruns, so
 no S3 URL ever leaves the control plane.
+
+## Disaster-recovery metadata
+
+Every stored object carries **S3 user metadata** (`x-amz-meta-*`) so the bucket
+is self-describing. This is pure redundancy — it is **never read on the hot
+path**; runtime reads/writes ignore it. Its only purpose is partial recovery if
+the PostgreSQL metadata store is lost or corrupted: a tool can walk the bucket
+and rebuild the `workspace_files` / `images` rows from the objects alone.
+
+Each object sets:
+
+- `Content-Type` — the object's media type (when known).
+- `x-amz-meta-everruns-kind` — `workspace_file` | `image` | `image_thumbnail`.
+- `x-amz-meta-everruns-recovery` — base64(JSON) of the owning-row fields.
+  base64 keeps the value header-safe regardless of unicode in paths/filenames.
+
+Recovery record (JSON, `v:1`):
+
+| kind | fields |
+|------|--------|
+| `workspace_file` | `workspace_id`, `file_id`, `path`, `size_bytes`, `content_sha256` |
+| `image` | `org_id`, `image_id`, `filename`, `content_type`, `size_bytes` |
+| `image_thumbnail` | `org_id`, `image_id`, `content_type` |
+
+Combined with the key itself (which encodes tenant + id), this is enough to
+reconstruct the row and re-link the blob. The record is forward-versioned
+(`v`) so the format can evolve.
 
 ## Configuration
 

@@ -9,9 +9,32 @@
 
 use super::super::models::*;
 use super::Database;
-use crate::storage::blob_store::{content_sha256, workspace_file_key};
+use crate::storage::blob_store::{BlobMetadata, content_sha256, workspace_file_key};
 use anyhow::Result;
 use uuid::Uuid;
+
+/// Disaster-recovery metadata stamped onto each offloaded file object
+/// (specs/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
+/// row from the object alone.
+fn file_blob_metadata(
+    workspace_id: Uuid,
+    file_id: Uuid,
+    path: &str,
+    size_bytes: i64,
+    sha: &str,
+) -> BlobMetadata {
+    BlobMetadata::new(
+        "workspace_file",
+        serde_json::json!({
+            "v": 1,
+            "workspace_id": workspace_id,
+            "file_id": file_id,
+            "path": path,
+            "size_bytes": size_bytes,
+            "content_sha256": sha,
+        }),
+    )
+}
 
 impl Database {
     // ============================================
@@ -57,7 +80,12 @@ impl Database {
 
             // Write the blob first; if the row insert then fails (e.g. duplicate
             // path) we clean the orphan object up rather than leaving it behind.
-            blob.put(&key, content.clone()).await?;
+            blob.put(
+                &key,
+                content.clone(),
+                &file_blob_metadata(workspace_id, file_id, &input.path, size_bytes, &sha),
+            )
+            .await?;
 
             let mut row = match sqlx::query_as::<_, SessionFileRow>(
                 r#"
@@ -262,7 +290,12 @@ impl Database {
             if let Some(row) = row.as_mut() {
                 let key = workspace_file_key(session_id, row.id);
                 let sha = content_sha256(content);
-                blob.put(&key, content.clone()).await?;
+                blob.put(
+                    &key,
+                    content.clone(),
+                    &file_blob_metadata(session_id, row.id, path, size_bytes, &sha),
+                )
+                .await?;
                 sqlx::query(
                     r#"
                     INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
@@ -371,7 +404,12 @@ impl Database {
             let size_bytes = new_content.len() as i64;
             let key = workspace_file_key(session_id, existing.id);
             let sha = content_sha256(&new_content);
-            blob.put(&key, new_content.clone()).await?;
+            blob.put(
+                &key,
+                new_content.clone(),
+                &file_blob_metadata(session_id, existing.id, path, size_bytes, &sha),
+            )
+            .await?;
             sqlx::query(
                 r#"
                 INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
@@ -623,7 +661,12 @@ impl Database {
             if let Some(content) = source.content.clone() {
                 let key = workspace_file_key(session_id, dest_id);
                 let sha = content_sha256(&content);
-                blob.put(&key, content.clone()).await?;
+                blob.put(
+                    &key,
+                    content.clone(),
+                    &file_blob_metadata(session_id, dest_id, dst_path, size_bytes, &sha),
+                )
+                .await?;
                 sqlx::query(
                     r#"
                     INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)

@@ -3,7 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
-use crate::storage::blob_store::{image_data_key, image_thumbnail_key};
+use crate::storage::blob_store::{BlobMetadata, image_data_key, image_thumbnail_key};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -283,9 +283,33 @@ impl Database {
                 .as_ref()
                 .map(|_| image_thumbnail_key(org_id, image_id));
 
-            blob.put(&data_key, input.data.clone()).await?;
+            // Disaster-recovery metadata so the `images` row can be rebuilt
+            // from the object alone (specs/object-storage.md).
+            let data_meta = BlobMetadata::new(
+                "image",
+                serde_json::json!({
+                    "v": 1,
+                    "org_id": org_id,
+                    "image_id": image_id,
+                    "filename": input.filename,
+                    "content_type": input.content_type,
+                    "size_bytes": input.size_bytes,
+                }),
+            )
+            .with_content_type(Some(input.content_type.clone()));
+            blob.put(&data_key, input.data.clone(), &data_meta).await?;
             if let (Some(tk), Some(td)) = (&thumb_key, &input.thumbnail_data) {
-                blob.put(tk, td.clone()).await?;
+                let thumb_meta = BlobMetadata::new(
+                    "image_thumbnail",
+                    serde_json::json!({
+                        "v": 1,
+                        "org_id": org_id,
+                        "image_id": image_id,
+                        "content_type": input.thumbnail_content_type,
+                    }),
+                )
+                .with_content_type(input.thumbnail_content_type.clone());
+                blob.put(tk, td.clone(), &thumb_meta).await?;
             }
 
             let mut row = match sqlx::query_as::<_, ImageRow>(

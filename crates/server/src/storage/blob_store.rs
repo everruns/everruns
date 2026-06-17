@@ -12,8 +12,12 @@
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
+use base64::Engine;
 use everruns_config::{env_bool, env_opt_string, env_string};
-use object_store::{ObjectStore, PutPayload, path::Path as ObjectPath};
+use object_store::{
+    Attribute, Attributes, ObjectStore, PutOptions, PutPayload, path::Path as ObjectPath,
+};
+use std::borrow::Cow;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -28,8 +32,10 @@ pub trait BlobStore: Send + Sync {
     /// Human-readable backend name for diagnostics/logging.
     fn backend_name(&self) -> &'static str;
 
-    /// Store `bytes` at `key`, overwriting any existing object.
-    async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()>;
+    /// Store `bytes` at `key`, overwriting any existing object. `metadata` is
+    /// attached as object user-metadata for disaster recovery (not read on the
+    /// hot path).
+    async fn put(&self, key: &str, bytes: Vec<u8>, metadata: &BlobMetadata) -> Result<()>;
 
     /// Fetch the bytes stored at `key`. Returns `Ok(None)` when absent.
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
@@ -40,6 +46,65 @@ pub trait BlobStore: Send + Sync {
 
 /// Shared, cheaply-cloneable handle to the active blob backend.
 pub type SharedBlobStore = Arc<dyn BlobStore>;
+
+/// User-metadata key carrying the object kind.
+const META_KIND_KEY: &str = "everruns-kind";
+/// User-metadata key carrying the base64(JSON) recovery record.
+const META_RECOVERY_KEY: &str = "everruns-recovery";
+
+/// Disaster-recovery metadata attached to every stored object as S3 user
+/// metadata (`x-amz-meta-*`).
+///
+/// This is **never read on the hot path** — runtime reads/writes ignore it. It
+/// exists purely for redundancy: the bucket becomes self-describing, so a
+/// recovery tool can walk the objects and rebuild the PostgreSQL rows (paths,
+/// owners, sizes, hashes) after a metadata-store loss. See
+/// `specs/object-storage.md`.
+#[derive(Debug, Clone)]
+pub struct BlobMetadata {
+    /// Object kind: `workspace_file` | `image` | `image_thumbnail`.
+    pub kind: &'static str,
+    /// Object content type, when known. Also set as the object's `Content-Type`.
+    pub content_type: Option<String>,
+    /// Full recovery record (JSON) — the owning-row fields needed to
+    /// reconstruct the database row from the object alone.
+    pub recovery: serde_json::Value,
+}
+
+impl BlobMetadata {
+    pub fn new(kind: &'static str, recovery: serde_json::Value) -> Self {
+        Self {
+            kind,
+            content_type: None,
+            recovery,
+        }
+    }
+
+    pub fn with_content_type(mut self, content_type: Option<String>) -> Self {
+        self.content_type = content_type;
+        self
+    }
+
+    /// Render into object_store attributes (Content-Type + DR user metadata).
+    fn to_attributes(&self) -> Attributes {
+        let mut attrs = Attributes::new();
+        if let Some(ct) = &self.content_type {
+            attrs.insert(Attribute::ContentType, ct.clone().into());
+        }
+        attrs.insert(
+            Attribute::Metadata(Cow::Borrowed(META_KIND_KEY)),
+            self.kind.into(),
+        );
+        // base64 keeps the value header-safe regardless of unicode in paths/filenames.
+        let recovery = base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&self.recovery).unwrap_or_default());
+        attrs.insert(
+            Attribute::Metadata(Cow::Borrowed(META_RECOVERY_KEY)),
+            recovery.into(),
+        );
+        attrs
+    }
+}
 
 // ============================================================================
 // Tenant-scoped key derivation
@@ -159,10 +224,14 @@ impl BlobStore for ObjectStoreBlobStore {
         self.backend_name
     }
 
-    async fn put(&self, key: &str, bytes: Vec<u8>) -> Result<()> {
+    async fn put(&self, key: &str, bytes: Vec<u8>, metadata: &BlobMetadata) -> Result<()> {
         let path = self.object_path(key);
+        let opts = PutOptions {
+            attributes: metadata.to_attributes(),
+            ..Default::default()
+        };
         self.inner
-            .put(&path, PutPayload::from(bytes))
+            .put_opts(&path, PutPayload::from(bytes), opts)
             .await
             .with_context(|| format!("blob put failed for key {key}"))?;
         Ok(())
@@ -262,11 +331,15 @@ pub fn blob_store_from_env() -> Result<Option<SharedBlobStore>> {
 mod tests {
     use super::*;
 
+    fn meta() -> BlobMetadata {
+        BlobMetadata::new("test", serde_json::json!({ "v": 1 }))
+    }
+
     #[tokio::test]
     async fn in_memory_round_trips_bytes() {
         let store = ObjectStoreBlobStore::in_memory();
         store
-            .put("workspaces/a/files/b", b"hello".to_vec())
+            .put("workspaces/a/files/b", b"hello".to_vec(), &meta())
             .await
             .unwrap();
         let got = store.get("workspaces/a/files/b").await.unwrap();
@@ -282,7 +355,7 @@ mod tests {
     #[tokio::test]
     async fn delete_is_idempotent() {
         let store = ObjectStoreBlobStore::in_memory();
-        store.put("k", b"v".to_vec()).await.unwrap();
+        store.put("k", b"v".to_vec(), &meta()).await.unwrap();
         store.delete("k").await.unwrap();
         assert!(store.get("k").await.unwrap().is_none());
         // Deleting an absent key must not error.
@@ -292,8 +365,8 @@ mod tests {
     #[tokio::test]
     async fn put_overwrites() {
         let store = ObjectStoreBlobStore::in_memory();
-        store.put("k", b"one".to_vec()).await.unwrap();
-        store.put("k", b"two".to_vec()).await.unwrap();
+        store.put("k", b"one".to_vec(), &meta()).await.unwrap();
+        store.put("k", b"two".to_vec(), &meta()).await.unwrap();
         assert_eq!(
             store.get("k").await.unwrap().as_deref(),
             Some(b"two".as_slice())
@@ -306,13 +379,49 @@ mod tests {
         let prefixed = ObjectStoreBlobStore::new(inner.clone(), "tenant-1", "memory");
         let other = ObjectStoreBlobStore::new(inner, "tenant-2", "memory");
 
-        prefixed.put("file", b"a".to_vec()).await.unwrap();
+        prefixed.put("file", b"a".to_vec(), &meta()).await.unwrap();
         // A different prefix must not see the first tenant's object.
         assert!(other.get("file").await.unwrap().is_none());
         assert_eq!(
             prefixed.get("file").await.unwrap().as_deref(),
             Some(b"a".as_slice())
         );
+    }
+
+    #[tokio::test]
+    async fn recovery_metadata_is_attached_to_object() {
+        let inner: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let store = ObjectStoreBlobStore::new(inner.clone(), "", "memory");
+        let m = BlobMetadata::new(
+            "workspace_file",
+            serde_json::json!({ "v": 1, "path": "/notes.txt", "size_bytes": 5 }),
+        )
+        .with_content_type(Some("text/plain".to_string()));
+        store.put("k", b"hello".to_vec(), &m).await.unwrap();
+
+        // The object is self-describing: Content-Type + DR user metadata can be
+        // recovered from the object alone (no database).
+        let got = inner.get(&ObjectPath::from("k")).await.unwrap();
+        let attrs = got.attributes.clone();
+        assert_eq!(
+            attrs.get(&Attribute::ContentType).map(|v| v.as_ref()),
+            Some("text/plain")
+        );
+        let kind = attrs
+            .get(&Attribute::Metadata(Cow::Borrowed(META_KIND_KEY)))
+            .map(|v| v.as_ref().to_string())
+            .unwrap();
+        assert_eq!(kind, "workspace_file");
+        let recovery_b64 = attrs
+            .get(&Attribute::Metadata(Cow::Borrowed(META_RECOVERY_KEY)))
+            .map(|v| v.as_ref().to_string())
+            .unwrap();
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(recovery_b64)
+            .unwrap();
+        let record: serde_json::Value = serde_json::from_slice(&decoded).unwrap();
+        assert_eq!(record["path"], "/notes.txt");
+        assert_eq!(record["size_bytes"], 5);
     }
 
     #[test]
