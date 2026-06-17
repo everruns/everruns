@@ -264,9 +264,13 @@ impl Database {
                 .fetch_optional(&self.pool)
                 .await?;
         if let Some((data_key, thumbnail_key)) = keys {
-            row.data = blob.get(&data_key).await?.unwrap_or_default();
+            row.data = blob.get(&data_key).await?.ok_or_else(|| {
+                anyhow::anyhow!("offloaded image data blob missing for {data_key}")
+            })?;
             if let Some(tk) = thumbnail_key {
-                row.thumbnail_data = blob.get(&tk).await?;
+                row.thumbnail_data = Some(blob.get(&tk).await?.ok_or_else(|| {
+                    anyhow::anyhow!("offloaded image thumbnail blob missing for {tk}")
+                })?);
             }
         }
         Ok(())
@@ -309,44 +313,57 @@ impl Database {
                     }),
                 )
                 .with_content_type(input.thumbnail_content_type.clone());
-                blob.put(tk, td.clone(), &thumb_meta).await?;
+                if let Err(e) = blob.put(tk, td.clone(), &thumb_meta).await {
+                    // Don't leak the data blob we already wrote.
+                    let _ = blob.delete(&data_key).await;
+                    return Err(e);
+                }
             }
 
-            let mut row = match sqlx::query_as::<_, ImageRow>(
-                r#"
-                INSERT INTO images (id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
-                VALUES ($1, $2, $3, $4, $5, ''::bytea, NULL, $6, $7)
-                RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
-                "#,
-            )
-            .bind(image_id)
-            .bind(org_id)
-            .bind(&input.filename)
-            .bind(&input.content_type)
-            .bind(input.size_bytes)
-            .bind(&input.thumbnail_content_type)
-            .bind(&input.metadata)
-            .fetch_one(&self.pool)
-            .await
-            {
+            // Insert the row and sidecar pointer in one transaction so a failure
+            // can't leave an image row without its blob pointer. The object store
+            // is not transactional, so we clean up the written blobs on rollback.
+            let insert = async {
+                let mut tx = self.pool.begin().await?;
+                let row = sqlx::query_as::<_, ImageRow>(
+                    r#"
+                    INSERT INTO images (id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata)
+                    VALUES ($1, $2, $3, $4, $5, ''::bytea, NULL, $6, $7)
+                    RETURNING id, org_id, filename, content_type, size_bytes, data, thumbnail_data, thumbnail_content_type, metadata, created_at
+                    "#,
+                )
+                .bind(image_id)
+                .bind(org_id)
+                .bind(&input.filename)
+                .bind(&input.content_type)
+                .bind(input.size_bytes)
+                .bind(&input.thumbnail_content_type)
+                .bind(&input.metadata)
+                .fetch_one(&mut *tx)
+                .await?;
+                sqlx::query(
+                    "INSERT INTO image_blobs (image_id, data_key, thumbnail_key) VALUES ($1, $2, $3)",
+                )
+                .bind(image_id)
+                .bind(&data_key)
+                .bind(&thumb_key)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                anyhow::Ok(row)
+            }
+            .await;
+
+            let mut row = match insert {
                 Ok(row) => row,
                 Err(e) => {
                     let _ = blob.delete(&data_key).await;
                     if let Some(tk) = &thumb_key {
                         let _ = blob.delete(tk).await;
                     }
-                    return Err(e.into());
+                    return Err(e);
                 }
             };
-
-            sqlx::query(
-                "INSERT INTO image_blobs (image_id, data_key, thumbnail_key) VALUES ($1, $2, $3)",
-            )
-            .bind(image_id)
-            .bind(&data_key)
-            .bind(&thumb_key)
-            .execute(&self.pool)
-            .await?;
 
             row.data = input.data;
             row.thumbnail_data = input.thumbnail_data;
@@ -411,12 +428,20 @@ impl Database {
     }
 
     pub async fn delete_image(&self, org_id: i64, id: Uuid) -> Result<bool> {
-        // Remove backing objects first (cascade clears the sidecar row).
+        // Remove backing objects first (cascade clears the sidecar row). The
+        // lookup joins `images` and filters by `org_id` so a guessed image_id
+        // from another org cannot trigger deletion of that org's objects.
         if let Some(blob) = self.blob_store()
             && let Some((data_key, thumbnail_key)) = sqlx::query_as::<_, (String, Option<String>)>(
-                "SELECT data_key, thumbnail_key FROM image_blobs WHERE image_id = $1",
+                r#"
+                SELECT b.data_key, b.thumbnail_key
+                FROM image_blobs b
+                JOIN images i ON i.id = b.image_id
+                WHERE i.id = $1 AND i.org_id = $2
+                "#,
             )
             .bind(id)
+            .bind(org_id)
             .fetch_optional(&self.pool)
             .await?
         {

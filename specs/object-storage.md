@@ -170,7 +170,7 @@ reconstruct the row and re-link the blob. The record is forward-versioned
 | `STORAGE_S3_ACCESS_KEY_ID` | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | — | Static secret key. |
 | `STORAGE_S3_PREFIX` | (empty) | Key prefix isolating deployments within a bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local MinIO only). |
+| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by MinIO; harmless on AWS). |
 
 Credentials are read once at startup. The backend is selected per process, so a

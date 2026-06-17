@@ -227,7 +227,7 @@ clients or workers. See [specs/object-storage.md](../../specs/object-storage.md)
 | `STORAGE_S3_ACCESS_KEY_ID` | No | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | No | — | Static secret key. |
 | `STORAGE_S3_PREFIX` | No | (empty) | Key prefix isolating multiple deployments within one bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local MinIO only). |
+| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by MinIO; harmless on AWS S3). |
 
 **Example (local SeaweedFS via `just seaweedfs`):**
