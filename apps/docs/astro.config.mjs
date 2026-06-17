@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import remarkGfm from "remark-gfm";
 import starlightOpenAPI, { openAPISidebarGroups } from "starlight-openapi";
 import starlightSidebarTopics from "starlight-sidebar-topics";
 import apiSidebarFix from "./plugins/api-sidebar-fix.ts";
@@ -13,6 +14,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   site: "https://docs.everruns.com",
   trailingSlash: "always",
+  // Register remark-gfm explicitly so GFM (tables, etc.) applies to `.mdx`
+  // pages too. Starlight auto-adds `@astrojs/mdx` with extendMarkdownConfig,
+  // which inherits `markdown.remarkPlugins` — but Astro's default `gfm: true`
+  // flag alone does not reach the MDX pipeline, so `.mdx` tables silently
+  // render as paragraphs. Listing the plugin here fixes every `.mdx` page.
+  markdown: {
+    remarkPlugins: [remarkGfm],
+  },
   redirects: {
     // virtual_bash capability renamed to bashkit_shell
     "/capabilities/virtual-bash/": "/capabilities/bashkit-shell/",
