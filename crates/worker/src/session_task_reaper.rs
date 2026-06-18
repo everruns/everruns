@@ -31,7 +31,7 @@ use everruns_core::traits::ToolContext;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::worker_adapters::WorkerAdapters;
+use crate::worker_adapters::{AdapterSessionFileStore, WorkerAdapters};
 
 /// How long a heartbeat may be stale before a task is considered orphaned.
 const DEFAULT_STALE_AFTER_SECONDS: i64 = 5 * 60; // 5 minutes
@@ -211,11 +211,15 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
                 }
             };
 
-            // Build a minimal ToolContext for the executor.
-            let ctx = ToolContext::new(session_id)
-                .with_storage_store_arc(adapters.storage_store())
-                .with_session_task_registry(registry.clone())
-                .with_egress_service_opt(adapters.egress_service());
+            // Build a minimal ToolContext for the executor. Background-tool
+            // reattach needs the session file store to persist fresh artifacts.
+            let ctx = ToolContext::with_stores(
+                session_id,
+                std::sync::Arc::new(AdapterSessionFileStore::new(adapters.clone())),
+                adapters.storage_store(),
+            )
+            .with_session_task_registry(registry.clone())
+            .with_egress_service_opt(adapters.egress_service());
 
             let executor = find_task_executor(&task.kind).expect("checked above");
             match executor.start(&updated_task, &ctx).await {
@@ -485,8 +489,12 @@ mod tests {
         async fn start(
             &self,
             task: &SessionTask,
-            _context: &everruns_core::traits::ToolContext,
+            context: &everruns_core::traits::ToolContext,
         ) -> CoreResult<()> {
+            assert!(
+                context.file_store.is_some(),
+                "re-attach context must include a session file store"
+            );
             self.start_calls.lock().unwrap().push(task.attempt);
             Ok(())
         }
@@ -611,6 +619,96 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct MockFileStore;
+
+    #[async_trait]
+    impl everruns_core::traits::SessionFileSystem for MockFileStore {
+        async fn read_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+            Ok(None)
+        }
+
+        async fn write_file(
+            &self,
+            _session_id: SessionId,
+            path: &str,
+            content: &str,
+            encoding: &str,
+        ) -> CoreResult<everruns_core::session_file::SessionFile> {
+            let now = chrono::Utc::now();
+            Ok(everruns_core::session_file::SessionFile {
+                id: uuid::Uuid::new_v4(),
+                session_id: _session_id.uuid(),
+                path: path.to_string(),
+                name: everruns_core::session_file::FileInfo::name_from_path(path),
+                content: Some(content.to_string()),
+                encoding: encoding.to_string(),
+                is_directory: false,
+                is_readonly: false,
+                created_at: chrono::Utc::now(),
+                updated_at: now,
+                size_bytes: content.len() as i64,
+            })
+        }
+
+        async fn delete_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+            _recursive: bool,
+        ) -> CoreResult<bool> {
+            Ok(false)
+        }
+
+        async fn list_directory(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+            Ok(vec![])
+        }
+
+        async fn stat_file(
+            &self,
+            _session_id: SessionId,
+            _path: &str,
+        ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+            Ok(None)
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+            Ok(vec![])
+        }
+
+        async fn create_directory(
+            &self,
+            session_id: SessionId,
+            path: &str,
+        ) -> CoreResult<everruns_core::session_file::FileInfo> {
+            let now = chrono::Utc::now();
+            Ok(everruns_core::session_file::FileInfo {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: everruns_core::session_file::FileInfo::name_from_path(path),
+                is_directory: true,
+                is_readonly: false,
+                size_bytes: 0,
+                created_at: now,
+                updated_at: now,
+            })
+        }
+    }
+
     // Helper: run the reaper logic inline, calling executors directly via the
     // provided lookup function instead of inventory, so tests don't need
     // `inventory::submit!` in a lib-test context.
@@ -623,6 +721,7 @@ mod tests {
     ) -> serde_json::Value {
         let storage: Arc<dyn everruns_core::traits::SessionStorageStore> =
             Arc::new(MockStorageStore);
+        let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(MockFileStore);
 
         let mut reaped = 0usize;
         let mut reattached = 0usize;
@@ -665,9 +764,12 @@ mod tests {
                     }
                 };
 
-                let ctx = everruns_core::traits::ToolContext::new(*session_id)
-                    .with_storage_store_arc(storage.clone())
-                    .with_session_task_registry(registry.clone());
+                let ctx = everruns_core::traits::ToolContext::with_stores(
+                    *session_id,
+                    file_store.clone(),
+                    storage.clone(),
+                )
+                .with_session_task_registry(registry.clone());
 
                 let executor = executor_for(&task.kind).unwrap();
                 match executor.start(&updated_task, &ctx).await {
