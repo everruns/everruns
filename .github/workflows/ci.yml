@@ -45,6 +45,7 @@ jobs:
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
       postgres_integration: ${{ steps.core_filter.outputs.postgres_integration }}
+      object_storage: ${{ steps.core_filter.outputs.object_storage }}
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
       parallel_integration: ${{ steps.core_filter.outputs.parallel_integration }}
@@ -176,6 +177,24 @@ jobs:
               - 'crates/openai/**'
               - 'crates/anthropic/**'
               - 'crates/gemini/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
+            # S3 blob-backend integration coverage. Narrow on purpose so the
+            # MinIO-backed job only runs when the object-storage offload code,
+            # its sidecar migration, or the harness/workflow that drives it
+            # changes — it should not burn CI on unrelated PRs.
+            object_storage:
+              - 'crates/server/src/storage/blob_store.rs'
+              - 'crates/server/src/storage/repositories/session_files.rs'
+              - 'crates/server/src/storage/repositories/skills.rs'
+              - 'crates/server/src/storage/backend.rs'
+              - 'crates/server/src/storage/repositories/mod.rs'
+              - 'crates/server/migrations/**'
+              - 'crates/server/tests/blob_offload_integration_test.rs'
+              - 'crates/server/tests/test_harness.rs'
+              - 'crates/config/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
@@ -594,6 +613,14 @@ jobs:
       - name: Run server integration tests (API + repository)
         run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test -- --test-threads=1
 
+      # Blob-offload suite against the in-memory object_store backend (no S3
+      # container). Exercises the same offload code paths the S3 job covers,
+      # giving every PostgreSQL PR coverage of the offload invariants without a
+      # service container. The dedicated `s3-integration-test` job re-runs the
+      # identical suite with STORAGE_BLOB_BACKEND=s3 against MinIO.
+      - name: Run blob offload integration tests (in-memory backend)
+        run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
+
       # Domain-focused integration tests that previously only ran manually.
       # Kept split so CI failures surface the offending area fast; each file
       # exercises a cohesive slice (auth, org lifecycle, schedules, git sessions,
@@ -654,6 +681,114 @@ jobs:
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
+
+  # S3 blob-backend integration tests.
+  # The PostgreSQL `integration-test` job above only exercises the inline
+  # (STORAGE_BLOB_BACKEND=db) storage path. This job brings up a real
+  # S3-compatible object store (MinIO) alongside PostgreSQL and runs the
+  # backend-agnostic offload suite with STORAGE_BLOB_BACKEND=s3 so the
+  # object-storage offload code (create/read/update/CAS/move/copy/delete,
+  # materialization, org-scoped image delete guard) is covered against the real
+  # S3 client path — not just the in-memory object_store backend.
+  s3-integration-test:
+    name: Integration Tests (S3 Blob Backend)
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.object_storage == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: everruns
+          POSTGRES_PASSWORD: everruns
+          POSTGRES_DB: everruns_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # bitnami/minio starts the S3 server with no extra args (the upstream
+      # minio/minio image needs a `server /data` command, which GH service
+      # containers cannot express) and provisions the bucket at boot via
+      # MINIO_DEFAULT_BUCKETS, so the test never has to create it. Pinned by
+      # digest-bearing tag (not `latest`) for reproducibility.
+      minio:
+        image: bitnami/minio:2025.4.22
+        env:
+          MINIO_ROOT_USER: everruns
+          MINIO_ROOT_PASSWORD: everruns-secret
+          MINIO_DEFAULT_BUCKETS: everruns-test
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9000/minio/health/live"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
+      SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      # Drive the offload code path against the real S3 client. The endpoint is
+      # plain HTTP (local container), so ALLOW_HTTP + path-style are required.
+      STORAGE_BLOB_BACKEND: s3
+      STORAGE_S3_BUCKET: everruns-test
+      STORAGE_S3_ENDPOINT: http://localhost:9000
+      STORAGE_S3_REGION: us-east-1
+      STORAGE_S3_ACCESS_KEY_ID: everruns
+      STORAGE_S3_SECRET_ACCESS_KEY: everruns-secret
+      STORAGE_S3_ALLOW_HTTP: "true"
+      STORAGE_S3_FORCE_PATH_STYLE: "true"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Cache cargo binaries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cargo-binstall
+            ~/.cargo/bin/sqlx
+          key: ${{ runner.os }}-cargo-bins-sqlx-0.9
+
+      - name: Install sqlx-cli
+        run: |
+          if [ ! -f ~/.cargo/bin/sqlx ]; then
+            if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
+              cargo install cargo-binstall --locked
+            fi
+            cargo binstall sqlx-cli --no-confirm --version '~0.9'
+          fi
+
+      - name: Run migrations
+        run: sqlx migrate run --source crates/server/migrations
+
+      - name: Wait for MinIO S3 endpoint
+        run: |
+          echo "Waiting for MinIO to accept S3 requests..."
+          for i in {1..30}; do
+            if curl -fsS http://localhost:9000/minio/health/live > /dev/null 2>&1; then
+              echo "MinIO is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: MinIO not ready yet..."
+            sleep 2
+          done
+          echo "MinIO failed to become ready"
+          exit 1
+
+      - name: Run blob offload integration tests (S3 backend)
+        run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
@@ -1331,6 +1466,7 @@ jobs:
       - worker-test
       - shell-test
       - integration-test
+      - s3-integration-test
       - build-binaries
       - workflow-test
       - cli-e2e-test
