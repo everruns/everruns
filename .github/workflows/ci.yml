@@ -709,24 +709,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      # bitnami/minio starts the S3 server with no extra args (the upstream
-      # minio/minio image needs a `server /data` command, which GH service
-      # containers cannot express) and provisions the bucket at boot via
-      # MINIO_DEFAULT_BUCKETS, so the test never has to create it. Pinned by
-      # digest-bearing tag (not `latest`) for reproducibility.
-      minio:
-        image: bitnami/minio:2025.4.22
-        env:
-          MINIO_ROOT_USER: everruns
-          MINIO_ROOT_PASSWORD: everruns-secret
-          MINIO_DEFAULT_BUCKETS: everruns-test
-        ports:
-          - 9000:9000
-        options: >-
-          --health-cmd "curl -fsS http://localhost:9000/minio/health/live"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
+      # MinIO is started as a `docker run` step (see "Start MinIO" below) rather
+      # than a service container, because the upstream minio/minio image needs a
+      # `server /data` command and GH service containers cannot express a command.
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
@@ -773,19 +758,34 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/server/migrations
 
-      - name: Wait for MinIO S3 endpoint
+      - name: Start MinIO and create the bucket
         run: |
+          # Ephemeral S3-compatible store for this job only. `latest` is used
+          # deliberately: these are throwaway test containers (no production
+          # surface), and it avoids pinning to an unverifiable date-stamped tag.
+          docker run -d --name minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=everruns \
+            -e MINIO_ROOT_PASSWORD=everruns-secret \
+            minio/minio:latest server /data
           echo "Waiting for MinIO to accept S3 requests..."
+          ready=
           for i in {1..30}; do
             if curl -fsS http://localhost:9000/minio/health/live > /dev/null 2>&1; then
               echo "MinIO is ready!"
-              exit 0
+              ready=1
+              break
             fi
             echo "Attempt $i: MinIO not ready yet..."
             sleep 2
           done
-          echo "MinIO failed to become ready"
-          exit 1
+          if [ -z "$ready" ]; then
+            echo "MinIO failed to become ready"; docker logs minio || true; exit 1
+          fi
+          # Create the test bucket with the MinIO client (idempotent).
+          docker run --rm --network host \
+            -e MC_HOST_local="http://everruns:everruns-secret@localhost:9000" \
+            minio/mc:latest mb --ignore-existing local/everruns-test
 
       - name: Run blob offload integration tests (S3 backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
