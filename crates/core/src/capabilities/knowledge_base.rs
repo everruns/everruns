@@ -189,6 +189,13 @@ impl Tool for SearchKnowledgeTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn deferrable_policy(&self) -> crate::tool_types::DeferrablePolicy {
+        // "Consult-first" tool: keep its full schema directly callable so the
+        // model invokes it rather than routing through tool-search. See
+        // specs/tool-search.md (never-defer) and specs/okf-adoption.md.
+        crate::tool_types::DeferrablePolicy::Never
+    }
 }
 
 pub struct KnowledgeBaseCapability;
