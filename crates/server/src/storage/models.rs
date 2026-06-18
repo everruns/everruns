@@ -572,7 +572,9 @@ pub struct UpdateHarness {
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
-    pub system_prompt: Option<String>,
+    /// None = leave unchanged; Some(None) = clear to no base prompt;
+    /// Some(Some(v)) = set to v.
+    pub system_prompt: Option<Option<String>>,
     pub parent_harness_id: Option<Option<HarnessId>>,
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,

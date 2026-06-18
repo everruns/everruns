@@ -464,7 +464,11 @@ impl Command for UpdateHarnessCmd {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
-            system_prompt: req.system_prompt,
+            // Omitted = leave unchanged; present empty/whitespace = clear to no
+            // base prompt; present text = set. Mirrors create-path normalization.
+            system_prompt: req
+                .system_prompt
+                .map(|s| (!s.trim().is_empty()).then_some(s)),
             parent_harness_id: req.parent_harness_id.map(|_| parent_harness_id),
             default_model_id,
             tags: req.tags,

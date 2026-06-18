@@ -1167,8 +1167,8 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         name: proto_harness.name,
         display_name: proto_harness.display_name,
         description: non_empty_string(proto_harness.description),
-        // proto carries a plain string; "" means no base prompt.
-        system_prompt: non_empty_string(proto_harness.system_prompt),
+        // proto carries a plain string; empty/whitespace means no base prompt.
+        system_prompt: Some(proto_harness.system_prompt).filter(|s| !s.trim().is_empty()),
         parent_harness_id: parent_harness_id.map(|u| u.into()),
         default_model_id: default_model_id.map(|u| u.into()),
         tags: proto_harness.tags,

@@ -162,18 +162,23 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
         JSON.stringify(normalizeNetworkAccess(localNetworkAccess)) !==
           JSON.stringify(normalizeNetworkAccess(initialNetworkAccess));
 
+      // Only send system_prompt when it changed: omit to leave unchanged,
+      // send "" to clear a previous prompt, send text to set it. Avoids
+      // rewriting a promptless harness to an explicit empty string.
+      const initialPrompt = (harness?.system_prompt ?? "").trim();
+      const nextPrompt = parsed.data.system_prompt ?? "";
+      const systemPromptChanged = nextPrompt.trim() !== initialPrompt;
+
       await updateHarness.mutateAsync({
         harnessId,
         request: {
           name: parsed.data.name,
           display_name: parsed.data.display_name,
           description: parsed.data.description,
-          // Send "" (not undefined) so clearing the field actually drops the
-          // base prompt; the backend/runtime treats empty as "no contribution".
-          system_prompt: parsed.data.system_prompt ?? "",
           parent_harness_id: parsed.data.parent_harness_id || null,
           tags,
           default_model_id: parsed.data.default_model_id,
+          ...(systemPromptChanged && { system_prompt: nextPrompt }),
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
           ...(initialFilesChanged && { initial_files: initialFilesToSave }),
           ...(networkAccessChanged && { network_access: localNetworkAccess }),

@@ -192,18 +192,18 @@ impl Database {
                 name = COALESCE($3, name),
                 display_name = COALESCE($4, display_name),
                 description = COALESCE($5, description),
-                system_prompt = COALESCE($6, system_prompt),
+                system_prompt = CASE WHEN $6 THEN $7 ELSE system_prompt END,
                 parent_harness_id = CASE
-                    WHEN $7 THEN $8
+                    WHEN $8 THEN $9
                     ELSE parent_harness_id
                 END,
-                default_model_id = COALESCE($9, default_model_id),
-                tags = COALESCE($10, tags),
-                initial_files = COALESCE($11, initial_files),
-                mcp_servers = COALESCE($12, mcp_servers),
-                network_access = CASE WHEN $13 THEN $14 ELSE network_access END,
-                embedder_metadata = COALESCE($15, embedder_metadata),
-                status = COALESCE($16, status),
+                default_model_id = COALESCE($10, default_model_id),
+                tags = COALESCE($11, tags),
+                initial_files = COALESCE($12, initial_files),
+                mcp_servers = COALESCE($13, mcp_servers),
+                network_access = CASE WHEN $14 THEN $15 ELSE network_access END,
+                embedder_metadata = COALESCE($16, embedder_metadata),
+                status = COALESCE($17, status),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, name, display_name, description, system_prompt, parent_harness_id, default_model_id, tags, initial_files, mcp_servers, network_access, embedder_metadata, is_built_in, status, created_at, updated_at, archived_at, deleted_at
@@ -214,7 +214,8 @@ impl Database {
         .bind(&input.name)
         .bind(&input.display_name)
         .bind(&input.description)
-        .bind(&input.system_prompt)
+        .bind(input.system_prompt.is_some())
+        .bind(input.system_prompt.clone().flatten())
         .bind(input.parent_harness_id.is_some())
         .bind(input.parent_harness_id.flatten().map(|id| id.uuid()))
         .bind(input.default_model_id.map(|m| m.uuid()))

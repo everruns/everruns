@@ -183,8 +183,9 @@ impl InMemoryDatabase {
             if let Some(description) = input.description {
                 harness.description = Some(description);
             }
+            // None = unchanged; Some(None) = clear; Some(Some(v)) = set.
             if let Some(system_prompt) = input.system_prompt {
-                harness.system_prompt = Some(system_prompt);
+                harness.system_prompt = system_prompt;
             }
             if let Some(parent_harness_id) = input.parent_harness_id {
                 harness.parent_harness_id = parent_harness_id;
