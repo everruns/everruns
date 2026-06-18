@@ -62,7 +62,10 @@ const HASH_INPUT_CAP_BYTES: usize = 128;
 /// id unchanged. Other values are mapped into `[2, i64::MAX]` by hashing the
 /// original public id string so runtime namespaces do not fail open to the
 /// shared default org and avoid arithmetic collision gadgets.
-fn in_process_internal_org_id(public_org_id: &str) -> i64 {
+///
+/// Exposed so embedders (e.g. `everruns-local`) can scope per-org stores to the
+/// same internal id the act path resolves a session's org to.
+pub fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
         return everruns_core::DEFAULT_ORG_ID;
     }
@@ -262,6 +265,47 @@ impl InProcessRuntimeBuilder {
     /// Supply a custom backend bundle instead of the built-in in-memory stores.
     pub fn backends(mut self, backends: RuntimeBackends) -> Self {
         self.backends = Some(backends);
+        self
+    }
+
+    /// Inject a session-task registry. Convenience over `backends(...)` that
+    /// initializes an in-memory backend bundle on first use, so embedders can
+    /// add the registry without assembling a full `RuntimeBackends`.
+    pub fn with_session_task_registry(
+        mut self,
+        registry: Arc<dyn everruns_core::session_task::SessionTaskRegistry>,
+    ) -> Self {
+        let backends = self
+            .backends
+            .take()
+            .unwrap_or_else(RuntimeBackends::in_memory);
+        self.backends = Some(backends.with_session_task_registry(registry));
+        self
+    }
+
+    /// Inject a per-org schedule store factory (see [`RuntimeBackends`]).
+    pub fn with_schedule_store_factory(
+        mut self,
+        factory: crate::backends::ScheduleStoreFactory,
+    ) -> Self {
+        let backends = self
+            .backends
+            .take()
+            .unwrap_or_else(RuntimeBackends::in_memory);
+        self.backends = Some(backends.with_schedule_store_factory(factory));
+        self
+    }
+
+    /// Inject a per-(org, session) platform store factory (see [`RuntimeBackends`]).
+    pub fn with_platform_store_factory(
+        mut self,
+        factory: crate::backends::PlatformStoreFactory,
+    ) -> Self {
+        let backends = self
+            .backends
+            .take()
+            .unwrap_or_else(RuntimeBackends::in_memory);
+        self.backends = Some(backends.with_platform_store_factory(factory));
         self
     }
 
@@ -483,6 +527,9 @@ impl InProcessRuntimeBuilder {
             file_store,
             storage_store: backends.storage_store,
             connection_resolver: backends.connection_resolver,
+            session_task_registry: backends.session_task_registry,
+            schedule_store_factory: backends.schedule_store_factory,
+            platform_store_factory: backends.platform_store_factory,
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
@@ -525,6 +572,9 @@ pub struct InProcessRuntime {
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    session_task_registry: Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>>,
+    schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
+    platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
     mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
     /// Non-fatal warnings collected during plugin compilation (see
@@ -1010,6 +1060,31 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn connection_resolver(&self) -> Option<Arc<dyn UserConnectionResolver>> {
         self.connection_resolver.clone()
+    }
+
+    fn session_task_registry(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>> {
+        self.session_task_registry.clone()
+    }
+
+    fn schedule_store(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionScheduleStore>> {
+        self.schedule_store_factory
+            .as_ref()
+            .map(|factory| factory(org_id))
+    }
+
+    fn platform_store(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::platform_store::PlatformStore>> {
+        self.platform_store_factory
+            .as_ref()
+            .map(|factory| factory(org_id, session_id))
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {

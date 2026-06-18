@@ -2747,6 +2747,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-local"
+version = "0.14.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "everruns-runtime",
+ "parking_lot",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid 1.23.3",
+]
+
+[[package]]
 name = "everruns-mai"
 version = "0.14.0"
 dependencies = [

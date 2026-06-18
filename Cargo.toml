@@ -16,6 +16,7 @@ members = [
     "crates/gemini",
     "crates/turbopuffer",
     "crates/internal-protocol",
+    "crates/local",
     "crates/cli",
     "crates/durable",
     "crates/config",

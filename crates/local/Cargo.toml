@@ -1,0 +1,40 @@
+[package]
+name = "everruns-local"
+publish = false
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Local, SQLite-backed runtime backend stores for embedded in-process Everruns hosts"
+
+[dependencies]
+# SQLite
+rusqlite = { version = "0.39", features = ["bundled"] }
+
+# Everruns crates
+everruns-core = { path = "../core" }
+everruns-runtime = { path = "../runtime" }
+
+# Async
+tokio = { workspace = true, features = ["rt", "time", "sync"] }
+async-trait.workspace = true
+
+# Sync
+parking_lot.workspace = true
+
+# Serialization
+serde_json.workspace = true
+
+# Types
+chrono.workspace = true
+uuid.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+tempfile.workspace = true
