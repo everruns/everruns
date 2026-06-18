@@ -175,4 +175,173 @@ impl Database {
                 .await?;
         Ok(rows)
     }
+
+    pub async fn list_knowledge_index_chunks(
+        &self,
+        index_id: Uuid,
+    ) -> Result<Vec<KnowledgeIndexChunkRow>> {
+        let rows = sqlx::query_as::<_, KnowledgeIndexChunkRow>(
+            "SELECT id, document_id, index_id, public_id, ordinal, text, location, token_count, created_at \
+             FROM knowledge_index_chunks WHERE index_id = $1 ORDER BY document_id, ordinal",
+        )
+        .bind(index_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    // ------------- Syncout pipeline -------------
+
+    /// Mark an index pending so the sync worker claims it. Idempotent: a
+    /// pending/syncing index is left unchanged.
+    pub async fn enqueue_knowledge_index_sync(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let sql = format!(
+            "UPDATE knowledge_indexes \
+             SET sync_status = 'pending', updated_at = NOW() \
+             WHERE org_id = $1 AND id = $2 AND status = 'active' \
+               AND sync_status NOT IN ('pending', 'syncing') \
+             RETURNING {INDEX_COLUMNS}"
+        );
+        if let Some(row) = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(org_id)
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await?
+        {
+            return Ok(Some(row));
+        }
+        // Already pending/syncing (idempotent) or not found: return current row.
+        self.get_knowledge_index_by_id(org_id, id).await
+    }
+
+    /// Claim the next index needing a sync (pending or a stale syncing claim).
+    pub async fn claim_next_knowledge_index_sync(&self) -> Result<Option<KnowledgeIndexRow>> {
+        let sql = format!(
+            "UPDATE knowledge_indexes \
+             SET sync_status = 'syncing', last_sync_error = NULL, updated_at = NOW() \
+             WHERE id = ( \
+                SELECT id FROM knowledge_indexes \
+                WHERE status = 'active' \
+                  AND ( \
+                    sync_status = 'pending' \
+                    OR (sync_status = 'syncing' AND updated_at < NOW() - INTERVAL '15 minutes') \
+                  ) \
+                ORDER BY updated_at ASC \
+                FOR UPDATE SKIP LOCKED \
+                LIMIT 1 \
+             ) \
+             RETURNING {INDEX_COLUMNS}"
+        );
+        let row = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row)
+    }
+
+    /// Atomically replace an index's documents + chunks and mark it synced.
+    /// Guarded by `claimed_at`; a stale claim returns None and changes nothing.
+    pub async fn complete_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: chrono::DateTime<chrono::Utc>,
+        documents: Vec<CreateKnowledgeIndexDocumentWithChunks>,
+        vector_dim: Option<i32>,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let mut tx = self.pool.begin().await?;
+
+        let sql = format!(
+            "UPDATE knowledge_indexes \
+             SET sync_status = 'synced', \
+                 last_synced_at = NOW(), \
+                 last_sync_error = NULL, \
+                 vector_dim = COALESCE($3, vector_dim), \
+                 updated_at = NOW() \
+             WHERE id = $1 AND updated_at = $2 AND sync_status = 'syncing' AND status = 'active' \
+             RETURNING {INDEX_COLUMNS}"
+        );
+        let index = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(index_id)
+            .bind(claimed_at)
+            .bind(vector_dim)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+        if index.is_none() {
+            tx.commit().await?;
+            return Ok(None);
+        }
+
+        // ON DELETE CASCADE drops chunks when their document is removed.
+        sqlx::query("DELETE FROM knowledge_index_documents WHERE index_id = $1")
+            .bind(index_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for doc in documents {
+            let chunk_count = doc.chunks.len() as i32;
+            let doc_id: Uuid = sqlx::query_scalar(
+                "INSERT INTO knowledge_index_documents \
+                    (index_id, public_id, source_uri, title, mime_type, content_hash, \
+                     size_bytes, chunk_count, last_seen_at) \
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING id",
+            )
+            .bind(index_id)
+            .bind(&doc.public_id)
+            .bind(&doc.source_uri)
+            .bind(&doc.title)
+            .bind(&doc.mime_type)
+            .bind(&doc.content_hash)
+            .bind(doc.size_bytes)
+            .bind(chunk_count)
+            .fetch_one(&mut *tx)
+            .await?;
+
+            for chunk in doc.chunks {
+                sqlx::query(
+                    "INSERT INTO knowledge_index_chunks \
+                        (document_id, index_id, public_id, ordinal, text, location, token_count) \
+                     VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                )
+                .bind(doc_id)
+                .bind(index_id)
+                .bind(&chunk.public_id)
+                .bind(chunk.ordinal)
+                .bind(&chunk.text)
+                .bind(&chunk.location)
+                .bind(chunk.token_count)
+                .execute(&mut *tx)
+                .await?;
+            }
+        }
+
+        tx.commit().await?;
+        Ok(index)
+    }
+
+    /// Mark an index's sync as failed, preserving previously indexed content.
+    /// Guarded by `claimed_at`; a stale claim returns None and changes nothing.
+    pub async fn fail_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: chrono::DateTime<chrono::Utc>,
+        error: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let sql = format!(
+            "UPDATE knowledge_indexes \
+             SET sync_status = 'failed', last_sync_error = $2, updated_at = NOW() \
+             WHERE id = $1 AND updated_at = $3 AND sync_status = 'syncing' AND status = 'active' \
+             RETURNING {INDEX_COLUMNS}"
+        );
+        let row = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(index_id)
+            .bind(error)
+            .bind(claimed_at)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row)
+    }
 }

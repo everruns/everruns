@@ -4,6 +4,7 @@
 use super::super::models::*;
 use super::{InMemoryDatabase, matches_search_tokens};
 use anyhow::{Result, bail};
+use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -198,5 +199,160 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|doc| std::cmp::Reverse(doc.created_at));
         Ok(result)
+    }
+
+    pub async fn list_knowledge_index_chunks(
+        &self,
+        index_id: Uuid,
+    ) -> Result<Vec<KnowledgeIndexChunkRow>> {
+        let mut result: Vec<_> = self
+            .knowledge_index_chunks
+            .read()
+            .values()
+            .filter(|chunk| chunk.index_id == index_id)
+            .cloned()
+            .collect();
+        result.sort_by_key(|a| (a.document_id, a.ordinal));
+        Ok(result)
+    }
+
+    // ------------- Syncout pipeline -------------
+
+    /// Mark an index pending so the sync worker claims it. Idempotent: a
+    /// pending/syncing index is left unchanged. Archived/deleted indexes are
+    /// rejected.
+    pub async fn enqueue_knowledge_index_sync(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let mut indexes = self.knowledge_indexes.write();
+        let Some(idx) = indexes.get_mut(&id) else {
+            return Ok(None);
+        };
+        if idx.org_id != org_id || idx.status != "active" {
+            return Ok(None);
+        }
+        if idx.sync_status != "pending" && idx.sync_status != "syncing" {
+            idx.sync_status = "pending".to_string();
+            idx.updated_at = Self::now();
+        }
+        Ok(Some(idx.clone()))
+    }
+
+    /// Claim the next index needing a sync (pending, or a stale syncing claim).
+    /// Flips it to `syncing` and returns the row (its `updated_at` is the claim
+    /// timestamp).
+    pub async fn claim_next_knowledge_index_sync(&self) -> Result<Option<KnowledgeIndexRow>> {
+        let mut indexes = self.knowledge_indexes.write();
+        let Some(idx) = indexes
+            .values_mut()
+            .filter(|idx| {
+                idx.status == "active"
+                    && (idx.sync_status == "pending"
+                        || (idx.sync_status == "syncing"
+                            && idx.updated_at < Self::now() - Duration::minutes(15)))
+            })
+            .min_by_key(|idx| idx.updated_at)
+        else {
+            return Ok(None);
+        };
+        idx.sync_status = "syncing".to_string();
+        idx.last_sync_error = None;
+        idx.updated_at = Self::now();
+        Ok(Some(idx.clone()))
+    }
+
+    /// Atomically replace an index's documents + chunks and mark it synced.
+    /// Guarded by `claimed_at`; a stale claim returns None and changes nothing.
+    pub async fn complete_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        documents: Vec<CreateKnowledgeIndexDocumentWithChunks>,
+        vector_dim: Option<i32>,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let now = Self::now();
+        let mut indexes = self.knowledge_indexes.write();
+        let Some(idx) = indexes.get_mut(&index_id) else {
+            return Ok(None);
+        };
+        if idx.status != "active" || idx.sync_status != "syncing" || idx.updated_at != claimed_at {
+            return Ok(None);
+        }
+
+        let mut docs = self.knowledge_index_documents.write();
+        let mut chunks = self.knowledge_index_chunks.write();
+        docs.retain(|_, doc| doc.index_id != index_id);
+        chunks.retain(|_, chunk| chunk.index_id != index_id);
+
+        for doc in documents {
+            let doc_id = Uuid::now_v7();
+            let chunk_count = doc.chunks.len() as i32;
+            docs.insert(
+                doc_id,
+                KnowledgeIndexDocumentRow {
+                    id: doc_id,
+                    index_id,
+                    public_id: doc.public_id,
+                    source_uri: doc.source_uri,
+                    title: doc.title,
+                    mime_type: doc.mime_type,
+                    content_hash: doc.content_hash,
+                    size_bytes: doc.size_bytes,
+                    chunk_count,
+                    last_seen_at: Some(now),
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+            for chunk in doc.chunks {
+                let chunk_id = Uuid::now_v7();
+                chunks.insert(
+                    chunk_id,
+                    KnowledgeIndexChunkRow {
+                        id: chunk_id,
+                        document_id: doc_id,
+                        index_id,
+                        public_id: chunk.public_id,
+                        ordinal: chunk.ordinal,
+                        text: chunk.text,
+                        location: chunk.location,
+                        token_count: chunk.token_count,
+                        created_at: now,
+                    },
+                );
+            }
+        }
+
+        idx.sync_status = "synced".to_string();
+        idx.last_synced_at = Some(now);
+        idx.last_sync_error = None;
+        if let Some(dim) = vector_dim {
+            idx.vector_dim = Some(dim);
+        }
+        idx.updated_at = now;
+        Ok(Some(idx.clone()))
+    }
+
+    /// Mark an index's sync as failed, preserving previously indexed content.
+    /// Guarded by `claimed_at`; a stale claim returns None and changes nothing.
+    pub async fn fail_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        let mut indexes = self.knowledge_indexes.write();
+        let Some(idx) = indexes.get_mut(&index_id) else {
+            return Ok(None);
+        };
+        if idx.status != "active" || idx.sync_status != "syncing" || idx.updated_at != claimed_at {
+            return Ok(None);
+        }
+        idx.sync_status = "failed".to_string();
+        idx.last_sync_error = Some(error.to_string());
+        idx.updated_at = Self::now();
+        Ok(Some(idx.clone()))
     }
 }

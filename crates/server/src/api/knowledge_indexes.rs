@@ -8,7 +8,7 @@ pub use crate::domains::knowledge_indexes::types::{
 };
 use crate::domains::knowledge_indexes::{
     CreateKnowledgeIndex, DeleteKnowledgeIndex, GetKnowledgeIndex, ListKnowledgeIndexDocuments,
-    ListKnowledgeIndexes, UpdateKnowledgeIndexCmd,
+    ListKnowledgeIndexes, SyncKnowledgeIndex, UpdateKnowledgeIndexCmd,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -59,6 +59,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/knowledge-indexes/{index_id}/documents",
             get(list_documents),
         )
+        .route("/v1/knowledge-indexes/{index_id}/sync", post(sync_index))
         .with_state(state)
 }
 
@@ -174,6 +175,30 @@ pub async fn delete_index(
         .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    description = "Enqueue a manual sync of a knowledge index.",
+    post,
+    path = "/v1/knowledge-indexes/{index_id}/sync",
+    params(("index_id" = String, Path, description = "Knowledge index ID")),
+    responses(
+        (status = 200, description = "Sync enqueued", body = KnowledgeIndexResponse),
+        (status = 400, description = "Knowledge index is archived", body = ErrorResponse),
+        (status = 404, description = "Knowledge index not found", body = ErrorResponse)
+    ),
+    tag = "knowledge_indexes"
+)]
+pub async fn sync_index(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(index_id): Path<String>,
+) -> ApiResult<KnowledgeIndexResponse> {
+    Ok(Json(
+        SyncKnowledgeIndex { index_id }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 #[utoipa::path(

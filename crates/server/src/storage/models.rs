@@ -1348,6 +1348,42 @@ pub struct KnowledgeIndexDocumentRow {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct KnowledgeIndexChunkRow {
+    pub id: Uuid,
+    pub document_id: Uuid,
+    pub index_id: Uuid,
+    pub public_id: String,
+    pub ordinal: i32,
+    pub text: String,
+    pub location: Option<serde_json::Value>,
+    pub token_count: Option<i32>,
+    pub created_at: DateTime<Utc>,
+}
+
+/// A chunk to persist during a sync pass. The `public_id` (`kchk_…`) is the
+/// stable citation id and the vector-store record key.
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeIndexChunkRow {
+    pub public_id: String,
+    pub ordinal: i32,
+    pub text: String,
+    pub location: Option<serde_json::Value>,
+    pub token_count: Option<i32>,
+}
+
+/// A document plus its chunks to persist atomically during a sync pass.
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeIndexDocumentWithChunks {
+    pub public_id: String,
+    pub source_uri: String,
+    pub title: Option<String>,
+    pub mime_type: Option<String>,
+    pub content_hash: Option<String>,
+    pub size_bytes: Option<i64>,
+    pub chunks: Vec<CreateKnowledgeIndexChunkRow>,
+}
+
 // ============================================
 // Session Git models (libgit2 custom ODB/refdb over PostgreSQL)
 // ============================================

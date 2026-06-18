@@ -1178,6 +1178,51 @@ impl StorageBackend {
         dispatch!(self, list_knowledge_index_documents, index_id)
     }
 
+    pub async fn list_knowledge_index_chunks(
+        &self,
+        index_id: Uuid,
+    ) -> Result<Vec<KnowledgeIndexChunkRow>> {
+        dispatch!(self, list_knowledge_index_chunks, index_id)
+    }
+
+    pub async fn enqueue_knowledge_index_sync(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, enqueue_knowledge_index_sync, org_id, id)
+    }
+
+    pub async fn claim_next_knowledge_index_sync(&self) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, claim_next_knowledge_index_sync)
+    }
+
+    pub async fn complete_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        documents: Vec<CreateKnowledgeIndexDocumentWithChunks>,
+        vector_dim: Option<i32>,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(
+            self,
+            complete_knowledge_index_sync,
+            index_id,
+            claimed_at,
+            documents,
+            vector_dim
+        )
+    }
+
+    pub async fn fail_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, fail_knowledge_index_sync, index_id, claimed_at, error)
+    }
+
     // ============================================
     // Pinned Sessions
     // ============================================

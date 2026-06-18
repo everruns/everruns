@@ -178,6 +178,7 @@ pub struct InMemoryDatabase {
     // Knowledge indexes (source-backed embedded collections — see specs/knowledge-indexes.md)
     knowledge_indexes: RwLock<HashMap<Uuid, KnowledgeIndexRow>>,
     knowledge_index_documents: RwLock<HashMap<Uuid, KnowledgeIndexDocumentRow>>,
+    knowledge_index_chunks: RwLock<HashMap<Uuid, KnowledgeIndexChunkRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -297,6 +298,7 @@ impl Default for InMemoryDatabase {
             knowledge_entries: RwLock::new(HashMap::new()),
             knowledge_indexes: RwLock::new(HashMap::new()),
             knowledge_index_documents: RwLock::new(HashMap::new()),
+            knowledge_index_chunks: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),

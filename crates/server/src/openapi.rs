@@ -272,6 +272,7 @@ use utoipa::OpenApi;
         api::knowledge_indexes::get_index,
         api::knowledge_indexes::update_index,
         api::knowledge_indexes::delete_index,
+        api::knowledge_indexes::sync_index,
         api::knowledge_indexes::list_documents,
         // Images
         api::images::upload_image,

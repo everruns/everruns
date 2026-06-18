@@ -370,6 +370,63 @@ impl Command for DeleteKnowledgeIndex {
 
 inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeIndex>() }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SyncKnowledgeIndex {
+    /// Knowledge index's prefixed public identifier.
+    pub index_id: String,
+}
+
+impl Command for SyncKnowledgeIndex {
+    type Output = KnowledgeIndexResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "sync_knowledge_index",
+            category: "knowledge_indexes",
+            description: "Enqueue a manual sync of a knowledge index.",
+            method: "POST",
+            path: "/v1/knowledge-indexes/{index_id}/sync",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("index_id")
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&KNOWLEDGE_INDEX_MANAGE)
+    }
+
+    fn output_schema() -> serde_json::Value {
+        output_schema_for::<KnowledgeIndexResponse>()
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<KnowledgeIndexResponse, CommandError> {
+        let id = parse_index_id(&self.index_id)?;
+        let existing = ctx
+            .db
+            .get_knowledge_index(ctx.org_id(), id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
+        // Archived/deleted indexes are not syncable per the lifecycle contract.
+        if existing.status != "active" {
+            return Err(CommandError::bad_request(
+                "Knowledge index is archived; restore it before syncing",
+            ));
+        }
+        let row = ctx
+            .db
+            .enqueue_knowledge_index_sync(ctx.org_id(), existing.id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
+        knowledge_index_response(row).map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<SyncKnowledgeIndex>() }
+
 // ============================================
 // Knowledge Index Documents (read-only; populated by the Syncout worker)
 // ============================================

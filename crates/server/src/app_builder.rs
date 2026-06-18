@@ -1810,7 +1810,7 @@ impl ServerAppBuilder {
                 let mut adapters = DirectWorkerAdapters::new(
                     db.clone(),
                     event_service.clone(),
-                    provider_resolver,
+                    provider_resolver.clone(),
                     mcp_server_service,
                     platform_definition.capability_registry().clone(),
                     platform_definition.driver_registry().clone(),
@@ -1936,7 +1936,19 @@ impl ServerAppBuilder {
         });
         crate::domains::memory::source_sync::spawn_memory_source_sync_task(
             db.clone(),
+            memory_connection_resolver.clone(),
+        );
+
+        // -- Knowledge Index Syncout (both prod and dev) --
+        // Reuses the same GitHub connection resolver as Memory sync, plus the
+        // shared provider resolver / driver registry (for embeddings) and the
+        // platform-selected vector store. See specs/knowledge-indexes.md.
+        crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
+            db.clone(),
             memory_connection_resolver,
+            provider_resolver.clone(),
+            driver_registry.clone(),
+            platform_definition.vector_store(),
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --
