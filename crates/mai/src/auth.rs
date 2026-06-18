@@ -21,6 +21,7 @@ use chrono::{DateTime, Duration, Utc};
 use everruns_core::driver_registry::DriverConfig;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::openai_protocol::AuthHeaderProvider;
+use everruns_core::validate_safe_url;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
@@ -33,6 +34,13 @@ pub const DEFAULT_ENTRA_SCOPE: &str = "https://cognitiveservices.azure.com/.defa
 /// Refresh a cached Entra token this long before it actually expires, so an
 /// in-flight request never races the expiry boundary.
 const TOKEN_REFRESH_SKEW: Duration = Duration::seconds(120);
+
+const ALLOWED_ENTRA_AUTHORITY_HOSTS: &[&str] = &[
+    // Public, US Government, and China cloud Microsoft Entra authorities.
+    "login.microsoftonline.com",
+    "login.microsoftonline.us",
+    "login.chinacloudapi.cn",
+];
 
 /// Authentication strategy for a Microsoft MAI provider.
 ///
@@ -200,14 +208,47 @@ impl EntraOAuthConfig {
             return Ok(None);
         }
 
-        serde_json::from_value::<EntraOAuthConfig>(extra.clone())
-            .map(Some)
-            .map_err(|e| {
-                AgentLoopError::llm(format!(
-                    "Invalid Microsoft Entra ID OAuth config in provider metadata: {e}. \
-                     Required fields: tenant_id, client_id, client_secret."
-                ))
-            })
+        let config = serde_json::from_value::<EntraOAuthConfig>(extra.clone()).map_err(|e| {
+            AgentLoopError::llm(format!(
+                "Invalid Microsoft Entra ID OAuth config in provider metadata: {e}. \
+                 Required fields: tenant_id, client_id, client_secret."
+            ))
+        })?;
+        config.validate_authority()?;
+        Ok(Some(config))
+    }
+
+    fn validate_authority(&self) -> Result<()> {
+        let url = validate_safe_url(&self.authority).map_err(|e| {
+            AgentLoopError::llm(format!(
+                "Invalid Microsoft Entra ID OAuth authority URL: {e}"
+            ))
+        })?;
+
+        if url.scheme() != "https" {
+            return Err(AgentLoopError::llm(
+                "Invalid Microsoft Entra ID OAuth authority URL: authority must use https",
+            ));
+        }
+
+        let host = url.host_str().unwrap_or_default().to_ascii_lowercase();
+        if !ALLOWED_ENTRA_AUTHORITY_HOSTS.contains(&host.as_str()) {
+            return Err(AgentLoopError::llm(format!(
+                "Invalid Microsoft Entra ID OAuth authority URL: unsupported authority host {host}"
+            )));
+        }
+
+        if url.port().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err(AgentLoopError::llm(
+                "Invalid Microsoft Entra ID OAuth authority URL: authority must be an https origin without port, path, query, or fragment",
+            ));
+        }
+
+        Ok(())
     }
 
     /// The token endpoint URL for this tenant.
@@ -255,7 +296,10 @@ impl EntraOAuthProvider {
     pub fn new(config: EntraOAuthConfig) -> Self {
         Self {
             config,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("MAI OAuth HTTP client configuration is valid"),
             cache: Mutex::new(None),
         }
     }
@@ -436,6 +480,79 @@ mod tests {
                 );
             }
             other => panic!("expected EntraOAuth, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn oauth_authority_rejects_localhost_and_private_hosts() {
+        for authority in [
+            "http://127.0.0.1:39991",
+            "https://127.0.0.1",
+            "https://localhost",
+            "https://169.254.169.254",
+            "https://10.0.0.5",
+            "https://192.168.1.10",
+        ] {
+            let credential = serde_json::json!({
+                "tenant_id": "tenant",
+                "client_id": "client",
+                "client_secret": "secret",
+                "authority": authority,
+            })
+            .to_string();
+
+            let err = MaiAuth::from_driver_config(&driver_config(Some(&credential), None))
+                .expect_err("unsafe authority must be rejected");
+            assert!(
+                err.to_string().contains("OAuth authority URL"),
+                "{authority}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_authority_rejects_non_entra_origins_and_url_components() {
+        for authority in [
+            "https://example.com",
+            "https://login.microsoftonline.com:444",
+            "https://login.microsoftonline.com/path",
+            "https://login.microsoftonline.com?query=1",
+            "https://login.microsoftonline.com#fragment",
+        ] {
+            let extra = serde_json::json!({
+                "tenant_id": "tenant",
+                "client_id": "client",
+                "client_secret": "secret",
+                "authority": authority,
+            });
+
+            let err = MaiAuth::from_driver_config(&driver_config(None, Some(extra)))
+                .expect_err("unsupported authority must be rejected");
+            assert!(
+                err.to_string().contains("OAuth authority URL"),
+                "{authority}: {err}"
+            );
+        }
+    }
+
+    #[test]
+    fn oauth_authority_accepts_microsoft_entra_origins() {
+        for authority in [
+            DEFAULT_ENTRA_AUTHORITY,
+            "https://login.microsoftonline.us",
+            "https://login.chinacloudapi.cn",
+        ] {
+            let credential = serde_json::json!({
+                "tenant_id": "tenant",
+                "client_id": "client",
+                "client_secret": "secret",
+                "authority": authority,
+            })
+            .to_string();
+
+            let auth = MaiAuth::from_driver_config(&driver_config(Some(&credential), None))
+                .expect("supported Microsoft authority should be accepted");
+            assert!(matches!(auth, MaiAuth::EntraOAuth(_)));
         }
     }
 
