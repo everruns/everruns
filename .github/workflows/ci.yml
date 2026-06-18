@@ -615,8 +615,9 @@ jobs:
 
       # Blob-offload suite against the in-memory object_store backend (no S3
       # container). Exercises the same offload code paths the S3 job covers,
-      # giving every PostgreSQL PR coverage of the offload invariants without a
-      # service container. The dedicated `s3-integration-test` job re-runs the
+      # giving every PostgreSQL PR coverage of the offload invariants without an
+      # S3/MinIO container (the PostgreSQL service container is still used). The
+      # dedicated `s3-integration-test` job re-runs the
       # identical suite with STORAGE_BLOB_BACKEND=s3 against MinIO.
       - name: Run blob offload integration tests (in-memory backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1

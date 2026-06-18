@@ -30,7 +30,7 @@
 
 mod test_harness;
 
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use serde_json::json;
 use sqlx::PgPool;
@@ -55,17 +55,28 @@ const TEST_ORG_ID: i64 = 1;
 /// object_store's in-memory backend, which exercises the identical offload code
 /// path with no network dependency. The same test body therefore validates both
 /// backends.
+///
+/// The store is built once per test binary and shared: in the in-memory path a
+/// fresh store per call would mean the assertion reads (e.g. "object exists
+/// after write") observe a *different* store than the one attached to the
+/// `Database`, so they would always fail. Tests run serially
+/// (`--test-threads=1`) with unique per-test ids, so sharing one store is safe.
 fn blob_store_under_test() -> SharedBlobStore {
-    let backend = std::env::var("STORAGE_BLOB_BACKEND").unwrap_or_default();
-    if backend == "s3" {
-        let config = BlobStoreConfig::from_env()
-            .expect("STORAGE_BLOB_BACKEND=s3 requires STORAGE_S3_* configuration");
-        let store = ObjectStoreBlobStore::s3_from_config(&config)
-            .expect("failed to build S3 blob store from STORAGE_S3_* configuration");
-        Arc::new(store)
-    } else {
-        Arc::new(ObjectStoreBlobStore::in_memory())
-    }
+    static STORE: OnceLock<SharedBlobStore> = OnceLock::new();
+    STORE
+        .get_or_init(|| {
+            let backend = std::env::var("STORAGE_BLOB_BACKEND").unwrap_or_default();
+            if backend == "s3" {
+                let config = BlobStoreConfig::from_env()
+                    .expect("STORAGE_BLOB_BACKEND=s3 requires STORAGE_S3_* configuration");
+                let store = ObjectStoreBlobStore::s3_from_config(&config)
+                    .expect("failed to build S3 blob store from STORAGE_S3_* configuration");
+                Arc::new(store) as SharedBlobStore
+            } else {
+                Arc::new(ObjectStoreBlobStore::in_memory()) as SharedBlobStore
+            }
+        })
+        .clone()
 }
 
 /// Create a PostgreSQL-backed storage backend with the offload blob store
@@ -103,7 +114,10 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: format!("blob-offload-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                // Full UUID, not a truncated prefix: the leading chars of a v7
+                // UUID are shared timestamp bits, so a truncated prefix collides
+                // for agents created in the same window (unique (org_id, name)).
+                name: format!("blob-offload-agent-{}", Uuid::now_v7()),
                 display_name: Some("Blob Offload Agent".to_string()),
                 description: None,
                 system_prompt: "Test".to_string(),
