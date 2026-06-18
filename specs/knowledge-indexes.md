@@ -154,6 +154,20 @@ Backends:
   vector + BM25 engine. Multitenancy is first-class: each index is its own
   **namespace**, org-prefixed for isolation.
 
+Turbopuffer is **opt-in** and lives in the `everruns-turbopuffer` crate. The
+in-memory store stays the default; the server activates Turbopuffer only when
+`TURBOPUFFER_API_KEY` is set (regional endpoint via `TURBOPUFFER_BASE_URL`,
+defaulting to a sensible region). The backend maps each `index_namespace`
+string onto one Turbopuffer namespace (namespace-per-index), enables ANN + BM25
+via the upsert schema, and serves hybrid queries with a server-side
+multi-query + reciprocal-rank-fusion (`rerank_by: ["RRF"]`). `$dist` is
+normalized to `VectorMatch.score` so ordering is best-first regardless of mode:
+raw ANN `cosine_distance` (lower is closer) is negated, while BM25 and RRF
+relevance scores (higher is better) pass through. Turbopuffer hosts
+(`*.turbopuffer.com`) are on the embedded system egress allowlist so outbound
+sync calls are permitted when the allowlist is enabled. The API key is sent only
+in the `Authorization` header and never logged or surfaced in errors.
+
 ### Multitenancy and naming
 
 The store is **multitenant and multi-index** by construction:

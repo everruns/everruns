@@ -2895,6 +2895,7 @@ dependencies = [
  "everruns-mcp",
  "everruns-sdk",
  "everruns-session-sqldb",
+ "everruns-turbopuffer",
  "everruns-worker",
  "flate2",
  "fred",
@@ -2962,6 +2963,22 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid 1.23.3",
+]
+
+[[package]]
+name = "everruns-turbopuffer"
+version = "0.13.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-core",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wiremock",
 ]
 
 [[package]]

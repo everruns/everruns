@@ -270,6 +270,7 @@ jobs:
             -p everruns-core \
             -p everruns-openai \
             -p everruns-anthropic \
+            -p everruns-turbopuffer \
             -p everruns-integrations-duckduckgo \
             -p everruns-integrations-github \
             -p everruns-integrations-daytona \
@@ -335,6 +336,9 @@ jobs:
       - name: Run pure unit tests
         run: |
           cargo test -p everruns-anthropic -p everruns-openai -p everruns-gemini -p everruns-internal-protocol -p everruns-core --lib --all-features
+          # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
+          # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
+          cargo test -p everruns-turbopuffer --lib
           cargo test -p everruns-runtime --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
           # Lua code-mode capability: compiles the mlua engine (`lua` feature) and
           # exercises the end-to-end routing contract + runnable example.
