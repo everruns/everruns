@@ -458,7 +458,12 @@ where
         return 0;
     }
     let ttl = chrono::Duration::seconds(input.retention_ttl_seconds);
-    match prune(ttl, input.retention_limit).await {
+    // Never hand a non-positive batch size to the destructive prune: a
+    // misconfigured/legacy input must not become an unbounded delete (Postgres
+    // treats `LIMIT <= 0` as unlimited). The storage backend also clamps and
+    // caps; this keeps the worker path self-bounding. EVE-580 review.
+    let limit = input.retention_limit.max(1);
+    match prune(ttl, limit).await {
         Ok(pruned) => {
             if pruned > 0 {
                 info!(
@@ -983,6 +988,31 @@ mod tests {
         let (ttl, limit) = seen.lock().unwrap().unwrap();
         assert_eq!(ttl, chrono::Duration::seconds(3600));
         assert_eq!(limit, 25);
+    }
+
+    #[tokio::test]
+    async fn retention_pass_clamps_non_positive_limit_to_one() {
+        // A misconfigured non-positive batch must never reach the destructive
+        // prune as `<= 0` (Postgres treats LIMIT <= 0 as unlimited). EVE-580.
+        for bad in [0_i64, -1, i64::MIN] {
+            let input = SessionTaskReaperInput {
+                retention_ttl_seconds: 3600,
+                retention_limit: bad,
+                ..Default::default()
+            };
+            let seen = Arc::new(Mutex::new(None));
+            let seen_clone = seen.clone();
+            run_retention_pass(&input, move |_ttl, limit| {
+                *seen_clone.lock().unwrap() = Some(limit);
+                async move { std::result::Result::<usize, &str>::Ok(0) }
+            })
+            .await;
+            assert_eq!(
+                seen.lock().unwrap().unwrap(),
+                1,
+                "non-positive retention_limit {bad} must be clamped to a positive batch"
+            );
+        }
     }
 
     #[tokio::test]

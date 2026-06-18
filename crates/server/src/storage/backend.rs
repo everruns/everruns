@@ -20,6 +20,12 @@ use super::models::*;
 use super::repositories::Database;
 use crate::api::common::Pagination;
 
+/// Hard upper bound on a single retention-prune batch (EVE-580). Caps the
+/// destructive `prune_terminal_session_tasks_with_artifacts` regardless of
+/// caller input so a misconfigured limit can never request an unbounded or
+/// oversized delete; large backlogs drain over successive reaper ticks.
+const MAX_RETENTION_PRUNE_LIMIT: i64 = 1000;
+
 /// Helper macro to dispatch method calls to the appropriate backend.
 ///
 /// This reduces the repetitive match pattern from 4 lines to 1 line per method.
@@ -3181,6 +3187,13 @@ impl StorageBackend {
         ttl: chrono::Duration,
         limit: i64,
     ) -> Result<usize> {
+        // Defensive bound on a destructive query. Postgres treats `LIMIT <= 0`
+        // (a negative value) as unbounded (`LIMIT ALL`), so a misconfigured or
+        // legacy caller passing `limit <= 0` could turn this bounded retention
+        // pass into an unlimited delete. Clamp to a positive, capped batch here
+        // — the single chokepoint every caller (Direct adapter + gRPC handler)
+        // funnels through — regardless of the caller's input. EVE-580 review.
+        let limit = limit.clamp(1, MAX_RETENTION_PRUNE_LIMIT);
         let cutoff = chrono::Utc::now() - ttl;
         let pruned = self.prune_terminal_session_tasks(cutoff, limit).await?;
 
