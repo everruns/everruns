@@ -30,6 +30,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/tool-execution.md` - Tool types and execution flow
+- `specs/tool-narration.md` - Backend-authored, argument-aware narration for common tool families
 - `specs/tool-output-distillation.md` - Content-aware distillation of large non-exec tool results at capture time
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/guardrails.md` - Guardrails (capability-based output/tool-call checks)
@@ -57,6 +58,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
 - `specs/workspace.md` - Session workspace (file surface + tables)
 - `specs/file-store.md` - Pluggable `SessionFileStore` backends
+- `specs/object-storage.md` - Optional S3-compatible blob backend for file/image content
 - `specs/session-sqldb.md` - Session-scoped SQL databases
 - `specs/session-export.md` - Session export to JSONL
 - `specs/knowledge-bases.md` - Curated organization knowledge

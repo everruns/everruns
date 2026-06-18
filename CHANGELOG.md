@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.14.0] - 2026-06-17
+
+### Highlights
+
+- **Microsoft MAI Provider** - New Azure AI Foundry integration with OAuth authentication, bringing Microsoft's MAI model family to the provider ecosystem ([#2269](https://github.com/everruns/everruns/pull/2269)).
+- **S3-Compatible Object Storage** - Optional S3-compatible blob backend for file attachments, enabling flexible deployment with external storage ([#2286](https://github.com/everruns/everruns/pull/2286)).
+- **Org-Level Default Provider Resolution** - Configure per-service default providers at the organization level for more precise routing control ([#2288](https://github.com/everruns/everruns/pull/2288)).
+- **LLM-as-Judge Online Scorer** - Automatic quality scoring of production sessions using LLM evaluation for continuous observability ([#2263](https://github.com/everruns/everruns/pull/2263)).
+
+### What's Changed
+
+- refactor(narration): tool-owned narration with capability default ([#2289](https://github.com/everruns/everruns/pull/2289)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): org-level default-provider-per-service resolution tier ([#2288](https://github.com/everruns/everruns/pull/2288)) by [@chaliy](https://github.com/chaliy)
+- feat(storage): optional S3-compatible object-storage blob backend ([#2286](https://github.com/everruns/everruns/pull/2286)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): populate token usage in health-check summary ([#2287](https://github.com/everruns/everruns/pull/2287)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): show latest health-check run on agent editor mount ([#2285](https://github.com/everruns/everruns/pull/2285)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): reap interrupted agent health-check runs ([#2281](https://github.com/everruns/everruns/pull/2281)) by [@chaliy](https://github.com/chaliy)
+- feat(infinity-context): load head+tail so task anchor survives long histories ([#2278](https://github.com/everruns/everruns/pull/2278)) by [@chaliy](https://github.com/chaliy)
+- fix(drivers): preserve agent system prompt with multiple system messages ([#2279](https://github.com/everruns/everruns/pull/2279)) by [@chaliy](https://github.com/chaliy)
+- feat(mai): add Microsoft MAI provider (Azure AI Foundry) with OAuth ([#2269](https://github.com/everruns/everruns/pull/2269)) by [@chaliy](https://github.com/chaliy)
+- feat(observers): LLM-as-judge scorer for online scoring ([#2263](https://github.com/everruns/everruns/pull/2263)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): improve MCP OAuth consent page by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): add attribution headers by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): honor provider rate limit reset by [@chaliy](https://github.com/chaliy)
+- fix(web-fetch): block cross-host redirects under system allowlist ([#2249](https://github.com/everruns/everruns/pull/2249)) by [@chaliy](https://github.com/chaliy)
+- fix(core): keep DNS pinning inside egress policy ([#2239](https://github.com/everruns/everruns/pull/2239)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reserve active turn slots ([#2251](https://github.com/everruns/everruns/pull/2251)) by [@chaliy](https://github.com/chaliy)
+- fix(core): prevent orphaned A2A background runs ([#2241](https://github.com/everruns/everruns/pull/2241)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): make run cap enforcement atomic ([#2252](https://github.com/everruns/everruns/pull/2252)) by [@chaliy](https://github.com/chaliy)
+- fix(feature-flags): enforce org-scoped runtime gates ([#2250](https://github.com/everruns/everruns/pull/2250)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): bound stale tool cache serving ([#2248](https://github.com/everruns/everruns/pull/2248)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): bound MCP discovery cache ([#2247](https://github.com/everruns/everruns/pull/2247)) by [@chaliy](https://github.com/chaliy)
+- fix(core): bound tool output distillation work ([#2245](https://github.com/everruns/everruns/pull/2245)) by [@chaliy](https://github.com/chaliy)
+- fix(plugins): cap full tarball extraction size ([#2244](https://github.com/everruns/everruns/pull/2244)) by [@chaliy](https://github.com/chaliy)
+- fix(core): prevent raw error details in fallback text ([#2243](https://github.com/everruns/everruns/pull/2243)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): cap preview check findings ([#2242](https://github.com/everruns/everruns/pull/2242)) by [@chaliy](https://github.com/chaliy)
+- fix(security): reserve internal session kv keys ([#2237](https://github.com/everruns/everruns/pull/2237)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): preserve A2A reattach network ACL ([#2236](https://github.com/everruns/everruns/pull/2236)) by [@chaliy](https://github.com/chaliy)
+- fix(server): fail closed on missing task harness ACL ([#2235](https://github.com/everruns/everruns/pull/2235)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): enforce workspace write boundary on legacy alias ([#2234](https://github.com/everruns/everruns/pull/2234)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): gate health checks on session limits ([#2232](https://github.com/everruns/everruns/pull/2232)) by [@chaliy](https://github.com/chaliy)
+- fix(core): keep base system prompt before capabilities by [@chaliy](https://github.com/chaliy)
+
 ## [0.13.0] - 2026-06-15
 
 ### Highlights

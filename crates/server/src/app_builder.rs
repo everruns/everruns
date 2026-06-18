@@ -350,6 +350,12 @@ impl ServerAppBuilder {
                 .context("Failed to connect to database")?;
             tracing::info!("Connected to PostgreSQL database");
 
+            // Optional S3-compatible blob backend for file/image content offload
+            // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
+            let blob_store = crate::storage::blob_store::blob_store_from_env()
+                .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
+            let backend = backend.with_blob_store(blob_store);
+
             if !self.config.no_migrations {
                 tracing::info!("Running database migrations...");
                 let pool = backend.pool().expect("PostgreSQL backend should have pool");
@@ -1873,6 +1879,19 @@ impl ServerAppBuilder {
             tokio::spawn(async move {
                 dispatcher.recover(recovery_enc.as_ref()).await;
             });
+        }
+
+        // -- Agent health-check reaper (both prod and dev) --
+        // A previous process may have died mid-run, leaving health-check rows
+        // stuck in `running`/`pending` forever (a user-visible perpetual
+        // spinner). A fresh process has no run in flight, so transition every
+        // such orphan to `failed` on boot. See specs/agent-checks.md and EVE-586.
+        match db.reap_running_agent_health_check_runs().await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "Reaped interrupted agent health-check runs"),
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to reap interrupted agent health-check runs")
+            }
         }
 
         // -- Durable task scheduler (both prod and dev) --

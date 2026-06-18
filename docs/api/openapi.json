@@ -829,6 +829,48 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/health-checks/latest": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/health-checks/latest - Latest run + stale flag",
+        "operationId": "get_latest_health_check",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Latest health check run with stale-config flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LatestHealthCheckRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/health-checks/{run_id}": {
       "get": {
         "tags": [
@@ -19218,6 +19260,12 @@
             ],
             "description": "Set when the case errored or timed out instead of completing."
           },
+          "input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Input tokens for this case: the agent session turns plus the judge call.",
+            "minimum": 0
+          },
           "judge_reason": {
             "type": "string",
             "description": "LLM judge explanation."
@@ -19229,6 +19277,12 @@
           },
           "name": {
             "type": "string"
+          },
+          "output_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Output tokens for this case: the agent session turns plus the judge call.",
+            "minimum": 0
           },
           "passed": {
             "type": "boolean",
@@ -20131,6 +20185,30 @@
             ],
             "format": "int32",
             "description": "Embedding dimension, recorded on first successful sync."
+          }
+        }
+      },
+      "LatestHealthCheckRun": {
+        "type": "object",
+        "description": "The most recent health-check run for an agent, paired with whether the\nagent's current resolved config differs from the config that run was\nexecuted against. Returned by the latest-run endpoint so the agent editor\ncan show prior results on mount without triggering a new run, and surface a\n\"config changed since last run\" hint. See specs/agent-checks.md and EVE-588.",
+        "required": [
+          "config_changed"
+        ],
+        "properties": {
+          "config_changed": {
+            "type": "boolean",
+            "description": "True when `run` exists but was executed against a different resolved\nconfig than the agent currently has (UI shows a re-run hint)."
+          },
+          "run": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HealthCheckRun",
+                "description": "The latest run, or `None` if the agent has never been health-checked."
+              }
+            ]
           }
         }
       },
@@ -21994,6 +22072,7 @@
               "required": [
                 "id",
                 "name",
+                "default_provider_per_service",
                 "created_at",
                 "updated_at"
               ],
@@ -22023,6 +22102,16 @@
                     "null"
                   ],
                   "description": "Default LLM model for the organization."
+                },
+                "default_provider_per_service": {
+                  "type": "object",
+                  "description": "Org-level default provider per service (EVE-569), keyed by service kind.\nEmpty when no org defaults are configured.",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "propertyNames": {
+                    "type": "string"
+                  }
                 },
                 "id": {
                   "type": "string",
@@ -25472,6 +25561,7 @@
         "required": [
           "id",
           "name",
+          "default_provider_per_service",
           "created_at",
           "updated_at"
         ],
@@ -25501,6 +25591,16 @@
               "null"
             ],
             "description": "Default LLM model for the organization."
+          },
+          "default_provider_per_service": {
+            "type": "object",
+            "description": "Org-level default provider per service (EVE-569), keyed by service kind.\nEmpty when no org defaults are configured.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "id": {
             "type": "string",
@@ -32294,6 +32394,19 @@
             ],
             "description": "Default LLM model for this organization. Must be an enabled model.",
             "example": "model_01933b5a00007000800000000000001"
+          },
+          "default_provider_per_service": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Org-level default provider per service (EVE-569). Maps a service kind\n(`chat`, `embeddings`, `realtime`, `images`, `rerank`) to the provider id\nused as that service's default, consulted after an explicit binding and\nbefore the single-active-provider fallback. When present it **replaces**\nthe whole map; each referenced provider must exist in the org.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "name": {
             "type": [

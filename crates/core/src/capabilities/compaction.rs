@@ -17,11 +17,12 @@ use crate::events::TokenUsage;
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 /// Capability ID for compaction.
 pub const COMPACTION_CAPABILITY_ID: &str = "compaction";
+const MAX_RELATED_RECENT_READ_RESULTS: usize = 4;
 
 /// Compaction strategy selection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -968,8 +969,13 @@ fn apply_cost_control_masking_owned(
 
     let keep_recent = cost_config.keep_recent_tool_results;
     let to_mask_count = tool_indices.len().saturating_sub(keep_recent);
-    let indices_to_mask: std::collections::HashSet<usize> =
-        tool_indices[..to_mask_count].iter().copied().collect();
+    let related_recent_reads =
+        related_recent_paginated_read_results(&messages, &tool_indices, keep_recent);
+    let indices_to_mask: HashSet<usize> = tool_indices[..to_mask_count]
+        .iter()
+        .copied()
+        .filter(|index| !related_recent_reads.contains(index))
+        .collect();
     let tool_names: std::collections::HashMap<usize, String> = indices_to_mask
         .iter()
         .map(|index| {
@@ -1035,6 +1041,76 @@ fn is_protected_message_tool_result(messages: &[Message], tool_msg: &Message) ->
     }
     let tool_name = find_message_tool_call_name(messages, tool_msg);
     PROTECTED_TOOL_NAMES.contains(&tool_name.as_str())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ReadResultKey {
+    tool_name: String,
+    path: String,
+    content_hash: String,
+}
+
+fn related_recent_paginated_read_results(
+    messages: &[Message],
+    tool_indices: &[usize],
+    keep_recent: usize,
+) -> HashSet<usize> {
+    if keep_recent == 0 || tool_indices.len() <= keep_recent {
+        return HashSet::new();
+    }
+
+    let keep_start = tool_indices.len().saturating_sub(keep_recent);
+    let recent_keys: HashSet<ReadResultKey> = tool_indices[keep_start..]
+        .iter()
+        .filter_map(|index| paginated_read_result_key(messages, &messages[*index]))
+        .collect();
+    if recent_keys.is_empty() {
+        return HashSet::new();
+    }
+
+    let mut protected = HashSet::new();
+    for index in tool_indices[..keep_start].iter().rev() {
+        let Some(key) = paginated_read_result_key(messages, &messages[*index]) else {
+            break;
+        };
+        if !recent_keys.contains(&key) {
+            break;
+        }
+        protected.insert(*index);
+        if protected.len() >= MAX_RELATED_RECENT_READ_RESULTS {
+            break;
+        }
+    }
+    protected
+}
+
+fn paginated_read_result_key(messages: &[Message], tool_msg: &Message) -> Option<ReadResultKey> {
+    let tool_name = find_message_tool_call_name(messages, tool_msg);
+    if !is_read_file_tool_name(&tool_name) {
+        return None;
+    }
+    let value = tool_msg.tool_result_content()?.result.as_ref()?;
+    let object = value.as_object()?;
+    object.get("lines_shown").and_then(|v| v.as_object())?;
+    Some(ReadResultKey {
+        tool_name,
+        path: object.get("path")?.as_str()?.to_string(),
+        content_hash: object.get("content_hash")?.as_str()?.to_string(),
+    })
+}
+
+fn is_read_file_tool_name(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "read_file"
+            | "daytona_read_file"
+            | "sandbox_read_file"
+            | "e2b_read_file"
+            | "docker_read_file"
+            | "deno_read_file"
+            | "sprites_read_file"
+            | "read_github_file"
+    )
 }
 
 fn find_message_tool_call_name(messages: &[Message], tool_msg: &Message) -> String {
@@ -1113,8 +1189,7 @@ fn summarize_tool_result(
     };
 
     match tool_name {
-        "read_file" | "daytona_read_file" | "sandbox_read_file" | "e2b_read_file"
-        | "docker_read_file" | "deno_read_file" | "sprites_read_file" | "read_github_file" => {
+        tool_name if is_read_file_tool_name(tool_name) => {
             summarize_read_file_result(tool_name, object, value)
         }
         "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
@@ -1854,6 +1929,69 @@ mod tests {
             .tool_result_content()
             .unwrap();
         assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
+    }
+
+    #[test]
+    fn test_cost_control_keeps_recent_paginated_read_group() {
+        let mut messages = vec![Message::user("inspect saved output")];
+        messages.extend(make_message_tool_turn(
+            "call_bash",
+            "bash",
+            json!({
+                "stdout": "old command output",
+                "stderr": "",
+                "exit_code": 0,
+                "success": true
+            }),
+        ));
+        messages.extend(make_message_tool_turn(
+            "call_read_first",
+            "read_file",
+            json!({
+                "path": "/workspace/outputs/call_123.stdout",
+                "content": "first page\n".repeat(200),
+                "total_lines": 400,
+                "lines_shown": {"start": 1, "end": 200},
+                "truncated": true,
+                "content_hash": "sha256:same-output",
+                "truncation": {"truncated": true, "next_offset": 200, "reason": "line_cap"}
+            }),
+        ));
+        messages.extend(make_message_tool_turn(
+            "call_read_second",
+            "read_file",
+            json!({
+                "path": "/workspace/outputs/call_123.stdout",
+                "content": "second page\n".repeat(200),
+                "total_lines": 400,
+                "lines_shown": {"start": 201, "end": 400},
+                "truncated": false,
+                "content_hash": "sha256:same-output"
+            }),
+        ));
+
+        let config = CompactionConfig::from_json(&json!({
+            "cost_control": {
+                "keep_recent_tool_results": 1,
+                "mask_after_tool_results": 2
+            }
+        }));
+        let result = build_model_view_messages(&messages, &config, None);
+
+        assert_eq!(result.masked_count, 1);
+        let bash_result = result.messages[2].tool_result_content().unwrap();
+        assert_eq!(bash_result.result.as_ref().unwrap()["masked"], true);
+        let first_page = result.messages[4].tool_result_content().unwrap();
+        assert!(first_page.result.as_ref().unwrap().get("content").is_some());
+        let second_page = result.messages[6].tool_result_content().unwrap();
+        assert!(
+            second_page
+                .result
+                .as_ref()
+                .unwrap()
+                .get("content")
+                .is_some()
+        );
     }
 
     #[test]

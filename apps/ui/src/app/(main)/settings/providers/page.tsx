@@ -15,6 +15,7 @@ import type { Provider } from "@/lib/api/types";
 
 import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { AddProviderDialog, SetApiKeyDialog } from "./provider-dialogs";
+import { ServiceDefaultsCard } from "./service-defaults-card";
 
 export default function ProvidersPage() {
   usePageTitle("LLM Providers", "Settings");
@@ -152,6 +153,8 @@ export default function ProvidersPage() {
           </div>
         )}
       </section>
+
+      {providers.length > 0 && <ServiceDefaultsCard providers={providers} />}
 
       <AddProviderDialog open={addProviderOpen} onOpenChange={setAddProviderOpen} />
       <SetApiKeyDialog

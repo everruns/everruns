@@ -229,6 +229,21 @@ pub struct E2BExecTool;
 
 #[async_trait]
 impl Tool for E2BExecTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("E2B");
+        Some(everruns_core::tool_narration::narrate_shell_exec(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "e2b_exec"
     }

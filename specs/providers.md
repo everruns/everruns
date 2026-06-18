@@ -130,7 +130,7 @@ resolve_service(org, ServiceKind, binding) -> (ProviderConnection, service clien
 
 Selection: explicit `provider_id` on the consumer's binding (e.g. the voice connection's `provider_id` field) wins; otherwise an org-level default provider per service; otherwise the single active provider whose driver declares the service. "First active provider matching a type string" — the old voice behavior — is removed. Resolution failures surface structured "no provider configured for {service}" errors, fail-closed.
 
-Implemented today: the explicit-binding tier (validated against the driver's declared services) and the active-provider-declaring-service tier. The org-default-per-service tier is not built yet (no consumer needs it). Voice realtime currently calls `resolve_service(org, Realtime, None)` — a per-connection provider binding is not plumbed, so it resolves the single realtime-capable provider; the binding parameter exists for when that selection lands.
+All three tiers are implemented. The org-default-per-service tier reads an org-settings map (`organization_settings.default_provider_per_service`, `ServiceKind` → provider id) set via `PATCH /v1/orgs/{org}` (`default_provider_per_service`). It is consulted only when no explicit binding is supplied, and it is fail-closed: a configured default that is missing, inactive, or whose driver does not declare the service errors rather than falling through to the active-provider scan. An unset default for a service falls through to that scan as before. Voice realtime currently calls `resolve_service(org, Realtime, None)` — a per-connection provider binding is not plumbed, so it relies on the org default (or the single realtime-capable provider); the binding parameter exists for when that selection lands.
 
 Consumers and their paths:
 
@@ -212,7 +212,7 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 1. **Core domain types and registry** — `ServiceKind`, driver descriptor with credential schema and service factories (building on `DriverConfig`/`External` from EVE-561), `ChatDriver` rename, profile keys. No DB change.
 2. **DB + storage rename** — migrations, storage traits, repositories, seeds, resolver rename, `profile_key` backfill.
 3. **API + UI rename** — routes, OpenAPI, UI pages/hooks/clients, profile catalog endpoint, picker grouping.
-4. ✅ **Service resolution** — `resolve_service(org, ServiceKind, binding)` (explicit-binding and active-provider-declaring-service tiers), voice realtime rerouted through it (`ServiceKind::Realtime`, fail-closed). The org-level default-provider-per-service tier is deferred — no consumer requires it yet (chat already has `default_model_id`; voice resolves the single realtime-capable provider).
+4. ✅ **Service resolution** — `resolve_service(org, ServiceKind, binding)` (all three tiers: explicit binding, org-level default-provider-per-service, and active-provider-declaring-service), voice realtime rerouted through it (`ServiceKind::Realtime`, fail-closed). The org default-per-service tier (EVE-569) is stored on `organization_settings.default_provider_per_service` and editable via the org PATCH API + Settings → Providers.
 5. **Connector alignment** — shared credential primitives, `ConnectorPlugin` rename.
 6. ✅ **First new service** — `EmbeddingsDriver` + knowledge-base hybrid retrieval configuration (closes the open question in `specs/knowledge-bases.md`).
 
@@ -232,14 +232,16 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 ## Source Index
 
-Until the refactor lands, current implementations live at:
+The refactor has landed; current implementations live at:
 
-- `crates/core/src/llm_models.rs` — entity types (to become `Provider`/`Model`/`ModelProfile`)
-- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry`
-- `crates/core/src/llm_model_profiles.rs` — built-in profile data
-- `crates/server/src/services/llm_resolver.rs` — fail-closed resolution
+- `crates/core/src/provider.rs` — `Provider` entity + `DriverId`
+- `crates/core/src/model.rs` — `Model` / `ModelWithProvider` entity types
+- `crates/core/src/model_profiles.rs` — built-in profile data
+- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories)
+- `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
+- `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs` — model discovery
-- `crates/server/src/api/llm_providers.rs`, `crates/server/src/api/llm_models.rs` — REST API
-- `crates/server/src/api/voice.rs` — realtime credential resolution (to be rerouted)
+- `crates/server/src/api/providers.rs`, `crates/server/src/api/models.rs` — REST API
+- `crates/server/src/api/voice.rs` — realtime credential resolution (routed through `resolve_service`)
 - `crates/core/src/connector.rs` — connector plugin trait
 - `apps/ui/src/app/(main)/settings/providers/` — provider settings UI

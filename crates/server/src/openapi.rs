@@ -186,6 +186,7 @@ use utoipa::OpenApi;
         api::agents::trigger_health_check,
         api::agents::list_health_checks,
         api::agents::get_health_check,
+        api::agents::get_latest_health_check,
         api::agents::upsert_agent,
         api::agents::copy_agent,
         api::agents::list_agent_versions,

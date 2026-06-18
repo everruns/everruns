@@ -268,6 +268,21 @@ impl SandboxExecTool {
 
 #[async_trait]
 impl Tool for SandboxExecTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("Sandbox");
+        Some(crate::tool_narration::narrate_shell_exec(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_exec"
     }

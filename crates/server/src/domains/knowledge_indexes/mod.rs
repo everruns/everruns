@@ -23,7 +23,7 @@ pub const KNOWLEDGE_INDEX_MANAGE: Policy = Policy {
 };
 
 /// Allowed source types. Mirrors the CHECK constraint in
-/// `crates/server/migrations/071_knowledge_indexes.sql`.
+/// `crates/server/migrations/073_knowledge_indexes.sql`.
 pub const SOURCE_TYPES: &[&str] = &["github", "git"];
 
 /// Default source type when the request omits it.

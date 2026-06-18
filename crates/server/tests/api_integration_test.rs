@@ -3857,6 +3857,7 @@ async fn test_delete_org_default_harness_returns_conflict() {
                 default_model_id: UpdateField::Unchanged,
                 default_harness_id: UpdateField::Set(harness.id),
                 base_harness_id: UpdateField::Unchanged,
+                ..Default::default()
             },
         )
         .await

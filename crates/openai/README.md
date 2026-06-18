@@ -23,7 +23,7 @@ models, or run with no key at all using the built-in LLM simulator in
 
 ```rust,no_run
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
 };
 use everruns_runtime::InProcessRuntimeBuilder;
 
@@ -35,11 +35,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let platform = PlatformDefinition::new(CapabilityRegistry::new(), drivers);
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
-        .default_model(ModelWithProvider {
+        .default_model(ResolvedModel {
             model: "gpt-5.4-mini".into(),
-            provider_type: LlmProviderType::Openai,
+            provider_type: DriverId::OpenAI,
             api_key: Some(std::env::var("OPENAI_API_KEY")?),
             base_url: None,
+            provider_metadata: None,
         })
         .single_session(|s| {
             s.harness("assistant", "You are a helpful assistant.")

@@ -540,6 +540,24 @@ pub trait Tool: Send + Sync {
         ToolHints::default()
     }
 
+    /// Returns backend-authored narration for a call to this tool, e.g.
+    /// "Read AGENTS.md".
+    ///
+    /// The owning capability's default [`crate::capabilities::Capability::narrate`]
+    /// dispatches here for the tool whose `name()` matches the call. Return
+    /// `None` to accept the generic `narration_noun`/display-name fallback.
+    /// Implementations should use the phrasing helpers in
+    /// [`crate::tool_narration`] (`narrate_read_file`, `narrate_shell_exec`, …)
+    /// so wording and localization stay consistent.
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        _phase: crate::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
     /// Returns native background execution support when this tool opts into
     /// detached execution via `hints().supports_background`.
     fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {

@@ -24,7 +24,7 @@ with provider crates such as
 
 ```rust
 use everruns_core::{
-    CapabilityRegistry, DriverRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition,
+    CapabilityRegistry, DriverId, DriverRegistry, PlatformDefinition, ResolvedModel,
 };
 use everruns_core::capabilities::TestMathCapability;
 use everruns_runtime::InProcessRuntimeBuilder;
@@ -37,11 +37,12 @@ let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
 let runtime = InProcessRuntimeBuilder::new()
     .platform_definition(platform)
     .llm_sim(everruns_core::llmsim_driver::LlmSimConfig::fixed("4"))
-    .default_model(ModelWithProvider {
+    .default_model(ResolvedModel {
         model: "llmsim-model".into(),
-        provider_type: LlmProviderType::LlmSim,
+        provider_type: DriverId::LlmSim,
         api_key: Some("fake-key".into()),
         base_url: None,
+        provider_metadata: None,
     })
     .single_session(|s| {
         s.harness("math", "You are a calculator.")

@@ -209,6 +209,10 @@ export interface HealthCheckCaseResult {
   deterministic_reason: string;
   turns: number;
   latency_ms: number;
+  /** Input tokens for this case (agent turns + judge). */
+  input_tokens?: number;
+  /** Output tokens for this case (agent turns + judge). */
+  output_tokens?: number;
   error?: string;
 }
 
@@ -237,6 +241,14 @@ export interface HealthCheckRun {
   error_message?: string;
   created_at: string;
   completed_at?: string;
+}
+
+/** Latest health-check run for an agent plus a stale-config flag (EVE-588) */
+export interface LatestHealthCheckRun {
+  /** The latest run, or absent if the agent has never been health-checked */
+  run?: HealthCheckRun;
+  /** True when the run was executed against a different config than current */
+  config_changed: boolean;
 }
 
 /** Response showing the final agent shape after applying capabilities */

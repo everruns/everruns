@@ -1,19 +1,147 @@
 // PostgreSQL repository: Session Files (virtual filesystem)
+//
+// Content offload: when an object-storage blob backend is configured
+// (specs/object-storage.md), file *content* bytes are stored in the object
+// store and the `workspace_files.content` column is left NULL; a pointer +
+// content hash live in `workspace_file_blobs`. Metadata (path, size, flags,
+// tree) always stays in PostgreSQL. When no blob backend is configured the
+// methods fall back to the original inline `BYTEA` storage with zero overhead.
 
 use super::super::models::*;
 use super::Database;
+use crate::storage::blob_store::{BlobMetadata, content_sha256, workspace_file_key};
 use anyhow::Result;
 use uuid::Uuid;
+
+/// Disaster-recovery metadata stamped onto each offloaded file object
+/// (specs/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
+/// row from the object alone.
+fn file_blob_metadata(
+    workspace_id: Uuid,
+    file_id: Uuid,
+    path: &str,
+    size_bytes: i64,
+    sha: &str,
+) -> BlobMetadata {
+    BlobMetadata::new(
+        "workspace_file",
+        serde_json::json!({
+            "v": 1,
+            "workspace_id": workspace_id,
+            "file_id": file_id,
+            "path": path,
+            "size_bytes": size_bytes,
+            "content_sha256": sha,
+        }),
+    )
+}
 
 impl Database {
     // ============================================
     // Session Files (virtual filesystem)
     // ============================================
 
+    /// Fill `row.content` from the object store when the file is offloaded.
+    ///
+    /// No-op (single branch) when no blob backend is configured or when the
+    /// content is already present inline, so default deployments pay nothing.
+    async fn materialize_file_content(&self, row: &mut SessionFileRow) -> Result<()> {
+        if row.is_directory || row.content.is_some() {
+            return Ok(());
+        }
+        let Some(blob) = self.blob_store() else {
+            return Ok(());
+        };
+        let key: Option<(String,)> =
+            sqlx::query_as("SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1")
+                .bind(row.id)
+                .fetch_optional(&self.pool)
+                .await?;
+        if let Some((key,)) = key {
+            // A sidecar pointer exists, so a missing object means data loss —
+            // surface it as an error rather than silently returning empty content.
+            let bytes = blob
+                .get(&key)
+                .await?
+                .ok_or_else(|| anyhow::anyhow!("offloaded file blob missing for {key}"))?;
+            row.content = Some(bytes);
+        }
+        Ok(())
+    }
+
     /// Create a new file or directory in the session virtual filesystem
     pub async fn create_session_file(&self, input: CreateSessionFileRow) -> Result<SessionFileRow> {
         let size_bytes = input.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+        let workspace_id = input.session_id.uuid();
 
+        // Offload path: configured blob backend + a file (not directory) with
+        // content. Empty files and directories stay metadata-only.
+        if let (Some(blob), Some(content)) = (self.blob_store(), input.content.as_ref())
+            && !input.is_directory
+        {
+            let file_id = Uuid::now_v7();
+            let key = workspace_file_key(workspace_id, file_id);
+            let sha = content_sha256(content);
+
+            // Write the blob first; if the row insert then fails (e.g. duplicate
+            // path) we clean the orphan object up rather than leaving it behind.
+            blob.put(
+                &key,
+                content.clone(),
+                &file_blob_metadata(workspace_id, file_id, &input.path, size_bytes, &sha),
+            )
+            .await?;
+
+            // Insert the file row and its sidecar pointer in one transaction so a
+            // failure can't leave a row with NULL content and no pointer. The
+            // object store is not transactional, so we delete the orphan blob on
+            // any failure (incl. a duplicate-path unique violation).
+            let insert = async {
+                let mut tx = self.pool.begin().await?;
+                let row = sqlx::query_as::<_, SessionFileRow>(
+                    r#"
+                    INSERT INTO workspace_files (id, workspace_id, path, content, is_directory, is_readonly, size_bytes)
+                    VALUES ($1, $2, $3, NULL, FALSE, $4, $5)
+                    RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    "#,
+                )
+                .bind(file_id)
+                .bind(workspace_id)
+                .bind(&input.path)
+                .bind(input.is_readonly)
+                .bind(size_bytes)
+                .fetch_one(&mut *tx)
+                .await?;
+                sqlx::query(
+                    r#"
+                    INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+                    VALUES ($1, $2, $3, $4)
+                    "#,
+                )
+                .bind(file_id)
+                .bind(&key)
+                .bind(&sha)
+                .bind(size_bytes)
+                .execute(&mut *tx)
+                .await?;
+                tx.commit().await?;
+                anyhow::Ok(row)
+            }
+            .await;
+
+            let mut row = match insert {
+                Ok(row) => row,
+                Err(e) => {
+                    let _ = blob.delete(&key).await;
+                    return Err(e);
+                }
+            };
+
+            row.content = Some(content.clone());
+            return Ok(row);
+        }
+
+        // Inline path (default backend, directories, or empty content).
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
             INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
@@ -39,7 +167,7 @@ impl Database {
         session_id: Uuid,
         path: &str,
     ) -> Result<Option<SessionFileRow>> {
-        let row = sqlx::query_as::<_, SessionFileRow>(
+        let mut row = sqlx::query_as::<_, SessionFileRow>(
             r#"
             SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             FROM workspace_files
@@ -51,6 +179,9 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
+        if let Some(row) = row.as_mut() {
+            self.materialize_file_content(row).await?;
+        }
         Ok(row)
     }
 
@@ -77,7 +208,7 @@ impl Database {
 
     /// Get a file by ID
     pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
-        let row = sqlx::query_as::<_, SessionFileRow>(
+        let mut row = sqlx::query_as::<_, SessionFileRow>(
             r#"
             SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             FROM workspace_files
@@ -88,6 +219,9 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
+        if let Some(row) = row.as_mut() {
+            self.materialize_file_content(row).await?;
+        }
         Ok(row)
     }
 
@@ -147,7 +281,78 @@ impl Database {
         path: &str,
         input: UpdateSessionFile,
     ) -> Result<Option<SessionFileRow>> {
-        // Calculate new size if content is being updated
+        // Offload path: a content update with a configured blob backend. Write
+        // the new blob first, then update the row + sidecar in one transaction,
+        // so a failed object write never leaves the row pointing at missing
+        // content. The blob key is addressed by file id, so the put overwrites
+        // the file's existing object in place.
+        if let (Some(blob), Some(content)) = (self.blob_store(), input.content.as_ref()) {
+            let size_bytes = content.len() as i64;
+
+            // Resolve the target file id without mutating anything yet.
+            let Some((file_id,)) = sqlx::query_as::<_, (Uuid,)>(
+                "SELECT id FROM workspace_files WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE",
+            )
+            .bind(session_id)
+            .bind(path)
+            .fetch_optional(&self.pool)
+            .await?
+            else {
+                return Ok(None);
+            };
+
+            let key = workspace_file_key(session_id, file_id);
+            let sha = content_sha256(content);
+            blob.put(
+                &key,
+                content.clone(),
+                &file_blob_metadata(session_id, file_id, path, size_bytes, &sha),
+            )
+            .await?;
+
+            let mut tx = self.pool.begin().await?;
+            sqlx::query(
+                r#"
+                INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (file_id) DO UPDATE
+                    SET blob_key = EXCLUDED.blob_key,
+                        content_sha256 = EXCLUDED.content_sha256,
+                        size_bytes = EXCLUDED.size_bytes,
+                        updated_at = NOW()
+                "#,
+            )
+            .bind(file_id)
+            .bind(&key)
+            .bind(&sha)
+            .bind(size_bytes)
+            .execute(&mut *tx)
+            .await?;
+            let mut row = sqlx::query_as::<_, SessionFileRow>(
+                r#"
+                UPDATE workspace_files
+                SET content = NULL,
+                    is_readonly = COALESCE($3, is_readonly),
+                    size_bytes = $4
+                WHERE workspace_id = $1 AND path = $2 AND is_directory = FALSE
+                RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+                "#,
+            )
+            .bind(session_id)
+            .bind(path)
+            .bind(input.is_readonly)
+            .bind(size_bytes)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.commit().await?;
+
+            if let Some(row) = row.as_mut() {
+                row.content = Some(content.clone());
+            }
+            return Ok(row);
+        }
+
+        // Inline path / metadata-only update (no content change).
         let size_bytes = input.content.as_ref().map(|c| c.len() as i64);
 
         let row = sqlx::query_as::<_, SessionFileRow>(
@@ -179,6 +384,112 @@ impl Database {
         expected_content: Vec<u8>,
         input: UpdateSessionFile,
     ) -> Result<Option<SessionFileRow>> {
+        // Offload path: compare against the offloaded (or still-inline) current
+        // content under a row lock, then offload the new content atomically.
+        if let Some(blob) = self.blob_store() {
+            let Some(new_content) = input.content.clone() else {
+                // CAS is only meaningful for a content write.
+                return Ok(None);
+            };
+
+            let mut tx = self.pool.begin().await?;
+            let existing = sqlx::query_as::<_, SessionFileRow>(
+                r#"
+                SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+                FROM workspace_files
+                WHERE workspace_id = $1 AND path = $2
+                FOR UPDATE
+                "#,
+            )
+            .bind(session_id)
+            .bind(path)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            let Some(existing) = existing else {
+                tx.rollback().await?;
+                return Ok(None);
+            };
+            if existing.is_directory || existing.is_readonly {
+                tx.rollback().await?;
+                return Ok(None);
+            }
+
+            // Compare by content hash rather than fetching the (possibly large)
+            // offloaded bytes over the network while holding the row lock. For an
+            // offloaded file the sidecar holds the current SHA-256; for a
+            // still-inline file (pre-offload row) compare the column directly.
+            let expected_sha = content_sha256(&expected_content);
+            let current_sha: Option<String> = sqlx::query_as::<_, (String,)>(
+                "SELECT content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(existing.id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|(s,)| s);
+
+            let matches = match (&current_sha, &existing.content) {
+                (Some(sha), _) => *sha == expected_sha,
+                (None, Some(content)) => *content == expected_content,
+                (None, None) => expected_content.is_empty(),
+            };
+            if !matches {
+                tx.rollback().await?;
+                return Ok(None);
+            }
+
+            let size_bytes = new_content.len() as i64;
+            let key = workspace_file_key(session_id, existing.id);
+            let sha = content_sha256(&new_content);
+            blob.put(
+                &key,
+                new_content.clone(),
+                &file_blob_metadata(session_id, existing.id, path, size_bytes, &sha),
+            )
+            .await?;
+            sqlx::query(
+                r#"
+                INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (file_id) DO UPDATE
+                    SET blob_key = EXCLUDED.blob_key,
+                        content_sha256 = EXCLUDED.content_sha256,
+                        size_bytes = EXCLUDED.size_bytes,
+                        updated_at = NOW()
+                "#,
+            )
+            .bind(existing.id)
+            .bind(&key)
+            .bind(&sha)
+            .bind(size_bytes)
+            .execute(&mut *tx)
+            .await?;
+
+            let mut row = sqlx::query_as::<_, SessionFileRow>(
+                r#"
+                UPDATE workspace_files
+                SET content = NULL,
+                    size_bytes = $3,
+                    is_readonly = COALESCE($4, is_readonly)
+                WHERE id = $1 AND workspace_id = $2
+                RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+                "#,
+            )
+            .bind(existing.id)
+            .bind(session_id)
+            .bind(size_bytes)
+            .bind(input.is_readonly)
+            .fetch_optional(&mut *tx)
+            .await?;
+            tx.commit().await?;
+
+            if let Some(row) = row.as_mut() {
+                row.content = Some(new_content);
+            }
+            return Ok(row);
+        }
+
+        // Inline path: atomic compare-and-set against the content column.
         let size_bytes = input.content.as_ref().map(|c| c.len() as i64);
 
         let row = sqlx::query_as::<_, SessionFileRow>(
@@ -210,6 +521,23 @@ impl Database {
 
     /// Delete a file or directory (directories must be empty)
     pub async fn delete_session_file(&self, session_id: Uuid, path: &str) -> Result<bool> {
+        // Remove the backing object first (cascade clears the sidecar row).
+        if let Some(blob) = self.blob_store()
+            && let Some((key,)) = sqlx::query_as::<_, (String,)>(
+                r#"
+                SELECT b.blob_key FROM workspace_file_blobs b
+                JOIN workspace_files f ON f.id = b.file_id
+                WHERE f.workspace_id = $1 AND f.path = $2
+                "#,
+            )
+            .bind(session_id)
+            .bind(path)
+            .fetch_optional(&self.pool)
+            .await?
+        {
+            blob.delete(&key).await?;
+        }
+
         let result =
             sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path = $2")
                 .bind(session_id)
@@ -230,6 +558,24 @@ impl Database {
             format!("^{}(/|$)", regex::escape(path))
         };
 
+        // Remove backing objects for the whole subtree before the rows go away.
+        if let Some(blob) = self.blob_store() {
+            let keys = sqlx::query_as::<_, (String,)>(
+                r#"
+                SELECT b.blob_key FROM workspace_file_blobs b
+                JOIN workspace_files f ON f.id = b.file_id
+                WHERE f.workspace_id = $1 AND f.path ~ $2
+                "#,
+            )
+            .bind(session_id)
+            .bind(&pattern)
+            .fetch_all(&self.pool)
+            .await?;
+            for (key,) in keys {
+                blob.delete(&key).await?;
+            }
+        }
+
         let result =
             sqlx::query("DELETE FROM workspace_files WHERE workspace_id = $1 AND path ~ $2")
                 .bind(session_id)
@@ -247,7 +593,8 @@ impl Database {
         old_path: &str,
         new_path: &str,
     ) -> Result<Option<SessionFileRow>> {
-        // For directories, we need to move all children as well
+        // Blob keys are addressed by file id (not path), so a move only rewrites
+        // path metadata — the object and its sidecar pointer are untouched.
         let mut tx = self.pool.begin().await?;
 
         // First, check if source exists and is a directory
@@ -288,7 +635,7 @@ impl Database {
         }
 
         // Move the file/directory itself
-        let row = sqlx::query_as::<_, SessionFileRow>(
+        let mut row = sqlx::query_as::<_, SessionFileRow>(
             r#"
             UPDATE workspace_files
             SET path = $3
@@ -304,6 +651,9 @@ impl Database {
 
         tx.commit().await?;
 
+        if let Some(row) = row.as_mut() {
+            self.materialize_file_content(row).await?;
+        }
         Ok(row)
     }
 
@@ -314,6 +664,85 @@ impl Database {
         src_path: &str,
         dst_path: &str,
     ) -> Result<Option<SessionFileRow>> {
+        // Offload path: read the source content and write a fresh object for the
+        // destination so each file id owns its own blob (clean independent delete).
+        if let Some(blob) = self.blob_store() {
+            let Some(source) = self.get_session_file(session_id, src_path).await? else {
+                return Ok(None);
+            };
+            if source.is_directory {
+                return Ok(None);
+            }
+
+            let dest_id = Uuid::now_v7();
+            let size_bytes = source.size_bytes;
+
+            // Write the destination blob first (when the source has content), so
+            // the row + sidecar can be inserted in one transaction with the blob
+            // already durable; clean the blob up on any DB failure.
+            let written_key = if let Some(content) = source.content.clone() {
+                let key = workspace_file_key(session_id, dest_id);
+                let sha = content_sha256(&content);
+                blob.put(
+                    &key,
+                    content,
+                    &file_blob_metadata(session_id, dest_id, dst_path, size_bytes, &sha),
+                )
+                .await?;
+                Some((key, sha))
+            } else {
+                None
+            };
+
+            let insert = async {
+                let mut tx = self.pool.begin().await?;
+                let row = sqlx::query_as::<_, SessionFileRow>(
+                    r#"
+                    INSERT INTO workspace_files (id, workspace_id, path, content, is_directory, is_readonly, size_bytes)
+                    VALUES ($1, $2, $3, NULL, FALSE, $4, $5)
+                    RETURNING id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    "#,
+                )
+                .bind(dest_id)
+                .bind(session_id)
+                .bind(dst_path)
+                .bind(source.is_readonly)
+                .bind(size_bytes)
+                .fetch_one(&mut *tx)
+                .await?;
+                if let Some((key, sha)) = &written_key {
+                    sqlx::query(
+                        r#"
+                        INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
+                        VALUES ($1, $2, $3, $4)
+                        "#,
+                    )
+                    .bind(dest_id)
+                    .bind(key)
+                    .bind(sha)
+                    .bind(size_bytes)
+                    .execute(&mut *tx)
+                    .await?;
+                }
+                tx.commit().await?;
+                anyhow::Ok(row)
+            }
+            .await;
+
+            let mut row = match insert {
+                Ok(row) => row,
+                Err(e) => {
+                    if let Some((key, _)) = &written_key {
+                        let _ = blob.delete(key).await;
+                    }
+                    return Err(e);
+                }
+            };
+            row.content = source.content;
+            return Ok(Some(row));
+        }
+
+        // Inline path: copy the content column directly.
         let row = sqlx::query_as::<_, SessionFileRow>(
             r#"
             INSERT INTO workspace_files (workspace_id, path, content, is_directory, is_readonly, size_bytes)
@@ -340,7 +769,49 @@ impl Database {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
-        // TM-DOS-008: size_bytes filter keeps Postgres from scanning large files.
+        // Offload path: content is in the object store, so PostgreSQL cannot grep
+        // it. Return size/path-filtered candidates; the service-layer scan fetches
+        // each blob and matches lines (TM-DOS-008 per-file and total-scan caps
+        // still bound the work).
+        if self.blob_store().is_some() {
+            let rows = if let Some(path_pat) = path_pattern {
+                sqlx::query_as::<_, SessionFileInfoRow>(
+                    r#"
+                    SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    FROM workspace_files
+                    WHERE workspace_id = $1
+                        AND is_directory = FALSE
+                        AND size_bytes <= $2
+                        AND path ~ $3
+                    ORDER BY path ASC
+                    "#,
+                )
+                .bind(session_id)
+                .bind(max_file_bytes)
+                .bind(path_pat)
+                .fetch_all(&self.pool)
+                .await?
+            } else {
+                sqlx::query_as::<_, SessionFileInfoRow>(
+                    r#"
+                    SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                    FROM workspace_files
+                    WHERE workspace_id = $1
+                        AND is_directory = FALSE
+                        AND size_bytes <= $2
+                    ORDER BY path ASC
+                    "#,
+                )
+                .bind(session_id)
+                .bind(max_file_bytes)
+                .fetch_all(&self.pool)
+                .await?
+            };
+            return Ok(rows);
+        }
+
+        // Inline path: TM-DOS-008 size_bytes filter keeps Postgres from scanning
+        // large files; content match happens in-database.
         let rows = if let Some(path_pat) = path_pattern {
             sqlx::query_as::<_, SessionFileInfoRow>(
                 r#"
@@ -448,12 +919,16 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Load all non-directory files with content for a session (single query).
+    /// Load all non-directory files with content for a session.
+    ///
+    /// Inline backend: a single SQL query. With the blob backend enabled, the
+    /// row query is followed by a per-file sidecar lookup + object fetch to
+    /// materialize offloaded content, so this is no longer a single round trip.
     pub async fn load_all_session_files_with_content(
         &self,
         session_id: Uuid,
     ) -> Result<Vec<SessionFileRow>> {
-        let rows = sqlx::query_as::<_, SessionFileRow>(
+        let mut rows = sqlx::query_as::<_, SessionFileRow>(
             r#"
             SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
             FROM workspace_files
@@ -464,6 +939,13 @@ impl Database {
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
+
+        // Materialize offloaded content (no-op for the inline backend).
+        if self.blob_store().is_some() {
+            for row in rows.iter_mut() {
+                self.materialize_file_content(row).await?;
+            }
+        }
 
         Ok(rows)
     }

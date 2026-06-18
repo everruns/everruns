@@ -44,6 +44,10 @@ pub async fn build_organization_response(
         default_model_id: settings.as_ref().and_then(|s| s.default_model_id),
         default_harness_id: settings.as_ref().and_then(|s| s.default_harness_id),
         base_harness_id: settings.as_ref().and_then(|s| s.base_harness_id),
+        default_provider_per_service: settings
+            .as_ref()
+            .map(|s| s.default_provider_per_service.0.clone())
+            .unwrap_or_default(),
         created_at: row.created_at,
         updated_at: row.updated_at,
     })

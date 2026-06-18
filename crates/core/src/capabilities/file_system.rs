@@ -530,6 +530,19 @@ pub struct ReadFileTool;
 
 #[async_trait]
 impl Tool for ReadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_read_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "read_file"
     }
@@ -833,6 +846,19 @@ pub struct WriteFileTool;
 
 #[async_trait]
 impl Tool for WriteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_write_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "write_file"
     }
@@ -958,6 +984,19 @@ pub struct EditFileTool;
 
 #[async_trait]
 impl Tool for EditFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_edit_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "edit_file"
     }
@@ -1209,6 +1248,19 @@ pub struct ListDirectoryTool;
 
 #[async_trait]
 impl Tool for ListDirectoryTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_list_directory(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "list_directory"
     }
@@ -1368,6 +1420,19 @@ pub struct GrepFilesTool;
 
 #[async_trait]
 impl Tool for GrepFilesTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_grep_files(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "grep_files"
     }
@@ -1527,6 +1592,19 @@ pub struct DeleteFileTool;
 
 #[async_trait]
 impl Tool for DeleteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_delete_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "delete_file"
     }
@@ -1640,6 +1718,19 @@ pub struct StatFileTool;
 
 #[async_trait]
 impl Tool for StatFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_stat_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "stat_file"
     }
@@ -1731,6 +1822,32 @@ impl Tool for StatFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool_narration::ToolNarrationPhase;
+    use crate::tool_types::ToolCall;
+
+    #[test]
+    fn capability_narrates_its_own_tools_only() {
+        let cap = FileSystemCapability;
+        let read = ToolCall {
+            id: "c1".to_string(),
+            name: "read_file".to_string(),
+            arguments: serde_json::json!({ "path": "/workspace/AGENTS.md" }),
+        };
+        assert_eq!(
+            cap.narrate(None, &read, ToolNarrationPhase::Completed, None),
+            Some("Read AGENTS.md".to_string())
+        );
+        // A tool this capability does not own returns None for its owner to handle.
+        let bash = ToolCall {
+            id: "c2".to_string(),
+            name: "bash".to_string(),
+            arguments: serde_json::json!({ "command": "ls" }),
+        };
+        assert_eq!(
+            cap.narrate(None, &bash, ToolNarrationPhase::Started, None),
+            None
+        );
+    }
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::traits::SessionFileSystem;

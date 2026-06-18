@@ -154,6 +154,24 @@ impl Capability for McpCapability {
         None // MCP tools are self-documenting
     }
 
+    fn narrate(
+        &self,
+        _tool_def: Option<&crate::tool_types::ToolDefinition>,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        // Generic search narration for provider/MCP search tools (`*__search`).
+        if !tool_call.name.ends_with("__search") {
+            return None;
+        }
+        Some(crate::tool_narration::narrate_provider_search(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         // MCP tools are executed via HTTP, not directly
         // Return empty vec - tool execution is handled specially

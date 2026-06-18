@@ -75,6 +75,19 @@ impl StorageBackend {
         }
     }
 
+    /// Attach an object-storage blob backend for content offload
+    /// (specs/object-storage.md). Only the PostgreSQL backend offloads content;
+    /// the in-memory dev backend always stores bytes inline.
+    pub fn with_blob_store(
+        self,
+        blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
+    ) -> Self {
+        match self {
+            Self::Postgres(db) => Self::Postgres(db.with_blob_store(blob_store)),
+            other => other,
+        }
+    }
+
     // ============================================
     // Users
     // ============================================
@@ -3531,6 +3544,10 @@ impl StorageBackend {
         input: UpdateAgentHealthCheckRunRow,
     ) -> Result<Option<AgentHealthCheckRunRow>> {
         dispatch!(self, update_agent_health_check_run, id, input)
+    }
+
+    pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
+        dispatch!(self, reap_running_agent_health_check_runs)
     }
 
     // ============================================

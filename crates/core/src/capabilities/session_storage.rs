@@ -110,6 +110,21 @@ pub struct KvStoreTool;
 
 #[async_trait]
 impl Tool for KvStoreTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("Key-Value Store");
+        Some(crate::tool_narration::narrate_secret_store(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "kv_store"
     }
@@ -305,6 +320,21 @@ pub struct SecretStoreTool;
 
 #[async_trait]
 impl Tool for SecretStoreTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let fallback = self.display_name().unwrap_or("Secret Store");
+        Some(crate::tool_narration::narrate_secret_store(
+            &tool_call.arguments,
+            fallback,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "secret_store"
     }

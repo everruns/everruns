@@ -257,6 +257,81 @@ async fn sends_reasoning_none_to_disable_openrouter_reasoning() {
 }
 
 #[tokio::test]
+async fn retries_after_openrouter_rate_limit_reset() {
+    use futures::StreamExt;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let reset_ms = (SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock")
+        .as_secs()
+        + 1)
+        * 1000;
+    let rate_limit_body = json!({
+        "error": {
+            "message": "Rate limit exceeded: free-models-per-min.",
+            "code": 429,
+            "metadata": {
+                "headers": {
+                    "X-RateLimit-Limit": "16",
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Reset": reset_ms.to_string()
+                }
+            }
+        }
+    });
+    let success_body =
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"ok\"}\n\ndata: [DONE]\n\n";
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .respond_with(ResponseTemplate::new(429).set_body_json(rate_limit_body))
+        .up_to_n_times(1)
+        .expect(1)
+        .named("OpenRouter first rate-limit response")
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "text/event-stream")
+                .set_body_string(success_body),
+        )
+        .expect(1)
+        .named("OpenRouter retry success response")
+        .mount(&server)
+        .await;
+
+    let api_url = format!("{}/v1/responses", server.uri());
+    let driver = OpenRouterChatDriver::with_base_url("test-key", api_url);
+    let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
+    let mut stream = driver
+        .chat_completion_stream(messages, &base_config("openai/gpt-4o-mini"))
+        .await
+        .expect("OpenRouter driver should retry after reset and start the stream");
+
+    let mut text = String::new();
+    while let Some(event) = stream.next().await {
+        match event.expect("stream item") {
+            everruns_core::driver_registry::LlmStreamEvent::TextDelta(delta) => {
+                text.push_str(&delta)
+            }
+            everruns_core::driver_registry::LlmStreamEvent::Error(error) => {
+                panic!("retry success stream should not emit an error: {error}")
+            }
+            _ => {}
+        }
+    }
+
+    assert_eq!(text, "ok");
+    let requests = server
+        .received_requests()
+        .await
+        .expect("mock server recorded requests");
+    assert_eq!(requests.len(), 2, "rate-limited request should be retried");
+}
+
+#[tokio::test]
 async fn rejects_invalid_routing_before_dispatch() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

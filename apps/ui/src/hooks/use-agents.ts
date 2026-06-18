@@ -6,6 +6,7 @@ import {
   agentsCrudApi,
   analyzeAgent,
   getHealthCheckRun,
+  getLatestHealthCheckRun,
   triggerHealthCheck,
   copyAgent,
   createAgentVersion,
@@ -138,6 +139,18 @@ export function useAnalyzeAgent() {
 export function useTriggerHealthCheck() {
   return useMutation({
     mutationFn: (agentId: string) => triggerHealthCheck(agentId),
+  });
+}
+
+/**
+ * Latest persisted health-check run for an agent (with a stale-config flag),
+ * loaded on mount so prior results show without triggering a new run (EVE-588).
+ */
+export function useLatestHealthCheckRun(agentId: string | undefined) {
+  return useQuery({
+    queryKey: ["agent", agentId, "health-check", "latest"],
+    queryFn: () => getLatestHealthCheckRun(agentId as string),
+    enabled: !!agentId,
   });
 }
 

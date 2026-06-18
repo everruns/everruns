@@ -300,6 +300,10 @@ pub fn routes(state: AppState) -> Router {
             post(trigger_health_check).get(list_health_checks),
         )
         .route(
+            "/v1/agents/{agent_id}/health-checks/latest",
+            get(get_latest_health_check),
+        )
+        .route(
             "/v1/agents/{agent_id}/health-checks/{run_id}",
             get(get_health_check),
         )
@@ -1477,6 +1481,29 @@ pub async fn get_health_check(
             .run(&state.ctx(&org))
             .await?;
     Ok(Json(run))
+}
+
+/// GET /v1/agents/{agent_id}/health-checks/latest - Latest run + stale flag
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/health-checks/latest",
+    params(("agent_id" = String, Path, description = "Agent ID")),
+    responses(
+        (status = 200, description = "Latest health check run with stale-config flag", body = crate::domains::agents::health_check::types::LatestHealthCheckRun),
+        (status = 404, description = "Agent not found", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn get_latest_health_check(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id): Path<String>,
+) -> ApiResult<crate::domains::agents::health_check::types::LatestHealthCheckRun> {
+    let result =
+        crate::domains::agents::health_check::commands::GetLatestAgentHealthCheckRun { agent_id }
+            .run(&state.ctx(&org))
+            .await?;
+    Ok(Json(result))
 }
 
 // Regression tests for fix(capabilities): restore high-risk levels for

@@ -161,6 +161,10 @@ start-production *args:
 stop-all:
     ./scripts/lib/services.sh stop-all
 
+# SeaweedFS local S3 for object-storage testing: start|stop|reset|bucket|logs (specs/object-storage.md)
+seaweedfs cmd="start":
+    ./scripts/lib/seaweedfs.sh {{cmd}}
+
 # === Load Testing ===
 
 # Load test subcommand: just load-test <profile> [args]

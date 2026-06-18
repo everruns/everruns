@@ -3,7 +3,8 @@
 use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
-    MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, ServiceKind,
+    SessionId, SkillId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
@@ -72,6 +73,12 @@ pub struct UpdateOrganization {
     pub name: Option<String>,
 }
 
+/// Org-level "default provider per service" map (EVE-569): tier-2 service
+/// resolution defaults keyed by [`ServiceKind`]. Empty when no defaults are
+/// configured. Persisted as a JSONB object (snake_case service kind -> provider
+/// public id).
+pub type ServiceProviderDefaults = std::collections::HashMap<ServiceKind, ProviderId>;
+
 /// Organization settings row from database
 #[derive(Debug, Clone, FromRow)]
 pub struct OrganizationSettingsRow {
@@ -79,6 +86,9 @@ pub struct OrganizationSettingsRow {
     pub default_model_id: Option<ModelId>,
     pub default_harness_id: Option<HarnessId>,
     pub base_harness_id: Option<HarnessId>,
+    /// Org-level default provider per service (EVE-569). Always present;
+    /// an empty map means no org defaults are configured.
+    pub default_provider_per_service: sqlx::types::Json<ServiceProviderDefaults>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -88,6 +98,9 @@ pub struct UpdateOrganizationSettings {
     pub default_model_id: UpdateField<ModelId>,
     pub default_harness_id: UpdateField<HarnessId>,
     pub base_harness_id: UpdateField<HarnessId>,
+    /// Replaces the whole per-service default map. `Set` overwrites,
+    /// `Clear` resets to empty, `Unchanged` leaves it as-is.
+    pub default_provider_per_service: UpdateField<ServiceProviderDefaults>,
 }
 
 /// Organization task webhook row from database
@@ -959,7 +972,7 @@ pub struct CreateProviderRow {
     pub settings: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct UpdateProvider {
     pub name: Option<String>,
     pub provider_type: Option<String>,
