@@ -98,8 +98,21 @@ pub(super) async fn run_pre_tool_use_hooks(
 ///
 /// Hooks are async because they may perform I/O (VFS writes).
 /// Capability-contributed hooks run first, then final (infrastructure) hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum PostToolExecHookPriority {
+    /// Inspect/block output before other hooks can persist or transform it.
+    Guardrail = 0,
+    /// Default post-tool hook ordering for mutating/observability hooks.
+    Normal = 100,
+}
+
 #[async_trait]
 pub trait PostToolExecHook: Send + Sync {
+    /// Ordering within the capability-contributed hook phase.
+    fn priority(&self) -> PostToolExecHookPriority {
+        PostToolExecHookPriority::Normal
+    }
+
     /// Called after a tool returns its result, before ActAtom emits events.
     async fn after_exec(
         &self,

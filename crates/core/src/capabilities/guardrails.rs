@@ -12,7 +12,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::atoms::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
+use crate::atoms::{
+    PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
+};
 use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::guardrail_checks::{
     CompiledGuardrails, DEFAULT_OUTPUT_REPLACEMENT, DEFAULT_TOOL_OUTPUT_REPLACEMENT,
@@ -704,6 +706,10 @@ struct GuardrailPostToolHook {
 
 #[async_trait]
 impl PostToolExecHook for GuardrailPostToolHook {
+    fn priority(&self) -> PostToolExecHookPriority {
+        PostToolExecHookPriority::Guardrail
+    }
+
     async fn after_exec(
         &self,
         tool_call: &ToolCall,
@@ -721,6 +727,14 @@ impl PostToolExecHook for GuardrailPostToolHook {
         if let Some(error) = &result.error {
             haystack.push('\n');
             haystack.push_str(error);
+        }
+        // Exec-style tools budget the visible `result` JSON but keep the full,
+        // untruncated content in `raw_output`, which is persisted to `/outputs`.
+        // Include it in the haystack so sensitive content that only survives in
+        // `raw_output` is caught before this hook clears it on a block.
+        if let Some(raw_output) = &result.raw_output {
+            haystack.push('\n');
+            haystack.push_str(raw_output);
         }
         if haystack.is_empty() {
             return;
@@ -1203,6 +1217,7 @@ mod tests {
             }]
         }));
         assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].priority(), PostToolExecHookPriority::Guardrail);
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
@@ -1226,6 +1241,46 @@ mod tests {
             "matched output must be replaced with the notice"
         );
         assert!(result.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn post_tool_hook_scans_raw_output_persistence_surface() {
+        // Exec-style tools keep the full, untruncated content in `raw_output`
+        // (persisted to /outputs) while the visible `result` is budgeted. A
+        // secret that only survives in `raw_output` must still be blocked.
+        let cap = GuardrailsCapability;
+        let hooks = cap.post_tool_exec_hooks_with_config(&json!({
+            "checks": [{
+                "id": "aws_key", "stage": "tool_output", "type": "regex",
+                "patterns": ["AKIA[0-9A-Z]{16}"]
+            }]
+        }));
+        let ctx = ToolContext::new(SessionId::new());
+        let mut result = ToolResult {
+            tool_call_id: "call_1".to_string(),
+            result: Some(json!("(truncated output)")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: Some("full log: AKIAIOSFODNN7EXAMPLE trailing".to_string()),
+        };
+        hooks[0]
+            .after_exec(
+                &tool_call("bashkit_exec", json!({})),
+                &tool_def(),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_eq!(
+            result.result,
+            Some(json!(DEFAULT_TOOL_OUTPUT_REPLACEMENT)),
+            "a secret only present in raw_output must trigger the block"
+        );
+        assert!(
+            result.raw_output.is_none(),
+            "raw_output must be cleared on a block so it is not persisted"
+        );
     }
 
     #[tokio::test]
