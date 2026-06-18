@@ -3004,6 +3004,35 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(ListOrphanedSessionTasksResponse { entries }))
     }
 
+    async fn prune_terminal_session_tasks(
+        &self,
+        request: Request<PruneTerminalSessionTasksRequest>,
+    ) -> Result<Response<PruneTerminalSessionTasksResponse>, Status> {
+        let req = request.into_inner();
+        if req.ttl_seconds <= 0 {
+            return Err(Status::invalid_argument("ttl_seconds must be positive"));
+        }
+        if req.limit <= 0 {
+            return Err(Status::invalid_argument("limit must be positive"));
+        }
+        let ttl = chrono::Duration::seconds(req.ttl_seconds);
+        // Cap the batch size regardless of what the caller asks for.
+        let limit = req.limit.min(1000);
+
+        let pruned = self
+            .db
+            .prune_terminal_session_tasks_with_artifacts(ttl, limit)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to prune terminal session tasks: {e}");
+                Status::internal("Failed to prune terminal session tasks")
+            })?;
+
+        Ok(Response::new(PruneTerminalSessionTasksResponse {
+            pruned: pruned as i64,
+        }))
+    }
+
     // ========================================================================
     // Session schedule operations
     // ========================================================================

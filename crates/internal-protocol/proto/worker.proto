@@ -179,6 +179,12 @@ service WorkerService {
     // gRPC workers can run the session_task_reaper durable activity.
     rpc ListOrphanedSessionTasks(ListOrphanedSessionTasksRequest) returns (ListOrphanedSessionTasksResponse);
 
+    // Prune a bounded batch of terminal session tasks older than the TTL,
+    // deleting their rows, messages, and result_path artifacts server-side
+    // (where the storage backend / blob store lives), so gRPC workers can run
+    // the retention pass of the session_task_reaper activity (EVE-580).
+    rpc PruneTerminalSessionTasks(PruneTerminalSessionTasksRequest) returns (PruneTerminalSessionTasksResponse);
+
     // === Session schedule operations ===
     // CRUD for session-scoped scheduled tasks (one-shot and recurring cron)
     rpc CreateSessionSchedule(CreateSessionScheduleRequest) returns (CreateSessionScheduleResponse);
@@ -2006,4 +2012,19 @@ message OrphanedSessionTaskEntry {
 
 message ListOrphanedSessionTasksResponse {
     repeated OrphanedSessionTaskEntry entries = 1;
+}
+
+// === Prune terminal session tasks (retention) ===
+
+message PruneTerminalSessionTasksRequest {
+    // Age in seconds; terminal tasks whose finished_at is older than this are
+    // eligible for pruning.
+    int64 ttl_seconds = 1;
+    // Maximum number of tasks to prune this pass (bounds work per tick).
+    int64 limit = 2;
+}
+
+message PruneTerminalSessionTasksResponse {
+    // Number of terminal tasks pruned (rows + messages + artifacts).
+    int64 pruned = 1;
 }

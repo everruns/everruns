@@ -42,6 +42,22 @@ const DEFAULT_LIMIT: i64 = 50;
 /// Default maximum re-attach attempts before a task is failed as orphaned.
 const DEFAULT_MAX_ATTEMPTS: i64 = 3;
 
+/// Default retention TTL for terminal tasks (30 days). Terminal task records,
+/// their messages, and their result_path artifacts are pruned once their
+/// `finished_at` ages past this. Configurable via `SESSION_TASK_RETENTION_TTL_SECONDS`
+/// through the same env path the reaper interval uses. A value of 0 disables
+/// retention pruning entirely (records live forever — the pre-EVE-580 behavior).
+//
+// Extension point: this is a single global TTL for v1. A future per-org
+// override (NOT this issue) would resolve the effective TTL per task's owning
+// org here / in the prune query rather than using one constant.
+const DEFAULT_RETENTION_TTL_SECONDS: i64 = 30 * 24 * 60 * 60;
+
+/// How many terminal tasks to prune per reaper pass. Bounds the data-deletion
+/// work so a large backlog can't wedge the tick or blow memory; a backlog
+/// drains across successive ticks.
+const DEFAULT_RETENTION_LIMIT: i64 = 100;
+
 /// Durable activity input for the session-task reaper.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionTaskReaperInput {
@@ -54,10 +70,26 @@ pub struct SessionTaskReaperInput {
     /// on the (max_attempts)th attempt they are failed as orphaned instead.
     #[serde(default = "default_max_attempts")]
     pub max_attempts: i64,
+    /// Retention TTL (seconds) for terminal task records. Terminal tasks whose
+    /// `finished_at` is older than this are pruned (rows + messages +
+    /// artifacts). `0` disables retention pruning (EVE-580).
+    #[serde(default = "default_retention_ttl_seconds")]
+    pub retention_ttl_seconds: i64,
+    /// Max terminal tasks to prune per pass (bounds data-deletion work).
+    #[serde(default = "default_retention_limit")]
+    pub retention_limit: i64,
 }
 
 fn default_max_attempts() -> i64 {
     DEFAULT_MAX_ATTEMPTS
+}
+
+fn default_retention_ttl_seconds() -> i64 {
+    DEFAULT_RETENTION_TTL_SECONDS
+}
+
+fn default_retention_limit() -> i64 {
+    DEFAULT_RETENTION_LIMIT
 }
 
 impl Default for SessionTaskReaperInput {
@@ -66,7 +98,31 @@ impl Default for SessionTaskReaperInput {
             stale_after_seconds: DEFAULT_STALE_AFTER_SECONDS,
             limit: DEFAULT_LIMIT,
             max_attempts: DEFAULT_MAX_ATTEMPTS,
+            retention_ttl_seconds: DEFAULT_RETENTION_TTL_SECONDS,
+            retention_limit: DEFAULT_RETENTION_LIMIT,
         }
+    }
+}
+
+impl SessionTaskReaperInput {
+    /// Build the reaper input, overriding the retention TTL from
+    /// `SESSION_TASK_RETENTION_TTL_SECONDS` when set (EVE-580). This is the
+    /// same configuration path the schedule bootstrap uses to seed the durable
+    /// activity input, so operators tune retention without code changes. A
+    /// value of 0 disables retention pruning; invalid values fall back to the
+    /// default with a warning.
+    pub fn from_env() -> Self {
+        let mut input = Self::default();
+        if let Ok(v) = std::env::var("SESSION_TASK_RETENTION_TTL_SECONDS") {
+            match v.parse::<i64>() {
+                Ok(secs) if secs >= 0 => input.retention_ttl_seconds = secs,
+                _ => warn!(
+                    value = %v,
+                    "Invalid SESSION_TASK_RETENTION_TTL_SECONDS; using default"
+                ),
+            }
+        }
+        input
     }
 }
 
@@ -84,6 +140,8 @@ struct ReapSummary {
     reaped: usize,
     reattached: usize,
     skipped: usize,
+    /// Terminal tasks pruned by the retention pass this tick (EVE-580).
+    pruned: usize,
     outcomes: Vec<ReapOutcome>,
 }
 
@@ -111,6 +169,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         reaped: 0,
         reattached: 0,
         skipped: 0,
+        pruned: 0,
         outcomes: Vec::with_capacity(candidates.len()),
     };
 
@@ -358,15 +417,63 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         }
     }
 
+    // Retention pass (EVE-580): prune terminal task records, their messages,
+    // and their result_path artifacts once finished_at ages past the TTL.
+    summary.pruned = run_retention_pass(input, |ttl, limit| {
+        adapters.prune_terminal_session_tasks(ttl, limit)
+    })
+    .await;
+
     info!(
         candidates = summary.candidates,
         reaped = summary.reaped,
         reattached = summary.reattached,
         skipped = summary.skipped,
+        pruned = summary.pruned,
         "Session task reaper pass completed"
     );
 
     Ok(serde_json::to_value(summary)?)
+}
+
+/// Run the retention pass of one reaper tick (EVE-580): prune terminal task
+/// records, their messages, and their result_path artifacts once `finished_at`
+/// ages past the configured TTL. The prune itself is a bounded, by-age,
+/// data-destruction operation keyed strictly on terminal state +
+/// `finished_at < cutoff` (enforced in the storage backend), so it can never
+/// touch live/queued/running tasks. A TTL of 0 disables retention entirely.
+/// Failures are logged but never fail the reaper tick. Returns the number of
+/// tasks pruned this pass.
+///
+/// `prune` is injected so the retention logic is testable without a full
+/// `WorkerAdapters` mock; in production it forwards to
+/// `adapters.prune_terminal_session_tasks`.
+async fn run_retention_pass<F, Fut, E>(input: &SessionTaskReaperInput, prune: F) -> usize
+where
+    F: FnOnce(chrono::Duration, i64) -> Fut,
+    Fut: std::future::Future<Output = std::result::Result<usize, E>>,
+    E: std::fmt::Display,
+{
+    if input.retention_ttl_seconds <= 0 {
+        return 0;
+    }
+    let ttl = chrono::Duration::seconds(input.retention_ttl_seconds);
+    match prune(ttl, input.retention_limit).await {
+        Ok(pruned) => {
+            if pruned > 0 {
+                info!(
+                    pruned,
+                    ttl_seconds = input.retention_ttl_seconds,
+                    "Session task reaper: pruned terminal tasks past retention TTL"
+                );
+            }
+            pruned
+        }
+        Err(e) => {
+            warn!(error = %e, "Session task reaper: retention prune failed (best-effort)");
+            0
+        }
+    }
 }
 
 #[cfg(test)]
@@ -820,6 +927,90 @@ mod tests {
         assert_eq!(result["candidates"], 0);
         assert_eq!(result["reaped"], 0);
         assert_eq!(result["skipped"], 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // Retention config (EVE-580)
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn default_input_enables_retention_with_thirty_day_ttl() {
+        let input = SessionTaskReaperInput::default();
+        assert_eq!(input.retention_ttl_seconds, 30 * 24 * 60 * 60);
+        assert_eq!(input.retention_limit, 100);
+    }
+
+    #[test]
+    fn retention_fields_round_trip_through_serde_and_default_when_absent() {
+        // New fields serialize and deserialize.
+        let input = SessionTaskReaperInput {
+            retention_ttl_seconds: 1234,
+            retention_limit: 7,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&input).unwrap();
+        assert_eq!(json["retention_ttl_seconds"], 1234);
+        assert_eq!(json["retention_limit"], 7);
+
+        // A legacy stored input without the retention fields deserializes with
+        // the defaults applied (so existing durable schedules keep working).
+        let legacy: SessionTaskReaperInput = serde_json::from_value(serde_json::json!({
+            "stale_after_seconds": 300,
+            "limit": 50,
+        }))
+        .unwrap();
+        assert_eq!(legacy.retention_ttl_seconds, 30 * 24 * 60 * 60);
+        assert_eq!(legacy.retention_limit, 100);
+        assert_eq!(legacy.max_attempts, 3);
+    }
+
+    #[tokio::test]
+    async fn retention_pass_invokes_prune_with_configured_ttl_and_limit() {
+        let input = SessionTaskReaperInput {
+            retention_ttl_seconds: 3600,
+            retention_limit: 25,
+            ..Default::default()
+        };
+        let seen = Arc::new(Mutex::new(None));
+        let seen_clone = seen.clone();
+        let pruned = run_retention_pass(&input, move |ttl, limit| {
+            *seen_clone.lock().unwrap() = Some((ttl, limit));
+            async move { std::result::Result::<usize, &str>::Ok(4) }
+        })
+        .await;
+
+        assert_eq!(pruned, 4, "returns the prune count");
+        let (ttl, limit) = seen.lock().unwrap().unwrap();
+        assert_eq!(ttl, chrono::Duration::seconds(3600));
+        assert_eq!(limit, 25);
+    }
+
+    #[tokio::test]
+    async fn retention_pass_skips_prune_when_ttl_zero() {
+        let input = SessionTaskReaperInput {
+            retention_ttl_seconds: 0,
+            ..Default::default()
+        };
+        let called = Arc::new(Mutex::new(false));
+        let called_clone = called.clone();
+        let pruned = run_retention_pass(&input, move |_ttl, _limit| {
+            *called_clone.lock().unwrap() = true;
+            async move { std::result::Result::<usize, &str>::Ok(99) }
+        })
+        .await;
+
+        assert_eq!(pruned, 0, "TTL=0 disables retention");
+        assert!(!*called.lock().unwrap(), "prune must not be invoked");
+    }
+
+    #[tokio::test]
+    async fn retention_pass_swallows_prune_errors() {
+        let input = SessionTaskReaperInput::default();
+        let pruned = run_retention_pass(&input, |_ttl, _limit| async move {
+            std::result::Result::<usize, &str>::Err("boom")
+        })
+        .await;
+        assert_eq!(pruned, 0, "prune errors never fail the reaper tick");
     }
 
     // -------------------------------------------------------------------------

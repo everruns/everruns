@@ -3153,6 +3153,58 @@ impl StorageBackend {
         dispatch!(self, list_orphaned_session_task_ids, stale_after, limit)
     }
 
+    /// Prune a bounded batch of terminal session tasks older than `cutoff`,
+    /// returning the `(session_id, task_id, result_path)` triples removed so
+    /// the caller can delete their artifacts (EVE-580). Messages are deleted
+    /// in both backends (PG via FK cascade, in-memory explicitly).
+    pub async fn prune_terminal_session_tasks(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, Option<String>)>> {
+        dispatch!(self, prune_terminal_session_tasks, cutoff, limit)
+    }
+
+    /// Full retention prune (EVE-580): delete a bounded batch of terminal
+    /// session tasks older than `now - ttl` (rows + messages), then remove
+    /// each pruned task's `/.tasks/{task_id}` artifact subtree through the
+    /// existing session-file deletion seam (which clears backing blobs for the
+    /// object-storage backend). Returns the number of tasks pruned.
+    ///
+    /// Ordering: rows commit first, artifacts after, so a crash leaks at worst
+    /// a dangling blob (reclaimed by blob GC) rather than a row pointing at a
+    /// deleted artifact. Artifact deletion is best-effort and never fails the
+    /// prune. Shared by the in-process Direct worker adapter and the gRPC
+    /// `PruneTerminalSessionTasks` server handler.
+    pub async fn prune_terminal_session_tasks_with_artifacts(
+        &self,
+        ttl: chrono::Duration,
+        limit: i64,
+    ) -> Result<usize> {
+        let cutoff = chrono::Utc::now() - ttl;
+        let pruned = self.prune_terminal_session_tasks(cutoff, limit).await?;
+
+        for (session_id, task_id, result_path) in &pruned {
+            if result_path.is_none() {
+                continue;
+            }
+            let dir = format!("/.tasks/{task_id}");
+            if let Err(e) = self
+                .delete_session_file_recursive(session_id.uuid(), &dir)
+                .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    task_id = %task_id,
+                    error = %e,
+                    "Retention prune: failed to delete task artifacts (best-effort; blob GC will reclaim)"
+                );
+            }
+        }
+
+        Ok(pruned.len())
+    }
+
     // ============================================
     // Audit Logs (TM-OBS-007, EVE-226)
     // ============================================
@@ -3822,5 +3874,131 @@ impl StorageBackend {
         input: CreatePaymentAttemptRow,
     ) -> Result<PaymentAttemptRow> {
         dispatch!(self, create_payment_attempt, org_id, input)
+    }
+}
+
+#[cfg(test)]
+mod retention_tests {
+    use super::*;
+    use everruns_core::SessionId;
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskRegistry, SessionTaskState, SessionTaskUpdate, TaskLinks,
+        TaskWakePolicy,
+    };
+    use std::sync::Arc;
+
+    // The retention prune deletes a task's `/.tasks/{id}` artifact subtree
+    // through the existing session-file deletion seam after the row commits
+    // (EVE-580). Proven against the in-memory backend: a terminal task with a
+    // result_path has its row removed AND its artifact file deleted, while a
+    // live task and its file are untouched.
+    #[tokio::test]
+    async fn prune_with_artifacts_deletes_rows_and_artifact_files() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let registry = crate::storage::DbSessionTaskRegistry::new(db.clone());
+        let session_id = SessionId::new();
+        let sid = session_id.uuid();
+
+        // Terminal task with an artifact file under /.tasks/{id}.
+        let terminal = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: Some("task_term".to_string()),
+                kind: "background_tool".to_string(),
+                display_name: "done".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        registry
+            .update(
+                session_id,
+                &terminal.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    result_path: Some("/.tasks/task_term/result.json".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+            session_id,
+            path: "/.tasks/task_term/result.json".to_string(),
+            content: Some(b"{}".to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .unwrap();
+
+        // Live task with a file — must survive.
+        registry
+            .create(CreateSessionTask {
+                session_id,
+                id: Some("task_live".to_string()),
+                kind: "background_tool".to_string(),
+                display_name: "live".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        db.create_session_file(crate::storage::models::CreateSessionFileRow {
+            session_id,
+            path: "/.tasks/task_live/result.json".to_string(),
+            content: Some(b"{}".to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .unwrap();
+
+        // Negative TTL → cutoff just after now, so the just-finished terminal
+        // task is eligible; the running task can never be (state guard).
+        let pruned = db
+            .prune_terminal_session_tasks_with_artifacts(chrono::Duration::seconds(-1), 100)
+            .await
+            .unwrap();
+        assert_eq!(pruned, 1, "only the terminal task is pruned");
+
+        // Terminal row + its artifact are gone.
+        assert!(
+            registry
+                .get(session_id, "task_term")
+                .await
+                .unwrap()
+                .is_none(),
+            "terminal task row removed"
+        );
+        assert!(
+            db.get_session_file(sid, "/.tasks/task_term/result.json")
+                .await
+                .unwrap()
+                .is_none(),
+            "terminal task artifact deleted via the session-file seam"
+        );
+
+        // Live row + its artifact survive.
+        assert!(
+            registry
+                .get(session_id, "task_live")
+                .await
+                .unwrap()
+                .is_some(),
+            "live task untouched"
+        );
+        assert!(
+            db.get_session_file(sid, "/.tasks/task_live/result.json")
+                .await
+                .unwrap()
+                .is_some(),
+            "live task artifact untouched"
+        );
     }
 }

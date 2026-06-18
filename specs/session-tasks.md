@@ -198,9 +198,41 @@ Results are modeled apart from status:
 - **Human summary**: short `summary` on the record.
 - **Artifacts**: typed links (file, PR, child session) on the record.
 
-Retention/expiry of task results is explicitly out of scope for v1; the
-columns (`finished_at`, `artifacts`) are designed so a TTL policy can be added
-without schema change.
+### Retention (TTL)
+
+Terminal task records are pruned on a global TTL (EVE-580). The retention pass
+runs inside the existing `session_task_reaper` durable activity (see Durability
+and recovery): on each tick, after the orphan reconciliation, it deletes a
+bounded batch of tasks in a terminal state (`succeeded`/`failed`/`canceled`)
+whose `finished_at` is older than `now - TTL`, together with their
+`session_task_messages` and their `result_path` artifact subtree
+(`/.tasks/{task_id}`). Live tasks (`queued`/`running`/`awaiting_input`) and
+terminal tasks newer than the TTL are never touched — the prune predicate is
+strictly `state IN (terminal) AND finished_at < cutoff`.
+
+- **Configuration**: a single global TTL via `SESSION_TASK_RETENTION_TTL_SECONDS`
+  (default 30 days), seeded into the reaper activity input through the same
+  bootstrap path as the reaper interval (`SessionTaskReaperInput::from_env`).
+  `0` disables retention (records live forever — the pre-EVE-580 behavior).
+  A per-org override is a follow-up, not this issue; the global TTL is the
+  documented extension point.
+- **Bounded work**: each pass prunes at most `retention_limit` tasks (default
+  100), draining a backlog across successive ticks so a large backlog cannot
+  wedge the tick or blow memory (mirrors the orphan-scan and blob-GC bounds).
+- **Artifact cleanup and ordering**: rows (and cascading messages) are deleted
+  first; `result_path` artifacts are removed afterwards through the existing
+  session-file deletion seam (`delete_session_file_recursive`, which clears
+  backing blobs on the object-storage backend). A crash between the two can at
+  worst leak a dangling blob — reclaimed by blob GC (`crates/server/src/blob_gc.rs`)
+  — rather than leave a row pointing at a deleted artifact. Artifact deletion
+  is best-effort and never fails the prune.
+- **Tenant scoping**: the query is global/by-age, but every delete is keyed on
+  the task's own primary key, so it cannot cross-delete between orgs (TM-TENANT).
+
+Source: `crates/worker/src/session_task_reaper.rs` (pass + config),
+`crates/server/src/storage/backend.rs`
+(`prune_terminal_session_tasks_with_artifacts`), backed by a partial index on
+terminal `finished_at` (migration 075).
 
 ## Events and UI
 
@@ -407,6 +439,6 @@ No backward compatibility is required; data migrates forward once:
 ## Out of scope (v1)
 
 - Webhooks / push notifications on task transitions.
-- Result retention and TTL policies.
+- Per-org retention TTL overrides (global TTL ships first; see Retention).
 - Task definitions / recurrence (monitors ship as long-lived tasks first).
 - Cross-session or org-scoped task queries.

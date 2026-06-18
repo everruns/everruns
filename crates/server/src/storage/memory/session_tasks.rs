@@ -198,6 +198,66 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Prune terminal session tasks whose `finished_at` is older than the TTL
+    /// cutoff, in a bounded batch. Mirrors the PostgreSQL repository: deletes
+    /// the task rows AND their messages (no FK cascade in-memory), and returns
+    /// the `(session_id, task_id, result_path)` triples removed so the caller
+    /// can clean up `result_path` artifacts (EVE-580).
+    ///
+    /// Only terminal states with a non-NULL `finished_at` strictly older than
+    /// `cutoff` are eligible; live/running/queued tasks are never touched.
+    pub async fn prune_terminal_session_tasks(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, Option<String>)>> {
+        let mut tasks = self.session_tasks.write();
+
+        // Select the eligible batch deterministically (oldest finished first),
+        // matching the PG query's ORDER BY finished_at ASC.
+        let mut eligible: Vec<(
+            SessionId,
+            String,
+            Option<String>,
+            chrono::DateTime<chrono::Utc>,
+        )> = tasks
+            .values()
+            .filter(|row| {
+                matches!(row.state.as_str(), "succeeded" | "failed" | "canceled")
+                    && row.finished_at.is_some_and(|f| f < cutoff)
+            })
+            .map(|row| {
+                (
+                    row.session_id,
+                    row.id.clone(),
+                    row.result_path.clone(),
+                    row.finished_at.expect("filtered to Some above"),
+                )
+            })
+            .collect();
+        eligible.sort_by(|a, b| (a.3, &a.1).cmp(&(b.3, &b.1)));
+        eligible.truncate(limit.max(0) as usize);
+
+        let pruned: Vec<(SessionId, String, Option<String>)> = eligible
+            .into_iter()
+            .map(|(sid, id, rp, _)| (sid, id, rp))
+            .collect();
+
+        let pruned_ids: std::collections::HashSet<&str> =
+            pruned.iter().map(|(_, id, _)| id.as_str()).collect();
+        for (_, id, _) in &pruned {
+            tasks.remove(id);
+        }
+        drop(tasks);
+
+        // Cascade messages for the pruned tasks.
+        self.session_task_messages
+            .write()
+            .retain(|m| !pruned_ids.contains(m.task_id.as_str()));
+
+        Ok(pruned)
+    }
+
     /// Messages on the task channel, oldest first.
     ///
     /// When `after_id` is `Some`, only messages after that cursor ID are
@@ -233,5 +293,173 @@ impl InMemoryDatabase {
             result.drain(..skip);
         }
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use everruns_core::SessionId;
+
+    fn terminal_row(
+        db: &InMemoryDatabase,
+        session_id: SessionId,
+        id: &str,
+        state: &str,
+        finished_at: Option<chrono::DateTime<Utc>>,
+        result_path: Option<&str>,
+    ) {
+        let now = Utc::now();
+        let row = SessionTaskRow {
+            id: id.to_string(),
+            session_id,
+            kind: "background_tool".to_string(),
+            display_name: "t".to_string(),
+            spec: serde_json::json!({}),
+            state: state.to_string(),
+            state_detail: None,
+            progress: None,
+            input_request: None,
+            cancel_requested_at: None,
+            summary: None,
+            result_path: result_path.map(str::to_string),
+            artifacts: serde_json::json!([]),
+            error: None,
+            attempt: 1,
+            worker_id: None,
+            heartbeat_at: None,
+            links: serde_json::json!({}),
+            wake_policy: "silent".to_string(),
+            created_at: now,
+            started_at: Some(now),
+            finished_at,
+            updated_at: now,
+        };
+        db.session_tasks.write().insert(id.to_string(), row);
+    }
+
+    fn message(db: &InMemoryDatabase, session_id: SessionId, id: &str, task_id: &str) {
+        db.session_task_messages
+            .write()
+            .push(SessionTaskMessageRow {
+                id: id.to_string(),
+                task_id: task_id.to_string(),
+                session_id,
+                direction: "outbound".to_string(),
+                content: serde_json::json!([]),
+                in_reply_to: None,
+                created_at: Utc::now(),
+            });
+    }
+
+    #[tokio::test]
+    async fn prune_removes_only_old_terminal_tasks_and_their_messages() {
+        let db = InMemoryDatabase::new();
+        let session_id = SessionId::new();
+        let now = Utc::now();
+
+        // Old terminal tasks (eligible) in each terminal state.
+        let old = now - Duration::days(40);
+        terminal_row(
+            &db,
+            session_id,
+            "task_old_succ",
+            "succeeded",
+            Some(old),
+            Some("/.tasks/task_old_succ/result.json"),
+        );
+        terminal_row(&db, session_id, "task_old_fail", "failed", Some(old), None);
+        terminal_row(
+            &db,
+            session_id,
+            "task_old_canc",
+            "canceled",
+            Some(old),
+            None,
+        );
+        // Recent terminal task (not eligible).
+        terminal_row(
+            &db,
+            session_id,
+            "task_recent",
+            "succeeded",
+            Some(now - Duration::hours(1)),
+            None,
+        );
+        // Live tasks (never eligible, even with NULL finished_at).
+        terminal_row(&db, session_id, "task_running", "running", None, None);
+        terminal_row(&db, session_id, "task_queued", "queued", None, None);
+
+        // Messages: old task has messages (must be cascaded), recent keeps them.
+        message(&db, session_id, "msg_old_1", "task_old_succ");
+        message(&db, session_id, "msg_old_2", "task_old_succ");
+        message(&db, session_id, "msg_recent", "task_recent");
+
+        let cutoff = now - Duration::days(30);
+        let pruned = db.prune_terminal_session_tasks(cutoff, 100).await.unwrap();
+
+        // Only the three old terminal tasks pruned.
+        let mut pruned_ids: Vec<&str> = pruned.iter().map(|(_, id, _)| id.as_str()).collect();
+        pruned_ids.sort();
+        assert_eq!(
+            pruned_ids,
+            vec!["task_old_canc", "task_old_fail", "task_old_succ"]
+        );
+
+        // result_path is surfaced for artifact cleanup.
+        let succ = pruned
+            .iter()
+            .find(|(_, id, _)| id == "task_old_succ")
+            .unwrap();
+        assert_eq!(succ.2.as_deref(), Some("/.tasks/task_old_succ/result.json"));
+
+        // Recent + live tasks survive.
+        let remaining: Vec<String> = db.session_tasks.read().keys().cloned().collect();
+        let mut remaining = remaining;
+        remaining.sort();
+        assert_eq!(
+            remaining,
+            vec![
+                "task_queued".to_string(),
+                "task_recent".to_string(),
+                "task_running".to_string()
+            ]
+        );
+
+        // Old task messages cascaded; recent task message kept.
+        let msgs = db.session_task_messages.read();
+        let msg_ids: Vec<&str> = msgs.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(msg_ids, vec!["msg_recent"]);
+    }
+
+    #[tokio::test]
+    async fn prune_respects_batch_cap() {
+        let db = InMemoryDatabase::new();
+        let session_id = SessionId::new();
+        let now = Utc::now();
+        for i in 0..5 {
+            terminal_row(
+                &db,
+                session_id,
+                &format!("task_{i}"),
+                "succeeded",
+                // Stagger finished_at so the ORDER BY finished_at ASC is deterministic.
+                Some(now - Duration::days(40) + Duration::seconds(i)),
+                None,
+            );
+        }
+        let cutoff = now - Duration::days(30);
+        let pruned = db.prune_terminal_session_tasks(cutoff, 2).await.unwrap();
+        assert_eq!(pruned.len(), 2, "batch cap bounds work per pass");
+        assert_eq!(
+            db.session_tasks.read().len(),
+            3,
+            "remaining drained next tick"
+        );
+        // Oldest-first: the two earliest finished_at are pruned.
+        let mut ids: Vec<&str> = pruned.iter().map(|(_, id, _)| id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["task_0", "task_1"]);
     }
 }

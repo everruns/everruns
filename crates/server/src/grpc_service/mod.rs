@@ -147,7 +147,6 @@ use everruns_internal_protocol::proto::{
     OptionalSessionTaskResponse,
     OrphanedSessionTaskEntry, // orphan-scan entry for ListOrphanedSessionTasks
     PlatformCapabilityInfo,
-    // Platform management types
     PlatformCopyHarnessRequest,
     PlatformCopyHarnessResponse,
     PlatformCreateAgentRequest,
@@ -182,6 +181,9 @@ use everruns_internal_protocol::proto::{
     PlatformUpdateHarnessResponse,
     PlatformWaitForIdleRequest,
     PlatformWaitForIdleResponse,
+    // Platform management types
+    PruneTerminalSessionTasksRequest,
+    PruneTerminalSessionTasksResponse,
     RecordCircuitBreakerFailureRequest,
     RecordCircuitBreakerFailureResponse,
     RecordCircuitBreakerSuccessRequest,
