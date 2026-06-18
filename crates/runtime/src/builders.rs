@@ -219,7 +219,9 @@ impl HarnessBuilder {
             name: self.name,
             display_name: self.display_name,
             description: self.description,
-            system_prompt: self.system_prompt,
+            // Empty/whitespace-only builder prompt means the harness
+            // contributes no base prompt.
+            system_prompt: (!self.system_prompt.trim().is_empty()).then_some(self.system_prompt),
             parent_harness_id: self.parent_harness_id,
             default_model_id: self.default_model_id,
             tags: self.tags,

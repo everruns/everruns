@@ -2339,7 +2339,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         name: &str,
         display_name: Option<&str>,
         description: Option<&str>,
-        system_prompt: &str,
+        system_prompt: Option<&str>,
         parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Harness> {
@@ -2349,6 +2349,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 "name": name,
                 "display_name": display_name,
                 "description": description,
+                // Omit when absent so the harness contributes no base prompt.
                 "system_prompt": system_prompt,
                 "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
                 "tags": ["managed"],
@@ -3253,7 +3254,7 @@ mod tests {
                 name: name.to_string(),
                 display_name: None,
                 description: None,
-                system_prompt: "test prompt".to_string(),
+                system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
                 tags: vec![],
@@ -3460,7 +3461,7 @@ mod tests {
         let store = adapters.platform_store(org.org_id, session_id);
 
         let err = store
-            .create_harness("forbidden", None, None, "prompt", None, &[])
+            .create_harness("forbidden", None, None, Some("prompt"), None, &[])
             .await
             .expect_err("member should not manage harnesses via platform tools");
 

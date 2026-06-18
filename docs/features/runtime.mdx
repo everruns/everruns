@@ -136,6 +136,8 @@ println!("tools    = {}", context.runtime_agent.tools.len());
 
 The context bundles the harness chain, optional agent, session, filtered message history, resolved model, and the assembled `RuntimeAgent`. With no messages yet, `context.messages` is empty and model/locale resolution falls back to merged harness, agent, session, and platform defaults.
 
+The harness's base system prompt is **optional**. Pass an empty string (or, when constructing a `Harness` directly, leave `system_prompt` as `None`) for a harness that only contributes capabilities or MCP servers. The prompt-composition layer trims empty fragments, so `runtime_agent.system_prompt` is assembled purely from whatever layers — parent harness, agent, session, capabilities — actually contribute text, and may be empty if none do.
+
 Execute-time hosts use `everruns_core::assemble_turn_context(...)` while inspection uses `everruns_core::inspect_turn_context(...)`; both share the same assembly logic, so in-process and worker-backed behavior stay aligned.
 
 ## Custom backends

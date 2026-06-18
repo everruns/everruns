@@ -520,7 +520,9 @@ pub struct HarnessRow {
     #[sqlx(default)]
     pub display_name: Option<String>,
     pub description: Option<String>,
-    pub system_prompt: String,
+    /// Base system prompt. Nullable: a harness may contribute no base prompt
+    /// and rely entirely on inheritance, agent, session, and capability layers.
+    pub system_prompt: Option<String>,
     pub parent_harness_id: Option<HarnessId>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
@@ -549,7 +551,8 @@ pub struct CreateHarnessRow {
     pub name: String,
     pub display_name: Option<String>,
     pub description: Option<String>,
-    pub system_prompt: String,
+    /// Base system prompt; `None` means the harness contributes no base prompt.
+    pub system_prompt: Option<String>,
     pub parent_harness_id: Option<HarnessId>,
     pub default_model_id: Option<ModelId>,
     pub tags: Vec<String>,
@@ -569,7 +572,9 @@ pub struct UpdateHarness {
     pub name: Option<String>,
     pub display_name: Option<String>,
     pub description: Option<String>,
-    pub system_prompt: Option<String>,
+    /// None = leave unchanged; Some(None) = clear to no base prompt;
+    /// Some(Some(v)) = set to v.
+    pub system_prompt: Option<Option<String>>,
     pub parent_harness_id: Option<Option<HarnessId>>,
     pub default_model_id: Option<ModelId>,
     pub tags: Option<Vec<String>>,

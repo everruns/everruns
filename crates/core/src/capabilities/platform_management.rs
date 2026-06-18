@@ -473,7 +473,7 @@ impl Tool for ManageHarnessesTool {
                 },
                 "system_prompt": {
                     "type": "string",
-                    "description": "System prompt for the harness. Defaults to 'You are a helpful assistant.' if omitted."
+                    "description": "Optional base system prompt for the harness. Omit to contribute no base prompt — the effective prompt then comes from the parent harness, agent, session, and capabilities."
                 },
                 "parent_harness_id": {
                     "type": ["string", "null"],
@@ -527,8 +527,8 @@ impl Tool for ManageHarnessesTool {
                     Ok(s) => s,
                     Err(e) => return e,
                 };
-                let system_prompt =
-                    get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
+                // Optional: when omitted the harness contributes no base prompt.
+                let system_prompt = get_str(&arguments, "system_prompt");
                 let description = get_str(&arguments, "description");
                 let parent_harness_id = match arguments.get("parent_harness_id") {
                     Some(Value::String(id_str)) => {

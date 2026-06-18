@@ -274,7 +274,8 @@ export interface Harness {
   /** Human-readable display name shown in UI. Falls back to name when absent. */
   display_name: string | null;
   description: string | null;
-  system_prompt: string;
+  /** Base system prompt. Null/absent means the harness contributes no base prompt. */
+  system_prompt?: string | null;
   parent_harness_id: string | null;
   default_model_id: string | null;
   tags: string[];
@@ -303,7 +304,8 @@ export interface CreateHarnessRequest {
   /** Human-readable display name shown in UI */
   display_name?: string;
   description?: string;
-  system_prompt: string;
+  /** Optional base system prompt. Omit for a harness with no base prompt. */
+  system_prompt?: string;
   parent_harness_id?: string;
   default_model_id?: string;
   tags?: string[];
@@ -346,8 +348,8 @@ export interface HarnessExample {
 
 /** Request to preview the final harness shape with capabilities applied */
 export interface PreviewHarnessRequest {
-  /** The base system prompt (before capability additions) */
-  system_prompt: string;
+  /** Optional base system prompt (before capability additions) */
+  system_prompt?: string;
   /** Optional parent harness to inherit from before previewing local changes */
   parent_harness_id?: string;
   /** Capability IDs to apply */

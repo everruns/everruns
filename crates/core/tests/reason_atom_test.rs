@@ -56,7 +56,7 @@ async fn setup_test_environment() -> (
         name: "test-harness".to_string(),
         display_name: Some("Test Harness".to_string()),
         description: None,
-        system_prompt: "You are a helpful assistant.".to_string(),
+        system_prompt: Some("You are a helpful assistant.".to_string()),
         parent_harness_id: None,
         default_model_id: None,
         tags: vec![],

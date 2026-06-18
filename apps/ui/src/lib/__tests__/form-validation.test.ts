@@ -59,6 +59,21 @@ describe("form validation schemas", () => {
     expect(parseTagList(parsed.tags)).toEqual(["ops", "alerts", "incident-response"]);
   });
 
+  it("allows a harness with no base system prompt", () => {
+    const parsed = harnessFormSchema.parse({
+      name: "tools-only",
+      display_name: "Tools Only",
+      description: "",
+      system_prompt: "  ",
+      parent_harness_id: "harness_abc",
+      default_model_id: "",
+      tags: "",
+    });
+
+    // Empty/whitespace prompt normalizes to undefined so the request omits it.
+    expect(parsed.system_prompt).toBeUndefined();
+  });
+
   it("rejects invalid agent identity locale and timezone values", () => {
     const parsed = agentIdentityFormSchema.safeParse({
       name: "Ops Bot",

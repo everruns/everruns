@@ -34,7 +34,10 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
             .description
             .as_ref()
             .is_some_and(|d| d.len() > MAX_AGENT_DESCRIPTION_BYTES)
-        || req.system_prompt.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES
+        || req
+            .system_prompt
+            .as_ref()
+            .is_some_and(|s| s.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES)
         || req.capabilities.len() > MAX_AGENT_CAPABILITIES
         || req.initial_files.len() > MAX_INITIAL_FILES
         || initial_files_total_bytes(&req.initial_files) > MAX_INITIAL_FILES_TOTAL_BYTES
@@ -185,7 +188,10 @@ impl Command for CreateHarness {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
-            system_prompt: req.system_prompt,
+            // Normalize an empty/whitespace-only prompt to "no base prompt" so
+            // storage matches the documented semantics (the composition layer
+            // trims it anyway).
+            system_prompt: req.system_prompt.filter(|s| !s.trim().is_empty()),
             parent_harness_id,
             default_model_id,
             tags: req.tags,
@@ -458,7 +464,11 @@ impl Command for UpdateHarnessCmd {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
-            system_prompt: req.system_prompt,
+            // Omitted = leave unchanged; present empty/whitespace = clear to no
+            // base prompt; present text = set. Mirrors create-path normalization.
+            system_prompt: req
+                .system_prompt
+                .map(|s| (!s.trim().is_empty()).then_some(s)),
             parent_harness_id: req.parent_harness_id.map(|_| parent_harness_id),
             default_model_id,
             tags: req.tags,

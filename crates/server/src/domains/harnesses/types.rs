@@ -28,9 +28,13 @@ pub struct CreateHarnessRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "Research harness with planning and web capabilities")]
     pub description: Option<String>,
-    /// The system prompt defining the harness's base behavior.
+    /// Base system prompt defining the harness's behavior. Optional: omit (or
+    /// send an empty string) to contribute no base prompt, in which case the
+    /// effective prompt comes from the parent harness, agent, session, and
+    /// capability layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are a research assistant with deep analytical capabilities.")]
-    pub system_prompt: String,
+    pub system_prompt: Option<String>,
     /// Optional parent harness to inherit from.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
@@ -123,9 +127,11 @@ pub struct UpdateHarnessRequest {
 /// Request to preview harness shape with capabilities applied
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PreviewHarnessRequest {
-    /// System prompt to render as the base prompt for the preview.
+    /// System prompt to render as the base prompt for the preview. Optional:
+    /// omit to preview a harness that contributes no base prompt of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = "You are a research assistant.")]
-    pub system_prompt: String,
+    pub system_prompt: Option<String>,
     /// Parent harness to extend. When set, its prompt, capabilities, and MCP servers are
     /// merged with the fields in this request before rendering.
     #[serde(skip_serializing_if = "Option::is_none")]

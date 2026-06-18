@@ -367,7 +367,7 @@ mod tests {
                 name: "sandbox-harness".to_string(),
                 display_name: Some("Sandbox Harness".to_string()),
                 description: Some("test".to_string()),
-                system_prompt: "test".to_string(),
+                system_prompt: Some("test".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
                 tags: vec![],

@@ -3397,7 +3397,8 @@ impl WorkerService for WorkerServiceImpl {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
-            system_prompt: req.system_prompt,
+            // Worker proto carries a plain string; empty/whitespace means no base prompt.
+            system_prompt: (!req.system_prompt.trim().is_empty()).then_some(req.system_prompt),
             parent_harness_id: req
                 .parent_harness_id
                 .as_ref()

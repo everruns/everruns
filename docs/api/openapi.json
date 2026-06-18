@@ -15422,8 +15422,7 @@
         "type": "object",
         "description": "Request to create a new harness",
         "required": [
-          "name",
-          "system_prompt"
+          "name"
         ],
         "properties": {
           "capabilities": {
@@ -15513,8 +15512,11 @@
             "example": "harness_01933b5a000070008000000000000602"
           },
           "system_prompt": {
-            "type": "string",
-            "description": "The system prompt defining the harness's base behavior.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base system prompt defining the harness's behavior. Optional: omit (or\nsend an empty string) to contribute no base prompt, in which case the\neffective prompt comes from the parent harness, agent, session, and\ncapability layers.",
             "example": "You are a research assistant with deep analytical capabilities."
           },
           "tags": {
@@ -18633,7 +18635,6 @@
         "required": [
           "id",
           "name",
-          "system_prompt",
           "status",
           "created_at",
           "updated_at"
@@ -18758,8 +18759,11 @@
             "description": "Current lifecycle status of the harness."
           },
           "system_prompt": {
-            "type": "string",
-            "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "System prompt that defines the harness's base behavior.\n\nForms the foundation of the prompt stack. Optional: when absent the\nharness contributes no base prompt, so the effective prompt comes\nentirely from the parent harness (if any), the agent, the session, and\ncapability contributions. Empty/whitespace-only values normalize to\n`None`.",
             "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
           },
           "tags": {
@@ -20567,7 +20571,6 @@
               "required": [
                 "id",
                 "name",
-                "system_prompt",
                 "status",
                 "created_at",
                 "updated_at"
@@ -20692,8 +20695,11 @@
                   "description": "Current lifecycle status of the harness."
                 },
                 "system_prompt": {
-                  "type": "string",
-                  "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "System prompt that defines the harness's base behavior.\n\nForms the foundation of the prompt stack. Optional: when absent the\nharness contributes no base prompt, so the effective prompt comes\nentirely from the parent harness (if any), the agent, the session, and\ncapability contributions. Empty/whitespace-only values normalize to\n`None`.",
                   "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                 },
                 "tags": {
@@ -22546,7 +22552,6 @@
                       "required": [
                         "id",
                         "name",
-                        "system_prompt",
                         "status",
                         "created_at",
                         "updated_at"
@@ -22671,8 +22676,11 @@
                           "description": "Current lifecycle status of the harness."
                         },
                         "system_prompt": {
-                          "type": "string",
-                          "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "System prompt that defines the harness's base behavior.\n\nForms the foundation of the prompt stack. Optional: when absent the\nharness contributes no base prompt, so the effective prompt comes\nentirely from the parent harness (if any), the agent, the session, and\ncapability contributions. Empty/whitespace-only values normalize to\n`None`.",
                           "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                         },
                         "tags": {
@@ -26678,9 +26686,6 @@
       "PreviewHarnessRequest": {
         "type": "object",
         "description": "Request to preview harness shape with capabilities applied",
-        "required": [
-          "system_prompt"
-        ],
         "properties": {
           "capabilities": {
             "type": "array",
@@ -26714,8 +26719,11 @@
             "example": "harness_01933b5a000070008000000000000602"
           },
           "system_prompt": {
-            "type": "string",
-            "description": "System prompt to render as the base prompt for the preview.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "System prompt to render as the base prompt for the preview. Optional:\nomit to preview a harness that contributes no base prompt of its own.",
             "example": "You are a research assistant."
           }
         }
@@ -33281,7 +33289,6 @@
             "required": [
               "id",
               "name",
-              "system_prompt",
               "status",
               "created_at",
               "updated_at"
@@ -33406,8 +33413,11 @@
                 "description": "Current lifecycle status of the harness."
               },
               "system_prompt": {
-                "type": "string",
-                "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "System prompt that defines the harness's base behavior.\n\nForms the foundation of the prompt stack. Optional: when absent the\nharness contributes no base prompt, so the effective prompt comes\nentirely from the parent harness (if any), the agent, the session, and\ncapability contributions. Empty/whitespace-only values normalize to\n`None`.",
                 "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
               },
               "tags": {
@@ -34193,7 +34203,6 @@
                 "required": [
                   "id",
                   "name",
-                  "system_prompt",
                   "status",
                   "created_at",
                   "updated_at"
@@ -34318,8 +34327,11 @@
                     "description": "Current lifecycle status of the harness."
                   },
                   "system_prompt": {
-                    "type": "string",
-                    "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "System prompt that defines the harness's base behavior.\n\nForms the foundation of the prompt stack. Optional: when absent the\nharness contributes no base prompt, so the effective prompt comes\nentirely from the parent harness (if any), the agent, the session, and\ncapability contributions. Empty/whitespace-only values normalize to\n`None`.",
                     "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                   },
                   "tags": {
