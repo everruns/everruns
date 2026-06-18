@@ -249,6 +249,10 @@ fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorRespons
             ..
         } => ErrorResponse::new(message).into_response(StatusCode::CONFLICT),
         CommandError {
+            kind: CommandErrorKind::RateLimited(message),
+            ..
+        } => ErrorResponse::new(message).into_response(StatusCode::TOO_MANY_REQUESTS),
+        CommandError {
             kind: CommandErrorKind::Internal(error),
             ..
         } => internal_error(error),

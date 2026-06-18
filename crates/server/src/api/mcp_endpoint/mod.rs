@@ -557,6 +557,7 @@ fn resource_error(resource: &str, e: CommandError) -> String {
         | CommandErrorKind::BadRequest(msg)
         | CommandErrorKind::NotFound(msg)
         | CommandErrorKind::Conflict(msg)
+        | CommandErrorKind::RateLimited(msg)
         | CommandErrorKind::Unprocessable(msg) => msg,
         CommandErrorKind::Internal(err) => format!("Failed to list {resource}: {err}"),
     }
