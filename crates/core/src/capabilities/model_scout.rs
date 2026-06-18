@@ -21,7 +21,9 @@
 // never logged. TM-DOS — probe count is bounded by `max_candidates`
 // (default 10) and spend by `max_spend_usd` (default $0.10).
 
-use super::{AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus};
+use super::{
+    AgentBlueprint, BlueprintModel, Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
+};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -29,6 +31,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const MODEL_SCOUT_CAPABILITY_ID: &str = "model_scout";
+const DEFAULT_PROBE_TIMEOUT_MS: u64 = 10_000;
+const MIN_PROBE_TIMEOUT_MS: u64 = 1_000;
+const MAX_PROBE_TIMEOUT_MS: u64 = 60_000;
+const DEFAULT_MAX_SPEND_USD: f64 = 0.10;
+const MAX_PROBE_SPEND_USD: f64 = 10.0;
+const MAX_PROBE_TASKS: usize = 50;
 
 /// Capability that contributes the OpenRouter model scout blueprint.
 pub struct ModelScoutCapability;
@@ -60,6 +68,10 @@ impl Capability for ModelScoutCapability {
 
     fn category(&self) -> Option<&str> {
         Some("AI")
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
     }
 
     fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
@@ -548,6 +560,13 @@ impl Tool for ProbeModelTool {
                     "maximum": 60000,
                     "default": 10000,
                     "description": "HTTP timeout per probe in milliseconds."
+                },
+                "max_spend_usd": {
+                    "type": "number",
+                    "minimum": 0.0,
+                    "maximum": 10.0,
+                    "default": 0.10,
+                    "description": "Maximum observed spend in USD before stopping further probes."
                 }
             }
         })
@@ -569,15 +588,17 @@ impl Tool for ProbeModelTool {
             None => return ToolExecutionResult::tool_error("model_id is required"),
         };
 
-        let timeout_ms = arguments
-            .get("timeout_ms")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10_000);
+        let timeout_ms = bounded_probe_timeout_ms(&arguments);
+        let max_spend_usd = bounded_probe_max_spend_usd(&arguments);
 
         let tasks: Vec<ProbeTask> = match arguments.get("tasks") {
             Some(Value::Array(arr)) if !arr.is_empty() => {
-                match serde_json::from_value(Value::Array(arr.clone())) {
-                    Ok(t) => t,
+                // Cap the JSON array *before* cloning/deserializing so an
+                // adversarial multi-million-element `tasks` payload can't force
+                // unbounded allocation/CPU ahead of the limit (TM-DOS).
+                let capped: Vec<Value> = arr.iter().take(MAX_PROBE_TASKS).cloned().collect();
+                match serde_json::from_value(Value::Array(capped)) {
+                    Ok(t) => limit_probe_tasks(t),
                     Err(e) => {
                         return ToolExecutionResult::tool_error(format!(
                             "Invalid probe tasks: {e}"
@@ -606,9 +627,18 @@ impl Tool for ProbeModelTool {
         };
 
         let mut results: Vec<ProbeResult> = Vec::new();
+        let mut observed_spend_usd = 0.0;
 
         for task in &tasks {
+            // Check the budget before each probe so a zero budget runs zero
+            // (paid) probes rather than always paying for the first one.
+            if observed_spend_usd >= max_spend_usd {
+                break;
+            }
             let result = run_probe(&client, &api_key, &model_id, task).await;
+            if let Some(cost_usd) = result.cost_usd {
+                observed_spend_usd += cost_usd;
+            }
             results.push(result);
         }
 
@@ -620,12 +650,39 @@ impl Tool for ProbeModelTool {
         ToolExecutionResult::success(json!({
             "model_id": model_id,
             "results": result_values,
+            "observed_spend_usd": observed_spend_usd,
+            "max_spend_usd": max_spend_usd,
         }))
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+fn bounded_probe_timeout_ms(arguments: &Value) -> u64 {
+    arguments
+        .get("timeout_ms")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(DEFAULT_PROBE_TIMEOUT_MS)
+        .clamp(MIN_PROBE_TIMEOUT_MS, MAX_PROBE_TIMEOUT_MS)
+}
+
+fn bounded_probe_max_spend_usd(arguments: &Value) -> f64 {
+    let spend = arguments
+        .get("max_spend_usd")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(DEFAULT_MAX_SPEND_USD);
+
+    if spend.is_finite() {
+        spend.clamp(0.0, MAX_PROBE_SPEND_USD)
+    } else {
+        DEFAULT_MAX_SPEND_USD
+    }
+}
+
+fn limit_probe_tasks(tasks: Vec<ProbeTask>) -> Vec<ProbeTask> {
+    tasks.into_iter().take(MAX_PROBE_TASKS).collect()
 }
 
 /// Run one probe task against a model and return the result.
@@ -641,6 +698,10 @@ async fn run_probe(
         "model": model_id,
         "messages": [{"role": "user", "content": task.prompt}],
         "max_tokens": 256,
+        // Ask OpenRouter to return generation accounting so `usage.cost` is
+        // populated; without this the spend guardrail never observes any cost
+        // and the per-call budget cap is a no-op.
+        "usage": { "include": true },
     });
 
     let response = match client
@@ -1094,6 +1155,59 @@ mod tests {
             assert!(!t.id.is_empty());
             assert!(!t.prompt.is_empty());
         }
+    }
+
+    #[test]
+    fn model_scout_capability_is_high_risk() {
+        assert_eq!(ModelScoutCapability.risk_level(), RiskLevel::High);
+    }
+
+    #[test]
+    fn probe_timeout_is_clamped_to_schema_bounds() {
+        assert_eq!(
+            bounded_probe_timeout_ms(&json!({})),
+            DEFAULT_PROBE_TIMEOUT_MS
+        );
+        assert_eq!(
+            bounded_probe_timeout_ms(&json!({ "timeout_ms": 1 })),
+            MIN_PROBE_TIMEOUT_MS
+        );
+        assert_eq!(
+            bounded_probe_timeout_ms(&json!({ "timeout_ms": 3_600_000 })),
+            MAX_PROBE_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn probe_spend_is_clamped_to_schema_bounds() {
+        assert_eq!(
+            bounded_probe_max_spend_usd(&json!({})),
+            DEFAULT_MAX_SPEND_USD
+        );
+        assert_eq!(
+            bounded_probe_max_spend_usd(&json!({ "max_spend_usd": -1.0 })),
+            0.0
+        );
+        assert_eq!(
+            bounded_probe_max_spend_usd(&json!({ "max_spend_usd": 1_000.0 })),
+            MAX_PROBE_SPEND_USD
+        );
+    }
+
+    #[test]
+    fn custom_probe_tasks_are_capped() {
+        let tasks: Vec<ProbeTask> = (0..75)
+            .map(|i| ProbeTask {
+                id: format!("task_{i}"),
+                prompt: "Reply OK".to_string(),
+                checks: vec![],
+            })
+            .collect();
+
+        let limited = limit_probe_tasks(tasks);
+        assert_eq!(limited.len(), MAX_PROBE_TASKS);
+        assert_eq!(limited[0].id, "task_0");
+        assert_eq!(limited[MAX_PROBE_TASKS - 1].id, "task_49");
     }
 
     #[tokio::test]
