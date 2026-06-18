@@ -36,6 +36,61 @@ fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition
 use crate::error::Result;
 
 // ============================================================================
+// ReasoningEffortHandle - live, turn-scoped reasoning-effort override
+// ============================================================================
+
+/// A live, shared handle to the reasoning effort for the current turn (EVE-595).
+///
+/// Each internal LLM step within a single `run_turn` re-reads this handle when
+/// building its provider request. A tool (or any in-turn actor) can call
+/// [`ReasoningEffortHandle::set`] mid-turn so that *subsequent* LLM steps in the
+/// same turn use the new effort, without waiting for the next turn.
+///
+/// When the handle holds `None`, the [`crate::atoms::ReasonAtom`] falls back to
+/// the effort resolved from the latest user message's `controls` — so callers
+/// that never set an override see no behavior change.
+#[derive(Clone, Default)]
+pub struct ReasoningEffortHandle {
+    inner: Arc<std::sync::RwLock<Option<String>>>,
+}
+
+impl ReasoningEffortHandle {
+    /// Create an empty handle (no override).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a handle pre-seeded with an effort override.
+    pub fn with_effort(effort: impl Into<String>) -> Self {
+        Self {
+            inner: Arc::new(std::sync::RwLock::new(Some(effort.into()))),
+        }
+    }
+
+    /// Set (or replace) the override effort. Subsequent LLM steps in the same
+    /// turn pick this up. Pass `None` to clear the override and fall back to the
+    /// message-derived effort.
+    pub fn set(&self, effort: Option<String>) {
+        if let Ok(mut guard) = self.inner.write() {
+            *guard = effort;
+        }
+    }
+
+    /// Read the current override effort, if any.
+    pub fn get(&self) -> Option<String> {
+        self.inner.read().ok().and_then(|guard| guard.clone())
+    }
+}
+
+impl std::fmt::Debug for ReasoningEffortHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReasoningEffortHandle")
+            .field("effort", &self.get())
+            .finish()
+    }
+}
+
+// ============================================================================
 // AgentStore - For retrieving agent configurations
 // ============================================================================
 
@@ -1334,6 +1389,11 @@ pub struct ToolContext {
     /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
+
+    /// Optional live reasoning-effort handle (EVE-595). When set, a tool can
+    /// change the reasoning effort mid-turn; subsequent LLM steps in the same
+    /// `run_turn` re-read it and use the new effort.
+    pub reasoning_effort_handle: Option<ReasoningEffortHandle>,
 }
 
 impl ToolContext {
@@ -1386,6 +1446,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1424,6 +1485,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1465,6 +1527,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1507,6 +1570,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1534,6 +1598,14 @@ impl ToolContext {
     /// Add a session mutator to this context.
     pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
         self.session_mutator = Some(mutator);
+        self
+    }
+
+    /// Add a live reasoning-effort handle (EVE-595). Tools can call
+    /// [`ReasoningEffortHandle::set`] on it to change the effort used by
+    /// subsequent LLM steps within the same turn.
+    pub fn with_reasoning_effort_handle(mut self, handle: ReasoningEffortHandle) -> Self {
+        self.reasoning_effort_handle = Some(handle);
         self
     }
 
@@ -1587,6 +1659,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 

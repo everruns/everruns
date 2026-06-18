@@ -95,6 +95,14 @@ These APIs own phase-local orchestration, atom wiring, dependency blocker
 handling, lifecycle event emission, and generic turn-strategy planning for
 server-backed hosts.
 
+`RuntimeHostAdapter` also exposes an optional, per-session
+`reasoning_effort_handle(session_id)` seam (default `None`). When a host returns
+a stable handle for a session, `ReasonAtom` re-reads it on every LLM step and
+lets its value override the message-derived `controls.reasoning.effort` (still
+gated by the model profile). This lets a tool change reasoning effort
+mid-`run_turn` and have subsequent steps in the same turn observe it, instead of
+only on the next turn. Hosts that do not override the seam are unaffected.
+
 `InProcessRuntime` implements `RuntimeHostAdapter` and drives its own turn
 loop by calling these activity functions directly. Atom construction lives
 in one place — host-side — so any improvement (tool-registry caching,
