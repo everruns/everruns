@@ -1,6 +1,8 @@
 packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
-# Security patches may need to land before the release-age window elapses.
+# Security patches adopted before the maturity window (Dependabot GHSA fixes):
+# dompurify 3.4.11 (Dependabot #114 — ALLOWED_ATTR pollution via setConfig() /
+# IN_PLACE sanitization bypasses).
 minimumReleaseAgeExclude:
   - dompurify
