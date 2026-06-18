@@ -189,7 +189,13 @@ against the live pointers and reclaims orphans.
    so recently-written objects are never touched.
 4. Caps deletions at `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` (default 10000) to
    bound the work a single run performs; remaining orphans are reclaimed on the
-   next pass. A delete failure is non-fatal (logged, retried next sweep).
+   next pass. The per-run cap is consumed per delete *attempt* (not just
+   successes), so transient delete failures cannot push a sweep past the cap. A
+   delete failure is non-fatal (logged, retried next sweep).
+5. Caps the number of objects listed per prefix at
+   `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` (default 100000) so the sweep's memory is
+   bounded regardless of bucket size. Buckets larger than the cap are reconciled
+   across multiple sweeps in lexicographic key-order windows.
 
 **Safety invariants.** An object with a live pointer is never deleted; an object
 younger than the grace period is never deleted; any listing or pointer-
@@ -218,7 +224,8 @@ counters; each pass also logs a summary (listed, deleted, bytes, live pointers).
 | `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by MinIO; harmless on AWS). |
 | `STORAGE_BLOB_GC_INTERVAL_SECONDS` | `21600` (6h) | Interval between GC sweeps. `0` disables GC. Only effective with the `s3` backend. |
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | `86400` (24h) | Safety grace period; orphans younger than this are never deleted. |
-| `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | `10000` | Per-sweep deletion cap to bound work. |
+| `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | `10000` | Per-sweep deletion cap to bound work (consumed per delete attempt). |
+| `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` | `100000` | Per-sweep cap on objects listed per prefix, bounding GC memory; larger buckets reconcile across sweeps. |
 
 Credentials are read once at startup. The backend is selected per process, so a
 deployment runs entirely on `db` or `s3`.

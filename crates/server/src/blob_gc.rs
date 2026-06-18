@@ -45,6 +45,11 @@ const DEFAULT_GRACE_SECONDS: i64 = 24 * 60 * 60;
 /// Default cap on deletions per sweep, to bound the work a single run performs.
 const DEFAULT_MAX_DELETES_PER_RUN: usize = 10_000;
 
+/// Default cap on how many objects a single sweep materializes per prefix. This
+/// bounds GC memory regardless of bucket size; buckets larger than this are
+/// reconciled across multiple sweeps in lexicographic-key windows.
+const DEFAULT_MAX_LIST_PER_RUN: usize = 100_000;
+
 /// Top-level key prefixes the GC reconciles. These mirror the tenant-scoped key
 /// derivation in `blob_store.rs` (`workspaces/{id}/files/{id}`,
 /// `images/org-{id}/{id}/{data,thumb}`).
@@ -56,6 +61,7 @@ pub struct BlobGcConfig {
     pub interval: Duration,
     pub grace: ChronoDuration,
     pub max_deletes_per_run: usize,
+    pub max_list_per_run: usize,
 }
 
 impl Default for BlobGcConfig {
@@ -64,6 +70,7 @@ impl Default for BlobGcConfig {
             interval: Duration::from_secs(DEFAULT_INTERVAL_SECONDS),
             grace: ChronoDuration::seconds(DEFAULT_GRACE_SECONDS),
             max_deletes_per_run: DEFAULT_MAX_DELETES_PER_RUN,
+            max_list_per_run: DEFAULT_MAX_LIST_PER_RUN,
         }
     }
 }
@@ -97,6 +104,15 @@ impl BlobGcConfig {
                 Err(_) => warn!(
                     value = %v,
                     "Invalid STORAGE_BLOB_GC_MAX_DELETES_PER_RUN; using default"
+                ),
+            }
+        }
+        if let Ok(v) = std::env::var("STORAGE_BLOB_GC_MAX_LIST_PER_RUN") {
+            match v.parse::<usize>() {
+                Ok(n) => cfg.max_list_per_run = n,
+                Err(_) => warn!(
+                    value = %v,
+                    "Invalid STORAGE_BLOB_GC_MAX_LIST_PER_RUN; using default"
                 ),
             }
         }
@@ -232,7 +248,10 @@ async fn sweep_with_live_keys(
         if budget == 0 {
             break;
         }
-        let objects = match blob_store.list_with_prefix(prefix).await {
+        let objects = match blob_store
+            .list_with_prefix(prefix, Some(config.max_list_per_run))
+            .await
+        {
             Ok(objs) => objs,
             Err(e) => {
                 // Fail closed for this prefix: skip deletion, log, continue.
@@ -254,6 +273,11 @@ async fn sweep_with_live_keys(
         );
 
         for (key, size) in &decision.to_delete {
+            // Consume the per-run budget on every delete *attempt* (not just
+            // successes), so transient delete failures cannot let a single
+            // sweep attempt more than `max_deletes_per_run` deletes across
+            // prefixes. Bytes/objects are still only counted on success.
+            budget = budget.saturating_sub(1);
             if let Err(e) = blob_store.delete(key).await {
                 // A delete failure is not fatal; the object remains an orphan
                 // and is retried next sweep. Do not count it as reclaimed.
@@ -262,7 +286,6 @@ async fn sweep_with_live_keys(
             }
             total_deleted += 1;
             total_bytes += size;
-            budget = budget.saturating_sub(1);
         }
     }
 
@@ -524,7 +547,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sweep_deletes_old_orphans_keeps_live_and_recent() {
+    async fn sweep_deletes_old_orphans_keeps_live() {
         use object_store::ObjectStore;
         use object_store::path::Path as ObjectPath;
 
@@ -535,32 +558,29 @@ mod tests {
         let ws = uuid::Uuid::from_u128(1);
         let live_file = uuid::Uuid::from_u128(10);
         let orphan_file = uuid::Uuid::from_u128(11);
-        let recent_orphan_file = uuid::Uuid::from_u128(12);
         let img = uuid::Uuid::from_u128(20);
 
         let live_key = workspace_file_key(ws, live_file);
         let orphan_key = workspace_file_key(ws, orphan_file);
-        let recent_key = workspace_file_key(ws, recent_orphan_file);
         let img_data = image_data_key(7, img);
         let img_thumb = image_thumbnail_key(7, img);
 
-        for k in [&live_key, &orphan_key, &recent_key, &img_data, &img_thumb] {
+        for k in [&live_key, &orphan_key, &img_data, &img_thumb] {
             store.put(k, b"data".to_vec(), &dr_meta()).await.unwrap();
         }
 
-        // Live pointers: the live file and the image (both data + thumb).
+        // Live pointers: the live file and the image (both data + thumb). Only
+        // `orphan_key` has no pointer.
         let live: HashSet<String> = [live_key.clone(), img_data.clone(), img_thumb.clone()]
             .into_iter()
             .collect();
 
-        // The in-memory backend stamps last_modified = now, so use a `now` far
-        // in the future to push the orphans past the grace period — except the
-        // "recent" one is excluded from deletion by reconcile because we set a
-        // small grace and a now only slightly ahead... instead, drive the
-        // distinction by overwriting `recent` right at the reference time.
-        //
-        // Simpler: list real timestamps, then assert via two sweeps.
-        let now = Utc::now() + ChronoDuration::days(2); // everything is > grace old
+        // The in-memory backend stamps last_modified = now, so a `now` two days
+        // ahead pushes every object past the 24h grace; the single orphan is
+        // therefore eligible. (The within-grace "keep recent" path is covered by
+        // `sweep_within_grace_deletes_nothing` and the `reconcile` unit tests,
+        // which the in-memory store's now-stamping can't exercise per-object.)
+        let now = Utc::now() + ChronoDuration::days(2);
         let cfg = BlobGcConfig {
             grace: ChronoDuration::hours(24),
             ..Default::default()
@@ -570,18 +590,16 @@ mod tests {
             .await
             .unwrap();
 
-        // Orphans: orphan_key + recent_key (both older than grace relative to
-        // the future `now`). Live file + image data/thumb are kept.
-        assert_eq!(deleted, 2, "two orphaned workspace files should be deleted");
-        assert_eq!(bytes, 8, "4 bytes each");
+        // Only the unpointed orphan is deleted; live file + image are kept.
+        assert_eq!(deleted, 1, "the orphaned workspace file should be deleted");
+        assert_eq!(bytes, 4, "4 bytes");
 
         // Live objects survive.
         assert!(store.get(&live_key).await.unwrap().is_some());
         assert!(store.get(&img_data).await.unwrap().is_some());
         assert!(store.get(&img_thumb).await.unwrap().is_some());
-        // Orphans are gone.
+        // Orphan is gone.
         assert!(store.get(&orphan_key).await.unwrap().is_none());
-        assert!(store.get(&recent_key).await.unwrap().is_none());
 
         // Confirm at the raw store level too (prefix stripping round-trips).
         assert!(

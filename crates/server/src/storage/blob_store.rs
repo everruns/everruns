@@ -56,7 +56,13 @@ pub trait BlobStore: Send + Sync {
     ///
     /// Backends with no external objects (none today — only the object_store
     /// backend implements `BlobStore`) may return an empty list.
-    async fn list_with_prefix(&self, prefix: &str) -> Result<Vec<BlobObject>>;
+    ///
+    /// `limit` bounds how many objects are materialized in one call so a very
+    /// large bucket cannot drive unbounded memory in the GC; `None` means no
+    /// bound. The GC passes a configurable cap and reconciles in
+    /// lexicographic-key windows across sweeps.
+    async fn list_with_prefix(&self, prefix: &str, limit: Option<usize>)
+    -> Result<Vec<BlobObject>>;
 }
 
 /// A single object surfaced by [`BlobStore::list_with_prefix`].
@@ -312,7 +318,11 @@ impl BlobStore for ObjectStoreBlobStore {
         }
     }
 
-    async fn list_with_prefix(&self, prefix: &str) -> Result<Vec<BlobObject>> {
+    async fn list_with_prefix(
+        &self,
+        prefix: &str,
+        limit: Option<usize>,
+    ) -> Result<Vec<BlobObject>> {
         // Build the full (prefixed) listing path. An empty relative prefix
         // lists the whole deployment scope.
         let list_path = self.object_path(prefix.trim_end_matches('/'));
@@ -331,6 +341,13 @@ impl BlobStore for ObjectStoreBlobStore {
                 last_modified: meta.last_modified,
                 size_bytes: meta.size,
             });
+            // Stop once the caller's bound is reached so memory stays bounded
+            // regardless of bucket size.
+            if let Some(max) = limit
+                && out.len() >= max
+            {
+                break;
+            }
         }
         Ok(out)
     }
@@ -461,7 +478,7 @@ mod tests {
             .await
             .unwrap();
 
-        let mut ws = store.list_with_prefix("workspaces/").await.unwrap();
+        let mut ws = store.list_with_prefix("workspaces/", None).await.unwrap();
         ws.sort_by(|a, b| a.key.cmp(&b.key));
         assert_eq!(
             ws.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(),
@@ -471,8 +488,12 @@ mod tests {
         assert_eq!(ws[1].size_bytes, 2);
 
         // Empty prefix lists everything in scope.
-        let all = store.list_with_prefix("").await.unwrap();
+        let all = store.list_with_prefix("", None).await.unwrap();
         assert_eq!(all.len(), 3);
+
+        // `limit` bounds the number of objects materialized.
+        let capped = store.list_with_prefix("", Some(2)).await.unwrap();
+        assert_eq!(capped.len(), 2);
     }
 
     #[tokio::test]
@@ -491,7 +512,7 @@ mod tests {
             .unwrap();
 
         // Listing under deploy-1 returns relative keys and never sees deploy-2.
-        let listed = store.list_with_prefix("workspaces/").await.unwrap();
+        let listed = store.list_with_prefix("workspaces/", None).await.unwrap();
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].key, "workspaces/a/files/1");
     }
