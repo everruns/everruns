@@ -16,13 +16,25 @@ use everruns_core::in_memory::{
 };
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
+use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::Session;
+use everruns_core::session_task::SessionTaskRegistry;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
-    SessionStorageStore, SessionStore, UserConnectionResolver,
+    SessionScheduleStore, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
+
+/// Factory producing a per-org [`SessionScheduleStore`]. Embedders that have a
+/// single global store can ignore the `org_id` argument and return the same
+/// `Arc` every time.
+pub type ScheduleStoreFactory = Arc<dyn Fn(i64) -> Arc<dyn SessionScheduleStore> + Send + Sync>;
+
+/// Factory producing a per-(org, session) [`PlatformStore`]. The session id is
+/// supplied because platform stores are scoped to the calling session for
+/// subagent spawning and platform-management tools.
+pub type PlatformStoreFactory = Arc<dyn Fn(i64, SessionId) -> Arc<dyn PlatformStore> + Send + Sync>;
 
 /// Agent store contract for runtime seeding and lookup.
 #[async_trait]
@@ -116,6 +128,17 @@ pub struct RuntimeBackends {
     /// There is no in-memory default because a connection resolver implies a
     /// real credential source the embedder must supply.
     pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    /// Optional session-task registry injected into the act path so background
+    /// tools, subagents, and monitors persist their lifecycle. `None` (the
+    /// default) leaves `RuntimeHostAdapter::session_task_registry` returning
+    /// `None`, matching prior in-memory behavior.
+    pub session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
+    /// Optional per-org schedule store factory. `None` (the default) leaves
+    /// `RuntimeHostAdapter::schedule_store` returning `None`.
+    pub schedule_store_factory: Option<ScheduleStoreFactory>,
+    /// Optional per-(org, session) platform store factory. `None` (the
+    /// default) leaves `RuntimeHostAdapter::platform_store` returning `None`.
+    pub platform_store_factory: Option<PlatformStoreFactory>,
 }
 
 impl RuntimeBackends {
@@ -134,6 +157,9 @@ impl RuntimeBackends {
             event_bus,
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
             connection_resolver: None,
+            session_task_registry: None,
+            schedule_store_factory: None,
+            platform_store_factory: None,
         }
     }
 
@@ -178,6 +204,28 @@ impl RuntimeBackends {
     /// capabilities resolve tokens lazily at tool execution time.
     pub fn with_connection_resolver(mut self, resolver: Arc<dyn UserConnectionResolver>) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Inject a session-task registry so background tools / subagents / monitors
+    /// persist their lifecycle through the act path. Additive: leaving this unset
+    /// keeps the prior behavior (the adapter returns `None`).
+    pub fn with_session_task_registry(mut self, registry: Arc<dyn SessionTaskRegistry>) -> Self {
+        self.session_task_registry = Some(registry);
+        self
+    }
+
+    /// Inject a per-org schedule store factory. The closure is invoked with the
+    /// internal org id each time the act path needs a schedule store.
+    pub fn with_schedule_store_factory(mut self, factory: ScheduleStoreFactory) -> Self {
+        self.schedule_store_factory = Some(factory);
+        self
+    }
+
+    /// Inject a per-(org, session) platform store factory. The closure is
+    /// invoked with the internal org id and the calling session id.
+    pub fn with_platform_store_factory(mut self, factory: PlatformStoreFactory) -> Self {
+        self.platform_store_factory = Some(factory);
         self
     }
 }
