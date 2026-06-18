@@ -102,3 +102,29 @@ u4,2026-06-16T00:00:00Z,2026-06-01T00:00:00Z
   the SQL predicate, and the final count rather than exact wording.
 - The same bundle can be exported (`okf_export`) and committed to git, then
   re-imported to update the KB — "knowledge as code".
+
+## Verified run (dev mode, real Anthropic model)
+
+Captured against `just start-dev` (in-memory) with `claude-sonnet-4-6`,
+proving the OKF→agent loop end to end:
+
+1. **Import** — `POST /v1/knowledge-bases/{kb}/okf_import` →
+   `{"created":2,"updated":0,"skipped":0,"pruned":0,"warnings":[]}`. Entries:
+   `Active User` (`kind: business`, from `type: Metric Definition`) and `users`
+   (`kind: table`, `resource` set, raw `type: BigQuery Table` preserved).
+2. **Agent** bound to `knowledge_base` (`bases: [<kb>]`) calls `search_knowledge`
+   directly (no tool-search detour, thanks to `DeferrablePolicy::Never`). With
+   query `"active user"` it returns:
+   ```json
+   {"count":1,"results":[{"id":"kbe_…","kind":"business","title":"Active User",
+     "tags":["metrics","engagement"],
+     "snippet":"An **active user** is one who logged in within the last 30 days …
+       Exclude soft-deleted accounts (deleted_at IS NULL)."}]}
+   ```
+3. **Answer** quotes the definition and cites the `kbe_` id.
+
+**Recall caveat (follow-up):** keyword search uses `plainto_tsquery`
+(AND-semantics), so an over-specific query like `"active user definition"`
+returns nothing while `"active user"` matches. Consider
+`websearch_to_tsquery` / an OR fallback to improve agent-driven recall.
+
