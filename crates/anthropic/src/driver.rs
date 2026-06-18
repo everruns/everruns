@@ -18,6 +18,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use everruns_core::credential_schema::CredentialFormSchema;
@@ -220,6 +221,7 @@ impl AnthropicChatDriver {
         // (infinity_context / compaction). See `fold_system_messages`.
         let system_prompt = fold_system_messages(messages);
         let mut converted = Vec::new();
+        let visible_tool_use_ids = visible_tool_call_ids(messages);
 
         for msg in messages {
             match msg.role {
@@ -231,6 +233,12 @@ impl AnthropicChatDriver {
                     // Tool results in Anthropic are user messages with tool_result content blocks.
                     // When the message contains images, we use the array form with content blocks.
                     if let Some(tool_call_id) = &msg.tool_call_id {
+                        // Anthropic rejects tool_result blocks unless the matching tool_use
+                        // is present in the visible request after context trimming.
+                        if !visible_tool_use_ids.contains(tool_call_id.as_str()) {
+                            continue;
+                        }
+
                         let has_images = match &msg.content {
                             LlmMessageContent::Parts(parts) => parts
                                 .iter()
@@ -1079,6 +1087,15 @@ fn is_anthropic_model_not_found(status: reqwest::StatusCode, error_text: &str) -
         }
     }
     false
+}
+
+fn visible_tool_call_ids(messages: &[LlmMessage]) -> HashSet<&str> {
+    messages
+        .iter()
+        .filter(|msg| msg.role == LlmMessageRole::Assistant)
+        .flat_map(|msg| msg.tool_calls.iter().flatten())
+        .map(|tool_call| tool_call.id.as_str())
+        .collect()
 }
 
 fn is_anthropic_request_too_large(status: reqwest::StatusCode, error_text: &str) -> bool {
@@ -2193,22 +2210,37 @@ mod tests {
     #[test]
     fn test_convert_messages_tool_result() {
         // Tool result should be converted to user message with tool_result block
-        let messages = vec![LlmMessage {
-            role: LlmMessageRole::Tool,
-            content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
-            tool_calls: None,
-            tool_call_id: Some("call_123".to_string()),
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-        }];
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_123".to_string(),
+                    name: "get_weather".to_string(),
+                    arguments: json!({"city": "London"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_123".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
 
         let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
 
-        assert_eq!(converted.len(), 1);
-        assert_eq!(converted[0].role, "user");
-        assert_eq!(converted[0].content.len(), 1);
-        match &converted[0].content[0] {
+        assert_eq!(converted.len(), 2);
+        assert_eq!(converted[1].role, "user");
+        assert_eq!(converted[1].content.len(), 1);
+        match &converted[1].content[0] {
             AnthropicContentBlock::ToolResult {
                 tool_use_id,
                 content,
@@ -2224,6 +2256,23 @@ mod tests {
             }
             _ => panic!("Expected ToolResult block"),
         }
+    }
+
+    #[test]
+    fn test_convert_messages_drops_orphan_tool_result() {
+        let messages = vec![LlmMessage {
+            role: LlmMessageRole::Tool,
+            content: LlmMessageContent::Text("orphan result".to_string()),
+            tool_calls: None,
+            tool_call_id: Some("trimmed_call".to_string()),
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        }];
+
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+
+        assert!(converted.is_empty());
     }
 
     #[test]
@@ -2246,13 +2295,26 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[msg], false);
+        let assistant = LlmMessage {
+            role: LlmMessageRole::Assistant,
+            content: LlmMessageContent::Text(String::new()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_img".to_string(),
+                name: "capture".to_string(),
+                arguments: json!({}),
+            }]),
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        };
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false);
 
-        assert_eq!(converted.len(), 1);
-        assert_eq!(converted[0].role, "user");
-        assert_eq!(converted[0].content.len(), 1);
+        assert_eq!(converted.len(), 2);
+        assert_eq!(converted[1].role, "user");
+        assert_eq!(converted[1].content.len(), 1);
 
-        match &converted[0].content[0] {
+        match &converted[1].content[0] {
             AnthropicContentBlock::ToolResult {
                 tool_use_id,
                 content,
@@ -2299,9 +2361,22 @@ mod tests {
             thinking_signature: None,
         };
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[msg], false);
+        let assistant = LlmMessage {
+            role: LlmMessageRole::Assistant,
+            content: LlmMessageContent::Text(String::new()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_txt".to_string(),
+                name: "read".to_string(),
+                arguments: json!({}),
+            }]),
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        };
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false);
 
-        match &converted[0].content[0] {
+        match &converted[1].content[0] {
             AnthropicContentBlock::ToolResult { content, .. } => match content {
                 AnthropicToolResultContent::Text(text) => {
                     assert_eq!(text, "result text");
