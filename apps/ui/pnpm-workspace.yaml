@@ -1,3 +1,6 @@
 packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
+# Security patches may need to land before the release-age window elapses.
+minimumReleaseAgeExclude:
+  - dompurify
