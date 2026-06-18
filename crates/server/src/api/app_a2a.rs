@@ -1184,6 +1184,10 @@ fn command_error_response(
             ..
         } => ErrorResponse::new(msg).into_response(StatusCode::CONFLICT),
         crate::domains::common::CommandError {
+            kind: CommandErrorKind::RateLimited(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::TOO_MANY_REQUESTS),
+        crate::domains::common::CommandError {
             kind: CommandErrorKind::Unprocessable(msg),
             ..
         } => ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY),

@@ -25,6 +25,7 @@ fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
         CommandErrorKind::NotFound(message) if message.starts_with("Unknown command:") => 1,
         CommandErrorKind::NotFound(_) => 3,
         CommandErrorKind::Conflict(_) => 4,
+        CommandErrorKind::RateLimited(_) => 1,
         CommandErrorKind::Internal(_) => 5,
     }
 }
@@ -48,6 +49,7 @@ fn command_error_to_status(error: crate::domains::common::CommandError) -> Statu
         CommandErrorKind::Forbidden(message) => Status::permission_denied(message),
         CommandErrorKind::NotFound(message) => Status::not_found(message),
         CommandErrorKind::Conflict(message) => Status::failed_precondition(message),
+        CommandErrorKind::RateLimited(message) => Status::resource_exhausted(message),
         CommandErrorKind::Internal(inner) => Status::internal(inner.to_string()),
     }
 }
