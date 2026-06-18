@@ -229,6 +229,10 @@ clients or workers. See [specs/object-storage.md](../../specs/object-storage.md)
 | `STORAGE_S3_PREFIX` | No | (empty) | Key prefix isolating multiple deployments within one bucket. |
 | `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by MinIO; harmless on AWS S3). |
+| `STORAGE_BLOB_GC_INTERVAL_SECONDS` | No | `21600` (6h) | Interval between blob GC sweeps that reclaim orphaned objects. `0` disables GC. Only effective with the `s3` backend (inline `db` storage has no orphans). |
+| `STORAGE_BLOB_GC_GRACE_SECONDS` | No | `86400` (24h) | Safety grace period; orphaned objects younger than this are never deleted (avoids racing in-flight creates). |
+| `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | No | `10000` | Per-sweep deletion cap to bound work; remaining orphans are reclaimed next sweep. |
+| `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` | No | `100000` | Per-sweep cap on objects listed per prefix, bounding GC memory; larger buckets are reconciled across sweeps in key-order windows. |
 
 **Example (local SeaweedFS via `just seaweedfs`):**
 

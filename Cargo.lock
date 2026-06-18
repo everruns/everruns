@@ -25,7 +25,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid 1.23.3",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -369,7 +369,7 @@ checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -380,7 +380,7 @@ checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -415,7 +415,7 @@ checksum = "ffdcb70bdbc4d478427380519163274ac86e52916e10f0a8889adf0f96d3fee7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -487,9 +487,9 @@ dependencies = [
 
 [[package]]
 name = "aws-sdk-bedrockruntime"
-version = "1.134.0"
+version = "1.135.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09525553211416fd3c18ead2dd6a29908dcdeb1a032809a23417e7ab848dc23e"
+checksum = "e74b780f2f36912bae71b4f4f8ed9a0a88832b4681a1add3caf5ca25dbc8ab2d"
 dependencies = [
  "arc-swap",
  "aws-credential-types",
@@ -676,7 +676,7 @@ checksum = "8d7396fd9500589e62e460e987ecb671bad374934e55ec3b5f498cc7a8a8a7b7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -823,7 +823,7 @@ checksum = "7aa268c23bfbbd2c4363b9cd302a4f504fb2a9dfe7e3451d66f35dd392e20aca"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1073,7 +1073,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "thiserror 2.0.18",
 ]
 
@@ -1231,7 +1231,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1431,7 +1431,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1768,7 +1768,7 @@ checksum = "f46882e17999c6cc590af592290432be3bce0428cb0d5f8b6715e4dc7b383eb3"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1791,7 +1791,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "strsim",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1802,7 +1802,7 @@ checksum = "ac3984ec7bd6cfa798e62b4a642426a5be0e68f9401cfc2a01e3fa9ea2fcdb8d"
 dependencies = [
  "darling_core",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1877,7 +1877,7 @@ checksum = "1e567bd82dcff979e4b03460c307b3cdc9e96fde3d73bed1496d2bc75d9dd62a"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1906,7 +1906,7 @@ checksum = "cb7330aeadfbe296029522e6c40f315320aba36fc43a5b3632f3795348f3bd22"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1919,7 +1919,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustc_version",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -1987,7 +1987,7 @@ checksum = "1ac70aa55017e108007fbaf5aa0f54b021c98f92ff8af59d42eda9da96e3dd4f"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -2302,11 +2302,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2322,7 +2322,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2339,7 +2339,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2393,14 +2393,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2420,7 +2420,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2476,7 +2476,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2501,7 +2501,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2515,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2531,7 +2531,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2552,7 +2552,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2567,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2584,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2607,7 +2607,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2622,7 +2622,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2637,7 +2637,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2664,7 +2664,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2681,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2694,7 +2694,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2710,7 +2710,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2727,7 +2727,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2747,8 +2747,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-local"
+version = "0.14.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "everruns-runtime",
+ "parking_lot",
+ "rusqlite",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid 1.23.3",
+]
+
+[[package]]
 name = "everruns-mai"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2764,7 +2782,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2778,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2798,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2813,16 +2831,17 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
  "everruns-mcp",
+ "everruns-openai",
  "futures",
  "ignore",
  "serde",
@@ -2856,7 +2875,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2895,6 +2914,7 @@ dependencies = [
  "everruns-mcp",
  "everruns-sdk",
  "everruns-session-sqldb",
+ "everruns-turbopuffer",
  "everruns-worker",
  "flate2",
  "fred",
@@ -2950,7 +2970,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2966,8 +2986,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-turbopuffer"
+version = "0.14.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-core",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-worker"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3292,7 +3328,7 @@ checksum = "1458c6e22d36d61507034d5afecc64f105c1d39712b7ac6ec3b352c423f715cc"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -3374,7 +3410,7 @@ checksum = "e835b70203e41293343137df5c0664546da5745f82ec9b84d40be8336958447b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -3870,7 +3906,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -4145,7 +4181,7 @@ checksum = "a0eb5a3343abf848c0984fe4604b2b105da9539376e24fc0a3b0007411ae4fd9"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4255,7 +4291,7 @@ dependencies = [
  "indoc",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4380,7 +4416,7 @@ checksum = "782d32378dddf207193ac91cefb848ad41abb58195c95168e1291227a0832b47"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4425,7 +4461,7 @@ dependencies = [
  "quote",
  "rustc_version",
  "simd_cesu8",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4444,7 +4480,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "38c0b942f458fe50cdac086d2f946512305e5631e720728f2a61aabcd47a6264"
 dependencies = [
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4741,7 +4777,7 @@ dependencies = [
  "quote",
  "regex-syntax",
  "rustc_version",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4755,7 +4791,7 @@ dependencies = [
  "quote",
  "regex-automata",
  "regex-syntax",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -4941,7 +4977,7 @@ checksum = "db5b29714e950dbb20d5e6f74f9dcec4edbcc1067bb7f8ed198c097b8c1a818b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5227,7 +5263,7 @@ checksum = "ed3955f1a9c7c0c15e092f9c887db08b1fc683305fdf6eb6684f22555355e202"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5278,7 +5314,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5439,7 +5475,7 @@ checksum = "a948666b637a0f465e8564c73e89d4dde00d72d4d473cc972f390fc3dcee7d9c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5598,7 +5634,7 @@ dependencies = [
  "by_address",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5626,7 +5662,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5780,7 +5816,7 @@ dependencies = [
  "pest_meta",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5844,7 +5880,7 @@ dependencies = [
  "phf_shared",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5873,7 +5909,7 @@ checksum = "c96395f0a926bc13b1c17622aaddda1ecb55d49c8f1bf9777e4d877800a43f8b"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -5986,7 +6022,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "479ca8adacdd7ce8f1fb39ce9ecccbfe93a3f1344b3d0d97f20bc0196208f62b"
 dependencies = [
  "proc-macro2",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -6063,7 +6099,7 @@ dependencies = [
  "pulldown-cmark",
  "pulldown-cmark-to-cmark",
  "regex",
- "syn 2.0.117",
+ "syn 2.0.118",
  "tempfile",
 ]
 
@@ -6077,7 +6113,7 @@ dependencies = [
  "itertools",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -6628,7 +6664,7 @@ checksum = "b7186006dcb21920990093f30e3dea63b7d6e977bf1256be20c3563a5db070da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -6723,7 +6759,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams 0.4.2",
  "web-sys",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -6884,7 +6920,7 @@ dependencies = [
  "regex",
  "relative-path",
  "rustc_version",
- "syn 2.0.117",
+ "syn 2.0.118",
  "unicode-ident",
 ]
 
@@ -7080,7 +7116,7 @@ dependencies = [
  "proc-macro-crate",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7114,7 +7150,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "serde_derive_internals",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7237,7 +7273,7 @@ checksum = "d540f220d3187173da220f885ab66608367b6574e925011a9353e4badda91d79"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7248,7 +7284,7 @@ checksum = "18d26a20a969b9e3fdf2fc2d9f21eda6c40e2de84c9408bb5d3b05d499aae711"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7305,7 +7341,7 @@ checksum = "175ee3e80ae9982737ca543e96133087cbd9a485eecc3bc4de9c1a37b47ea59c"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7563,9 +7599,9 @@ dependencies = [
 
 [[package]]
 name = "smawk"
-version = "0.3.2"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b7c388c1b5e93756d0c740965c41e8822f866621d41acbdf6336a6a168f8840c"
+checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
 
 [[package]]
 name = "socket2"
@@ -7675,7 +7711,7 @@ dependencies = [
  "tracing",
  "url",
  "uuid 1.23.3",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
@@ -7688,7 +7724,7 @@ dependencies = [
  "quote",
  "sqlx-core",
  "sqlx-macros-core",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7711,7 +7747,7 @@ dependencies = [
  "sqlx-mysql",
  "sqlx-postgres",
  "sqlx-sqlite",
- "syn 2.0.117",
+ "syn 2.0.118",
  "thiserror 2.0.18",
  "tokio",
  "url",
@@ -7871,7 +7907,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "rustversion",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7883,7 +7919,7 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -7905,9 +7941,9 @@ dependencies = [
 
 [[package]]
 name = "syn"
-version = "2.0.117"
+version = "2.0.118"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e665b8803e7b1d2a727f4023456bbbbe74da67099c585258af0ad9c5013b9b99"
+checksum = "1b9ae57f904213ebb649ce6895b8a66c66f0203b9319718f69a5612a065b1422"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7931,7 +7967,7 @@ checksum = "728a70f3dbaf5bab7f0c4b1ac8d7ae5ea60a4b5549c8a5914361c99147a709d2"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8119,7 +8155,7 @@ checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8130,7 +8166,7 @@ checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8248,7 +8284,7 @@ checksum = "385a6cb71ab9ab790c5fe8d67f1645e6c450a7ce006a33de03daa956cf70a496"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8464,7 +8500,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8489,7 +8525,7 @@ dependencies = [
  "prost-build",
  "prost-types",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "tempfile",
  "tonic-build",
 ]
@@ -8569,7 +8605,7 @@ checksum = "7490cfa5ec963746568740651ac6781f701c9c5ea257c58e057f3ba8cf69e8da"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -8939,7 +8975,7 @@ dependencies = [
  "proc-macro2",
  "quote",
  "regex",
- "syn 2.0.117",
+ "syn 2.0.118",
  "uuid 1.23.3",
 ]
 
@@ -9085,7 +9121,7 @@ dependencies = [
  "bumpalo",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "wasm-bindgen-shared",
 ]
 
@@ -9196,9 +9232,9 @@ dependencies = [
 
 [[package]]
 name = "webpki-root-certs"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f31141ce3fc3e300ae89b78c0dd67f9708061d1d2eda54b8209346fd6be9a92c"
+checksum = "0d46a5a140e6f7afeccd8eae97eff335163939eac8b929834875168b29b3d267"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -9209,14 +9245,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.8",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.7"
+version = "1.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d"
+checksum = "bf85cb06032201fa7c6f829d7db5a7e5aa45bcc0655327713065f6f0576731bf"
 dependencies = [
  "rustls-pki-types",
 ]
@@ -9429,7 +9465,7 @@ checksum = "9107ddc059d5b6fbfbffdfa7a7fe3e22a226def0b2608f72e9d552763d3e1ad7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9440,7 +9476,7 @@ checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9451,7 +9487,7 @@ checksum = "29bee4b38ea3cde66011baa44dba677c432a78593e202392d1e9070cf2a7fca7"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9462,7 +9498,7 @@ checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9776,7 +9812,7 @@ dependencies = [
  "heck",
  "indexmap",
  "prettyplease",
- "syn 2.0.117",
+ "syn 2.0.118",
  "wasm-metadata",
  "wit-bindgen-core",
  "wit-component",
@@ -9792,7 +9828,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "wit-bindgen-core",
  "wit-bindgen-rust",
 ]
@@ -9878,7 +9914,7 @@ checksum = "de844c262c8848816172cef550288e7dc6c7b7814b4ee56b3e1553f275f1858e"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "synstructure",
 ]
 
@@ -9899,7 +9935,7 @@ checksum = "1ae7f38b72ec2a254e2b87ef277cf2cd4fb97cbebf944faa6f33354da0867930"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9919,7 +9955,7 @@ checksum = "11532158c46691caf0f2593ea8358fed6bbf68a0315e80aae9bd41fbade684a1"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
  "synstructure",
 ]
 
@@ -9940,7 +9976,7 @@ checksum = "3c50655cbb0fe3fc43170059e702f1ce5e19b84cec58dc87b037a09935c2f328"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]
@@ -9973,7 +10009,7 @@ checksum = "625dc425cab0dca6dc3c3319506e6593dcb08a9f387ea3b284dbd52a92c40555"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 2.0.118",
 ]
 
 [[package]]

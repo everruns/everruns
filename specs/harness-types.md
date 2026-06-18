@@ -8,6 +8,8 @@ Harnesses may also define starter files. Starter files are copied into each new 
 
 Harnesses support single-parent inheritance via `parent_harness_id`. Inheritance is live: the effective harness is resolved from parent to child at runtime and in preview.
 
+The base system prompt is **optional**. A harness may contribute no base prompt of its own — common for a child harness whose only job is to add capabilities or MCP servers — in which case the effective prompt is composed entirely from the parent harness (if any), the agent, the session, and capability contributions. Empty or whitespace-only prompts are treated as "no contribution" by the prompt-composition layer, so the column is nullable and the create/preview APIs accept an absent `system_prompt`.
+
 ## Harness Naming
 
 Every harness has two name fields:
@@ -123,7 +125,8 @@ Conversational harness for the global chat interface. Inherits Generic capabilit
 | Why include `skills` in Generic? | Skills extend agent abilities via portable instruction packages. Including discovery by default means agents can use skills uploaded to the session filesystem without extra capability setup. |
 | Why include `infinity_context` in Generic? | General-purpose sessions often grow long. Including long-context support by default keeps the prompt bounded without permanently hiding earlier conversation state. |
 | Why support harness inheritance? | It lets users build on Generic or other shared harnesses without duplicating long capability lists, prompts, model defaults, or starter files. |
-| How does harness inheritance merge? | System prompt appends parent then child. Default model falls back parent then child override. Capabilities merge by capability ID with child config overriding parent. Starter files merge by normalized path with child overriding parent. |
+| How does harness inheritance merge? | System prompt appends parent then child (empty/absent layers contribute nothing; if no layer contributes, the harness has no base prompt). Default model falls back parent then child override. Capabilities merge by capability ID with child config overriding parent. Starter files merge by normalized path with child overriding parent. |
+| Why is the system prompt optional? | A harness bundles capabilities, MCP servers, model defaults, network access, and starter files — not just a prompt. Forcing a base prompt made capability-only or MCP-only child harnesses invent filler or duplicate the parent prompt. The composition layer already treats each layer's prompt as optional, so storage and the create/preview APIs allow it to be absent. |
 | Can users create additional harnesses? | Yes, via `POST /v1/harnesses`. Built-in harnesses are readonly; users can copy them for editable versions. |
 | Why are built-in harnesses readonly? | Prevents accidental modification of system-managed definitions. Copy-to-edit pattern gives users full control while keeping built-ins stable and upgradeable. |
 | How are built-in harnesses upgraded? | Reconciliation runs at startup — iterates all orgs and upserts built-in harness definitions. Changes to `org_init::BUILT_IN_HARNESSES` propagate automatically. |

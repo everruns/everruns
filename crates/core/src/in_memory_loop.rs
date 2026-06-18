@@ -175,6 +175,7 @@ pub struct InMemoryAgenticLoopBuilder {
     tools: Vec<Box<dyn Tool>>,
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
+    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl Default for InMemoryAgenticLoopBuilder {
@@ -195,7 +196,17 @@ impl InMemoryAgenticLoopBuilder {
             tools: vec![],
             capabilities: vec![],
             max_iterations: 10,
+            reasoning_effort_handle: None,
         }
+    }
+
+    /// Share a live reasoning-effort handle (EVE-595) across the loop's
+    /// `ReasonAtom` and `ActAtom`. Tools receive a clone via their
+    /// `ToolContext` and can mutate it mid-turn so subsequent LLM steps in the
+    /// same `run_turn` observe the new effort.
+    pub fn reasoning_effort_handle(mut self, handle: crate::traits::ReasoningEffortHandle) -> Self {
+        self.reasoning_effort_handle = Some(handle);
+        self
     }
 
     /// Set the agent name
@@ -331,7 +342,7 @@ impl InMemoryAgenticLoopBuilder {
             name: "in-memory".to_string(),
             display_name: Some("In-Memory Harness".to_string()),
             description: None,
-            system_prompt: self.system_prompt.clone(),
+            system_prompt: Some(self.system_prompt.clone()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
@@ -348,6 +359,13 @@ impl InMemoryAgenticLoopBuilder {
             deleted_at: None,
         };
         harness_store.add_harness(harness).await;
+
+        // Surface explicitly-added tools (via `.tool(...)`) as agent tool
+        // definitions so ReasonAtom returns them and ActAtom executes them
+        // (rather than treating them as unknown). Capability-provided tools are
+        // already surfaced through the capability registry.
+        let explicit_tool_definitions: Vec<crate::tool_types::ToolDefinition> =
+            self.tools.iter().map(|tool| tool.to_definition()).collect();
 
         // Create agent
         let agent_id = AgentId::new();
@@ -369,7 +387,7 @@ impl InMemoryAgenticLoopBuilder {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
-            tools: vec![],
+            tools: explicit_tool_definitions,
             status: AgentStatus::Active,
             created_at: now,
             updated_at: now,
@@ -481,7 +499,7 @@ impl InMemoryAgenticLoopBuilder {
         }
 
         let input_atom = InputAtom::new(message_retriever.clone());
-        let reason_atom = ReasonAtom::new(
+        let mut reason_atom = ReasonAtom::new(
             harness_store.clone(),
             agent_store.clone(),
             session_store.clone(),
@@ -491,8 +509,12 @@ impl InMemoryAgenticLoopBuilder {
             driver_registry,
             event_emitter.clone(),
         );
-        let act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone())
+        let mut act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone())
             .with_tool_registry(Arc::new(tool_registry.clone()));
+        if let Some(handle) = self.reasoning_effort_handle {
+            reason_atom = reason_atom.with_reasoning_effort_handle(handle.clone());
+            act_atom = act_atom.with_reasoning_effort_handle(handle);
+        }
 
         Ok(InMemoryAgenticLoop {
             harness_id,

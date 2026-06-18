@@ -16,6 +16,7 @@ pub mod events;
 pub mod harnesses;
 pub mod images;
 pub mod knowledge_bases;
+pub mod knowledge_indexes;
 pub mod mcp_servers;
 pub mod memory;
 pub mod messages;

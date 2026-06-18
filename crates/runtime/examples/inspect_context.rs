@@ -35,7 +35,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "math".into(),
             display_name: Some("Math".into()),
             description: Some("Minimal harness for context inspection".into()),
-            system_prompt: "You are a math harness.".into(),
+            system_prompt: Some("You are a math harness.".into()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],

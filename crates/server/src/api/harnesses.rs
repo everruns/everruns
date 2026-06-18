@@ -277,7 +277,7 @@ pub async fn import_harness(
         name: unique_name,
         display_name: Some(example.definition.display_name.clone()),
         description: Some(example.definition.description.clone()),
-        system_prompt: example.definition.system_prompt.clone(),
+        system_prompt: Some(example.definition.system_prompt.clone()),
         parent_harness_id,
         default_model_id: None,
         tags: example.definition.tags.clone(),
@@ -596,7 +596,7 @@ pub async fn preview_harness(
     Json(req): Json<PreviewHarnessRequest>,
 ) -> ApiResult<HarnessPreviewResponse> {
     let result = crate::domains::harnesses::PreviewHarness {
-        system_prompt: Some(req.system_prompt),
+        system_prompt: req.system_prompt,
         parent_harness_id: req.parent_harness_id,
         capabilities: req.capabilities,
         mcp_servers: req.mcp_servers,

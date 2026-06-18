@@ -592,6 +592,10 @@ pub struct ReasonAtom {
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
     /// Optional partial-stream store for ContinuePartial recovery (EVE-532).
     partial_stream_store: Option<Arc<dyn PartialStreamStore>>,
+    /// Optional live reasoning-effort handle (EVE-595). When set and holding a
+    /// value, it overrides the message-derived effort on every LLM step, so a
+    /// tool can change effort mid-turn and have subsequent steps observe it.
+    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl ReasonAtom {
@@ -622,6 +626,7 @@ impl ReasonAtom {
             provider_stall_timeout: None,
             durable_tool_result_store: None,
             partial_stream_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -688,6 +693,20 @@ impl ReasonAtom {
     /// Set the partial-stream store for ContinuePartial recovery (EVE-532).
     pub fn with_partial_stream_store(mut self, store: Arc<dyn PartialStreamStore>) -> Self {
         self.partial_stream_store = Some(store);
+        self
+    }
+
+    /// Set the live reasoning-effort handle (EVE-595).
+    ///
+    /// When set and holding a value, the effort it carries overrides the
+    /// message-derived effort for every LLM step. Because the handle is shared
+    /// and re-read on each step, a tool that mutates it mid-turn causes
+    /// subsequent steps in the same turn to use the new effort.
+    pub fn with_reasoning_effort_handle(
+        mut self,
+        handle: crate::traits::ReasoningEffortHandle,
+    ) -> Self {
+        self.reasoning_effort_handle = Some(handle);
         self
     }
 }
@@ -1091,40 +1110,52 @@ impl ReasonAtom {
         // 7. Create LLM driver using factory
         let chat_driver = self.create_chat_driver(&model_with_provider)?;
 
-        // 8. Extract reasoning effort from the last user message's controls,
-        //    but only if the model actually supports reasoning (per its profile).
-        //    This prevents sending unsupported `reasoning` params to non-thinking
-        //    models like gpt-4o-mini, which would cause API errors.
-        let reasoning_effort = messages
-            .iter()
-            .rev()
-            .find(|m| m.role == MessageRole::User)
-            .and_then(|m| m.controls.as_ref())
-            .and_then(|c| c.reasoning.as_ref())
-            .and_then(|r| r.effort.clone())
-            .filter(|effort| {
-                // Skip "none" — it means "don't use reasoning"
-                if effort.eq_ignore_ascii_case("none") {
-                    return false;
+        // 8. Resolve the reasoning effort for THIS LLM step.
+        //    Source priority (re-evaluated on every step so mid-turn changes
+        //    take effect, EVE-595):
+        //      1. The live reasoning-effort handle, when set with a value. A
+        //         tool can mutate this handle mid-turn; because we re-read it on
+        //         each step, the next step in the same turn uses the new value.
+        //      2. Otherwise the latest user message's `controls.reasoning.effort`.
+        //    The chosen value is then gated against the model profile, exactly
+        //    as before, so unsupported `reasoning` params are never sent to
+        //    non-thinking models like gpt-4o-mini.
+        let handle_effort = self
+            .reasoning_effort_handle
+            .as_ref()
+            .and_then(|handle| handle.get());
+        let raw_reasoning_effort = handle_effort.or_else(|| {
+            messages
+                .iter()
+                .rev()
+                .find(|m| m.role == MessageRole::User)
+                .and_then(|m| m.controls.as_ref())
+                .and_then(|c| c.reasoning.as_ref())
+                .and_then(|r| r.effort.clone())
+        });
+        let reasoning_effort = raw_reasoning_effort.filter(|effort| {
+            // Skip "none" — it means "don't use reasoning"
+            if effort.eq_ignore_ascii_case("none") {
+                return false;
+            }
+            // Check model profile; if profile exists and reasoning is false, strip it.
+            // Unknown models (no profile) pass through — let the API decide.
+            let profile = crate::model_profiles::get_model_profile(
+                &model_with_provider.provider_type,
+                &model_with_provider.model,
+            );
+            match profile {
+                Some(p) if !p.reasoning => {
+                    tracing::warn!(
+                        model = %model_with_provider.model,
+                        effort = %effort,
+                        "Stripping reasoning_effort: model does not support reasoning"
+                    );
+                    false
                 }
-                // Check model profile; if profile exists and reasoning is false, strip it.
-                // Unknown models (no profile) pass through — let the API decide.
-                let profile = crate::model_profiles::get_model_profile(
-                    &model_with_provider.provider_type,
-                    &model_with_provider.model,
-                );
-                match profile {
-                    Some(p) if !p.reasoning => {
-                        tracing::warn!(
-                            model = %model_with_provider.model,
-                            effort = %effort,
-                            "Stripping reasoning_effort: model does not support reasoning"
-                        );
-                        false
-                    }
-                    _ => true,
-                }
-            });
+                _ => true,
+            }
+        });
 
         // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
         // If found, apply the ContinuePartial recovery policy: finalize from accumulated

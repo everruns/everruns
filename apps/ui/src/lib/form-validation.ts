@@ -66,7 +66,9 @@ export const harnessFormSchema = z.object({
   ),
   display_name: optionalString(),
   description: optionalString(),
-  system_prompt: requiredString("System prompt"),
+  // Optional: a harness may contribute no base prompt and rely on the parent
+  // harness, agent, session, and capability layers.
+  system_prompt: optionalString(),
   parent_harness_id: optionalString(),
   default_model_id: optionalString(),
   tags: z.preprocess(trimInput, z.string()).optional().default(""),

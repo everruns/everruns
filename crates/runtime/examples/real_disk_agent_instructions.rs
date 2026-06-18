@@ -68,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "coding".into(),
             display_name: Some("Coding".into()),
             description: Some("Harness that respects AGENTS.md".into()),
-            system_prompt: "You are a coding assistant.".into(),
+            system_prompt: Some("You are a coding assistant.".into()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],

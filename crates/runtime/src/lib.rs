@@ -99,8 +99,8 @@ mod runtime;
 mod turn_strategy;
 
 pub use backends::{
-    EventBus, RuntimeAgentStore, RuntimeBackends, RuntimeHarnessStore, RuntimeMessageStore,
-    RuntimeProviderStore, RuntimeSessionStore,
+    EventBus, PlatformStoreFactory, RuntimeAgentStore, RuntimeBackends, RuntimeHarnessStore,
+    RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore, ScheduleStoreFactory,
 };
 pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
 pub use everruns_core::AssembledTurnContext;
@@ -116,5 +116,7 @@ pub use in_memory::{
     InMemorySessionStore,
 };
 pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory};
-pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
+pub use runtime::{
+    InProcessRuntime, InProcessRuntimeBuilder, TurnResult, in_process_internal_org_id,
+};
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

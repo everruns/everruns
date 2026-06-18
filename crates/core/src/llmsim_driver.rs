@@ -50,6 +50,11 @@ pub struct LlmSimConfig {
     /// Optional response ID to include in completion metadata.
     /// Enables testing `previous_response_id` chaining.
     pub response_id: Option<String>,
+    /// Optional capture sink for the per-call `reasoning_effort` (EVE-595).
+    /// When set, every `chat_completion_stream` call appends the effort it saw
+    /// in `LlmCallConfig`, in call order. Tests use this to assert that a
+    /// mid-turn effort change is observed by subsequent LLM steps.
+    pub effort_capture: Option<Arc<std::sync::Mutex<Vec<Option<String>>>>>,
 }
 
 impl Default for LlmSimConfig {
@@ -61,6 +66,7 @@ impl Default for LlmSimConfig {
             model_name: "llmsim-model".to_string(),
             response_delay: None,
             response_id: None,
+            effort_capture: None,
         }
     }
 }
@@ -151,6 +157,17 @@ impl LlmSimConfig {
     /// Set a response ID to include in completion metadata (for testing chaining)
     pub fn with_response_id(mut self, id: impl Into<String>) -> Self {
         self.response_id = Some(id.into());
+        self
+    }
+
+    /// Set a shared capture sink for the per-call `reasoning_effort` (EVE-595).
+    /// Every `chat_completion_stream` call appends the effort it observed in
+    /// `LlmCallConfig`, in call order.
+    pub fn with_effort_capture(
+        mut self,
+        capture: Arc<std::sync::Mutex<Vec<Option<String>>>>,
+    ) -> Self {
+        self.effort_capture = Some(capture);
         self
     }
 
@@ -594,6 +611,14 @@ impl ChatDriver for LlmSimDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
+        // Record the per-call reasoning effort for tests (EVE-595). Captured
+        // before any error short-circuit so even error turns are observable.
+        if let Some(capture) = &self.config.effort_capture
+            && let Ok(mut efforts) = capture.lock()
+        {
+            efforts.push(config.reasoning_effort.clone());
+        }
+
         // Check for error configs first
         if let ResponseConfig::Error(error_msg) = &self.config.response {
             return Err(anyhow::anyhow!("LLM error: {}", error_msg).into());
@@ -1339,6 +1364,7 @@ mod tests {
             model_name: "test".to_string(),
             response_delay: None,
             response_id: None,
+            effort_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -1437,6 +1463,7 @@ mod tests {
             model_name: "test".to_string(),
             response_delay: None,
             response_id: None,
+            effort_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);

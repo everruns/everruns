@@ -150,6 +150,7 @@ mod tests {
             "https://api.anthropic.com/v1/messages",
             "https://codeload.github.com/owner/repo/tar.gz/main",
             "https://ghcr.io/v2/owner/image/manifests/latest",
+            "https://gcp-us-central1.turbopuffer.com/v2/namespaces/org_1__kidx_a",
         ] {
             assert!(allowlist.is_url_allowed(url), "should allow {url}");
         }

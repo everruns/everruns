@@ -380,7 +380,7 @@ fn harness(harness_id: HarnessId) -> Harness {
         name: "math".into(),
         display_name: Some("Math".into()),
         description: None,
-        system_prompt: "You are a math harness.".into(),
+        system_prompt: Some("You are a math harness.".into()),
         parent_harness_id: None,
         default_model_id: None,
         tags: vec![],

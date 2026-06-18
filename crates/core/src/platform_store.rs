@@ -43,12 +43,16 @@ pub trait PlatformStore: Send + Sync {
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
 
     /// Create a new harness.
+    ///
+    /// `system_prompt` is optional: `None` creates a harness with no base
+    /// prompt of its own (it inherits from the parent harness, if any, and
+    /// composes with agent/session/capability layers at runtime).
     async fn create_harness(
         &self,
         name: &str,
         display_name: Option<&str>,
         description: Option<&str>,
-        system_prompt: &str,
+        system_prompt: Option<&str>,
         parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> Result<Harness>;
@@ -298,7 +302,7 @@ pub mod tests {
                     name: "test-harness".to_string(),
                     display_name: Some("Test Harness".to_string()),
                     description: Some("test harness".to_string()),
-                    system_prompt: "You are helpful.".to_string(),
+                    system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,
                     default_model_id: None,
                     tags: vec![],
@@ -437,7 +441,7 @@ pub mod tests {
             name: &str,
             display_name: Option<&str>,
             _desc: Option<&str>,
-            _prompt: &str,
+            _prompt: Option<&str>,
             parent_harness_id: Option<HarnessId>,
             _caps: &[String],
         ) -> Result<Harness> {

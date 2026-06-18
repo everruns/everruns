@@ -2428,7 +2428,7 @@ mod tests {
             _name: &str,
             _display_name: Option<&str>,
             _description: Option<&str>,
-            _system_prompt: &str,
+            _system_prompt: Option<&str>,
             _parent_harness_id: Option<HarnessId>,
             _capabilities: &[String],
         ) -> crate::Result<crate::Harness> {

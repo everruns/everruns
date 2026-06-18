@@ -275,6 +275,8 @@ pub struct DirectWorkerAdapters {
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    /// Platform vector store for Knowledge Index retrieval (`search_index`).
+    vector_store: Option<Arc<dyn everruns_core::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -309,6 +311,7 @@ impl DirectWorkerAdapters {
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
+            vector_store: None,
             runner: None,
             encryption: None,
             workflow_store: None,
@@ -364,6 +367,15 @@ impl DirectWorkerAdapters {
         resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Set the platform vector store for Knowledge Index retrieval.
+    pub fn with_vector_store(
+        mut self,
+        vector_store: Arc<dyn everruns_core::vector_store::VectorStore>,
+    ) -> Self {
+        self.vector_store = Some(vector_store);
         self
     }
 
@@ -1638,6 +1650,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
+    fn knowledge_index_search(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+        // The service is org-scoped per call via the `org_id` passed to
+        // `search`, so a single instance is reused across orgs.
+        let vector_store = self.vector_store.clone()?;
+        Some(Arc::new(
+            crate::domains::knowledge_indexes::KnowledgeIndexSearchService::new(
+                self.db.clone(),
+                self.provider_resolver.clone(),
+                Arc::new(self.driver_registry.clone()),
+                vector_store,
+            ),
+        ))
+    }
+
     async fn claim_due_leased_resources(
         &self,
         limit: u32,
@@ -2345,7 +2374,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         name: &str,
         display_name: Option<&str>,
         description: Option<&str>,
-        system_prompt: &str,
+        system_prompt: Option<&str>,
         parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Harness> {
@@ -2355,6 +2384,7 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 "name": name,
                 "display_name": display_name,
                 "description": description,
+                // Omit when absent so the harness contributes no base prompt.
                 "system_prompt": system_prompt,
                 "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
                 "tags": ["managed"],
@@ -3259,7 +3289,7 @@ mod tests {
                 name: name.to_string(),
                 display_name: None,
                 description: None,
-                system_prompt: "test prompt".to_string(),
+                system_prompt: Some("test prompt".to_string()),
                 parent_harness_id: None,
                 default_model_id: None,
                 tags: vec![],
@@ -3466,7 +3496,7 @@ mod tests {
         let store = adapters.platform_store(org.org_id, session_id);
 
         let err = store
-            .create_harness("forbidden", None, None, "prompt", None, &[])
+            .create_harness("forbidden", None, None, Some("prompt"), None, &[])
             .await
             .expect_err("member should not manage harnesses via platform tools");
 

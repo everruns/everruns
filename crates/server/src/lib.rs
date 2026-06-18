@@ -90,6 +90,9 @@ pub mod grpc_service;
 // Event retention background job
 pub mod event_retention;
 
+// Object-storage blob garbage collector
+pub mod blob_gc;
+
 // Organization initialization (built-in harnesses, reconciliation)
 pub mod org_init;
 

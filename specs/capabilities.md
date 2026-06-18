@@ -720,9 +720,9 @@ Following the agentskills.io specification:
 #### LoopDetection
 
 - **ID**: `loop_detection`
-- **Purpose**: Detects repeated identical tool calls and injects a warning to break the loop
+- **Purpose**: Detects repeated tool loops and injects a warning to break the loop
 - **Tools**: None (uses `MessageFilterProvider::post_load` only)
-- **Config**: `{"threshold": N}` — number of consecutive identical tool-call batches before warning (default 3)
+- **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
 #### MessageMetadata

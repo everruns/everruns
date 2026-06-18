@@ -23,6 +23,7 @@ use everruns_core::traits::{
     SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_core::vector_store::KnowledgeIndexSearch;
 use everruns_core::{
     Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     ErrorDisclosure, Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError,
@@ -162,6 +163,13 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Get the Knowledge Index search service for the `search_index` tool.
+    /// Org-scoped; returns None when retrieval is not available (e.g. gRPC
+    /// workers without a search RPC, or in-memory test backends).
+    fn knowledge_index_search(&self, _org_id: i64) -> Option<Arc<dyn KnowledgeIndexSearch>> {
+        None
+    }
+
     fn budget_checker(
         &self,
         _org_id: i64,
@@ -208,6 +216,21 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     /// Partial-stream store for ContinuePartial recovery (EVE-532).
     /// Default: `None` (no recovery; in-memory and dev hosts use this default).
     fn partial_stream_store(&self) -> Option<Arc<dyn everruns_core::PartialStreamStore>> {
+        None
+    }
+
+    /// Live, turn-scoped reasoning-effort handle for the given session (EVE-595).
+    ///
+    /// When a host returns a handle, the Reason activity re-reads it on every
+    /// LLM step and the Act activity hands the same instance to each tool's
+    /// `ToolContext`. A tool can then change effort mid-turn and have subsequent
+    /// LLM steps in the same turn observe it. Hosts MUST return the *same*
+    /// handle instance for a session across reason/act activities of one turn.
+    /// Default: `None` (effort is resolved solely from message controls).
+    fn reasoning_effort_handle(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_core::ReasoningEffortHandle> {
         None
     }
 
@@ -1025,6 +1048,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
     }
+    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
+        atom = atom.with_reasoning_effort_handle(handle);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
@@ -1124,11 +1150,16 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     // openai_tool_search namespaces, ...). The turn's tool definitions already
     // include the discovered MCP tools, so no re-discovery is needed; the host's
     // MCP executor supplies execution (specs/runtime-mcp.md D5).
+    // The MCP invoker is reused below for the guardrails `mcp` check, which
+    // delegates a guardrail decision to an external endpoint over the same
+    // scoped-MCP client/auth (specs/guardrails.md).
+    let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
     if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;
-        for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker) {
+        for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);
         }
+        mcp_invoker = Some(invoker);
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());
@@ -1165,6 +1196,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
     }
+    if let Some(invoker) = mcp_invoker {
+        atom = atom.with_mcp_invoker(invoker);
+    }
     if let Some(egress_service) = adapter.egress_service() {
         atom = atom.with_egress_service(egress_service);
     }
@@ -1189,6 +1223,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     if let Some(platform_store) = adapter.platform_store(org_id, input.context.session_id) {
         atom = atom.with_platform_store(platform_store);
     }
+    if let Some(knowledge_index_search) = adapter.knowledge_index_search(org_id) {
+        atom = atom.with_knowledge_index_search(knowledge_index_search);
+    }
     if let Some(budget_checker) = adapter.budget_checker(org_id, input.agent_id) {
         atom = atom.with_budget_checker(budget_checker);
     }
@@ -1203,6 +1240,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(store) = adapter.subagent_spawn_store() {
         atom = atom.with_subagent_spawn_store(store);
+    }
+    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
+        atom = atom.with_reasoning_effort_handle(handle);
     }
 
     atom.execute(input).await

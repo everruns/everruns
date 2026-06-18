@@ -49,9 +49,7 @@ impl KnowledgeStore for StorageBackendKnowledgeStore {
         tags: &[String],
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchHit>> {
-        let Some(internal_org) = org_internal_id_from_public(&org_id.to_string()) else {
-            return Ok(Vec::new());
-        };
+        let internal_org = org_internal_id_from_public(org_id);
 
         // Resolve each bound KB within the org. Unknown or other-org ids resolve
         // to None and are skipped — no existence leak.

@@ -95,6 +95,14 @@ These APIs own phase-local orchestration, atom wiring, dependency blocker
 handling, lifecycle event emission, and generic turn-strategy planning for
 server-backed hosts.
 
+`RuntimeHostAdapter` also exposes an optional, per-session
+`reasoning_effort_handle(session_id)` seam (default `None`). When a host returns
+a stable handle for a session, `ReasonAtom` re-reads it on every LLM step and
+lets its value override the message-derived `controls.reasoning.effort` (still
+gated by the model profile). This lets a tool change reasoning effort
+mid-`run_turn` and have subsequent steps in the same turn observe it, instead of
+only on the next turn. Hosts that do not override the seam are unaffected.
+
 `InProcessRuntime` implements `RuntimeHostAdapter` and drives its own turn
 loop by calling these activity functions directly. Atom construction lives
 in one place — host-side — so any improvement (tool-registry caching,
@@ -235,6 +243,47 @@ backends. `everruns-worker` ships the first-party durable/server-backed host
 adapter (`WorkerRuntimeHost`) that bridges worker storage/adapters into the
 runtime host contract.
 
+### Optional host-backend slots
+
+`RuntimeBackends` carries a uniform set of optional, additive backend slots that
+the host forwards into `ActAtom` when present (see
+`crates/runtime/src/runtime.rs` and `crates/runtime/src/host.rs`):
+
+- `session_task_registry` — persists background-tool / subagent / monitor task
+  lifecycle (`everruns_core::session_task::SessionTaskRegistry`).
+- `schedule_store_factory` — per-org `SessionScheduleStore` for local schedules
+  and monitors.
+- `platform_store_factory` — per-(org, session) `PlatformStore` for local
+  session management and subagent spawning.
+
+Each slot defaults to `None`; leaving it unset preserves the prior in-memory
+behavior (the `RuntimeHostAdapter` method returns `None`). The slots are a
+single, repeatable "optional backend slot" pattern so additional local backends
+can be added without further runtime changes.
+
+## Local Backends (`everruns-local`)
+
+`everruns-local` is the first-party crate that populates the optional
+host-backend slots with local, file-backed implementations for embedded,
+single-process hosts (where Yolop and miy would otherwise each reinvent them).
+The runtime stays generic and owns only the seams; durable local storage choices
+live in this separate opt-in crate.
+
+It provides SQLite-backed, restart-survivable stores —
+`LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore` — plus a
+`LocalProfile` (data dir / workspace / identity defaults), a composable
+`LocalBackends` (which preserves a caller-supplied event bus and
+`SessionFileSystemFactory`), and an optional `LocalRuntimeBuilder` convenience
+wrapper. Task and message state persists to a SQLite file so a freshly-spawned
+process can read, continue, and inspect tasks an earlier process started.
+
+Schedules keep an extensible per-record metadata bag (name/color/kind/etc.) in a
+local `metadata` JSON column rather than by widening the shared core
+`SessionSchedule` primitive; the trait-level store surface is unchanged. See
+`crates/local/` for the implementation and `crates/local/tests/` for the
+task-lifecycle, restart-survivability, schedule round-trip, composability, and
+embedded-turn coverage.
+
 ## Context and Capabilities
 
 Capabilities continue to live in `everruns-core`.
@@ -293,6 +342,8 @@ test binaries in `crates/runtime/tests/`.
 - `crates/runtime/src/runtime.rs`
 - `crates/runtime/src/host.rs`
 - `crates/runtime/src/in_memory.rs`
+- `crates/runtime/src/backends.rs`
+- `crates/local/` (`everruns-local`: SQLite-backed local host backends)
 - `crates/runtime/examples/in_process_runtime.rs`
 - `crates/runtime/examples/inspect_context.rs`
 - `examples/weekend-concierge-host/src/lib.rs`

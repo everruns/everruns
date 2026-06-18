@@ -112,6 +112,7 @@ pub mod session_sqldb;
 pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
+pub mod vector_store;
 pub mod workspace;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
@@ -207,8 +208,8 @@ pub use traits::{
     DisabledSessionFileSystemFactory, DurableToolResultStore, EventEmitter, HarnessStore,
     ImageResolver, KeyInfo, LeasedResourceStore, NoopDurableToolResultStore, NoopEventEmitter,
     NoopPartialStreamStore, NoopStreamHeartbeater, NoopSubagentSpawnStore, OutboundToolRateLimiter,
-    PartialStreamState, PartialStreamStore, ProviderStore, ResolvedImage, ResolvedModel,
-    SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
+    PartialStreamState, PartialStreamStore, ProviderStore, ReasoningEffortHandle, ResolvedImage,
+    ResolvedModel, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
     SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress,
     SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
@@ -414,7 +415,8 @@ pub use events::{
     TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use guardrail_checks::{
-    GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail, GuardrailStage, GuardrailsConfig,
+    CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,
+    GuardrailRule, GuardrailStage, GuardrailsConfig, MAX_JUDGE_PROMPT_LEN,
 };
 pub use guardrail_gallery::{
     DataEgress, GuardrailGalleryItem, find_guardrail_gallery_item, guardrail_gallery,

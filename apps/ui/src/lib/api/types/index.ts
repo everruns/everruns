@@ -21,5 +21,6 @@ export * from "./eval-types";
 export * from "./budget-types";
 export * from "./payment-types";
 export * from "./memory-types";
+export * from "./knowledge-index-types";
 export * from "./reporting-types";
 export * from "./plugin-types";

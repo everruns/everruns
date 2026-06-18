@@ -146,6 +146,13 @@ pub mod names {
     /// internal).
     pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
 
+    /// Orphaned blob objects deleted by the object-storage GC sweep (objects
+    /// present in the bucket with no live sidecar pointer, older than the grace
+    /// period). Per-instance counter.
+    pub const BLOB_GC_ORPHANS_DELETED_TOTAL: &str = "everruns_blob_gc_orphans_deleted_total";
+    /// Bytes reclaimed by the object-storage GC sweep. Per-instance counter.
+    pub const BLOB_GC_BYTES_RECLAIMED_TOTAL: &str = "everruns_blob_gc_bytes_reclaimed_total";
+
     // === Histograms (from local observations — per-instance) ===
     pub const HTTP_REQUEST_DURATION: &str = "everruns_http_request_duration_seconds";
     pub const LLM_REQUEST_DURATION: &str = "everruns_llm_request_duration_seconds";

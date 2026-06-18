@@ -36,6 +36,66 @@ fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition
 use crate::error::Result;
 
 // ============================================================================
+// ReasoningEffortHandle - live, turn-scoped reasoning-effort override
+// ============================================================================
+
+/// A live, shared handle to the reasoning effort for the current turn (EVE-595).
+///
+/// Each internal LLM step within a single `run_turn` re-reads this handle when
+/// building its provider request. A tool (or any in-turn actor) can call
+/// [`ReasoningEffortHandle::set`] mid-turn so that *subsequent* LLM steps in the
+/// same turn use the new effort, without waiting for the next turn.
+///
+/// When the handle holds `None`, the [`crate::atoms::ReasonAtom`] falls back to
+/// the effort resolved from the latest user message's `controls` — so callers
+/// that never set an override see no behavior change.
+#[derive(Clone, Default)]
+pub struct ReasoningEffortHandle {
+    inner: Arc<std::sync::RwLock<Option<String>>>,
+}
+
+impl ReasoningEffortHandle {
+    /// Create an empty handle (no override).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create a handle pre-seeded with an effort override.
+    pub fn with_effort(effort: impl Into<String>) -> Self {
+        Self {
+            inner: Arc::new(std::sync::RwLock::new(Some(effort.into()))),
+        }
+    }
+
+    /// Set (or replace) the override effort. Subsequent LLM steps in the same
+    /// turn pick this up. Pass `None` to clear the override and fall back to the
+    /// message-derived effort.
+    pub fn set(&self, effort: Option<String>) {
+        // Recover from a poisoned lock so a panic elsewhere never silently
+        // disables mid-turn overrides; the stored value is a plain Option<String>
+        // with no broken invariant to worry about.
+        let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
+        *guard = effort;
+    }
+
+    /// Read the current override effort, if any.
+    pub fn get(&self) -> Option<String> {
+        // Recover from a poisoned lock rather than silently reverting to the
+        // message-derived effort mid-turn (see `set`).
+        let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
+        guard.clone()
+    }
+}
+
+impl std::fmt::Debug for ReasoningEffortHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ReasoningEffortHandle")
+            .field("effort", &self.get())
+            .finish()
+    }
+}
+
+// ============================================================================
 // AgentStore - For retrieving agent configurations
 // ============================================================================
 
@@ -1282,6 +1342,13 @@ pub struct ToolContext {
     /// Optional system utility LLM service for capability internals.
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
 
+    /// Optional scoped-MCP tool invoker for capability internals that need to
+    /// call an MCP server out-of-band (e.g. the guardrails `mcp` check
+    /// delegating a decision to an external guardrail endpoint). The invoker
+    /// resolves connections and credentials per the current session/org, so
+    /// tenant scoping is enforced by the host that supplies it.
+    pub mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
+
     /// Optional outbound egress service for HTTP/API traffic.
     pub egress_service: Option<Arc<dyn crate::EgressService>>,
 
@@ -1310,6 +1377,12 @@ pub struct ToolContext {
     pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional knowledge store backing the `search_knowledge` tool.
     pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
+
+    /// Optional hybrid retrieval over bound Knowledge Indexes for the
+    /// `search_index` tool. Server-implemented; populated only on the server
+    /// act path alongside `platform_store` / `connection_resolver`.
+    pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
+
     /// Optional leased resource store for lifecycle-managed provider resources.
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
 
@@ -1365,6 +1438,11 @@ pub struct ToolContext {
     /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
+
+    /// Optional live reasoning-effort handle (EVE-595). When set, a tool can
+    /// change the reasoning effort mid-turn; subsequent LLM steps in the same
+    /// `run_turn` re-read it and use the new effort.
+    pub reasoning_effort_handle: Option<ReasoningEffortHandle>,
 }
 
 impl ToolContext {
@@ -1392,6 +1470,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             sqldb_store: None,
             message_retriever: None,
@@ -1402,6 +1481,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1417,6 +1497,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1430,6 +1511,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             sqldb_store: None,
             message_retriever: None,
@@ -1440,6 +1522,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1455,6 +1538,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1471,6 +1555,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             sqldb_store: None,
             message_retriever: None,
@@ -1481,6 +1566,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1496,6 +1582,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1514,6 +1601,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             message_retriever: None,
             session_store: None,
@@ -1523,6 +1611,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1538,6 +1627,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1568,6 +1658,14 @@ impl ToolContext {
         self
     }
 
+    /// Add a live reasoning-effort handle (EVE-595). Tools can call
+    /// [`ReasoningEffortHandle::set`] on it to change the effort used by
+    /// subsequent LLM steps within the same turn.
+    pub fn with_reasoning_effort_handle(mut self, handle: ReasoningEffortHandle) -> Self {
+        self.reasoning_effort_handle = Some(handle);
+        self
+    }
+
     /// Add an agent store to this context.
     pub fn with_agent_store(mut self, store: Arc<dyn AgentStore>) -> Self {
         self.agent_store = Some(store);
@@ -1593,6 +1691,7 @@ impl ToolContext {
             image_store: Some(image_store),
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             sqldb_store: None,
             message_retriever: None,
@@ -1603,6 +1702,7 @@ impl ToolContext {
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1618,6 +1718,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            reasoning_effort_handle: None,
         }
     }
 
@@ -1633,6 +1734,12 @@ impl ToolContext {
     /// Set the utility LLM service on this context.
     pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    /// Set the scoped-MCP tool invoker on this context.
+    pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::McpToolInvoker>) -> Self {
+        self.mcp_invoker = Some(invoker);
         self
     }
 
@@ -1672,6 +1779,15 @@ impl ToolContext {
         store: Arc<dyn crate::platform_store::PlatformStore>,
     ) -> Self {
         self.platform_store = Some(store);
+        self
+    }
+
+    /// Add a Knowledge Index search service to this context (for `search_index`).
+    pub fn with_knowledge_index_search(
+        mut self,
+        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
+    ) -> Self {
+        self.knowledge_index_search = Some(search);
         self
     }
 
@@ -1824,6 +1940,10 @@ impl std::fmt::Debug for ToolContext {
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
             .field("platform_store", &self.platform_store.is_some())
+            .field(
+                "knowledge_index_search",
+                &self.knowledge_index_search.is_some(),
+            )
             .field(
                 "leased_resource_store",
                 &self.leased_resource_store.is_some(),

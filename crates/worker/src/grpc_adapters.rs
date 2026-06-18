@@ -1167,7 +1167,8 @@ fn proto_harness_to_harness(proto_harness: proto::Harness) -> Result<Harness> {
         name: proto_harness.name,
         display_name: proto_harness.display_name,
         description: non_empty_string(proto_harness.description),
-        system_prompt: proto_harness.system_prompt,
+        // proto carries a plain string; empty/whitespace means no base prompt.
+        system_prompt: Some(proto_harness.system_prompt).filter(|s| !s.trim().is_empty()),
         parent_harness_id: parent_harness_id.map(|u| u.into()),
         default_model_id: default_model_id.map(|u| u.into()),
         tags: proto_harness.tags,
@@ -2625,7 +2626,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         name: &str,
         display_name: Option<&str>,
         description: Option<&str>,
-        system_prompt: &str,
+        system_prompt: Option<&str>,
         parent_harness_id: Option<everruns_core::HarnessId>,
         capabilities: &[String],
     ) -> Result<Harness> {
@@ -2635,6 +2636,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 "name": name,
                 "display_name": display_name,
                 "description": description,
+                // Omit when absent so the harness contributes no base prompt.
                 "system_prompt": system_prompt,
                 "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
                 "capabilities": capability_refs_to_configs(capabilities),

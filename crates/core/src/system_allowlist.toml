@@ -86,6 +86,12 @@ allowed = [
     "*.deepseek.com",
 ]
 
+[groups.vector_stores]
+description = "Vector / embedding databases used by Knowledge Indexes."
+allowed = [
+    "*.turbopuffer.com",
+]
+
 [groups.cloud_providers]
 description = "Major cloud provider APIs and service endpoints."
 allowed = [

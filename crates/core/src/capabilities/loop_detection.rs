@@ -6,7 +6,7 @@
 // tool-call signature, a system warning is appended telling the model to
 // change its approach.
 
-use std::collections::hash_map::DefaultHasher;
+use std::collections::{HashMap, hash_map::DefaultHasher};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -15,7 +15,7 @@ use crate::message::{Message, MessageRole, ToolCallContentPart};
 use crate::message_filter::{MessageFilterProvider, MessageQuery};
 use crate::tool_fingerprint::tool_call_parts_fingerprint;
 
-/// Default threshold: 3 consecutive identical tool call batches triggers warning.
+/// Default threshold: 3 repeated attempts triggers warning.
 const DEFAULT_THRESHOLD: usize = 3;
 
 pub const LOOP_DETECTION_CAPABILITY_ID: &str = "loop_detection";
@@ -32,7 +32,7 @@ impl Capability for LoopDetectionCapability {
     }
 
     fn description(&self) -> &str {
-        "Detects repeated identical tool calls and injects a warning to break the loop."
+        "Detects repeated tool loops and injects a warning to break the loop."
     }
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
@@ -48,7 +48,7 @@ impl Capability for LoopDetectionCapability {
                 "threshold": {
                     "type": "integer",
                     "title": "Repetition threshold",
-                    "description": "Number of consecutive identical tool-call batches that triggers the loop warning.",
+                    "description": "Number of repeated identical tool-call batches, tool results, or read ranges that triggers the loop warning.",
                     "minimum": 1,
                     "default": DEFAULT_THRESHOLD
                 }
@@ -83,7 +83,7 @@ impl Capability for LoopDetectionCapability {
                 name: None,
                 description: None,
                 config_description: Some(
-                    "Controls how many consecutive identical tool-call batches count as a loop.",
+                    "Controls how many repeated identical tool-call batches, tool results, or read ranges count as a loop.",
                 ),
                 config_overlay: None,
             },
@@ -95,13 +95,14 @@ impl Capability for LoopDetectionCapability {
                      щоб розірвати цикл.",
                 ),
                 config_description: Some(
-                    "Визначає, скільки однакових послідовних викликів інструментів вважається циклом.",
+                    "Визначає, скільки повторюваних однакових викликів, результатів або \
+                     діапазонів читання вважається циклом.",
                 ),
                 config_overlay: Some(serde_json::json!({
                     "properties": {
                         "threshold": {
                             "title": "Поріг повторень",
-                            "description": "Кількість послідовних однакових пакетів викликів інструментів, після якої додається попередження про цикл."
+                            "description": "Кількість повторюваних однакових викликів інструментів, результатів або діапазонів читання, після якої додається попередження про цикл."
                         }
                     }
                 })),
@@ -139,6 +140,23 @@ impl MessageFilterProvider for LoopDetectionFilter {
                 "Loop detected: the same tool call produced the same result repeatedly. \
                  The approach is not making progress. Try different arguments, inspect a \
                  new source of context, change state before retrying, or report the blocker.",
+            ));
+            return;
+        }
+
+        if let Some(repetition) = repeated_read_range_count(messages, threshold) {
+            tracing::warn!(
+                tool_name = repetition.tool_name,
+                path = repetition.path,
+                repeated_range_count = repetition.repeated_range_count,
+                total_recent_reads = repetition.total_recent_reads,
+                threshold,
+                "Loop detected: read tool repeatedly requested the same range"
+            );
+            messages.push(Message::system(
+                "Loop detected: you are repeatedly reading the same file or output range. \
+                 Use the content already returned, read a different range once, change approach, \
+                 or report the blocker.",
             ));
             return;
         }
@@ -221,6 +239,105 @@ fn tool_result_signature(msg: &Message) -> Option<String> {
     let call = metadata.get("tool_call_fingerprint")?.as_str()?;
     let result = metadata.get("tool_result_fingerprint")?.as_str()?;
     Some(format!("{call}:{result}"))
+}
+
+#[derive(Debug)]
+struct RepeatedReadRange {
+    tool_name: String,
+    path: String,
+    repeated_range_count: usize,
+    total_recent_reads: usize,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ReadResourceKey {
+    tool_name: String,
+    path: String,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct ReadRangeKey {
+    offset: Option<String>,
+}
+
+fn repeated_read_range_count(messages: &[Message], threshold: usize) -> Option<RepeatedReadRange> {
+    let mut target_resource: Option<ReadResourceKey> = None;
+    let mut range_counts: HashMap<ReadRangeKey, usize> = HashMap::new();
+    let mut total_recent_reads = 0;
+    let mut max_repeated_range_count = 0;
+
+    'scan: for msg in messages.iter().rev() {
+        match msg.role {
+            MessageRole::User | MessageRole::System => break,
+            MessageRole::Agent => {
+                let tool_calls = msg.tool_calls();
+                if tool_calls.is_empty() {
+                    break;
+                }
+
+                for tool_call in tool_calls {
+                    let Some(read_call) = read_call_key(tool_call) else {
+                        if target_resource.is_some() {
+                            break 'scan;
+                        }
+                        return None;
+                    };
+                    match &target_resource {
+                        Some(target) if target == &read_call.resource => {}
+                        Some(_) => break 'scan,
+                        None => target_resource = Some(read_call.resource.clone()),
+                    }
+
+                    total_recent_reads += 1;
+                    let repeated_range_count = range_counts.entry(read_call.range).or_insert(0);
+                    *repeated_range_count += 1;
+                    max_repeated_range_count = max_repeated_range_count.max(*repeated_range_count);
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    let target_resource = target_resource?;
+    (max_repeated_range_count >= threshold && total_recent_reads > max_repeated_range_count)
+        .then_some(RepeatedReadRange {
+            tool_name: target_resource.tool_name,
+            path: target_resource.path,
+            repeated_range_count: max_repeated_range_count,
+            total_recent_reads,
+        })
+}
+
+#[derive(Clone, Debug)]
+struct ReadCallKey {
+    resource: ReadResourceKey,
+    range: ReadRangeKey,
+}
+
+fn read_call_key(tool_call: &ToolCallContentPart) -> Option<ReadCallKey> {
+    if !is_read_file_tool_name(&tool_call.name) {
+        return None;
+    }
+
+    let path = tool_call.arguments.get("path")?.as_str()?.to_string();
+    let offset = match tool_call.arguments.get("offset") {
+        Some(serde_json::Value::Number(number)) => Some(number.to_string()),
+        Some(serde_json::Value::String(value)) => Some(value.clone()),
+        Some(value) => Some(value.to_string()),
+        None => Some("0".to_string()),
+    };
+
+    Some(ReadCallKey {
+        resource: ReadResourceKey {
+            tool_name: tool_call.name.clone(),
+            path,
+        },
+        range: ReadRangeKey { offset },
+    })
+}
+
+fn is_read_file_tool_name(name: &str) -> bool {
+    name == "read_file" || name.ends_with("__read_file")
 }
 
 #[cfg(test)]
@@ -328,6 +445,154 @@ mod tests {
         let last = messages.last().unwrap();
         assert_eq!(last.role, MessageRole::System);
         assert!(last.text().unwrap().contains("same tool call produced"));
+    }
+
+    #[test]
+    fn test_loop_detected_repeated_read_range_with_alternating_offsets() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 110}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        let last = messages.last().unwrap();
+        assert_eq!(last.role, MessageRole::System);
+        assert!(last.text().unwrap().contains("same file or output range"));
+    }
+
+    #[test]
+    fn test_loop_detected_when_zero_offset_is_omitted() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "limit": 110}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .text()
+                .unwrap()
+                .contains("same file or output range")
+        );
+    }
+
+    #[test]
+    fn test_read_range_loop_stops_at_older_non_read_boundary() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![("write_file", serde_json::json!({"path": "/notes"}))]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 110}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .text()
+                .unwrap()
+                .contains("same file or output range")
+        );
+    }
+
+    #[test]
+    fn test_sequential_read_ranges_are_not_a_loop() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 200, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 300, "limit": 100}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len);
     }
 
     #[test]

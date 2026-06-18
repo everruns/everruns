@@ -245,7 +245,7 @@ export default function NewHarnessPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="system_prompt">System Prompt</Label>
+              <Label htmlFor="system_prompt">System Prompt (optional)</Label>
               <PromptEditor
                 id="system_prompt"
                 placeholder="You are a helpful assistant..."
@@ -254,13 +254,13 @@ export default function NewHarnessPage() {
                   setFormData({ ...formData, system_prompt: value });
                   setFieldErrors((prev) => ({ ...prev, system_prompt: undefined }));
                 }}
-                required
               />
               {fieldErrors.system_prompt && (
                 <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Instructions for the AI model (supports Markdown)
+                Base instructions for the AI model (supports Markdown). Leave empty to contribute no
+                base prompt — the parent harness, agent, session, and capabilities still apply.
               </p>
             </div>
 

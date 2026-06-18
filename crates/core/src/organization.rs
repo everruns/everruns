@@ -124,18 +124,16 @@ pub fn org_public_id_from_internal(org_id: i64) -> String {
     format!("org_{:032x}", org_id)
 }
 
-/// Inverse of [`org_public_id_from_internal`] for the deterministic
-/// `org_<032x>` form (and `DEFAULT_ORG_PUBLIC_ID`). Returns `None` for
-/// randomly-generated public ids that don't encode the internal id.
+/// Recover the internal `org_id` from an [`OrgId`] derived via
+/// [`org_public_id_from_internal`].
 ///
-/// Valid for the org id carried on `ToolContext`, which the runtime always
-/// builds from the internal id via `org_public_id_from_internal`.
-pub fn org_internal_id_from_public(public_id: &str) -> Option<i64> {
-    if public_id == DEFAULT_ORG_PUBLIC_ID {
-        return Some(DEFAULT_ORG_ID);
-    }
-    let hex = public_id.strip_prefix("org_")?;
-    i64::from_str_radix(hex, 16).ok()
+/// `org_public_id_from_internal` encodes the internal `i64` as the low bits of
+/// the public id's 32-hex payload, which round-trips through the `OrgId` UUID.
+/// Used where a tool only has the public [`OrgId`] but a store needs the
+/// internal id (e.g. `search_index` → `KnowledgeIndexSearch`, `search_knowledge`
+/// → `KnowledgeStore`).
+pub fn org_internal_id_from_public(org_id: crate::typed_id::OrgId) -> i64 {
+    org_id.uuid().as_u128() as i64
 }
 
 /// Generate a new organization public ID
@@ -168,16 +166,6 @@ mod tests {
         assert!(id.starts_with("org_"));
         assert_eq!(id.len(), 36); // "org_" + 32 hex chars
         assert!(validate_org_public_id(&id));
-    }
-
-    #[test]
-    fn test_org_id_internal_public_round_trip() {
-        for internal in [DEFAULT_ORG_ID, 1, 42, 9999, i64::from(i32::MAX)] {
-            let public = org_public_id_from_internal(internal);
-            assert_eq!(org_internal_id_from_public(&public), Some(internal));
-        }
-        // Random public ids don't encode an internal id.
-        assert_eq!(org_internal_id_from_public("not-an-org"), None);
     }
 
     #[test]
@@ -217,6 +205,15 @@ mod tests {
     #[test]
     fn test_default_org_public_id_valid() {
         assert!(validate_org_public_id(DEFAULT_ORG_PUBLIC_ID));
+    }
+
+    #[test]
+    fn test_org_internal_id_round_trips() {
+        for internal in [DEFAULT_ORG_ID, 5, 42, 1_000_000] {
+            let public = org_public_id_from_internal(internal);
+            let org_id: crate::typed_id::OrgId = public.parse().expect("parse org id");
+            assert_eq!(org_internal_id_from_public(org_id), internal);
+        }
     }
 
     #[test]

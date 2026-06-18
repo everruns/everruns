@@ -218,6 +218,9 @@ where
     provider_credential_store: Option<Arc<dyn crate::traits::ProviderCredentialStore>>,
     /// Optional utility LLM service for capability internals
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional scoped-MCP tool invoker for capability internals (guardrails
+    /// `mcp` check delegating to an external guardrail endpoint).
+    mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
     /// Optional outbound egress service for HTTP/API traffic.
     egress_service: Option<Arc<dyn crate::EgressService>>,
     /// Optional resolver for user connection tokens
@@ -234,6 +237,8 @@ where
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
     /// Optional knowledge store backing the `search_knowledge` tool
     knowledge_store: Option<Arc<dyn crate::traits::KnowledgeStore>>,
+    /// Optional hybrid retrieval over bound Knowledge Indexes for `search_index`.
+    knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional session resource registry
@@ -282,6 +287,9 @@ where
     /// Final post-tool-exec hooks (infrastructure): run after capability hooks.
     /// Always registered, cannot be removed by capabilities (EVE-225).
     final_post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    /// Optional live reasoning-effort handle (EVE-595) handed to each tool's
+    /// `ToolContext` so a tool can change effort mid-turn.
+    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -300,6 +308,7 @@ where
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             connection_resolver: None,
             session_store: None,
@@ -308,6 +317,7 @@ where
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -325,6 +335,7 @@ where
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
+            reasoning_effort_handle: None,
         }
     }
 
@@ -343,6 +354,7 @@ where
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            mcp_invoker: None,
             egress_service: None,
             connection_resolver: None,
             session_store: None,
@@ -351,6 +363,7 @@ where
             schedule_store: None,
             platform_store: None,
             knowledge_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -368,6 +381,7 @@ where
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
+            reasoning_effort_handle: None,
         }
     }
 
@@ -437,6 +451,12 @@ where
         self
     }
 
+    /// Set the scoped-MCP tool invoker on this atom (guardrails `mcp` check).
+    pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::McpToolInvoker>) -> Self {
+        self.mcp_invoker = Some(invoker);
+        self
+    }
+
     /// Set the outbound egress service on this atom.
     pub fn with_egress_service(mut self, service: Arc<dyn crate::EgressService>) -> Self {
         self.egress_service = Some(service);
@@ -485,6 +505,15 @@ where
         store: Arc<dyn crate::platform_store::PlatformStore>,
     ) -> Self {
         self.platform_store = Some(store);
+        self
+    }
+
+    /// Set the Knowledge Index search service for the `search_index` tool.
+    pub fn with_knowledge_index_search(
+        mut self,
+        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
+    ) -> Self {
+        self.knowledge_index_search = Some(search);
         self
     }
 
@@ -610,6 +639,17 @@ where
         store: Arc<dyn crate::traits::SubagentSpawnStore>,
     ) -> Self {
         self.subagent_spawn_store = Some(store);
+        self
+    }
+
+    /// Set the live reasoning-effort handle (EVE-595). When set, each tool's
+    /// `ToolContext` receives a clone so a tool can change the reasoning effort
+    /// mid-turn for subsequent LLM steps in the same turn.
+    pub fn with_reasoning_effort_handle(
+        mut self,
+        handle: crate::traits::ReasoningEffortHandle,
+    ) -> Self {
+        self.reasoning_effort_handle = Some(handle);
         self
     }
 }
@@ -1501,6 +1541,9 @@ where
         if let Some(ref service) = self.utility_llm_service {
             tool_context.utility_llm_service = Some(service.clone());
         }
+        if let Some(ref invoker) = self.mcp_invoker {
+            tool_context.mcp_invoker = Some(invoker.clone());
+        }
         if let Some(ref service) = self.egress_service {
             tool_context.egress_service = Some(service.clone());
         }
@@ -1524,6 +1567,9 @@ where
         }
         if let Some(ref store) = self.knowledge_store {
             tool_context.knowledge_store = Some(store.clone());
+        }
+        if let Some(ref search) = self.knowledge_index_search {
+            tool_context.knowledge_index_search = Some(search.clone());
         }
         if let Some(ref store) = self.leased_resource_store {
             tool_context.leased_resource_store = Some(store.clone());
@@ -1549,6 +1595,9 @@ where
         }
         if let Some(ref store) = self.subagent_spawn_store {
             tool_context.subagent_spawn_store = Some(store.clone());
+        }
+        if let Some(ref handle) = self.reasoning_effort_handle {
+            tool_context.reasoning_effort_handle = Some(handle.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence

@@ -201,7 +201,14 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                   <CardTitle>System Prompt</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <MarkdownDisplay content={harness.system_prompt} />
+                  {harness.system_prompt?.trim() ? (
+                    <MarkdownDisplay content={harness.system_prompt} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      This harness contributes no base prompt. The effective prompt comes from the
+                      parent harness, agent, session, and capabilities.
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>

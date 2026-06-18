@@ -35,6 +35,7 @@ if [ -n "$violations" ]; then
   # exception scoped to the exact rename that restores sequential ordering.
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/027_session_stats_indexes.sql\tcrates/server/migrations/028_session_stats_indexes.sql' || true)"
   violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/041_reporting_saved_reports_exports.sql\tcrates/server/migrations/042_reporting_saved_reports_exports.sql' || true)"
+  violations="$(printf '%s\n' "$violations" | grep -Fvx $'R100\tcrates/server/migrations/073_knowledge_indexes.sql\tcrates/server/migrations/074_knowledge_indexes.sql' || true)"
 fi
 
 if [ -n "$violations" ]; then

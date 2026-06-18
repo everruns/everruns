@@ -553,6 +553,27 @@ impl IdMarker for KnowledgeEntryIdMarker {
     const PREFIX: &'static str = "kbe";
 }
 
+/// Marker for Knowledge Index IDs (source-backed embedded collections — see `specs/knowledge-indexes.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexIdMarker;
+impl IdMarker for KnowledgeIndexIdMarker {
+    const PREFIX: &'static str = "kidx";
+}
+
+/// Marker for Knowledge Index Document IDs (an ingested source document)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexDocumentIdMarker;
+impl IdMarker for KnowledgeIndexDocumentIdMarker {
+    const PREFIX: &'static str = "kidoc";
+}
+
+/// Marker for Knowledge Index Chunk IDs (the citable retrieval unit)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeIndexChunkIdMarker;
+impl IdMarker for KnowledgeIndexChunkIdMarker {
+    const PREFIX: &'static str = "kchk";
+}
+
 /// Marker for Model Router IDs (semantic LLM selection — see `specs/model-router.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModelRouterIdMarker;
@@ -654,6 +675,12 @@ pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
 /// Knowledge Entry ID (entry inside a Knowledge Base)
 pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
+/// Knowledge Index ID (source-backed embedded collection — see `specs/knowledge-indexes.md`)
+pub type KnowledgeIndexId = TypedId<KnowledgeIndexIdMarker>;
+/// Knowledge Index Document ID (an ingested source document)
+pub type KnowledgeIndexDocumentId = TypedId<KnowledgeIndexDocumentIdMarker>;
+/// Knowledge Index Chunk ID (the citable retrieval unit)
+pub type KnowledgeIndexChunkId = TypedId<KnowledgeIndexChunkIdMarker>;
 /// Model Router ID (semantic LLM selection — see `specs/model-router.md`)
 pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
 /// Plugin Marketplace ID (see `specs/plugins.md`)

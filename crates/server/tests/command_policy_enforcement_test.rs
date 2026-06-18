@@ -65,7 +65,7 @@ fn minimal_harness(name: &str) -> CreateHarnessRequest {
         name: name.to_string(),
         display_name: None,
         description: None,
-        system_prompt: "test prompt".to_string(),
+        system_prompt: Some("test prompt".to_string()),
         parent_harness_id: None,
         default_model_id: None,
         tags: Vec::new(),

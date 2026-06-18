@@ -33,6 +33,10 @@ pub const MAX_ENTRY_LEN: usize = 512;
 pub const MAX_REPLACEMENT_LEN: usize = 2_000;
 /// Maximum length of a check id.
 pub const MAX_CHECK_ID_LEN: usize = 64;
+/// Maximum byte length of an `llm_judge` policy prompt.
+pub const MAX_JUDGE_PROMPT_LEN: usize = 4_000;
+/// Maximum byte length of an `mcp` check's server reference or tool name.
+pub const MAX_MCP_REF_LEN: usize = 128;
 /// Compiled regex size budget per pattern (bytes). Keeps pathological
 /// patterns from ballooning compile time/memory.
 const REGEX_SIZE_LIMIT: usize = 1 << 20;
@@ -94,6 +98,11 @@ pub enum GuardrailOnFail {
 }
 
 /// Deterministic rule variants. Tagged as `"type"` in JSON.
+///
+/// `LlmJudge` and `Mcp` are the async variants — they are excluded from the
+/// sync `evaluate()` path and handled separately by capability hooks via
+/// `CompiledGuardrails::judge_checks_for_stage()` and
+/// `CompiledGuardrails::mcp_checks_for_stage()`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GuardrailRule {
@@ -108,6 +117,27 @@ pub enum GuardrailRule {
     /// Match the tool name against `*`-wildcard patterns. Only valid for
     /// the `tool_use` stage.
     ToolPattern { tools: Vec<String> },
+    /// Natural-language policy evaluated by the utility LLM.
+    /// Valid only on `tool_use` and `tool_output` stages.
+    /// Runs asynchronously in the hook path, not in `evaluate()`.
+    /// Cost flows through utility-LLM accounting (not the session budget).
+    /// Fails open on timeout or LLM error: the verdict defaults to `allow`
+    /// so a judge outage never wedges a turn.
+    LlmJudge { prompt: String },
+    /// Delegate the guardrail decision to a third-party guardrail served as an
+    /// external MCP endpoint, called over Everruns' existing scoped-MCP client.
+    /// `server` is a scoped-MCP server reference (sanitized server name) and
+    /// `tool` is the guardrail tool/method to call on it.
+    /// Valid only on `tool_use` and `tool_output` stages.
+    /// Runs asynchronously in the hook path, not in `evaluate()`.
+    /// External/higher-risk: the stage payload is sent off-platform to the
+    /// configured MCP endpoint (data egress). Tenant scoping is enforced by the
+    /// host's per-session MCP connection resolver, which only resolves servers
+    /// scoped to the current session/org.
+    /// Fails open on timeout, connection error, parse failure, or
+    /// server-not-configured: the verdict defaults to `allow` so a guardrail
+    /// outage never wedges a turn.
+    Mcp { server: String, tool: String },
 }
 
 impl GuardrailRule {
@@ -116,6 +146,8 @@ impl GuardrailRule {
             GuardrailRule::Regex { .. } => "regex",
             GuardrailRule::Blocklist { .. } => "blocklist",
             GuardrailRule::ToolPattern { .. } => "tool_pattern",
+            GuardrailRule::LlmJudge { .. } => "llm_judge",
+            GuardrailRule::Mcp { .. } => "mcp",
         }
     }
 }
@@ -166,12 +198,24 @@ impl GuardrailsConfig {
             ));
         }
         let mut compiled = Vec::with_capacity(self.checks.len());
+        let mut judge_checks = Vec::new();
+        let mut mcp_checks = Vec::new();
         for (index, check) in self.checks.iter().enumerate() {
-            compiled.push(compile_check(index, check)?);
+            match &check.rule {
+                GuardrailRule::LlmJudge { prompt } => {
+                    judge_checks.push(compile_judge_check(index, check, prompt)?);
+                }
+                GuardrailRule::Mcp { server, tool } => {
+                    mcp_checks.push(compile_mcp_check(index, check, server, tool)?);
+                }
+                _ => compiled.push(compile_check(index, check)?),
+            }
         }
         Ok(CompiledGuardrails {
             mode: self.mode,
             checks: compiled,
+            judge_checks,
+            mcp_checks,
         })
     }
 }
@@ -206,11 +250,46 @@ pub struct GuardrailHit {
     pub matched: Option<String>,
 }
 
+/// A compiled `llm_judge` check, carried separately from the sync checks
+/// because it must be evaluated asynchronously by the capability hooks.
+#[derive(Debug)]
+pub struct CompiledJudgeCheck {
+    pub index: usize,
+    pub label: String,
+    pub stage: GuardrailStage,
+    pub on_fail: GuardrailOnFail,
+    pub replacement: Option<String>,
+    /// The natural-language policy prompt.
+    pub prompt: String,
+}
+
+/// A compiled `mcp` check, carried separately from the sync checks because it
+/// must be evaluated asynchronously (network I/O to an external MCP endpoint)
+/// by the capability hooks.
+#[derive(Debug)]
+pub struct CompiledMcpCheck {
+    pub index: usize,
+    pub label: String,
+    pub stage: GuardrailStage,
+    pub on_fail: GuardrailOnFail,
+    pub replacement: Option<String>,
+    /// Scoped-MCP server reference (sanitized server name).
+    pub server: String,
+    /// Guardrail tool/method to call on the server.
+    pub tool: String,
+}
+
 /// Validated, pre-compiled guardrails ready for evaluation.
 #[derive(Debug)]
 pub struct CompiledGuardrails {
     mode: GuardrailMode,
     checks: Vec<CompiledCheck>,
+    /// LLM-judge checks, separated from the sync deterministic checks.
+    /// Evaluated asynchronously by capability hooks; never by `evaluate()`.
+    judge_checks: Vec<CompiledJudgeCheck>,
+    /// MCP-served checks, separated from the sync deterministic checks.
+    /// Evaluated asynchronously by capability hooks; never by `evaluate()`.
+    mcp_checks: Vec<CompiledMcpCheck>,
 }
 
 #[derive(Debug)]
@@ -240,9 +319,44 @@ impl CompiledGuardrails {
         self.mode
     }
 
-    /// Whether any check applies to `stage`.
+    /// Whether any check (deterministic, llm_judge, or mcp) applies to `stage`.
     pub fn has_stage(&self, stage: GuardrailStage) -> bool {
         self.checks.iter().any(|c| c.stage == stage)
+            || self.judge_checks.iter().any(|c| c.stage == stage)
+            || self.mcp_checks.iter().any(|c| c.stage == stage)
+    }
+
+    /// LLM-judge checks that target `stage`. Empty when no `llm_judge` rule
+    /// targets `stage`. Callers run these asynchronously via the utility LLM.
+    pub fn judge_checks_for_stage(
+        &self,
+        stage: GuardrailStage,
+    ) -> impl Iterator<Item = &CompiledJudgeCheck> {
+        self.judge_checks.iter().filter(move |c| c.stage == stage)
+    }
+
+    /// MCP-served checks that target `stage`. Empty when no `mcp` rule targets
+    /// `stage`. Callers run these asynchronously via the scoped-MCP client.
+    pub fn mcp_checks_for_stage(
+        &self,
+        stage: GuardrailStage,
+    ) -> impl Iterator<Item = &CompiledMcpCheck> {
+        self.mcp_checks.iter().filter(move |c| c.stage == stage)
+    }
+
+    /// Effective action for an async check hit (llm_judge / mcp), applying
+    /// advisory mode.
+    pub fn async_action(&self, on_fail: GuardrailOnFail) -> GuardrailAction {
+        match (self.mode, on_fail) {
+            (GuardrailMode::Advisory, _) | (_, GuardrailOnFail::Log) => GuardrailAction::Log,
+            (GuardrailMode::Active, GuardrailOnFail::Block) => GuardrailAction::Block,
+        }
+    }
+
+    /// Effective action for a judge check hit, applying advisory mode.
+    /// Retained as a name-stable alias of [`Self::async_action`].
+    pub fn judge_action(&self, on_fail: GuardrailOnFail) -> GuardrailAction {
+        self.async_action(on_fail)
     }
 
     /// Evaluate all checks for `stage` against `text`. For the `tool_use`
@@ -367,6 +481,16 @@ fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, 
             validate_entries(&label, "tools", tools)?;
             CompiledRule::ToolPattern(tools.clone())
         }
+        GuardrailRule::LlmJudge { .. } => {
+            unreachable!(
+                "llm_judge checks are routed to compile_judge_check before compile_check is called"
+            )
+        }
+        GuardrailRule::Mcp { .. } => {
+            unreachable!(
+                "mcp checks are routed to compile_mcp_check before compile_check is called"
+            )
+        }
     };
     Ok(CompiledCheck {
         index,
@@ -376,6 +500,114 @@ fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, 
         replacement: check.replacement.clone(),
         rule_type: check.rule.rule_type(),
         matcher,
+    })
+}
+
+fn compile_judge_check(
+    index: usize,
+    check: &GuardrailCheck,
+    prompt: &str,
+) -> Result<CompiledJudgeCheck, String> {
+    let label = match &check.id {
+        Some(id) => {
+            if id.is_empty() || id.chars().count() > MAX_CHECK_ID_LEN {
+                return Err(format!(
+                    "check #{index}: id must be 1..={MAX_CHECK_ID_LEN} characters"
+                ));
+            }
+            id.clone()
+        }
+        None => format!("llm_judge#{index}"),
+    };
+    if prompt.is_empty() {
+        return Err(format!(
+            "check '{label}': llm_judge prompt must not be empty"
+        ));
+    }
+    if prompt.len() > MAX_JUDGE_PROMPT_LEN {
+        return Err(format!(
+            "check '{label}': llm_judge prompt exceeds {MAX_JUDGE_PROMPT_LEN} bytes"
+        ));
+    }
+    match check.stage {
+        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {}
+        GuardrailStage::Output => {
+            return Err(format!(
+                "check '{label}': llm_judge is not supported on the 'output' stage in this phase; \
+                 use 'tool_use' or 'tool_output'"
+            ));
+        }
+    }
+    if let Some(replacement) = &check.replacement
+        && replacement.len() > MAX_REPLACEMENT_LEN
+    {
+        return Err(format!(
+            "check '{label}': replacement exceeds {MAX_REPLACEMENT_LEN} bytes"
+        ));
+    }
+    Ok(CompiledJudgeCheck {
+        index,
+        label,
+        stage: check.stage,
+        on_fail: check.on_fail,
+        replacement: check.replacement.clone(),
+        prompt: prompt.to_string(),
+    })
+}
+
+fn compile_mcp_check(
+    index: usize,
+    check: &GuardrailCheck,
+    server: &str,
+    tool: &str,
+) -> Result<CompiledMcpCheck, String> {
+    let label = match &check.id {
+        Some(id) => {
+            if id.is_empty() || id.chars().count() > MAX_CHECK_ID_LEN {
+                return Err(format!(
+                    "check #{index}: id must be 1..={MAX_CHECK_ID_LEN} characters"
+                ));
+            }
+            id.clone()
+        }
+        None => format!("mcp#{index}"),
+    };
+    // The mcp check, like llm_judge, only makes sense at the tool seams in this
+    // phase; the `output` stage depends on the end-of-message seam (EVE-573).
+    match check.stage {
+        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {}
+        GuardrailStage::Output => {
+            return Err(format!(
+                "check '{label}': mcp is not supported on the 'output' stage in this phase; \
+                 use 'tool_use' or 'tool_output'"
+            ));
+        }
+    }
+    for (field, value) in [("server", server), ("tool", tool)] {
+        if value.is_empty() {
+            return Err(format!("check '{label}': mcp {field} must not be empty"));
+        }
+        if value.len() > MAX_MCP_REF_LEN {
+            return Err(format!(
+                "check '{label}': mcp {field} exceeds {MAX_MCP_REF_LEN} bytes"
+            ));
+        }
+    }
+    if let Some(replacement) = &check.replacement
+        && replacement.len() > MAX_REPLACEMENT_LEN
+    {
+        return Err(format!(
+            "check '{label}': replacement exceeds {MAX_REPLACEMENT_LEN} bytes"
+        ));
+    }
+    Ok(CompiledMcpCheck {
+        index,
+        label,
+        stage: check.stage,
+        on_fail: check.on_fail,
+        replacement: check.replacement.clone(),
+        server: server.to_string(),
+        tool: tool.to_string(),
     })
 }
 
@@ -693,6 +925,338 @@ mod tests {
         let value = serde_json::to_value(&cfg).unwrap();
         assert_eq!(value["checks"][0]["type"], "tool_pattern");
         assert_eq!(value["checks"][0]["stage"], "tool_use");
+        let back = GuardrailsConfig::from_value(&value).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    // --- llm_judge tests ---
+
+    #[test]
+    fn llm_judge_compiles_for_tool_stages() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block requests to delete data."},
+                {"id": "tj2", "stage": "tool_output", "type": "llm_judge",
+                 "prompt": "Block responses containing PII.", "on_fail": "log"},
+            ]
+        }))
+        .expect("compiles");
+        assert!(compiled.has_stage(GuardrailStage::ToolUse));
+        assert!(compiled.has_stage(GuardrailStage::ToolOutput));
+        // llm_judge checks are not in the sync path
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "{}",
+                    Some("delete_user"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+        let use_checks: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .collect();
+        assert_eq!(use_checks.len(), 1);
+        assert_eq!(use_checks[0].prompt, "Block requests to delete data.");
+        assert_eq!(use_checks[0].on_fail, GuardrailOnFail::Block);
+
+        let out_checks: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolOutput)
+            .collect();
+        assert_eq!(out_checks.len(), 1);
+        assert_eq!(out_checks[0].label, "tj2");
+        assert_eq!(out_checks[0].on_fail, GuardrailOnFail::Log);
+    }
+
+    #[test]
+    fn llm_judge_rejected_on_output_stage() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "output", "type": "llm_judge", "prompt": "Block bad content."},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("not supported on the 'output' stage"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_empty_prompt_rejected() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": ""},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("prompt must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_prompt_too_long_rejected() {
+        let long_prompt = "x".repeat(MAX_JUDGE_PROMPT_LEN + 1);
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": long_prompt},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("exceeds"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_not_in_sync_evaluate() {
+        // A config with only an llm_judge check contributes nothing to sync
+        // evaluate() — no hits, ever.
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block everything."},
+            ]
+        }))
+        .unwrap();
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "anything",
+                    Some("tool"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn llm_judge_advisory_downgrades_judge_action() {
+        let compiled = compile(json!({
+            "mode": "advisory",
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        // advisory mode downgrades block → log
+        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Log);
+    }
+
+    #[test]
+    fn llm_judge_active_block_yields_block_action() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Block);
+    }
+
+    #[test]
+    fn llm_judge_serde_roundtrip() {
+        let cfg = GuardrailsConfig {
+            mode: GuardrailMode::Active,
+            checks: vec![GuardrailCheck {
+                id: Some("pii-judge".into()),
+                stage: GuardrailStage::ToolOutput,
+                on_fail: GuardrailOnFail::Log,
+                replacement: None,
+                rule: GuardrailRule::LlmJudge {
+                    prompt: "Block responses that contain PII.".into(),
+                },
+            }],
+        };
+        let value = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(value["checks"][0]["type"], "llm_judge");
+        assert_eq!(value["checks"][0]["stage"], "tool_output");
+        assert_eq!(
+            value["checks"][0]["prompt"],
+            "Block responses that contain PII."
+        );
+        let back = GuardrailsConfig::from_value(&value).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn mixed_sync_and_judge_checks_compile_independently() {
+        // A config that has both sync and judge checks: sync checks land in
+        // evaluate(), judge checks in judge_checks_for_stage().
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "tool_pattern", "tools": ["bash*"]},
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block policy violations."},
+            ]
+        }))
+        .unwrap();
+        // Sync path catches bash tool
+        let hits = compiled.evaluate(GuardrailStage::ToolUse, "{}", Some("bash_exec"), &no_skip());
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].rule_type, "tool_pattern");
+        // Judge check is available for async evaluation
+        let judges: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .collect();
+        assert_eq!(judges.len(), 1);
+    }
+
+    // --- mcp tests ---
+
+    #[test]
+    fn mcp_compiles_for_tool_stages() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "guard", "tool": "screen"},
+                {"id": "mc2", "stage": "tool_output", "type": "mcp",
+                 "server": "guard", "tool": "scan", "on_fail": "log"},
+            ]
+        }))
+        .expect("compiles");
+        assert!(compiled.has_stage(GuardrailStage::ToolUse));
+        assert!(compiled.has_stage(GuardrailStage::ToolOutput));
+        // mcp checks are not in the sync path
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "{}",
+                    Some("delete_user"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+        let use_checks: Vec<_> = compiled
+            .mcp_checks_for_stage(GuardrailStage::ToolUse)
+            .collect();
+        assert_eq!(use_checks.len(), 1);
+        assert_eq!(use_checks[0].server, "guard");
+        assert_eq!(use_checks[0].tool, "screen");
+        assert_eq!(use_checks[0].on_fail, GuardrailOnFail::Block);
+
+        let out_checks: Vec<_> = compiled
+            .mcp_checks_for_stage(GuardrailStage::ToolOutput)
+            .collect();
+        assert_eq!(out_checks.len(), 1);
+        assert_eq!(out_checks[0].label, "mc2");
+        assert_eq!(out_checks[0].on_fail, GuardrailOnFail::Log);
+    }
+
+    #[test]
+    fn mcp_rejected_on_output_stage() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "output", "type": "mcp", "server": "guard", "tool": "scan"},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("not supported on the 'output' stage"), "{err}");
+    }
+
+    #[test]
+    fn mcp_empty_server_or_tool_rejected() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "", "tool": "scan"},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("server must not be empty"), "{err}");
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "guard", "tool": ""},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("tool must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn mcp_ref_too_long_rejected() {
+        let long = "x".repeat(MAX_MCP_REF_LEN + 1);
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": long, "tool": "scan"},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("exceeds"), "{err}");
+    }
+
+    #[test]
+    fn mcp_not_in_sync_evaluate() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "guard", "tool": "scan"},
+            ]
+        }))
+        .unwrap();
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "anything",
+                    Some("tool"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn mcp_advisory_downgrades_action() {
+        let compiled = compile(json!({
+            "mode": "advisory",
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "g", "tool": "t", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .mcp_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        assert_eq!(compiled.async_action(check.on_fail), GuardrailAction::Log);
+    }
+
+    #[test]
+    fn mcp_active_block_yields_block_action() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "mcp", "server": "g", "tool": "t", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .mcp_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        assert_eq!(compiled.async_action(check.on_fail), GuardrailAction::Block);
+    }
+
+    #[test]
+    fn mcp_serde_roundtrip() {
+        let cfg = GuardrailsConfig {
+            mode: GuardrailMode::Active,
+            checks: vec![GuardrailCheck {
+                id: Some("ext-guard".into()),
+                stage: GuardrailStage::ToolOutput,
+                on_fail: GuardrailOnFail::Log,
+                replacement: None,
+                rule: GuardrailRule::Mcp {
+                    server: "guard".into(),
+                    tool: "scan".into(),
+                },
+            }],
+        };
+        let value = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(value["checks"][0]["type"], "mcp");
+        assert_eq!(value["checks"][0]["stage"], "tool_output");
+        assert_eq!(value["checks"][0]["server"], "guard");
+        assert_eq!(value["checks"][0]["tool"], "scan");
         let back = GuardrailsConfig::from_value(&value).unwrap();
         assert_eq!(back, cfg);
     }

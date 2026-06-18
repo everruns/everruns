@@ -59,10 +59,14 @@ A check binds a **rule** to a **stage** with an **on-fail action**:
   `tool_output` stage is the trust boundary for untrusted external content
   (web pages, MCP responses) and is where indirect-injection and
   secret-leakage checks belong.
-- **Rules** (deterministic only in this phase) — `regex` (any pattern matches),
-  `blocklist` (any word/phrase is a substring; case-insensitive by default),
-  and `tool_pattern` (the tool name matches a `*`-wildcard glob; valid only on
-  the `tool_use` stage).
+- **Rules** — `regex` (any pattern matches), `blocklist` (any word/phrase is
+  a substring; case-insensitive by default), `tool_pattern` (the tool name
+  matches a `*`-wildcard glob; valid only on the `tool_use` stage),
+  `llm_judge` (a natural-language policy evaluated by the utility LLM; valid
+  only on `tool_use` and `tool_output` stages; async, not in the sync hot path),
+  and `mcp` (delegates the decision to a third-party guardrail served as an
+  external MCP endpoint; valid only on `tool_use` and `tool_output` stages;
+  async; sends stage content off-platform).
 - **On-fail** — `block` or `log`. `block` suppresses the matched content
   (replacing output/tool-output with a notice, or refusing the tool call);
   `log` records the hit and continues. Optional per-check `replacement` text
@@ -77,16 +81,72 @@ against false positives before being made active. Mode is per *attachment* —
 the same guardrail catalog entry can be advisory on one agent and active on
 another, because it lives in each agent's capability config.
 
+### `llm_judge` check type
+
+`llm_judge` checks carry a `prompt` field: a natural-language policy statement
+(e.g., `"Block any tool call that reads files outside /home/user."`) evaluated
+by the utility LLM. The judge receives the stage name, tool name, and a bounded
+excerpt of the content, and returns a structured JSON verdict (`allow` or
+`block`). Constraints:
+
+- Only valid on `tool_use` and `tool_output` stages (not `output`).
+- **Async**: runs in pre-tool and post-tool hooks, never in the streaming output
+  path. Deterministic checks (`regex`, `blocklist`, `tool_pattern`) run first;
+  judge checks run after, only when the utility LLM service is configured.
+- **Fail-open**: a timeout (10 s), LLM error, or unparseable verdict defaults
+  to `allow`, so a judge outage never wedges a turn.
+- **Cap**: at most 4 judge calls are made per tool-call invocation to bound
+  latency impact.
+- **Cost**: flows through utility-LLM accounting, not the session model budget.
+- `prompt` length is bounded by `MAX_JUDGE_PROMPT_LEN` (4 000 bytes). Content
+  sent to the judge is capped at 2 000 bytes (truncated to the nearest UTF-8
+  char boundary).
+- Advisory mode downgrades `block` verdicts to `log` just like other checks.
+
+### `mcp` check type
+
+`mcp` checks delegate the guardrail decision to a third-party guardrail served
+as an external MCP endpoint, called over Everruns' existing scoped-MCP client
+and auth. A check carries `server` (a scoped-MCP server reference) and `tool`
+(the guardrail tool/method to call). The endpoint receives a structured payload
+(`stage`, `tool` name, and a bounded excerpt of the content) and returns the
+same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
+`{"verdict":"block","reason":"..."}`); a block applies reason code
+`guardrail.mcp`. Constraints:
+
+- Only valid on `tool_use` and `tool_output` stages (not `output` — the
+  `output` stage depends on the end-of-message seam, EVE-573).
+- **Async**: runs in pre-tool and post-tool hooks, after deterministic and
+  `llm_judge` checks, only when a scoped-MCP invoker is wired into the context.
+- **Data egress**: unlike every other check, an `mcp` check sends stage content
+  to an external endpoint. The payload is capped (UTF-8-safe) before it leaves
+  the platform. The host's per-session MCP connection resolver enforces tenant
+  scoping — one tenant's guardrail config can only reach servers scoped to that
+  session/org (TM-AGENT, TM-TOOL-022), and never another tenant's MCP
+  credentials.
+- **Fail-open**: a timeout (10 s), connection error, tool-level endpoint error,
+  unparseable verdict, or server-not-configured defaults to `allow`, so a
+  guardrail outage never wedges a turn.
+- **Cap**: at most 4 mcp calls per tool-call invocation to bound latency. This
+  cap is per-check-type: `mcp` and `llm_judge` checks run serially in the same
+  hook, so a stage configured with both adds their budgets (up to 80 s today),
+  not 40 s — there is no shared cross-type budget yet (TM-DOS-020).
+- `server`/`tool` lengths are bounded by `MAX_MCP_REF_LEN`; content sent to the
+  endpoint is capped at 2 000 bytes (truncated to the nearest UTF-8 char
+  boundary).
+- Advisory mode downgrades `block` verdicts to `log` just like other checks.
+
 ### Determinism and the streaming hot path
 
-Phase-1 checks are deterministic and run in the streaming output path and the
-per-tool-call path, so every rule must evaluate in linear time with no I/O. The
-`regex` crate guarantees linear-time matching (no catastrophic backtracking),
-and the engine enforces hard limits on check count, entries per check, entry
-length, and replacement length (TM-DOS, TM-API input validation). User-authored
-patterns therefore cannot wedge a worker. Model-based checks (classifiers,
-LLM-as-judge) are a planned later phase and will never share this synchronous
-code path — they run at message-end or parallel-to-LLM with cancellation.
+Deterministic checks (`regex`, `blocklist`, `tool_pattern`) run in the
+streaming output path and the per-tool-call path; every rule evaluates in
+linear time with no I/O. The `regex` crate guarantees linear-time matching
+(no catastrophic backtracking), and the engine enforces hard limits on check
+count, entries per check, entry length, and replacement length (TM-DOS, TM-API
+input validation). User-authored patterns therefore cannot wedge a worker.
+
+`llm_judge` checks are inherently async and are never placed on this sync hot
+path — they run only in the hook path (pre/post tool) with a hard timeout.
 
 ## Runtime integration
 
@@ -173,19 +233,32 @@ continues to use its own `system_prompt_leak` code.
 ## Security
 
 - Deterministic checks run in-process with no external network access.
-  Model-based and external (MCP-served) checks are future phases and will carry
-  the appropriate `risk_level` and admin-assignment gate when added.
+- The `llm_judge` check sends a bounded content excerpt to the utility LLM
+  (TM-LLM-027/028); the `mcp` check sends a bounded content excerpt to an
+  external, operator-configured MCP guardrail endpoint (data egress —
+  TM-LLM-029). Both are async, bounded (timeout + per-invocation call cap), and
+  fail open: a guardrail outage or hostile endpoint can only block, never make
+  execution more permissive than the no-guardrail baseline.
+- The `mcp` check resolves its `server` through the host's per-session scoped-MCP
+  connection resolver, so a tenant's guardrail config can only reach that
+  tenant's servers and never another tenant's MCP credentials (TM-AGENT,
+  TM-TOOL-022). Higher-risk MCP servers are themselves gated when assigned to
+  an agent; the guardrail check reuses that scoped-server plumbing rather than
+  introducing a new credential surface.
 - The dry-run endpoint performs pure computation, persists nothing, and bounds
-  input size (TM-DOS).
+  input size (TM-DOS). It evaluates only deterministic checks — `llm_judge` and
+  `mcp` are excluded from the sync path, so dry-run never makes a network call.
 - Compile-time limits bound regex/blocklist cost (TM-API, TM-DOS).
-- See [threat-model.md](threat-model.md) `TM-LLM` (output handling),
-  `TM-TOOL` (tool-call interception), and `TM-AGENT` (capability assignment).
+- See [threat-model.md](threat-model.md) `TM-LLM` (output handling, judge/mcp
+  egress), `TM-TOOL` (tool-call interception, cross-tenant MCP reach), and
+  `TM-AGENT` (capability assignment).
 
 ## Future phases (not implemented)
 
 - Model-backed checks: PII (NER), profanity/toxicity, prompt-injection
   classifiers; provider moderation APIs first, local models later.
-- `llm_judge` check type: natural-language policy prompt evaluated by a fast
-  model at message-end or parallel-to-input; cost flows through budgeting.
-- `mcp` check type: a third-party guardrail served as an external endpoint over
-  existing scoped-MCP auth.
+- `llm_judge` on the `output` stage: end-of-message seam required; tracked in
+  EVE-573.
+- `mcp` on the `output` stage: same end-of-message seam dependency as
+  `llm_judge` (EVE-573); the `mcp` check ships for `tool_use`/`tool_output`
+  only.
