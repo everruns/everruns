@@ -32,7 +32,7 @@ impl Capability for LoopDetectionCapability {
     }
 
     fn description(&self) -> &str {
-        "Detects repeated identical tool calls and injects a warning to break the loop."
+        "Detects repeated tool loops and injects a warning to break the loop."
     }
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
@@ -95,7 +95,8 @@ impl Capability for LoopDetectionCapability {
                      щоб розірвати цикл.",
                 ),
                 config_description: Some(
-                    "Визначає, скільки однакових послідовних викликів інструментів вважається циклом.",
+                    "Визначає, скільки повторюваних однакових викликів, результатів або \
+                     діапазонів читання вважається циклом.",
                 ),
                 config_overlay: Some(serde_json::json!({
                     "properties": {
@@ -265,7 +266,7 @@ fn repeated_read_range_count(messages: &[Message], threshold: usize) -> Option<R
     let mut total_recent_reads = 0;
     let mut max_repeated_range_count = 0;
 
-    for msg in messages.iter().rev() {
+    'scan: for msg in messages.iter().rev() {
         match msg.role {
             MessageRole::User | MessageRole::System => break,
             MessageRole::Agent => {
@@ -274,16 +275,16 @@ fn repeated_read_range_count(messages: &[Message], threshold: usize) -> Option<R
                     break;
                 }
 
-                let mut read_calls = Vec::new();
                 for tool_call in tool_calls {
-                    let read_call = read_call_key(tool_call)?;
-                    read_calls.push(read_call);
-                }
-
-                for read_call in read_calls {
+                    let Some(read_call) = read_call_key(tool_call) else {
+                        if target_resource.is_some() {
+                            break 'scan;
+                        }
+                        return None;
+                    };
                     match &target_resource {
                         Some(target) if target == &read_call.resource => {}
-                        Some(_) => return None,
+                        Some(_) => break 'scan,
                         None => target_resource = Some(read_call.resource.clone()),
                     }
 
@@ -323,7 +324,7 @@ fn read_call_key(tool_call: &ToolCallContentPart) -> Option<ReadCallKey> {
         Some(serde_json::Value::Number(number)) => Some(number.to_string()),
         Some(serde_json::Value::String(value)) => Some(value.clone()),
         Some(value) => Some(value.to_string()),
-        None => None,
+        None => Some("0".to_string()),
     };
 
     Some(ReadCallKey {
@@ -480,6 +481,89 @@ mod tests {
         let last = messages.last().unwrap();
         assert_eq!(last.role, MessageRole::System);
         assert!(last.text().unwrap().contains("same file or output range"));
+    }
+
+    #[test]
+    fn test_loop_detected_when_zero_offset_is_omitted() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "limit": 110}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .text()
+                .unwrap()
+                .contains("same file or output range")
+        );
+    }
+
+    #[test]
+    fn test_read_range_loop_stops_at_older_non_read_boundary() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("inspect saved output"),
+            agent_msg_with_calls(vec![("write_file", serde_json::json!({"path": "/notes"}))]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 100}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 100, "limit": 105}),
+            )]),
+            agent_msg_with_calls(vec![(
+                "read_file",
+                serde_json::json!({"path": "/workspace/outputs/call_123.stdout", "offset": 0, "limit": 110}),
+            )]),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        assert!(
+            messages
+                .last()
+                .unwrap()
+                .text()
+                .unwrap()
+                .contains("same file or output range")
+        );
     }
 
     #[test]
