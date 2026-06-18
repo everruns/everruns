@@ -39,6 +39,10 @@ pub const OBSERVER_MANAGE: Policy = Policy {
 
 /// Default cap on active+paused observers per org. Bounds judge fan-out.
 const DEFAULT_MAX_OBSERVERS_PER_ORG: i64 = 50;
+/// Bound per-turn enqueue fan-out and per-score worker config scans.
+const MAX_SCORERS_PER_OBSERVER: usize = 32;
+const MAX_SCORER_KEY_BYTES: usize = 128;
+const MAX_SCORER_RULE_BYTES: usize = 8 * 1024;
 
 fn max_observers_per_org() -> i64 {
     std::env::var("OBSERVER_MAX_PER_ORG")
@@ -64,10 +68,29 @@ fn validate(sampling_rate: f64, scorers: &[ObserverScorerConfig]) -> Result<()> 
             "observer must define at least one scorer"
         ));
     }
+    if scorers.len() > MAX_SCORERS_PER_OBSERVER {
+        anyhow::bail!(BadRequestError::new(format!(
+            "observer must define at most {} scorers",
+            MAX_SCORERS_PER_OBSERVER
+        )));
+    }
     let mut keys = std::collections::HashSet::new();
     for scorer in scorers {
         if scorer.key.trim().is_empty() {
             anyhow::bail!(BadRequestError::new("scorer key must not be empty"));
+        }
+        if scorer.key.len() > MAX_SCORER_KEY_BYTES {
+            anyhow::bail!(BadRequestError::new(format!(
+                "scorer key must be at most {} bytes",
+                MAX_SCORER_KEY_BYTES
+            )));
+        }
+        let rule_bytes = serde_json::to_vec(&scorer.method)?.len();
+        if rule_bytes > MAX_SCORER_RULE_BYTES {
+            anyhow::bail!(BadRequestError::new(format!(
+                "scorer rule must be at most {} bytes",
+                MAX_SCORER_RULE_BYTES
+            )));
         }
         if !keys.insert(&scorer.key) {
             anyhow::bail!(BadRequestError::new(format!(
@@ -315,6 +338,53 @@ mod tests {
     use everruns_core::observer::{ObserverScope, ObserverScorerConfig, ScorerMethod};
     use everruns_core::typed_id::TraceScoreId;
 
+    fn contains_scorer(key: impl Into<String>, text: impl Into<String>) -> ObserverScorerConfig {
+        ObserverScorerConfig {
+            key: key.into(),
+            scope: ObserverScope::Turn,
+            method: ScorerMethod::Rule {
+                rule: everruns_core::eval::Scorer::Contains {
+                    text: text.into(),
+                    weight: 1.0,
+                },
+            },
+        }
+    }
+
+    #[test]
+    fn validate_rejects_too_many_scorers() {
+        let scorers = (0..=MAX_SCORERS_PER_OBSERVER)
+            .map(|i| contains_scorer(format!("k{i}"), "x"))
+            .collect::<Vec<_>>();
+
+        let err = validate(1.0, &scorers).unwrap_err().to_string();
+
+        assert!(err.contains("at most"));
+        assert!(err.contains(&MAX_SCORERS_PER_OBSERVER.to_string()));
+    }
+
+    #[test]
+    fn validate_rejects_oversized_scorer_key() {
+        let key = "k".repeat(MAX_SCORER_KEY_BYTES + 1);
+
+        let err = validate(1.0, &[contains_scorer(key, "x")])
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("scorer key must be at most"));
+    }
+
+    #[test]
+    fn validate_rejects_oversized_scorer_rule() {
+        let text = "x".repeat(MAX_SCORER_RULE_BYTES + 1);
+
+        let err = validate(1.0, &[contains_scorer("k", text)])
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("scorer rule must be at most"));
+    }
+
     // The trace_scores row's internal UUID is DB-generated and independent of
     // the externally-visible public ids, so the API must echo the stored
     // public ids — not ones fabricated from the internal UUID.
@@ -332,16 +402,7 @@ mod tests {
                     description: None,
                     match_config: None,
                     sampling_rate: Some(1.0),
-                    scorers: vec![ObserverScorerConfig {
-                        key: "k".into(),
-                        scope: ObserverScope::Turn,
-                        method: ScorerMethod::Rule {
-                            rule: everruns_core::eval::Scorer::Contains {
-                                text: "x".into(),
-                                weight: 1.0,
-                            },
-                        },
-                    }],
+                    scorers: vec![contains_scorer("k", "x")],
                 },
             )
             .await
