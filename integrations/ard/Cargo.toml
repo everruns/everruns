@@ -1,0 +1,43 @@
+# Agentic Resource Discovery (ARD) Integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: Experimental-only (gated behind DeploymentGrade::Dev)
+# Decision: ARD is a *source* for existing config/attach machinery; registries are
+#           operator-configured (model never supplies raw URLs); all registry
+#           responses are treated as untrusted external data.
+
+[package]
+name = "everruns-integrations-ard"
+readme = "README.md"
+version.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Agentic Resource Discovery (ARD) client integration for Everruns agents"
+keywords = ["everruns", "ard", "discovery", "agents"]
+categories = ["api-bindings", "development-tools"]
+documentation = "https://docs.rs/everruns-integrations-ard"
+
+[dependencies]
+everruns-core.workspace = true
+inventory.workspace = true
+
+# HTTP client for ARD registry APIs
+reqwest.workspace = true
+url = "2"
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

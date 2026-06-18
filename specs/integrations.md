@@ -67,6 +67,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |
 | Cursor | [`integrations/cursor/SPEC.md`](../integrations/cursor/SPEC.md) | Cursor Cloud Agents API for launching and managing asynchronous coding agents on GitHub repositories. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
+| Resource Discovery (ARD) | [`integrations/ard/SPEC.md`](../integrations/ard/SPEC.md) | `resource_discovery` capability: discover and attach external MCP servers / A2A agents via operator-configured Agentic Resource Discovery registries, with trust gate, SSRF validation, and attachment caps. Experimental (Dev only). |
 
 ## Messaging Integrations (`crates/server/`)
 

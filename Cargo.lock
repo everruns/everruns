@@ -2514,6 +2514,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-ard"
+version = "0.14.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-brave-search"
 version = "0.14.0"
 dependencies = [

@@ -84,6 +84,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/mcp-servers.md` - MCP client remote server registration, CRUD API, tool naming, execution
 - `specs/runtime-mcp.md` - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth
 - `specs/integrations.md` - Integration specs index
+- `integrations/ard/SPEC.md` - Agentic Resource Discovery (ARD) client: `resource_discovery` capability for discovering/attaching external MCP servers and A2A agents
 - `specs/apps.md` - Apps system
 - `specs/app-invocation-channels.md` - App schedule/webhook invocation channels
 - `specs/app-endpoint-auth.md` - Shared inbound auth framework for App-published endpoints

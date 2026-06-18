@@ -1360,6 +1360,36 @@ Installed plugins (`specs/plugins.md`) compile third-party remote content into a
 **TM-PLUGIN-002 — Pinned compile-at-install model:**
 The capability that agents execute is the compiled `definition` JSONB persisted in `plugin_installs` at install/update time. Upstream changes to the source repository have no effect on running agents until an admin explicitly updates, at which point the content is re-fetched at the marketplace's current synced SHA and re-validated end to end. This is the same trust shape as a lockfile: sync moves the candidate version; update moves the installed one.
 
+## 27. Resource Discovery (ARD) (TM-ARD)
+
+The `resource_discovery` capability (`integrations/ard/`) is an ARD *client*: it
+fetches search results and resource envelopes from operator-configured external
+registries and, on attach, records a session-scoped MCP server / external A2A
+agent. Registry responses are untrusted external content (prompt-injection and
+SSRF surface), and the model drives discovery. ARD is a source for existing
+config/attach machinery — it does not modify the agent loop or add migrations.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-API-021 | SSRF via attacker-influenced registry or resolved resource URL | High | The model selects an operator-configured `registry_id` and can never supply a raw URL; registry base and every resolved endpoint URL pass `url_validation::validate_safe_url` (loopback, RFC1918, link-local, cloud-metadata, CGNAT, IPv4-mapped IPv6 blocked). `allow_local_urls` (default false) bypasses only local-address blocking, never scheme/parse rejection. See `integrations/ard/src/{client,tools}.rs`. | MITIGATED |
+| TM-TOOL-022 | Malicious/poisoned registry content (spoofed entry, value-and-reference confusion, unsupported type) | Medium | All `/search` and `/resolve` payloads treated as untrusted; envelopes must be value-or-reference (entries with both `url` and `data` rejected); media type must map to a supported attachment kind (`mcp_server`/`a2a_agent`); registry text is never executed. | MITIGATED |
+| TM-AGENT-025 | Trust spoofing — attaching a resource whose identity is forged | Medium | Trust gate: when `require_trust` (default on), a trust manifest with an attestation must be present and its identity must match the resource URN's authority domain (subdomain match only). Cryptographic attestation verification is structural in this increment (presence + identity) with full signature verification a documented follow-up. | PARTIAL |
+| TM-DOS-019 | Resource sprawl / repeated attaches exhausting session config | Medium | `max_attachments` per-session cap enforced before remote work; attaches are idempotent per URN (recorded by URN in the session resource registry). | MITIGATED |
+
+### Mitigation Details
+
+**TM-API-021 — ARD SSRF controls:** The registry allowlist is the primary
+control: configs hold operator-trusted registry base URLs keyed by id, and the
+tool schema only accepts a `registry_id`, so the model cannot point the server
+at an arbitrary host. The resolved resource endpoint (the reference `url`, or a
+`url`/`base_url`/interface URL inside an inline descriptor) is independently
+SSRF-validated before the attachment is recorded.
+
+**TM-AGENT-025 — Trust gate (PARTIAL):** Identity-to-URN-domain binding and
+attestation presence are enforced now; verifying the attestation's cryptographic
+signature against the claimed identity is the remaining work and is tracked as an
+ARD follow-up.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
