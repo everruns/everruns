@@ -298,6 +298,14 @@ impl Command for UpdateKnowledgeIndexCmd {
             Some(model_id) => Some(require_embedding_model(ctx, model_id).await?),
             None => None,
         };
+        let resolved_owner_user_id = if self.request.source_config.is_some() {
+            // THREAT[TM-AUTHZ-011]: Source edits must not continue to use the
+            // previous owner's external connection. Rebind the sync token owner
+            // to the caller who selected the new source coordinates.
+            everruns_durable::UpdateField::from_option(ctx.caller.user_id)
+        } else {
+            everruns_durable::UpdateField::Unchanged
+        };
         let row = ctx
             .db
             .update_knowledge_index(
@@ -311,6 +319,7 @@ impl Command for UpdateKnowledgeIndexCmd {
                         everruns_durable::UpdateField::Unchanged => None,
                     },
                     source_config: self.request.source_config,
+                    resolved_owner_user_id,
                     embedding_model_id,
                     status: None,
                 },
@@ -493,13 +502,18 @@ mod tests {
     use everruns_core::vector_store::index_namespace;
     use everruns_core::{Caller, DEFAULT_ORG_ID, ModelId, OrgRole};
     use std::sync::Arc;
+    use uuid::Uuid;
 
     fn ctx_with_db(org_id: i64, db: Arc<StorageBackend>) -> Ctx {
+        ctx_with_db_and_user(org_id, db, None)
+    }
+
+    fn ctx_with_db_and_user(org_id: i64, db: Arc<StorageBackend>, user_id: Option<Uuid>) -> Ctx {
         Ctx::minimal_for_test(
             Caller {
                 org_id,
                 org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
-                user_id: None,
+                user_id,
                 role: OrgRole::Owner,
                 is_platform_user: false,
                 is_internal: false,
@@ -625,6 +639,90 @@ mod tests {
         .expect("list archived");
         assert_eq!(archived.len(), 1);
         assert_eq!(archived[0].status, "archived");
+    }
+
+    #[tokio::test]
+    async fn source_config_update_rebinds_sync_owner_to_caller() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let creator_user_id = Uuid::new_v4();
+        let updater_user_id = Uuid::new_v4();
+        let creator = ctx_with_db_and_user(DEFAULT_ORG_ID, db.clone(), Some(creator_user_id));
+        let updater = ctx_with_db_and_user(DEFAULT_ORG_ID, db, Some(updater_user_id));
+
+        let created = CreateKnowledgeIndex {
+            name: "Private Docs".into(),
+            description: None,
+            source_type: None,
+            source_config: Some(serde_json::json!({"repository": "owner/original"})),
+            embedding_model_id: model_id,
+        }
+        .run(&creator)
+        .await
+        .expect("create index");
+
+        UpdateKnowledgeIndexCmd {
+            index_id: created.id.to_string(),
+            request: UpdateKnowledgeIndexRequest {
+                name: None,
+                description: everruns_durable::UpdateField::Unchanged,
+                source_config: Some(serde_json::json!({"repository": "owner/rebound"})),
+                embedding_model_id: None,
+            },
+        }
+        .run(&updater)
+        .await
+        .expect("update source config");
+
+        let row = updater
+            .db
+            .get_knowledge_index_by_id(DEFAULT_ORG_ID, created.internal_id)
+            .await
+            .expect("get internal")
+            .expect("row");
+        assert_eq!(row.resolved_owner_user_id, Some(updater_user_id));
+    }
+
+    #[tokio::test]
+    async fn metadata_update_preserves_sync_owner() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let creator_user_id = Uuid::new_v4();
+        let updater_user_id = Uuid::new_v4();
+        let creator = ctx_with_db_and_user(DEFAULT_ORG_ID, db.clone(), Some(creator_user_id));
+        let updater = ctx_with_db_and_user(DEFAULT_ORG_ID, db, Some(updater_user_id));
+
+        let created = CreateKnowledgeIndex {
+            name: "Stable Docs".into(),
+            description: None,
+            source_type: None,
+            source_config: Some(serde_json::json!({"repository": "owner/original"})),
+            embedding_model_id: model_id,
+        }
+        .run(&creator)
+        .await
+        .expect("create index");
+
+        UpdateKnowledgeIndexCmd {
+            index_id: created.id.to_string(),
+            request: UpdateKnowledgeIndexRequest {
+                name: Some("Stable Docs v2".into()),
+                description: everruns_durable::UpdateField::Unchanged,
+                source_config: None,
+                embedding_model_id: None,
+            },
+        }
+        .run(&updater)
+        .await
+        .expect("update metadata");
+
+        let row = updater
+            .db
+            .get_knowledge_index_by_id(DEFAULT_ORG_ID, created.internal_id)
+            .await
+            .expect("get internal")
+            .expect("row");
+        assert_eq!(row.resolved_owner_user_id, Some(creator_user_id));
     }
 
     #[tokio::test]
