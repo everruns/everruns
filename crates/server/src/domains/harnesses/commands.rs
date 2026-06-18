@@ -188,7 +188,10 @@ impl Command for CreateHarness {
             name: req.name,
             display_name: req.display_name,
             description: req.description,
-            system_prompt: req.system_prompt,
+            // Normalize an empty/whitespace-only prompt to "no base prompt" so
+            // storage matches the documented semantics (the composition layer
+            // trims it anyway).
+            system_prompt: req.system_prompt.filter(|s| !s.trim().is_empty()),
             parent_harness_id,
             default_model_id,
             tags: req.tags,
