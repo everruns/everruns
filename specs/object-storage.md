@@ -261,9 +261,38 @@ unchanged — only the endpoint and credentials differ.
   deleted, orphan-within-grace kept, grace boundary, per-run cap) is unit-tested
   as a pure function, plus an end-to-end list→reconcile→delete sweep against the
   in-memory blob store (no database).
-- End-to-end offload and GC (PostgreSQL + SeaweedFS) are validated manually; the
-  PostgreSQL repository paths and the live-pointer enumeration query are not
-  unit-tested without a database, consistent with the rest of the storage layer.
+
+### CI coverage of the offload paths
+
+The PostgreSQL repository offload paths
+(`crates/server/src/storage/repositories/{session_files,skills}.rs`) are covered
+by a backend-agnostic integration suite,
+`crates/server/tests/blob_offload_integration_test.rs`. It runs the full offload
+lifecycle against a real PostgreSQL database plus a `BlobStore` and asserts the
+offloaded invariants: the inline `content`/`data` column is empty, the sidecar
+pointer and `content_sha256` are recorded, bytes round-trip on read, delete
+removes the backing object (and cascades the sidecar), update/CAS semantics hold,
+move keeps the same object while copy duplicates it, and the cross-tenant
+image-delete guard rejects an out-of-org delete.
+
+The suite selects its blob backend from the environment, so the **same
+assertions** run against both backends:
+
+- **In-memory object_store backend** (default) in the `Integration Tests
+  (PostgreSQL)` CI job — exercises the offload code path on every PostgreSQL PR
+  with no S3/MinIO container (it still uses the PostgreSQL service container).
+- **Real S3-compatible store** in the dedicated `Integration Tests (S3 Blob
+  Backend)` CI job, which starts MinIO via a `docker run` step alongside the
+  PostgreSQL service container, sets `STORAGE_BLOB_BACKEND=s3` + `STORAGE_S3_*`
+  (with `STORAGE_S3_ALLOW_HTTP` and path-style addressing for the local
+  endpoint), and re-runs the identical suite against the AWS S3 client path. The
+  job is gated on a narrow `object_storage` path filter so it only runs when the
+  offload code, its sidecar migration, or its harness changes.
+
+The live-pointer enumeration query and the full GC `spawn_blob_gc_task` path
+require PostgreSQL and are not unit-tested without a database, consistent with
+the rest of the storage layer; end-to-end offload + GC against SeaweedFS remains
+available for local smoke testing (see *Local development*).
 
 ## Non-goals / follow-ups
 
