@@ -80,7 +80,7 @@ the previously indexed content and records a sanitized `last_sync_error`.
 
 ## Data Model
 
-Full DDL: `crates/server/migrations/073_knowledge_indexes.sql`. **Embedding
+Full DDL: `crates/server/migrations/074_knowledge_indexes.sql`. **Embedding
 vectors are not stored in Postgres** — Postgres is the management source of
 truth; vectors and BM25 text live in the external vector store (see
 [Vector store](#vector-store)).
