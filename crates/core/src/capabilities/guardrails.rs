@@ -198,6 +198,14 @@ const MAX_JUDGE_CALLS_PER_INVOCATION: usize = 4;
 const MCP_CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Maximum MCP guardrail checks evaluated per single tool call invocation.
 /// Mirrors `MAX_JUDGE_CALLS_PER_INVOCATION` to bound added latency (TM-DOS).
+///
+/// NOTE: this cap is per-check-type. `llm_judge` and `mcp` checks run serially
+/// in the same hook, so when both are configured on a stage the additive
+/// worst-case latency is
+/// `(MAX_JUDGE_CALLS_PER_INVOCATION + MAX_MCP_CALLS_PER_INVOCATION) × 10 s`
+/// (= 80 s today), not 40 s. There is intentionally no shared cross-type
+/// budget yet — each async check type bounds itself independently and fails
+/// open on its own timeout. See TM-DOS-020.
 const MAX_MCP_CALLS_PER_INVOCATION: usize = 4;
 /// Bound on the stage payload (UTF-8 char-boundary safe) sent to an MCP
 /// guardrail endpoint. Mirrors the judge content cap.

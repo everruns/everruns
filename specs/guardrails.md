@@ -122,11 +122,15 @@ same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
   to an external endpoint. The payload is capped (UTF-8-safe) before it leaves
   the platform. The host's per-session MCP connection resolver enforces tenant
   scoping — one tenant's guardrail config can only reach servers scoped to that
-  session/org (TM-AGENT), and never another tenant's MCP credentials.
+  session/org (TM-AGENT, TM-TOOL-022), and never another tenant's MCP
+  credentials.
 - **Fail-open**: a timeout (10 s), connection error, tool-level endpoint error,
   unparseable verdict, or server-not-configured defaults to `allow`, so a
   guardrail outage never wedges a turn.
-- **Cap**: at most 4 mcp calls per tool-call invocation to bound latency.
+- **Cap**: at most 4 mcp calls per tool-call invocation to bound latency. This
+  cap is per-check-type: `mcp` and `llm_judge` checks run serially in the same
+  hook, so a stage configured with both adds their budgets (up to 80 s today),
+  not 40 s — there is no shared cross-type budget yet (TM-DOS-020).
 - `server`/`tool` lengths are bounded by `MAX_MCP_REF_LEN`; content sent to the
   endpoint is capped at 2 000 bytes (truncated to the nearest UTF-8 char
   boundary).
