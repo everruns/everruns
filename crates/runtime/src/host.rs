@@ -1145,11 +1145,16 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     // openai_tool_search namespaces, ...). The turn's tool definitions already
     // include the discovered MCP tools, so no re-discovery is needed; the host's
     // MCP executor supplies execution (specs/runtime-mcp.md D5).
+    // The MCP invoker is reused below for the guardrails `mcp` check, which
+    // delegates a guardrail decision to an external endpoint over the same
+    // scoped-MCP client/auth (specs/guardrails.md).
+    let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
     if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;
-        for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker) {
+        for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);
         }
+        mcp_invoker = Some(invoker);
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());
@@ -1182,6 +1187,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
+    }
+    if let Some(invoker) = mcp_invoker {
+        atom = atom.with_mcp_invoker(invoker);
     }
     if let Some(egress_service) = adapter.egress_service() {
         atom = atom.with_egress_service(egress_service);
