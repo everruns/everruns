@@ -57,6 +57,21 @@ impl SessionMutator for InMemorySessionStore {
         session.updated_at = Utc::now();
         Ok(session.clone())
     }
+
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: SessionId,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        // MERGE into the existing overlay (last-wins by logical name).
+        session.mcp_servers.extend(servers);
+        session.updated_at = Utc::now();
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone)]

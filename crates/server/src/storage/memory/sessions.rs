@@ -512,6 +512,9 @@ impl InMemoryDatabase {
             if input.finished_at.is_some() {
                 session.finished_at = input.finished_at;
             }
+            if let Some(mcp_servers) = input.mcp_servers {
+                session.mcp_servers = mcp_servers;
+            }
             // Update updated_at on every update (mimics DB trigger)
             session.updated_at = Self::now();
             return Ok(Some(session.clone()));

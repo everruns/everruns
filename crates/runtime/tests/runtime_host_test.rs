@@ -75,6 +75,17 @@ impl SessionMutator for TestSessionStore {
         session.title = Some(title);
         Ok(session.clone())
     }
+
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: SessionId,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> everruns_core::error::Result<()> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions.get_mut(&session_id).expect("session exists");
+        session.mcp_servers.extend(servers);
+        Ok(())
+    }
 }
 
 #[derive(Clone)]

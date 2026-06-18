@@ -774,6 +774,9 @@ pub struct UpdateSession {
     pub status: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Session-scoped scoped MCP server overlay (JSONB). When `Some`, replaces
+    /// the column via the update; callers MERGE before passing it in (EVE-593).
+    pub mcp_servers: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

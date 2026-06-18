@@ -741,6 +741,42 @@ async fn test_session_crud() {
         .expect("Session not found");
     assert_eq!(rehomed.harness_id, Some(harness.id));
 
+    // EVE-593: mcp_servers JSONB round-trips through update_session, and a
+    // later update that leaves it None preserves the column (COALESCE).
+    let overlay = json!({
+        "ard_weather": { "type": "http", "url": "https://mcp.example.com/v1/mcp" }
+    });
+    let with_mcp = backend
+        .update_session(
+            TEST_ORG_ID,
+            session.id,
+            UpdateSession {
+                mcp_servers: Some(overlay.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to update session mcp_servers")
+        .expect("Session not found");
+    assert_eq!(with_mcp.mcp_servers, overlay);
+
+    let preserved = backend
+        .update_session(
+            TEST_ORG_ID,
+            session.id,
+            UpdateSession {
+                title: Some("Title only".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to update session title")
+        .expect("Session not found");
+    assert_eq!(
+        preserved.mcp_servers, overlay,
+        "None must not clear mcp_servers"
+    );
+
     // List sessions with pagination
     let (sessions, total) = backend
         .list_sessions(

@@ -241,6 +241,30 @@ impl GrpcClient {
         proto_session_to_session(proto_session)
     }
 
+    /// Merge scoped MCP servers into the session's `mcp_servers` overlay (EVE-593).
+    pub async fn upsert_session_mcp_servers(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        servers: &everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        let servers_json = serde_json::to_value(servers).map_err(|e| {
+            AgentLoopError::store(format!("failed to serialize scoped MCP servers: {e}"))
+        })?;
+        let request = proto::UpsertSessionMcpServersRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            org_id,
+            mcp_servers: Some(json_to_proto_struct(&servers_json)),
+        };
+
+        let mut client = self.inner.lock().await;
+        client
+            .upsert_session_mcp_servers(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(())
+    }
+
     pub async fn create_image_artifact(
         &self,
         org_id: i64,
@@ -2216,6 +2240,16 @@ impl everruns_core::traits::SessionMutator for GrpcOrgAdapter {
     ) -> Result<everruns_core::session::Session> {
         self.client
             .set_session_title(self.org_id, session_id, &title)
+            .await
+    }
+
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: everruns_core::SessionId,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        self.client
+            .upsert_session_mcp_servers(self.org_id, session_id, &servers)
             .await
     }
 }

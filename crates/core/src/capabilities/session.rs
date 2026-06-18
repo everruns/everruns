@@ -253,6 +253,17 @@ mod tests {
             session.title = Some(title);
             Ok(session.clone())
         }
+
+        async fn upsert_session_mcp_servers(
+            &self,
+            _session_id: SessionId,
+            servers: crate::mcp_server::ScopedMcpServers,
+        ) -> Result<()> {
+            // MERGE (last-wins by name), mirroring the production semantics.
+            let mut session = self.session.lock().expect("poisoned");
+            session.mcp_servers.extend(servers);
+            Ok(())
+        }
     }
 
     struct MockAgentStore {
@@ -408,5 +419,71 @@ mod tests {
             }
             _ => panic!("expected success"),
         }
+    }
+
+    #[tokio::test]
+    async fn upsert_session_mcp_servers_merges_not_replaces() {
+        use crate::mcp_server::{ScopedMcpServer, ScopedMcpServers};
+        use crate::traits::SessionMutator;
+
+        // Seed the session with one pre-existing scoped MCP server.
+        let mut session = build_session(None);
+        let mut existing: ScopedMcpServers = Default::default();
+        existing.insert(
+            "existing".to_string(),
+            ScopedMcpServer {
+                url: "https://existing.example.com/mcp".to_string(),
+                ..Default::default()
+            },
+        );
+        session.mcp_servers = existing;
+
+        let shared = Arc::new(Mutex::new(session));
+        let mutator = MockSessionMutator {
+            session: shared.clone(),
+        };
+
+        // Upsert a new, differently-named server.
+        let mut incoming: ScopedMcpServers = Default::default();
+        incoming.insert(
+            "attached".to_string(),
+            ScopedMcpServer {
+                url: "https://attached.example.com/mcp".to_string(),
+                ..Default::default()
+            },
+        );
+        mutator
+            .upsert_session_mcp_servers(SessionId::new(), incoming)
+            .await
+            .expect("upsert succeeds");
+
+        let after = shared.lock().expect("poisoned").mcp_servers.clone();
+        // MERGE: the pre-existing entry is preserved alongside the new one.
+        assert_eq!(after.len(), 2);
+        assert!(after.contains_key("existing"));
+        assert_eq!(
+            after.get("attached").map(|s| s.url.as_str()),
+            Some("https://attached.example.com/mcp")
+        );
+
+        // Last-wins on the same name.
+        let mut overlay: ScopedMcpServers = Default::default();
+        overlay.insert(
+            "attached".to_string(),
+            ScopedMcpServer {
+                url: "https://attached-v2.example.com/mcp".to_string(),
+                ..Default::default()
+            },
+        );
+        mutator
+            .upsert_session_mcp_servers(SessionId::new(), overlay)
+            .await
+            .expect("upsert succeeds");
+        let after = shared.lock().expect("poisoned").mcp_servers.clone();
+        assert_eq!(after.len(), 2);
+        assert_eq!(
+            after.get("attached").map(|s| s.url.as_str()),
+            Some("https://attached-v2.example.com/mcp")
+        );
     }
 }

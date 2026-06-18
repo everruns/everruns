@@ -3301,3 +3301,85 @@ async fn test_export_user_data() {
     let missing = db.export_user_data(uuid::Uuid::now_v7()).await.unwrap();
     assert!(missing.is_none());
 }
+
+#[tokio::test]
+async fn test_update_session_mcp_servers_round_trips() {
+    // EVE-593: the runtime attach seam persists scoped MCP servers into the
+    // session's mcp_servers JSONB column via UpdateSession.
+    let db = InMemoryDatabase::new();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("MCP Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let overlay = serde_json::json!({
+        "ard_weather": { "type": "http", "url": "https://mcp.example.com/v1/mcp" }
+    });
+    let updated = db
+        .update_session(
+            DEFAULT_ORG_ID,
+            session.id,
+            UpdateSession {
+                mcp_servers: Some(overlay.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .expect("session updated");
+    assert_eq!(updated.mcp_servers, overlay);
+
+    // Re-read confirms durability.
+    let fetched = db
+        .get_session(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap()
+        .expect("session present");
+    assert_eq!(fetched.mcp_servers, overlay);
+
+    // A subsequent update that leaves mcp_servers None preserves the column.
+    db.update_session(
+        DEFAULT_ORG_ID,
+        session.id,
+        UpdateSession {
+            title: Some("renamed".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let fetched = db
+        .get_session(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        fetched.mcp_servers, overlay,
+        "None must not clear the column"
+    );
+}

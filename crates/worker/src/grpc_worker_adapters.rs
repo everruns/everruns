@@ -156,6 +156,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
+    async fn upsert_session_mcp_servers(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        self.client
+            .upsert_session_mcp_servers(org_id, SessionId::from_uuid(session_id), &servers)
+            .await
+    }
+
     // =========================================================================
     // Message Operations
     // =========================================================================

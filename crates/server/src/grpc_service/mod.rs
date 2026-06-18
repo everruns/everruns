@@ -263,6 +263,8 @@ use everruns_internal_protocol::proto::{
     UpdateSessionTaskRequest,
     UpsertLeasedResourceRequest,
     UpsertLeasedResourceResponse,
+    UpsertSessionMcpServersRequest,
+    UpsertSessionMcpServersResponse,
 };
 use everruns_internal_protocol::{
     WorkerService, WorkerServiceServer,

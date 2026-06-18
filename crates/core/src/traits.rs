@@ -178,12 +178,36 @@ impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
 pub trait SessionMutator: Send + Sync {
     /// Update a session's human-readable title.
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
+
+    /// Merge the provided scoped MCP servers into the session's existing
+    /// `mcp_servers` overlay (last-wins by logical name, matching
+    /// [`crate::mcp_server::merge_scoped_mcp_servers`]). This is a MERGE, not a
+    /// replace: existing entries with other names are preserved.
+    ///
+    /// The next `GetTurnContext` re-resolves the session's scoped MCP set from
+    /// this overlay, so attaching a server here makes it callable on the next
+    /// turn without any worker turn-start changes (EVE-593).
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: SessionId,
+        servers: crate::mcp_server::ScopedMcpServers,
+    ) -> Result<()>;
 }
 
 #[async_trait]
 impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
         (**self).update_session_title(session_id, title).await
+    }
+
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: SessionId,
+        servers: crate::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        (**self)
+            .upsert_session_mcp_servers(session_id, servers)
+            .await
     }
 }
 

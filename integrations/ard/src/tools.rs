@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use everruns_core::ToolHints;
+use everruns_core::mcp_server::{ScopedMcpServer, ScopedMcpServers, sanitize_mcp_server_name};
 use everruns_core::session_resource::{
     RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
 };
@@ -25,7 +26,57 @@ use everruns_core::url_validation::{UrlValidationError, validate_safe_url};
 use serde_json::{Value, json};
 
 use crate::client::RegistryClient;
-use crate::config::{ResolvedEntry, ResourceDiscoveryConfig};
+use crate::config::{AttachmentKind, ResolvedEntry, ResourceDiscoveryConfig};
+
+/// Derive a stable, collision-safe logical name for a scoped MCP server from an
+/// ARD URN.
+///
+/// CRITICAL: the result must survive [`sanitize_mcp_server_name`] without
+/// producing `__` (the reserved MCP tool-prefix delimiter) or an empty string;
+/// otherwise `validate_scoped_mcp_servers` rejects the WHOLE merged set and the
+/// next turn silently drops ALL MCP tools.
+///
+/// Construction (deterministic, no deps):
+/// 1. sanitize the URN (lowercase, non-alphanumeric -> `_`),
+/// 2. collapse runs of `_` to a single `_` and trim — kills any `__`,
+/// 3. bound the human-readable portion,
+/// 4. append `_<fnv1a-hex>` of the raw URN for collision safety (hex is
+///    alphanumeric, so it can never introduce `__`),
+/// 5. prefix a fixed `ard_` namespace.
+fn ard_mcp_server_name(urn: &str) -> String {
+    // FNV-1a (64-bit) — stable across processes/releases, unlike DefaultHasher.
+    let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+    for byte in urn.as_bytes() {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    let digest = format!("{hash:016x}");
+
+    let sanitized = sanitize_mcp_server_name(urn);
+    let mut readable = String::with_capacity(sanitized.len());
+    let mut prev_underscore = false;
+    for c in sanitized.chars() {
+        if c == '_' {
+            if !prev_underscore {
+                readable.push('_');
+            }
+            prev_underscore = true;
+        } else {
+            readable.push(c);
+            prev_underscore = false;
+        }
+    }
+    let readable = readable.trim_matches('_');
+    // Bound the readable portion so the full name stays reasonable.
+    let readable: String = readable.chars().take(48).collect();
+    let readable = readable.trim_matches('_');
+
+    if readable.is_empty() {
+        format!("ard_{digest}")
+    } else {
+        format!("ard_{readable}_{digest}")
+    }
+}
 
 /// `kind` values this capability records into the session resource registry.
 const RESOURCE_KINDS: [&str; 2] = ["mcp_server", "external_a2a_agent"];
@@ -369,18 +420,66 @@ impl Tool for AttachResourceTool {
             metadata,
         };
 
-        match resource_registry.register(register).await {
-            Ok(_) => ToolExecutionResult::success(json!({
-                "urn": urn,
-                "status": "attached",
-                "kind": kind.config_token(),
-                "display_name": display_name,
-                "registry_id": registry.id,
-            })),
-            Err(e) => {
-                ToolExecutionResult::internal_error_msg(format!("Failed to record attachment: {e}"))
-            }
+        if let Err(e) = resource_registry.register(register).await {
+            return ToolExecutionResult::internal_error_msg(format!(
+                "Failed to record attachment: {e}"
+            ));
         }
+
+        // Runtime attach seam (EVE-593): for an MCP-server resource, persist it
+        // into the session's `mcp_servers` overlay via the SessionMutator. The
+        // server re-resolves that overlay on the next GetTurnContext (and
+        // re-validates + DNS-pins at call time), so the server becomes callable
+        // by the agent on the NEXT turn. The session-resource entry above is
+        // kept for idempotency/visibility.
+        //
+        // External-A2A attach is an explicit follow-up (needs a new column +
+        // resolution hook); see SPEC.md.
+        let mut callable_next_turn = false;
+        if kind == AttachmentKind::McpServer {
+            let Some(url) = resolved_endpoint_url(&entry) else {
+                return ToolExecutionResult::tool_error(
+                    "MCP server resource has no resolvable endpoint URL.",
+                );
+            };
+            // URL was SSRF-validated above; build a one-entry overlay to MERGE.
+            let server = ScopedMcpServer {
+                url,
+                tool_discovery: true,
+                ..Default::default()
+            };
+            let logical_name = ard_mcp_server_name(&urn);
+            let mut overlay: ScopedMcpServers = Default::default();
+            overlay.insert(logical_name, server);
+
+            // Guard with the same "mutator unavailable" handling the title tool
+            // uses (see crates/core/src/capabilities/session.rs).
+            let Some(mutator) = context.session_mutator.clone() else {
+                return ToolExecutionResult::internal_error_msg(
+                    "session mutator unavailable; cannot make the MCP server callable",
+                );
+            };
+            if let Err(e) = mutator
+                .upsert_session_mcp_servers(context.session_id, overlay)
+                .await
+            {
+                return ToolExecutionResult::internal_error_msg(format!(
+                    "Failed to register MCP server for next-turn use: {e}"
+                ));
+            }
+            callable_next_turn = true;
+        }
+
+        ToolExecutionResult::success(json!({
+            "urn": urn,
+            "status": "attached",
+            "kind": kind.config_token(),
+            "display_name": display_name,
+            "registry_id": registry.id,
+            // MCP servers become callable on the next turn; A2A attach is
+            // visibility-only for now (documented follow-up).
+            "callable_next_turn": callable_next_turn,
+        }))
     }
 
     fn requires_context(&self) -> bool {
@@ -617,5 +716,51 @@ mod tests {
     fn attach_is_not_readonly() {
         let tool = AttachResourceTool::new(ResourceDiscoveryConfig::default());
         assert!(!tool.hints().readonly.unwrap_or(false));
+    }
+
+    // ------------------------------------------------------------------
+    // URN -> logical MCP server name derivation (EVE-593)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn ard_mcp_server_name_is_validate_safe() {
+        // The name must survive sanitize_mcp_server_name without producing the
+        // reserved `__` delimiter or an empty prefix; otherwise the server-side
+        // validate_scoped_mcp_servers rejects the whole merged set.
+        for urn in [
+            "urn:ard:example.com:weather-mcp",
+            "urn:ard:EXAMPLE.com::weird///urn", // adjacent separators
+            "urn:ard:單純:漢字",                // non-ascii collapses to underscores
+            "::::",                             // degenerate: sanitizes to all underscores
+            "",                                 // empty
+        ] {
+            let name = ard_mcp_server_name(urn);
+            let sanitized = sanitize_mcp_server_name(&name);
+            assert!(
+                !sanitized.contains("__"),
+                "name {name:?} (sanitized {sanitized:?}) must not contain `__`"
+            );
+            assert!(!sanitized.is_empty(), "name for {urn:?} sanitized empty");
+            assert!(
+                name.starts_with("ard_"),
+                "name {name:?} must carry the ard_ namespace"
+            );
+        }
+    }
+
+    #[test]
+    fn ard_mcp_server_name_is_deterministic() {
+        let a = ard_mcp_server_name("urn:ard:example.com:weather-mcp");
+        let b = ard_mcp_server_name("urn:ard:example.com:weather-mcp");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn ard_mcp_server_name_is_collision_safe() {
+        // Two URNs that sanitize to the same readable prefix must still produce
+        // distinct logical names (the hash suffix disambiguates).
+        let a = ard_mcp_server_name("urn:ard:example.com:weather/mcp");
+        let b = ard_mcp_server_name("urn:ard:example.com:weather:mcp");
+        assert_ne!(a, b, "distinct URNs must not collide: {a} == {b}");
     }
 }

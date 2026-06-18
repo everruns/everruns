@@ -81,13 +81,17 @@ and records the attachment. Idempotent per URN.
 
 1. `discover_resources` returns ranked candidates by URN.
 2. `attach_resource` verifies and records the attachment as a session resource
-   (`mcp_server` / `external_a2a_agent`).
+   (`mcp_server` / `external_a2a_agent`). For an **MCP server**, it also persists
+   the validated endpoint into the session's MCP overlay so the server's tools
+   become callable on the **next turn**; the result includes
+   `callable_next_turn: true`. **A2A agent** attaches are visibility-only for now
+   and report `callable_next_turn: false`.
 3. `list_attached_resources` shows current attachments.
 
-Attachments are recorded in the session resource registry. Making a freshly
-attached MCP server's tools or A2A agent immediately callable within the same
-session requires a runtime config-overlay seam that is a planned follow-up; see
-the crate `SPEC.md`.
+MCP-server attachments take effect on the next turn (the server re-resolves the
+session's MCP overlay each turn). Making a freshly attached **A2A agent**
+callable within the same session requires an additional runtime seam that is a
+planned follow-up; see the crate `SPEC.md`.
 
 ## Security
 

@@ -477,6 +477,69 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn upsert_session_mcp_servers(
+        &self,
+        request: Request<UpsertSessionMcpServersRequest>,
+    ) -> Result<Response<UpsertSessionMcpServersResponse>, Status> {
+        use everruns_internal_protocol::proto_struct_to_json;
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?;
+        // Preserves TM-TENANT/TM-AGENT org scoping for the storage WHERE org_id.
+        let internal_caller = everruns_core::Caller::internal(req.org_id);
+
+        // Decode the JSON-encoded ScopedMcpServers to merge.
+        let incoming: everruns_core::mcp_server::ScopedMcpServers = match req.mcp_servers {
+            Some(ref s) => serde_json::from_value(proto_struct_to_json(s))
+                .map_err(|e| Status::invalid_argument(format!("invalid mcp_servers: {e}")))?,
+            None => Default::default(),
+        };
+
+        // Load the session (org-scoped) and MERGE incoming into its existing
+        // overlay (last-wins by logical name).
+        let session = self
+            .session_service
+            .get(&internal_caller, session_id, None)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to get session: {}", e);
+                Status::internal("Failed to get session")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        let merged =
+            everruns_core::mcp_server::merge_scoped_mcp_servers(&session.mcp_servers, &incoming);
+
+        // Defense-in-depth: reject stdio transport, unsafe URLs, and duplicate
+        // sanitized names server-side before persisting. The next GetTurnContext
+        // re-resolves and re-validates, but failing here keeps an invalid set
+        // out of the column rather than silently dropping all MCP tools later.
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&merged)
+            .map_err(|e| Status::invalid_argument(format!("invalid scoped MCP servers: {e}")))?;
+
+        let mcp_servers_json = serde_json::to_value(&merged)
+            .map_err(|e| Status::internal(format!("failed to serialize mcp_servers: {e}")))?;
+
+        let update = crate::storage::models::UpdateSession {
+            mcp_servers: Some(mcp_servers_json),
+            ..Default::default()
+        };
+        self.db
+            .update_session(
+                req.org_id,
+                everruns_core::SessionId::from_uuid(session_id),
+                update,
+            )
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to upsert session MCP servers: {}", e);
+                Status::internal("Failed to upsert session MCP servers")
+            })?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        Ok(Response::new(UpsertSessionMcpServersResponse {}))
+    }
+
     async fn get_message(
         &self,
         request: Request<GetMessageRequest>,

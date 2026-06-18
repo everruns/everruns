@@ -1365,9 +1365,17 @@ The capability that agents execute is the compiled `definition` JSONB persisted 
 The `resource_discovery` capability (`integrations/ard/`) is an ARD *client*: it
 fetches search results and resource envelopes from operator-configured external
 registries and, on attach, records a session-scoped MCP server / external A2A
-agent. Registry responses are untrusted external content (prompt-injection and
-SSRF surface), and the model drives discovery. ARD is a source for existing
-config/attach machinery — it does not modify the agent loop or add migrations.
+agent. For an MCP-server attach it also persists the SSRF-validated server into
+the session's `mcp_servers` overlay so it becomes callable on the **next turn**
+(EVE-593); the write goes through a dedicated internal worker RPC
+(`UpsertSessionMcpServers`) that re-runs `validate_scoped_mcp_servers`
+server-side and is org-scoped via `Caller::internal(org_id)` + storage
+`WHERE org_id`. The next `GetTurnContext` re-resolves and re-validates the
+overlay and DNS-pins at call time via the standard scoped-MCP client. External
+A2A attach remains visibility-only (consumption is a documented follow-up).
+Registry responses are untrusted external content (prompt-injection and SSRF
+surface), and the model drives discovery. ARD reuses existing config/attach +
+session-mutation machinery — it does not modify the agent loop or add migrations.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|

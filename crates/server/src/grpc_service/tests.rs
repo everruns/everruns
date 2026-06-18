@@ -1045,3 +1045,141 @@ async fn test_list_orphaned_session_tasks_excludes_null_heartbeat() {
         task_id
     );
 }
+
+// ============================================
+// UpsertSessionMcpServers (EVE-593 runtime attach seam)
+// ============================================
+
+/// End-to-end-ish: upserting a scoped MCP server persists it into the session's
+/// `mcp_servers` overlay, and the same resolution the GetTurnContext handler
+/// uses (`merge_effective_scoped_mcp_servers_with_capabilities`) then includes
+/// it — i.e. the server becomes part of the next turn's effective MCP set.
+#[tokio::test]
+async fn upsert_session_mcp_servers_persists_and_is_resolved_next_turn() {
+    let svc = test_worker_service().await;
+    let session = create_grpc_test_session(&svc).await;
+    let session_id = proto_session_id(&session);
+
+    let overlay = serde_json::json!({
+        "ard_weather": { "type": "http", "url": "https://mcp.example.com/v1/mcp" }
+    });
+    svc.upsert_session_mcp_servers(Request::new(UpsertSessionMcpServersRequest {
+        session_id: session.id.clone(),
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        mcp_servers: Some(everruns_internal_protocol::json_to_proto_struct(&overlay)),
+    }))
+    .await
+    .expect("upsert should succeed");
+
+    // The schema Session now carries the attached server in its overlay.
+    let caller = everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID);
+    let loaded = svc
+        .session_service
+        .get(&caller, session_id.uuid(), None)
+        .await
+        .expect("get session")
+        .expect("session present");
+    assert!(loaded.mcp_servers.contains_key("ard_weather"));
+    assert_eq!(
+        loaded
+            .mcp_servers
+            .get("ard_weather")
+            .map(|s| s.url.as_str()),
+        Some("https://mcp.example.com/v1/mcp")
+    );
+
+    // And the GetTurnContext resolution path includes it.
+    let harness = crate::domains::harnesses::queries::resolve_effective(
+        &svc.db,
+        everruns_core::DEFAULT_ORG_ID,
+        loaded.harness_id,
+    )
+    .await
+    .expect("resolve harness")
+    .expect("harness present");
+    let effective =
+        crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers_with_capabilities(
+            &harness,
+            None,
+            &loaded,
+            svc.capability_service.registry(),
+        );
+    assert!(
+        effective.contains_key("ard_weather"),
+        "attached server must be in the effective next-turn MCP set"
+    );
+    crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
+        .expect("effective set is valid");
+}
+
+/// A second upsert MERGES rather than replaces.
+#[tokio::test]
+async fn upsert_session_mcp_servers_merges_existing_overlay() {
+    let svc = test_worker_service().await;
+    let session = create_grpc_test_session(&svc).await;
+
+    let first = serde_json::json!({
+        "ard_one": { "type": "http", "url": "https://one.example.com/mcp" }
+    });
+    svc.upsert_session_mcp_servers(Request::new(UpsertSessionMcpServersRequest {
+        session_id: session.id.clone(),
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        mcp_servers: Some(everruns_internal_protocol::json_to_proto_struct(&first)),
+    }))
+    .await
+    .expect("first upsert");
+
+    let second = serde_json::json!({
+        "ard_two": { "type": "http", "url": "https://two.example.com/mcp" }
+    });
+    svc.upsert_session_mcp_servers(Request::new(UpsertSessionMcpServersRequest {
+        session_id: session.id.clone(),
+        org_id: everruns_core::DEFAULT_ORG_ID,
+        mcp_servers: Some(everruns_internal_protocol::json_to_proto_struct(&second)),
+    }))
+    .await
+    .expect("second upsert");
+
+    let caller = everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID);
+    let loaded = svc
+        .session_service
+        .get(&caller, proto_session_id(&session).uuid(), None)
+        .await
+        .expect("get session")
+        .expect("session present");
+    assert!(loaded.mcp_servers.contains_key("ard_one"));
+    assert!(loaded.mcp_servers.contains_key("ard_two"));
+}
+
+/// Server-side validation rejects an unsafe / disallowed transport and does NOT
+/// persist the invalid entry.
+#[tokio::test]
+async fn upsert_session_mcp_servers_rejects_stdio_and_does_not_persist() {
+    let svc = test_worker_service().await;
+    let session = create_grpc_test_session(&svc).await;
+
+    // stdio transport is hard-off in the hosted product.
+    let bad = serde_json::json!({
+        "ard_bad": { "type": "stdio", "command": "/bin/sh" }
+    });
+    let result = svc
+        .upsert_session_mcp_servers(Request::new(UpsertSessionMcpServersRequest {
+            session_id: session.id.clone(),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            mcp_servers: Some(everruns_internal_protocol::json_to_proto_struct(&bad)),
+        }))
+        .await;
+    assert!(result.is_err(), "stdio transport must be rejected");
+
+    let caller = everruns_core::Caller::internal(everruns_core::DEFAULT_ORG_ID);
+    let loaded = svc
+        .session_service
+        .get(&caller, proto_session_id(&session).uuid(), None)
+        .await
+        .expect("get session")
+        .expect("session present");
+    assert!(
+        !loaded.mcp_servers.contains_key("ard_bad"),
+        "rejected entry must not be persisted"
+    );
+}

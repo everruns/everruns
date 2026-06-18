@@ -76,6 +76,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         title: String,
     ) -> Result<Session>;
 
+    /// Merge scoped MCP servers into the session's `mcp_servers` overlay (EVE-593).
+    async fn upsert_session_mcp_servers(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()>;
+
     // =========================================================================
     // Message Operations
     // =========================================================================
@@ -512,6 +520,16 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionMutator for OrgAdapter<A> 
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
         self.adapters
             .set_session_title(self.org_id, session_id.uuid(), title)
+            .await
+    }
+
+    async fn upsert_session_mcp_servers(
+        &self,
+        session_id: SessionId,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        self.adapters
+            .upsert_session_mcp_servers(self.org_id, session_id.uuid(), servers)
             .await
     }
 }

@@ -640,6 +640,45 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .ok_or_else(|| store_error("Session not found after update"))
     }
 
+    async fn upsert_session_mcp_servers(
+        &self,
+        org_id: i64,
+        session_id: Uuid,
+        servers: everruns_core::mcp_server::ScopedMcpServers,
+    ) -> Result<()> {
+        let session_id_typed = SessionId::from_uuid(session_id);
+
+        // Load the current org-scoped overlay so we MERGE (last-wins by name)
+        // rather than replace.
+        let session = self
+            .get_session(org_id, session_id)
+            .await?
+            .ok_or_else(|| store_error("Session not found"))?;
+        let merged =
+            everruns_core::mcp_server::merge_scoped_mcp_servers(&session.mcp_servers, &servers);
+
+        // Defense-in-depth: reject stdio transport, unsafe URLs, and duplicate
+        // sanitized names before persisting. The next GetTurnContext validates
+        // again, but failing here keeps an invalid set out of the column.
+        validate_scoped_mcp_servers(&merged)
+            .map_err(|e| store_error(format!("invalid scoped MCP servers: {e}")))?;
+
+        let mcp_servers_json = serde_json::to_value(&merged)
+            .map_err(|e| store_error(format!("failed to serialize scoped MCP servers: {e}")))?;
+        let update = UpdateSession {
+            mcp_servers: Some(mcp_servers_json),
+            ..Default::default()
+        };
+        self.db
+            .update_session(org_id, session_id_typed, update)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to upsert session MCP servers: {}", e);
+                store_error("Failed to upsert session MCP servers")
+            })?;
+        Ok(())
+    }
+
     // =========================================================================
     // Message Operations
     // =========================================================================

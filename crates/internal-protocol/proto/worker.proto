@@ -33,6 +33,9 @@ service WorkerService {
     rpc GetSession(GetSessionRequest) returns (GetSessionResponse);
     rpc SetSessionStatus(SetSessionStatusRequest) returns (SetSessionStatusResponse);
     rpc SetSessionTitle(SetSessionTitleRequest) returns (SetSessionTitleResponse);
+    // Merge scoped MCP servers into the session's mcp_servers overlay (EVE-593).
+    // Dedicated RPC because SetSessionTitleResponse's Session drops mcp_servers.
+    rpc UpsertSessionMcpServers(UpsertSessionMcpServersRequest) returns (UpsertSessionMcpServersResponse);
     // Message operations
     rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
     rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
@@ -464,6 +467,16 @@ message SetSessionTitleRequest {
 message SetSessionTitleResponse {
     Session session = 1;
 }
+
+message UpsertSessionMcpServersRequest {
+    Uuid session_id = 1;
+    int64 org_id = 2;
+    // JSON-encoded ScopedMcpServers (map of logical name -> ScopedMcpServer) to
+    // MERGE into the session's existing mcp_servers overlay (last-wins by name).
+    google.protobuf.Struct mcp_servers = 3;
+}
+
+message UpsertSessionMcpServersResponse {}
 
 // ============================================================================
 // Message types
