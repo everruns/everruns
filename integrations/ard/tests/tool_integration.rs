@@ -498,10 +498,15 @@ async fn attach_enforces_max_attachments() {
         .await;
 
     let registry = Arc::new(MockRegistry::default());
-    // Pre-seed one attachment so the cap of 1 is already hit.
+    let mut cfg = config_for(&server.uri(), true, true);
+    cfg.max_attachments = 1;
+    let ctx = context_with(registry.clone());
+    // Pre-seed one attachment UNDER THE CONTEXT'S SESSION so the cap of 1 is
+    // already hit. count_attachments is session-scoped, so seeding a different
+    // SessionId would not be counted and the cap check wouldn't fire.
     registry
         .register(RegisterSessionResource {
-            session_id: SessionId::new(),
+            session_id: ctx.session_id,
             resource_id: "urn:ard:example.com:first-mcp".into(),
             kind: "mcp_server".into(),
             display_name: "First".into(),
@@ -510,10 +515,6 @@ async fn attach_enforces_max_attachments() {
         })
         .await
         .unwrap();
-
-    let mut cfg = config_for(&server.uri(), true, true);
-    cfg.max_attachments = 1;
-    let ctx = context_with(registry.clone());
 
     let result = attach(cfg)
         .execute_with_context(json!({ "urn": "urn:ard:example.com:second-mcp" }), &ctx)

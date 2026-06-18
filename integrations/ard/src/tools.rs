@@ -249,21 +249,26 @@ impl AttachResourceTool {
 async fn count_attachments(
     registry: &Arc<dyn SessionResourceRegistry>,
     session_id: SessionId,
-) -> usize {
+) -> Result<usize, String> {
+    // Fail CLOSED: a registry error must not be read as "0 attachments", which
+    // would let an attach bypass `max_attachments` (a stated DoS/sprawl
+    // mitigation). Propagate the error so the caller refuses the attach.
     let mut total = 0usize;
     for kind in RESOURCE_KINDS {
         let filter = SessionResourceFilter {
             kind: Some(kind.to_string()),
             status: None,
         };
-        if let Ok(entries) = registry.list(session_id, Some(&filter)).await {
-            total += entries
-                .iter()
-                .filter(|e| e.status != SessionResourceStatus::Released)
-                .count();
-        }
+        let entries = registry
+            .list(session_id, Some(&filter))
+            .await
+            .map_err(|e| format!("Failed to count current attachments: {e}"))?;
+        total += entries
+            .iter()
+            .filter(|e| e.status != SessionResourceStatus::Released)
+            .count();
     }
-    total
+    Ok(total)
 }
 
 /// SSRF-validate a resolved resource URL, honoring `allow_local_urls`.
@@ -338,18 +343,27 @@ impl Tool for AttachResourceTool {
             );
         };
 
-        // Idempotency: a prior attach of this URN short-circuits.
+        // Idempotency: a prior attach of this URN short-circuits. Normalize the
+        // reported `kind` to the same `config_token` shape a first attach
+        // returns (the registry stores the longer `resource_kind` form).
         if let Ok(Some(existing)) = resource_registry.get(context.session_id, &urn).await {
+            let kind_token = AttachmentKind::from_resource_kind(&existing.kind)
+                .map(|k| k.config_token().to_string())
+                .unwrap_or_else(|| existing.kind.clone());
             return ToolExecutionResult::success(json!({
                 "urn": urn,
                 "status": "already_attached",
-                "kind": existing.kind,
+                "kind": kind_token,
                 "display_name": existing.display_name,
             }));
         }
 
-        // Enforce the per-session cap BEFORE doing remote work.
-        let current = count_attachments(&resource_registry, context.session_id).await;
+        // Enforce the per-session cap BEFORE doing remote work. Fails closed if
+        // the registry can't be read (see count_attachments).
+        let current = match count_attachments(&resource_registry, context.session_id).await {
+            Ok(n) => n,
+            Err(e) => return ToolExecutionResult::internal_error_msg(e),
+        };
         if current >= self.config.max_attachments {
             return ToolExecutionResult::tool_error(format!(
                 "Attachment limit reached ({current}/{}). Detach a resource before attaching another.",
@@ -396,42 +410,17 @@ impl Tool for AttachResourceTool {
 
         let display_name = entry.display_name.clone().unwrap_or_else(|| urn.clone());
 
-        // Materialize: record the session-scoped attachment in the session
-        // resource registry. The runtime consumes session-scoped mcpServers /
-        // external A2A agents from their config layer; recording here gives the
-        // attachment durable, idempotent visibility. (See SPEC.md "Runtime
-        // attach seam" — runtime consumption of tool-attached resources is a
-        // documented follow-up gated on a `SessionMutator` overlay API.)
-        let metadata = json!({
-            "ard_urn": urn,
-            "ard_registry_id": registry.id,
-            "ard_media_type": entry.media_type,
-            "attachment_kind": kind.config_token(),
-            "endpoint_url": resolved_endpoint_url(&entry),
-            "trusted": entry.trust_manifest.is_some(),
-        });
-
-        let register = RegisterSessionResource {
-            session_id: context.session_id,
-            resource_id: urn.clone(),
-            kind: kind.resource_kind().to_string(),
-            display_name: display_name.clone(),
-            status: SessionResourceStatus::Active,
-            metadata,
-        };
-
-        if let Err(e) = resource_registry.register(register).await {
-            return ToolExecutionResult::internal_error_msg(format!(
-                "Failed to record attachment: {e}"
-            ));
-        }
-
         // Runtime attach seam (EVE-593): for an MCP-server resource, persist it
-        // into the session's `mcp_servers` overlay via the SessionMutator. The
-        // server re-resolves that overlay on the next GetTurnContext (and
-        // re-validates + DNS-pins at call time), so the server becomes callable
-        // by the agent on the NEXT turn. The session-resource entry above is
-        // kept for idempotency/visibility.
+        // into the session's `mcp_servers` overlay via the SessionMutator FIRST,
+        // before recording the session-resource entry. The server re-resolves
+        // that overlay on the next GetTurnContext (and re-validates + DNS-pins
+        // at call time), so the server becomes callable by the agent on the
+        // NEXT turn.
+        //
+        // Ordering matters: the upsert is what makes the resource callable, so
+        // it must succeed before we record the attachment. If it fails (or the
+        // mutator is unavailable) we return an error and record NOTHING, rather
+        // than leaving a recorded-but-non-callable entry (partial-attach state).
         //
         // External-A2A attach is an explicit follow-up (needs a new column +
         // resolution hook); see SPEC.md.
@@ -468,6 +457,34 @@ impl Tool for AttachResourceTool {
                 ));
             }
             callable_next_turn = true;
+        }
+
+        // Record the session-scoped attachment in the session resource registry
+        // for durable, idempotent visibility (and to back the `already_attached`
+        // short-circuit above). For MCP servers this runs only after the overlay
+        // upsert above succeeded.
+        let metadata = json!({
+            "ard_urn": urn,
+            "ard_registry_id": registry.id,
+            "ard_media_type": entry.media_type,
+            "attachment_kind": kind.config_token(),
+            "endpoint_url": resolved_endpoint_url(&entry),
+            "trusted": entry.trust_manifest.is_some(),
+        });
+
+        let register = RegisterSessionResource {
+            session_id: context.session_id,
+            resource_id: urn.clone(),
+            kind: kind.resource_kind().to_string(),
+            display_name: display_name.clone(),
+            status: SessionResourceStatus::Active,
+            metadata,
+        };
+
+        if let Err(e) = resource_registry.register(register).await {
+            return ToolExecutionResult::internal_error_msg(format!(
+                "Failed to record attachment: {e}"
+            ));
         }
 
         ToolExecutionResult::success(json!({

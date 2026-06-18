@@ -43,7 +43,7 @@ single registry it defaults to that one.
 
 See `config_schema()` in `src/lib.rs` for the JSON schema. Fields:
 
-- `registries: [{ id, url, federation? }]` — operator-configured registries. `federation` is an allowlist of registry hostnames the registry may delegate to.
+- `registries: [{ id, url, federation? }]` — operator-configured registries. `federation` is **reserved / not yet enforced**: intended as an allowlist of registry hostnames the registry may delegate to, but the client does not follow federated/delegated links today (it only talks to the configured `url`), so the field currently has no security effect. Wiring federation enforcement is a documented follow-up.
 - `require_trust: bool` (default `true`) — trust-manifest gate before any attach.
 - `allow_attach_types: ["mcp_server" | "a2a_agent"]` — empty means all supported kinds.
 - `max_attachments: usize` (default `8`) — per-session attachment cap.

@@ -42,6 +42,18 @@ impl AttachmentKind {
             Self::A2aAgent => "a2a_agent",
         }
     }
+
+    /// Reverse of [`Self::resource_kind`]: map a recorded session-resource
+    /// `kind` string back to the attachment kind. Lets repeat
+    /// (`already_attached`) responses report the same `config_token` shape as a
+    /// first attach.
+    pub fn from_resource_kind(kind: &str) -> Option<Self> {
+        match kind {
+            "mcp_server" => Some(Self::McpServer),
+            "external_a2a_agent" => Some(Self::A2aAgent),
+            _ => None,
+        }
+    }
 }
 
 /// Map an ARD entry media type to the attachment kind it materializes into.
@@ -70,8 +82,12 @@ pub struct RegistryConfig {
     pub id: String,
     /// Operator-provided base URL of the ARD registry (e.g. `https://ard.example.com`).
     pub url: String,
-    /// Optional federation allowlist: registry hostnames this registry may
-    /// delegate resolution to. Empty means "this registry only".
+    /// RESERVED — NOT YET ENFORCED. Intended as a federation allowlist of
+    /// registry hostnames this registry may delegate resolution to. The client
+    /// does not follow delegated/federated registry links today (it only talks
+    /// to the configured `url`), so this field has no security effect yet; it
+    /// is parsed and preserved for forward compatibility. Wiring it up is a
+    /// documented follow-up (see SPEC.md).
     #[serde(default)]
     pub federation: Vec<String>,
 }

@@ -44,7 +44,7 @@ registry:
 }
 ```
 
-- `registries[].id` — the handle the model uses; `registries[].url` — operator-controlled base URL; `registries[].federation` — optional allowlist of registry hostnames this registry may delegate to.
+- `registries[].id` — the handle the model uses; `registries[].url` — operator-controlled base URL; `registries[].federation` — **reserved / not yet enforced** (intended allowlist of registry hostnames this registry may delegate to; the client does not follow federated links today).
 - Set `allow_local_urls: true` only for local testing; it bypasses local-address blocking and nothing else.
 
 ### 2. Use in sessions

@@ -134,7 +134,7 @@ impl Capability for ResourceDiscoveryCapability {
                             "federation": {
                                 "type": "array",
                                 "items": { "type": "string" },
-                                "description": "Allowlisted registry hostnames this registry may federate to."
+                                "description": "RESERVED / not yet enforced: intended allowlist of registry hostnames this registry may federate to. The client does not follow federated links today, so this has no effect yet."
                             }
                         },
                         "required": ["id", "url"],
