@@ -159,6 +159,56 @@ Combined with the key itself (which encodes tenant + id), this is enough to
 reconstruct the row and re-link the blob. The record is forward-versioned
 (`v`) so the format can evolve.
 
+## Garbage collection
+
+Object stores are not transactional with PostgreSQL, so a blob object can
+outlive its metadata: an interrupted delete (row gone, object left) or a crash
+between `put()` and the best-effort object cleanup leaks an object. Such orphans
+are never *served* — reads always go through the sidecar pointer rows — but they
+accumulate as storage cost. A periodic GC sweep reconciles bucket contents
+against the live pointers and reclaims orphans.
+
+**Sweep.** A background task (`crates/server/src/blob_gc.rs`, spawned from
+`app_builder.rs` next to event retention) runs every
+`STORAGE_BLOB_GC_INTERVAL_SECONDS` (default 6h). Each pass:
+
+1. Enumerates **all live keys** from `workspace_file_blobs.blob_key` and
+   `image_blobs.{data_key, thumbnail_key}` into a set. If this query fails, the
+   whole sweep aborts — it never deletes without a reliable picture of what is
+   live (fail-closed).
+2. Lists the bucket under the two tenant-scoped prefixes (`workspaces/`,
+   `images/`) via `BlobStore::list_with_prefix`, which returns *relative* keys
+   (deployment prefix stripped) directly comparable to the sidecar columns.
+   Objects outside this deployment's prefix are never listed, so a shared bucket
+   is safe.
+3. Deletes an object **iff** it has no live pointer **and** its server-reported
+   last-modified time is at or before `now − grace`
+   (`STORAGE_BLOB_GC_GRACE_SECONDS`, default 24h). The grace period is the core
+   safety mechanism: a freshly written object may have its row committed
+   slightly after the object lands, and the sweep may race an in-flight create —
+   so recently-written objects are never touched.
+4. Caps deletions at `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` (default 10000) to
+   bound the work a single run performs; remaining orphans are reclaimed on the
+   next pass. The per-run cap is consumed per delete *attempt* (not just
+   successes), so transient delete failures cannot push a sweep past the cap. A
+   delete failure is non-fatal (logged, retried next sweep).
+5. Caps the number of objects listed per prefix at
+   `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` (default 100000) so the sweep's memory is
+   bounded regardless of bucket size. Buckets larger than the cap are reconciled
+   across multiple sweeps in lexicographic key-order windows.
+
+**Safety invariants.** An object with a live pointer is never deleted; an object
+younger than the grace period is never deleted; any listing or pointer-
+enumeration error fails closed (skip deletion, log).
+
+**No-op backends.** GC only runs when the object-storage (`s3`) backend is
+configured. The inline (`db`) backend and the in-memory dev backend keep bytes
+inline in PostgreSQL and have no external objects, so the task short-circuits.
+
+**Metrics.** `everruns_blob_gc_orphans_deleted_total` (orphans deleted) and
+`everruns_blob_gc_bytes_reclaimed_total` (bytes reclaimed) are per-instance
+counters; each pass also logs a summary (listed, deleted, bytes, live pointers).
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -172,6 +222,10 @@ reconstruct the row and re-link the blob. The record is forward-versioned
 | `STORAGE_S3_PREFIX` | (empty) | Key prefix isolating deployments within a bucket. |
 | `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
 | `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by MinIO; harmless on AWS). |
+| `STORAGE_BLOB_GC_INTERVAL_SECONDS` | `21600` (6h) | Interval between GC sweeps. `0` disables GC. Only effective with the `s3` backend. |
+| `STORAGE_BLOB_GC_GRACE_SECONDS` | `86400` (24h) | Safety grace period; orphans younger than this are never deleted. |
+| `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | `10000` | Per-sweep deletion cap to bound work (consumed per delete attempt). |
+| `STORAGE_BLOB_GC_MAX_LIST_PER_RUN` | `100000` | Per-sweep cap on objects listed per prefix, bounding GC memory; larger buckets reconcile across sweeps. |
 
 Credentials are read once at startup. The backend is selected per process, so a
 deployment runs entirely on `db` or `s3`.
@@ -199,18 +253,20 @@ unchanged — only the endpoint and credentials differ.
 
 ## Testing
 
-- `BlobStore` round-trip, idempotent delete, prefix isolation, key derivation,
-  and content hashing are unit-tested against object_store's in-memory backend
-  (the production code path), with no network dependency.
-- End-to-end offload (PostgreSQL + SeaweedFS) is validated manually; the PostgreSQL
-  repository paths are not unit-tested without a database, consistent with the
-  rest of the storage layer.
+- `BlobStore` round-trip, idempotent delete, prefix isolation, listing (relative
+  keys + deployment-prefix stripping), key derivation, and content hashing are
+  unit-tested against object_store's in-memory backend (the production code
+  path), with no network dependency.
+- The GC reconciliation logic (live-pointer kept, orphan-older-than-grace
+  deleted, orphan-within-grace kept, grace boundary, per-run cap) is unit-tested
+  as a pure function, plus an end-to-end list→reconcile→delete sweep against the
+  in-memory blob store (no database).
+- End-to-end offload and GC (PostgreSQL + SeaweedFS) are validated manually; the
+  PostgreSQL repository paths and the live-pointer enumeration query are not
+  unit-tested without a database, consistent with the rest of the storage layer.
 
 ## Non-goals / follow-ups
 
-- **Blob garbage collection.** Interrupted deletes (row gone, object left) leak
-  objects. A periodic GC that reconciles sidecar pointers against bucket
-  contents is follow-up work; orphans are harmless besides storage cost.
 - **Streaming I/O.** The current contract buffers whole blobs in memory, matching
   the existing inline path and per-file size caps. Range/streaming reads are a
   later enhancement.
@@ -223,7 +279,9 @@ unchanged — only the endpoint and credentials differ.
 ## Source Index
 
 - `crates/server/src/storage/blob_store.rs` — `BlobStore`, `ObjectStoreBlobStore`,
-  config, key derivation, content hashing.
+  config, key derivation, content hashing, prefix listing (`list_with_prefix`).
+- `crates/server/src/blob_gc.rs` — orphan reconciliation sweep, grace period,
+  per-run cap, metrics; spawned from `app_builder.rs`.
 - `crates/server/migrations/071_object_storage_blobs.sql` — sidecar tables.
 - `crates/server/src/storage/repositories/session_files.rs` — file offload.
 - `crates/server/src/storage/repositories/skills.rs` — image offload.

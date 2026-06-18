@@ -1781,6 +1781,15 @@ impl ServerAppBuilder {
                 let retention_days = crate::event_retention::retention_days_from_env();
                 crate::event_retention::spawn_retention_task(pool.clone(), retention_days);
             }
+
+            // -- Object-storage blob GC --
+            // Reconciles bucket contents against the sidecar pointer tables and
+            // reclaims orphaned objects. No-ops for the inline (db) backend
+            // (no external objects to collect). See specs/object-storage.md.
+            crate::blob_gc::spawn_blob_gc_task(
+                db.clone(),
+                crate::blob_gc::BlobGcConfig::from_env(),
+            );
         } else {
             // DEV MODE: Start in-process task worker
             if let Some(shared_store) = shared_durable_store {

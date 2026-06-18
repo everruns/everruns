@@ -88,6 +88,17 @@ impl StorageBackend {
         }
     }
 
+    /// The configured object-storage blob backend, if any. `None` for the
+    /// in-memory dev backend and for PostgreSQL deployments running with the
+    /// default inline (`db`) storage — both of which have no external objects
+    /// to garbage-collect.
+    pub fn blob_store(&self) -> Option<crate::storage::blob_store::SharedBlobStore> {
+        match self {
+            Self::Postgres(db) => db.blob_store().cloned(),
+            Self::InMemory(_) => None,
+        }
+    }
+
     // ============================================
     // Users
     // ============================================
