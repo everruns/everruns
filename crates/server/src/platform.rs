@@ -32,7 +32,7 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .into_sender_with_egress(egress_service.clone());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
 
-    PlatformDefinition::builder()
+    let mut builder = PlatformDefinition::builder()
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
         .connectors(connectors)
@@ -42,8 +42,42 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .utility_llm_service(utility_llm_service)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
-        ))
-        .build()
+        ));
+
+    // Knowledge Index vector store. Opt-in: when `TURBOPUFFER_API_KEY` is set
+    // (and non-empty) use the Turbopuffer backend, otherwise keep the in-memory
+    // default. The API key is never logged.
+    if let Some(store) = turbopuffer_vector_store_from_env() {
+        builder = builder.vector_store(store);
+    } else {
+        tracing::info!(vector_store = "in-memory", "vector store backend active");
+    }
+
+    builder.build()
+}
+
+/// Build a Turbopuffer-backed vector store from the environment, or `None` when
+/// `TURBOPUFFER_API_KEY` is unset/empty (keeps the in-memory default).
+///
+/// `TURBOPUFFER_BASE_URL` selects the regional endpoint; it defaults to a
+/// sensible region. The API key is read but never logged.
+fn turbopuffer_vector_store_from_env() -> Option<Arc<everruns_turbopuffer::TurbopufferVectorStore>>
+{
+    /// Default Turbopuffer region used when `TURBOPUFFER_BASE_URL` is unset.
+    const DEFAULT_BASE_URL: &str = "https://gcp-us-central1.turbopuffer.com";
+
+    let api_key = std::env::var("TURBOPUFFER_API_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty())?;
+    let base_url = std::env::var("TURBOPUFFER_BASE_URL")
+        .ok()
+        .filter(|url| !url.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_BASE_URL.to_string());
+
+    tracing::info!(vector_store = "turbopuffer", %base_url, "vector store backend active");
+    Some(Arc::new(everruns_turbopuffer::TurbopufferVectorStore::new(
+        base_url, api_key,
+    )))
 }
 
 /// Build the default OSS connector registry.

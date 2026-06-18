@@ -5814,6 +5814,341 @@
         }
       }
     },
+    "/v1/knowledge-indexes": {
+      "get": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "List knowledge indexes.",
+        "operationId": "list_indexes",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Substring filter applied to index name and description.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "When `true`, also returns archived knowledge indexes.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List knowledge indexes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_KnowledgeIndexResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "Create a new knowledge index.",
+        "operationId": "create_index",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateKnowledgeIndexRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Knowledge index created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate knowledge index name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-indexes/{index_id}": {
+      "get": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "Get a knowledge index by ID.",
+        "operationId": "get_index",
+        "parameters": [
+          {
+            "name": "index_id",
+            "in": "path",
+            "description": "Knowledge index ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Knowledge index found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge index not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "Delete a knowledge index.",
+        "operationId": "delete_index",
+        "parameters": [
+          {
+            "name": "index_id",
+            "in": "path",
+            "description": "Knowledge index ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Knowledge index archived"
+          },
+          "404": {
+            "description": "Knowledge index not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "Update a knowledge index. Only provided fields are modified.",
+        "operationId": "update_index",
+        "parameters": [
+          {
+            "name": "index_id",
+            "in": "path",
+            "description": "Knowledge index ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateKnowledgeIndexRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Knowledge index updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge index not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate knowledge index name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-indexes/{index_id}/documents": {
+      "get": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "List documents inside a knowledge index.",
+        "operationId": "list_documents",
+        "parameters": [
+          {
+            "name": "index_id",
+            "in": "path",
+            "description": "Knowledge index ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_KnowledgeIndexDocumentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge index not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/knowledge-indexes/{index_id}/sync": {
+      "post": {
+        "tags": [
+          "knowledge_indexes"
+        ],
+        "description": "Enqueue a manual sync of a knowledge index.",
+        "operationId": "sync_index",
+        "parameters": [
+          {
+            "name": "index_id",
+            "in": "path",
+            "description": "Knowledge index ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sync enqueued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeIndexResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Knowledge index is archived",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Knowledge index not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/mcp-servers": {
       "get": {
         "tags": [
@@ -15603,6 +15938,44 @@
           }
         }
       },
+      "CreateKnowledgeIndexRequest": {
+        "type": "object",
+        "description": "Request body for the `create_knowledge_index` operation.",
+        "required": [
+          "name",
+          "embedding_model_id"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Synced product documentation"
+          },
+          "embedding_model_id": {
+            "type": "string",
+            "description": "Embedding model used to embed chunks. Required."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "product-docs"
+          },
+          "source_config": {
+            "description": "Non-secret source coordinates. Never include credentials."
+          },
+          "source_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "External source type. One of `github`, `git`. Defaults to `github`.",
+            "example": "github"
+          }
+        }
+      },
       "CreateMcpServerRequest": {
         "type": "object",
         "description": "Request to create a new MCP server",
@@ -19638,6 +20011,187 @@
           }
         }
       },
+      "KnowledgeIndexDocumentResponse": {
+        "type": "object",
+        "description": "Response body for a knowledge index document.",
+        "required": [
+          "id",
+          "index_id",
+          "source_uri",
+          "chunk_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "chunk_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Denormalized chunk count for this document."
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Content hash driving incremental re-embedding."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "kidoc_01933b5a000070008000000000000001"
+          },
+          "index_id": {
+            "type": "string",
+            "description": "Parent index's prefixed public identifier.",
+            "example": "kidx_01933b5a000070008000000000000001"
+          },
+          "last_seen_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp this document was last seen during a sync pass (RFC 3339)."
+          },
+          "mime_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Document MIME type, if known."
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Document size in bytes, if known."
+          },
+          "source_uri": {
+            "type": "string",
+            "description": "Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Document title, if known."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
+          }
+        }
+      },
+      "KnowledgeIndexResponse": {
+        "type": "object",
+        "description": "Response body for a knowledge index.",
+        "required": [
+          "id",
+          "name",
+          "source_type",
+          "source_config",
+          "embedding_model_id",
+          "status",
+          "sync_status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
+          },
+          "embedding_model_id": {
+            "type": "string",
+            "description": "Embedding model used to embed chunks. Required."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "kidx_01933b5a000070008000000000000001"
+          },
+          "last_sync_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Sanitized failure reason from the last failed sync, if any."
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp of the last successful sync, if any (RFC 3339)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
+          },
+          "source_config": {
+            "description": "Non-secret source coordinates. Never holds credentials."
+          },
+          "source_type": {
+            "type": "string",
+            "description": "External source type. One of `github`, `git`."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current lifecycle status."
+          },
+          "sync_status": {
+            "type": "string",
+            "description": "Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
+          },
+          "vector_dim": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Embedding dimension, recorded on first successful sync."
+          }
+        }
+      },
       "LatestHealthCheckRun": {
         "type": "object",
         "description": "The most recent health-check run for an agent, paired with whether the\nagent's current resolved config differs from the config that run was\nexecuted against. Returned by the latest-run endpoint so the agent editor\ncan show prior results on mount without triggering a new run, and surface a\n\"config changed since last run\" hint. See specs/agent-checks.md and EVE-588.",
@@ -19903,6 +20457,28 @@
             ],
             "description": "Substring filter applied to entry title and body.",
             "example": "refund"
+          }
+        }
+      },
+      "ListKnowledgeIndexesQuery": {
+        "type": "object",
+        "description": "Query parameters for `GET /v1/knowledge-indexes` — optional name/desc\nsearch plus a flag to include archived indexes.",
+        "properties": {
+          "include_archived": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "When `true`, also returns archived knowledge indexes.",
+            "example": false
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Substring filter applied to index name and description.",
+            "example": "docs"
           }
         }
       },
@@ -20905,6 +21481,213 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "Timestamp when this resource was last updated (RFC 3339)."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_KnowledgeIndexDocumentResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Response body for a knowledge index document.",
+              "required": [
+                "id",
+                "index_id",
+                "source_uri",
+                "chunk_count",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "chunk_count": {
+                  "type": "integer",
+                  "format": "int32",
+                  "description": "Denormalized chunk count for this document."
+                },
+                "content_hash": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Content hash driving incremental re-embedding."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "example": "kidoc_01933b5a000070008000000000000001"
+                },
+                "index_id": {
+                  "type": "string",
+                  "description": "Parent index's prefixed public identifier.",
+                  "example": "kidx_01933b5a000070008000000000000001"
+                },
+                "last_seen_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp this document was last seen during a sync pass (RFC 3339)."
+                },
+                "mime_type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Document MIME type, if known."
+                },
+                "size_bytes": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int64",
+                  "description": "Document size in bytes, if known."
+                },
+                "source_uri": {
+                  "type": "string",
+                  "description": "Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`)."
+                },
+                "title": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Document title, if known."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_KnowledgeIndexResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "Response body for a knowledge index.",
+              "required": [
+                "id",
+                "name",
+                "source_type",
+                "source_config",
+                "embedding_model_id",
+                "status",
+                "sync_status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Human-readable description. Safe to render in user-facing messages."
+                },
+                "embedding_model_id": {
+                  "type": "string",
+                  "description": "Embedding model used to embed chunks. Required."
+                },
+                "id": {
+                  "type": "string",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+                  "example": "kidx_01933b5a000070008000000000000001"
+                },
+                "last_sync_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Sanitized failure reason from the last failed sync, if any."
+                },
+                "last_synced_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "Timestamp of the last successful sync, if any (RFC 3339)."
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
+                },
+                "source_config": {
+                  "description": "Non-secret source coordinates. Never holds credentials."
+                },
+                "source_type": {
+                  "type": "string",
+                  "description": "External source type. One of `github`, `git`."
+                },
+                "status": {
+                  "type": "string",
+                  "description": "Current lifecycle status."
+                },
+                "sync_status": {
+                  "type": "string",
+                  "description": "Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`."
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
+                },
+                "vector_dim": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Embedding dimension, recorded on first successful sync."
                 }
               }
             },
@@ -31339,6 +32122,37 @@
           }
         }
       },
+      "UpdateKnowledgeIndexRequest": {
+        "type": "object",
+        "description": "Request body for the `update_knowledge_index` operation.",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Set to null to clear."
+          },
+          "embedding_model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Embedding model used to embed chunks. Required; cannot be cleared."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "product-docs-v2"
+          },
+          "source_config": {
+            "description": "Non-secret source coordinates. Never include credentials."
+          }
+        }
+      },
       "UpdateMcpServerRequest": {
         "type": "object",
         "description": "Request to update an MCP server. Only provided fields will be updated.",
@@ -35395,6 +36209,10 @@
     {
       "name": "knowledge_bases",
       "description": "Knowledge base and entry management endpoints"
+    },
+    {
+      "name": "knowledge_indexes",
+      "description": "Knowledge index and document management endpoints"
     },
     {
       "name": "images",

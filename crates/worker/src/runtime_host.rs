@@ -250,6 +250,13 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.platform_store(org_id, session_id))
     }
 
+    fn knowledge_index_search(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+        self.adapters.knowledge_index_search(org_id)
+    }
+
     fn budget_checker(
         &self,
         org_id: i64,

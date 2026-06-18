@@ -14,6 +14,7 @@ use crate::{
     Capability, CapabilityRegistry, Connector, ConnectorRegistry, DriverRegistry, EgressService,
     EmailSender, UtilityLlmService,
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
+    vector_store::{InMemoryVectorStore, VectorStore},
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -189,6 +190,7 @@ pub struct PlatformDefinition {
     email_sender: Arc<dyn EmailSender>,
     utility_llm_service: Arc<dyn UtilityLlmService>,
     session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
+    vector_store: Arc<dyn VectorStore>,
 }
 
 impl PlatformDefinition {
@@ -203,6 +205,7 @@ impl PlatformDefinition {
             email_sender: Arc::new(crate::DisabledEmailSender),
             utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
+            vector_store: Arc::new(InMemoryVectorStore::new()),
         }
     }
 
@@ -271,6 +274,12 @@ impl PlatformDefinition {
         self.session_file_system_factory.clone()
     }
 
+    /// Platform-selected vector store backing Knowledge Index embeddings.
+    /// Defaults to the in-memory backend; production deployments override it.
+    pub fn vector_store(&self) -> Arc<dyn VectorStore> {
+        self.vector_store.clone()
+    }
+
     /// Append a built-in harness template.
     pub fn add_built_in_harness(&mut self, harness: BuiltInHarnessDefinition) {
         self.built_in_harnesses.push(harness);
@@ -303,6 +312,7 @@ impl std::fmt::Debug for PlatformDefinition {
                 "session_file_system_factory",
                 &self.session_file_system_factory.name(),
             )
+            .field("vector_store", &"<dyn VectorStore>")
             .finish()
     }
 }
@@ -389,6 +399,12 @@ impl PlatformDefinitionBuilder {
         factory: Arc<dyn SessionFileSystemFactory>,
     ) -> Self {
         self.platform.session_file_system_factory = factory;
+        self
+    }
+
+    /// Set the platform-wide vector store for Knowledge Index embeddings.
+    pub fn vector_store(mut self, vector_store: Arc<dyn VectorStore>) -> Self {
+        self.platform.vector_store = vector_store;
         self
     }
 

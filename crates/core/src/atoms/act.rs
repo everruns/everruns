@@ -232,6 +232,8 @@ where
     schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
     /// Optional platform store for org-level management tools
     platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    /// Optional hybrid retrieval over bound Knowledge Indexes for `search_index`.
+    knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
     /// Optional leased resource store for provider lease tracking
     leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
     /// Optional session resource registry
@@ -305,6 +307,7 @@ where
             agent_store: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -347,6 +350,7 @@ where
             agent_store: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -475,6 +479,15 @@ where
         store: Arc<dyn crate::platform_store::PlatformStore>,
     ) -> Self {
         self.platform_store = Some(store);
+        self
+    }
+
+    /// Set the Knowledge Index search service for the `search_index` tool.
+    pub fn with_knowledge_index_search(
+        mut self,
+        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
+    ) -> Self {
+        self.knowledge_index_search = Some(search);
         self
     }
 
@@ -1511,6 +1524,9 @@ where
         }
         if let Some(ref store) = self.platform_store {
             tool_context.platform_store = Some(store.clone());
+        }
+        if let Some(ref search) = self.knowledge_index_search {
+            tool_context.knowledge_index_search = Some(search.clone());
         }
         if let Some(ref store) = self.leased_resource_store {
             tool_context.leased_resource_store = Some(store.clone());

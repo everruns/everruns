@@ -1132,6 +1132,8 @@ impl ServerAppBuilder {
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
+        let knowledge_indexes_state =
+            api::knowledge_indexes::AppState::new(db.clone(), auth_state.clone());
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -1286,6 +1288,7 @@ impl ServerAppBuilder {
             .merge(api::workspace_files::routes(workspace_files_state))
             .merge(api::memory_files::routes(memory_files_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
+            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
             .merge(api::payments::routes(payments_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
@@ -1813,7 +1816,7 @@ impl ServerAppBuilder {
                 let mut adapters = DirectWorkerAdapters::new(
                     db.clone(),
                     event_service.clone(),
-                    provider_resolver,
+                    provider_resolver.clone(),
                     mcp_server_service,
                     platform_definition.capability_registry().clone(),
                     platform_definition.driver_registry().clone(),
@@ -1828,6 +1831,7 @@ impl ServerAppBuilder {
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone())
+                .with_vector_store(platform_definition.vector_store())
                 .with_org_rate_limiter(Arc::new(org_rate_limiter.clone()));
 
                 // Wire lazy connection resolver (requires encryption for token decryption).
@@ -1952,7 +1956,19 @@ impl ServerAppBuilder {
         });
         crate::domains::memory::source_sync::spawn_memory_source_sync_task(
             db.clone(),
+            memory_connection_resolver.clone(),
+        );
+
+        // -- Knowledge Index Syncout (both prod and dev) --
+        // Reuses the same GitHub connection resolver as Memory sync, plus the
+        // shared provider resolver / driver registry (for embeddings) and the
+        // platform-selected vector store. See specs/knowledge-indexes.md.
+        crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
+            db.clone(),
             memory_connection_resolver,
+            provider_resolver.clone(),
+            driver_registry.clone(),
+            platform_definition.vector_store(),
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --

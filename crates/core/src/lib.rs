@@ -112,6 +112,7 @@ pub mod session_sqldb;
 pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
+pub mod vector_store;
 pub mod workspace;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)

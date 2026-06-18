@@ -258,6 +258,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;
 
+    /// Get the Knowledge Index search service for the `search_index` tool,
+    /// scoped to the given org. Returns None when retrieval is not available
+    /// (e.g. gRPC workers without a search RPC — follow-up work).
+    fn knowledge_index_search(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+        None
+    }
+
     /// Get the leased-resource store for tool-side registration/touch/release.
     fn leased_resource_store(&self) -> Arc<dyn LeasedResourceStore>;
 

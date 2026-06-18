@@ -218,6 +218,16 @@ export const queryKeys = {
     detail: (memoryId: string) => ["memory", memoryId] as const,
   },
 
+  // Knowledge Index queries — split list/detail roots to avoid prefix collision
+  // when setQueriesData matches by prefix (mirrors the memory key layout).
+  knowledgeIndexes: {
+    all: ["knowledge-indexes"] as const,
+    list: (includeArchived = false, search = "") =>
+      ["knowledge-indexes", { includeArchived, search }] as const,
+    detail: (indexId: string) => ["knowledge-index", indexId] as const,
+    documents: (indexId: string) => ["knowledge-index", indexId, "documents"] as const,
+  },
+
   // Eval queries
   evals: {
     all: ["evals"] as const,

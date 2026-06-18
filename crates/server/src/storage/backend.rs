@@ -9,8 +9,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
-    LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId,
-    WorkspaceId,
+    KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
+    ScheduleId, SessionId, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -1121,6 +1121,140 @@ impl StorageBackend {
 
     pub async fn delete_knowledge_entry(&self, kb_id: Uuid, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_knowledge_entry, kb_id, id)
+    }
+
+    // ============================================
+    // Knowledge Indexes (see specs/knowledge-indexes.md)
+    // ============================================
+
+    pub async fn create_knowledge_index(
+        &self,
+        org_id: i64,
+        input: CreateKnowledgeIndexRow,
+    ) -> Result<KnowledgeIndexRow> {
+        dispatch!(self, create_knowledge_index, org_id, input)
+    }
+
+    pub async fn get_knowledge_index(
+        &self,
+        org_id: i64,
+        index_id: KnowledgeIndexId,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(
+            self,
+            get_knowledge_index_by_public_id,
+            org_id,
+            &index_id.to_string()
+        )
+    }
+
+    pub async fn get_knowledge_index_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, get_knowledge_index_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_knowledge_index_by_id(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, get_knowledge_index_by_id, org_id, id)
+    }
+
+    pub async fn list_knowledge_indexes(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<KnowledgeIndexRow>> {
+        dispatch!(
+            self,
+            list_knowledge_indexes,
+            org_id,
+            search,
+            include_archived
+        )
+    }
+
+    pub async fn update_knowledge_index(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateKnowledgeIndex,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, update_knowledge_index, org_id, id, input)
+    }
+
+    pub async fn archive_knowledge_index(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_knowledge_index, org_id, id)
+    }
+
+    pub async fn list_knowledge_index_documents(
+        &self,
+        index_id: Uuid,
+    ) -> Result<Vec<KnowledgeIndexDocumentRow>> {
+        dispatch!(self, list_knowledge_index_documents, index_id)
+    }
+
+    pub async fn list_knowledge_index_chunks(
+        &self,
+        index_id: Uuid,
+    ) -> Result<Vec<KnowledgeIndexChunkRow>> {
+        dispatch!(self, list_knowledge_index_chunks, index_id)
+    }
+
+    pub async fn get_knowledge_index_chunks_with_documents(
+        &self,
+        index_id: Uuid,
+        chunk_public_ids: &[String],
+    ) -> Result<Vec<KnowledgeIndexChunkWithDocument>> {
+        dispatch!(
+            self,
+            get_knowledge_index_chunks_with_documents,
+            index_id,
+            chunk_public_ids
+        )
+    }
+
+    pub async fn enqueue_knowledge_index_sync(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, enqueue_knowledge_index_sync, org_id, id)
+    }
+
+    pub async fn claim_next_knowledge_index_sync(&self) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, claim_next_knowledge_index_sync)
+    }
+
+    pub async fn complete_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        documents: Vec<CreateKnowledgeIndexDocumentWithChunks>,
+        vector_dim: Option<i32>,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(
+            self,
+            complete_knowledge_index_sync,
+            index_id,
+            claimed_at,
+            documents,
+            vector_dim
+        )
+    }
+
+    pub async fn fail_knowledge_index_sync(
+        &self,
+        index_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, fail_knowledge_index_sync, index_id, claimed_at, error)
     }
 
     // ============================================

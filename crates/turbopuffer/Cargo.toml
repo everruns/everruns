@@ -1,0 +1,50 @@
+# Turbopuffer Vector Store Backend
+# Decision: Implements everruns-core's VectorStore trait against Turbopuffer's
+# v2 HTTP API. Opt-in production backend for Knowledge Index embeddings; the
+# in-memory store stays the default. See specs/knowledge-indexes.md.
+
+[package]
+name = "everruns-turbopuffer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-turbopuffer"
+description = "Turbopuffer vector-store backend for Everruns Knowledge Indexes"
+readme = "README.md"
+keywords = ["agent", "ai", "vector", "turbopuffer", "embeddings"]
+categories = ["api-bindings", "asynchronous"]
+
+[features]
+# Enables live tests that hit the real Turbopuffer API. Off by default; CI runs
+# them in a dedicated job with secrets. Fail-closed when the API key is missing.
+turbopuffer-live-tests = []
+
+[dependencies]
+# Core dependencies
+anyhow.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+
+# Async runtime
+tokio.workspace = true
+
+# HTTP client
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Tracing
+tracing.workspace = true
+
+# Internal dependencies
+everruns-core.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
