@@ -50,6 +50,47 @@ async fn create_is_idempotent_on_supplied_id() {
 }
 
 #[tokio::test]
+async fn create_rejects_id_reuse_across_sessions() {
+    let reg = LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().unwrap()).unwrap();
+    let session_a = SessionId::new();
+    let session_b = SessionId::new();
+
+    let mut input_a = create_input(session_a, TASK_KIND_BACKGROUND_TOOL);
+    input_a.id = Some("task_shared_id".to_string());
+    reg.create(input_a).await.unwrap();
+
+    // Reusing the same id under a different session must be rejected, not
+    // silently aliased to session A's task.
+    let mut input_b = create_input(session_b, TASK_KIND_BACKGROUND_TOOL);
+    input_b.id = Some("task_shared_id".to_string());
+    assert!(
+        reg.create(input_b).await.is_err(),
+        "cross-session id reuse must be rejected"
+    );
+
+    // Lookups are session-scoped: the task is invisible from session B and the
+    // foreign session cannot read its message history.
+    assert!(
+        reg.get(session_b, "task_shared_id")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        reg.get(session_a, "task_shared_id")
+            .await
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        reg.list_messages(session_b, "task_shared_id", None, None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[tokio::test]
 async fn started_at_and_finished_at_invariants() {
     let reg = LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().unwrap()).unwrap();
     let session_id = SessionId::new();

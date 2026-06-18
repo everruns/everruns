@@ -18,7 +18,8 @@ use chrono::Utc;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-    SessionTaskUpdate, TaskMessage, apply_task_update, generate_task_message_id, new_session_task,
+    SessionTaskState, SessionTaskUpdate, TaskMessage, TaskMessageDirection, apply_task_update,
+    generate_task_message_id, new_session_task,
 };
 use everruns_core::typed_id::SessionId;
 use rusqlite::OptionalExtension;
@@ -110,11 +111,18 @@ impl LocalSessionTaskRegistry {
 #[async_trait]
 impl SessionTaskRegistry for LocalSessionTaskRegistry {
     async fn create(&self, input: CreateSessionTask) -> Result<SessionTask> {
-        // Idempotent on a caller-supplied id: return the stored task unchanged.
+        // Idempotent on a caller-supplied id, but only within the same session.
+        // Reusing an id across sessions is rejected, matching the canonical
+        // DB-backed registry, so a caller cannot alias another session's task.
         if let Some(id) = &input.id
             && let Some(existing) = self.load_task(id)?
         {
-            return Ok(existing);
+            if existing.session_id == input.session_id {
+                return Ok(existing);
+            }
+            return Err(AgentLoopError::store(format!(
+                "task id {id} already exists under a different session"
+            )));
         }
         let task = new_session_task(input, Utc::now());
         self.store_task(&task)?;
@@ -123,20 +131,27 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
 
     async fn update(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         task_id: &str,
         update: SessionTaskUpdate,
     ) -> Result<Option<SessionTask>> {
         let Some(mut task) = self.load_task(task_id)? else {
             return Ok(None);
         };
+        // Session-scoped: ignore updates targeting a task in another session.
+        if task.session_id != session_id {
+            return Ok(None);
+        }
         apply_task_update(&mut task, update, Utc::now());
         self.store_task(&task)?;
         Ok(Some(task))
     }
 
-    async fn get(&self, _session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
-        self.load_task(task_id)
+    async fn get(&self, session_id: SessionId, task_id: &str) -> Result<Option<SessionTask>> {
+        // Session-scoped: a task id from another session is not visible here.
+        Ok(self
+            .load_task(task_id)?
+            .filter(|task| task.session_id == session_id))
     }
 
     async fn list(
@@ -197,12 +212,16 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
 
     async fn request_cancel(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         task_id: &str,
     ) -> Result<Option<SessionTask>> {
         let Some(mut task) = self.load_task(task_id)? else {
             return Ok(None);
         };
+        // Session-scoped: do not record cancel intent on another session's task.
+        if task.session_id != session_id {
+            return Ok(None);
+        }
         // Cooperative cancel: record intent, do not change state. Idempotent.
         task.cancel_requested_at.get_or_insert_with(Utc::now);
         task.updated_at = Utc::now();
@@ -212,15 +231,18 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
 
     async fn record_message(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         task_id: &str,
         message: NewTaskMessage,
     ) -> Result<TaskMessage> {
+        // Session-scoped: a message may only be appended to a task that belongs
+        // to the calling session (mirrors the DB-backed registry).
+        let mut task = self
+            .get(session_id, task_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
         // Stale-attempt fence: reject writes from a superseded executor so the
         // thread cannot grow under a zombie. Mirrors the postgres backend.
-        let mut task = self
-            .load_task(task_id)?
-            .ok_or_else(|| AgentLoopError::tool(format!("no task {task_id}")))?;
         if let Some(expected) = message.expected_attempt
             && expected != task.attempt
         {
@@ -252,9 +274,11 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
             })
             .map_err(AgentLoopError::from)?;
 
-        // Answering messages (in_reply_to set) clear a matching pending input
-        // request and return the task to running, matching the trait contract.
-        if let Some(reply_id) = &message.in_reply_to
+        // An inbound answer (in_reply_to set) clears a matching pending input
+        // request and returns the task to running. Only inbound messages resume
+        // the task, matching the DB-backed registry; outbound messages never do.
+        if message.direction == TaskMessageDirection::Inbound
+            && let Some(reply_id) = &message.in_reply_to
             && task
                 .input_request
                 .as_ref()
@@ -263,7 +287,7 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
             apply_task_update(
                 &mut task,
                 SessionTaskUpdate {
-                    state: Some(everruns_core::session_task::SessionTaskState::Running),
+                    state: Some(SessionTaskState::Running),
                     ..Default::default()
                 },
                 Utc::now(),
@@ -276,11 +300,16 @@ impl SessionTaskRegistry for LocalSessionTaskRegistry {
 
     async fn list_messages(
         &self,
-        _session_id: SessionId,
+        session_id: SessionId,
         task_id: &str,
         limit: Option<u32>,
         after_id: Option<&str>,
     ) -> Result<Vec<TaskMessage>> {
+        // Session-scoped: do not leak another session's message history even
+        // when the task id is known. Missing/foreign task -> empty list.
+        if self.get(session_id, task_id).await?.is_none() {
+            return Ok(Vec::new());
+        }
         let tid = task_id.to_string();
         let after = after_id.map(|s| s.to_string());
         let limit = limit.map(|l| l as i64);

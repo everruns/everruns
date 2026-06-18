@@ -27,6 +27,10 @@ pub struct LocalRuntimeBuilder {
     profile: LocalProfile,
     inner: InProcessRuntimeBuilder,
     file_system_factory: Option<Arc<dyn SessionFileSystemFactory>>,
+    /// Caller-supplied platform definition override. When `Some`, `build()`
+    /// installs it as-is instead of the default local one; the caller owns the
+    /// session filesystem factory in that case.
+    platform_definition: Option<PlatformDefinition>,
 }
 
 impl LocalRuntimeBuilder {
@@ -37,12 +41,16 @@ impl LocalRuntimeBuilder {
             profile,
             inner: InProcessRuntimeBuilder::new(),
             file_system_factory: None,
+            platform_definition: None,
         }
     }
 
-    /// Replace the platform definition (capabilities, drivers, ...).
+    /// Replace the platform definition (capabilities, drivers, ...). When set,
+    /// `build()` respects this definition instead of constructing the default
+    /// local one, so capability/driver overrides take effect. The caller is
+    /// then responsible for the session filesystem factory on their definition.
     pub fn platform_definition(mut self, platform_definition: PlatformDefinition) -> Self {
-        self.inner = self.inner.platform_definition(platform_definition);
+        self.platform_definition = Some(platform_definition);
         self
     }
 
@@ -105,17 +113,25 @@ impl LocalRuntimeBuilder {
             everruns_runtime::RuntimeBackends::in_memory(),
         )?;
 
-        // Default to a real-disk workspace rooted at the profile workspace.
-        let factory = self.file_system_factory.unwrap_or_else(|| {
-            Arc::new(RealDiskSessionFileSystemFactory::new(
-                self.profile.workspace_root.clone(),
-            ))
-        });
-        let platform_definition = PlatformDefinition::builder()
-            .capability_registry(everruns_core::CapabilityRegistry::with_builtins())
-            .driver_registry(everruns_core::DriverRegistry::new())
-            .session_file_system_factory(factory)
-            .build();
+        // Respect a caller-supplied platform definition; otherwise build the
+        // default local one rooted at the profile workspace. Only install the
+        // default when the caller has not overridden it, so capability/driver
+        // overrides via `platform_definition(...)` are not silently discarded.
+        let platform_definition = match self.platform_definition {
+            Some(pd) => pd,
+            None => {
+                let factory = self.file_system_factory.unwrap_or_else(|| {
+                    Arc::new(RealDiskSessionFileSystemFactory::new(
+                        self.profile.workspace_root.clone(),
+                    ))
+                });
+                PlatformDefinition::builder()
+                    .capability_registry(everruns_core::CapabilityRegistry::with_builtins())
+                    .driver_registry(everruns_core::DriverRegistry::new())
+                    .session_file_system_factory(factory)
+                    .build()
+            }
+        };
 
         let runtime = self
             .inner
