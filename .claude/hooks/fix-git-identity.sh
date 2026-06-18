@@ -14,10 +14,10 @@ source "$REPO_ROOT/scripts/lib/common.sh"
 
 configure_commit_git_identity_if_needed 2>/dev/null || true
 
-# The base cloud image enables commit.gpgsign=true with an SSH signing key
-# registered to noreply@anthropic.com. This repo commits under the real human
-# identity (see AGENTS.md), so those signatures can never verify on GitHub and
-# the platform Stop hook flags every commit as "Unverified" on each turn.
-# Disable local signing: GitHub shows the same "Unverified" badge either way,
-# and this silences the false alarm without resorting to bot attribution.
-git -C "$REPO_ROOT" config --local commit.gpgsign false 2>/dev/null || true
+# Do not change commit.gpgsign by default. Contributors may have valid global
+# or repository-local signing policies, and an automatic SessionStart hook must
+# not silently weaken those source-control integrity settings. Cloud sessions
+# that intentionally need to bypass a broken inherited signing setup can opt in.
+if [ "${EVERRUNS_DISABLE_COMMIT_SIGNING:-}" = "1" ]; then
+  git -C "$REPO_ROOT" config --local commit.gpgsign false 2>/dev/null || true
+fi
