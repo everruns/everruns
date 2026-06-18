@@ -13,7 +13,9 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::Engine;
+use chrono::{DateTime, Utc};
 use everruns_config::{env_bool, env_opt_string, env_string};
+use futures::StreamExt;
 use object_store::{
     Attribute, Attributes, ObjectStore, PutOptions, PutPayload, path::Path as ObjectPath,
 };
@@ -42,6 +44,33 @@ pub trait BlobStore: Send + Sync {
 
     /// Delete the object at `key`. A missing object is not an error (idempotent).
     async fn delete(&self, key: &str) -> Result<()>;
+
+    /// List objects whose key starts with `prefix` (a relative key prefix, as
+    /// passed to [`put`](BlobStore::put) / [`delete`](BlobStore::delete)).
+    ///
+    /// Returns objects with their *relative* keys (the deployment-level prefix
+    /// applied by the implementation is stripped back off), so the result is
+    /// directly comparable to the keys callers store in the sidecar pointer
+    /// tables. Used by the blob garbage collector to reconcile bucket contents
+    /// against PostgreSQL pointers (`specs/object-storage.md`).
+    ///
+    /// Backends with no external objects (none today — only the object_store
+    /// backend implements `BlobStore`) may return an empty list.
+    async fn list_with_prefix(&self, prefix: &str) -> Result<Vec<BlobObject>>;
+}
+
+/// A single object surfaced by [`BlobStore::list_with_prefix`].
+#[derive(Debug, Clone)]
+pub struct BlobObject {
+    /// Relative object key (deployment prefix stripped), comparable to the
+    /// sidecar `blob_key` / `data_key` / `thumbnail_key` columns.
+    pub key: String,
+    /// Server-reported last-modified time. The GC grace period is measured
+    /// against this so recently-written (possibly in-flight) objects are never
+    /// deleted.
+    pub last_modified: DateTime<Utc>,
+    /// Object size in bytes, used to report bytes reclaimed.
+    pub size_bytes: u64,
 }
 
 /// Shared, cheaply-cloneable handle to the active blob backend.
@@ -224,6 +253,18 @@ impl ObjectStoreBlobStore {
         };
         ObjectPath::from(full)
     }
+
+    /// Strip the deployment-level prefix from a full object key so it matches
+    /// the relative keys stored in the sidecar pointer tables. Returns `None`
+    /// for objects that fall outside this deployment's prefix (defensive: a
+    /// shared bucket may host other deployments — never GC those).
+    fn strip_prefix<'a>(&self, full: &'a str) -> Option<&'a str> {
+        if self.prefix.is_empty() {
+            return Some(full);
+        }
+        full.strip_prefix(&self.prefix)
+            .map(|rest| rest.trim_start_matches('/'))
+    }
 }
 
 #[async_trait]
@@ -269,6 +310,29 @@ impl BlobStore for ObjectStoreBlobStore {
                 Err(anyhow::Error::from(e).context(format!("blob delete failed for key {key}")))
             }
         }
+    }
+
+    async fn list_with_prefix(&self, prefix: &str) -> Result<Vec<BlobObject>> {
+        // Build the full (prefixed) listing path. An empty relative prefix
+        // lists the whole deployment scope.
+        let list_path = self.object_path(prefix.trim_end_matches('/'));
+        let mut stream = self.inner.list(Some(&list_path));
+        let mut out = Vec::new();
+        while let Some(item) = stream.next().await {
+            let meta = item.with_context(|| format!("blob list failed for prefix {prefix:?}"))?;
+            let full = meta.location.as_ref();
+            // Fail closed on objects outside our prefix (foreign deployments
+            // sharing the bucket): skip rather than risk deleting them.
+            let Some(rel) = self.strip_prefix(full) else {
+                continue;
+            };
+            out.push(BlobObject {
+                key: rel.to_string(),
+                last_modified: meta.last_modified,
+                size_bytes: meta.size,
+            });
+        }
+        Ok(out)
     }
 }
 
@@ -379,6 +443,57 @@ mod tests {
             store.get("k").await.unwrap().as_deref(),
             Some(b"two".as_slice())
         );
+    }
+
+    #[tokio::test]
+    async fn list_with_prefix_returns_relative_keys() {
+        let store = ObjectStoreBlobStore::in_memory();
+        store
+            .put("workspaces/a/files/1", b"x".to_vec(), &meta())
+            .await
+            .unwrap();
+        store
+            .put("workspaces/a/files/2", b"yy".to_vec(), &meta())
+            .await
+            .unwrap();
+        store
+            .put("images/org-1/i/data", b"zzz".to_vec(), &meta())
+            .await
+            .unwrap();
+
+        let mut ws = store.list_with_prefix("workspaces/").await.unwrap();
+        ws.sort_by(|a, b| a.key.cmp(&b.key));
+        assert_eq!(
+            ws.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(),
+            vec!["workspaces/a/files/1", "workspaces/a/files/2"]
+        );
+        assert_eq!(ws[0].size_bytes, 1);
+        assert_eq!(ws[1].size_bytes, 2);
+
+        // Empty prefix lists everything in scope.
+        let all = store.list_with_prefix("").await.unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn list_with_prefix_strips_deployment_prefix() {
+        let inner: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
+        let store = ObjectStoreBlobStore::new(inner.clone(), "deploy-1", "memory");
+        let other = ObjectStoreBlobStore::new(inner, "deploy-2", "memory");
+
+        store
+            .put("workspaces/a/files/1", b"x".to_vec(), &meta())
+            .await
+            .unwrap();
+        other
+            .put("workspaces/a/files/2", b"yy".to_vec(), &meta())
+            .await
+            .unwrap();
+
+        // Listing under deploy-1 returns relative keys and never sees deploy-2.
+        let listed = store.list_with_prefix("workspaces/").await.unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].key, "workspaces/a/files/1");
     }
 
     #[tokio::test]
