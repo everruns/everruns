@@ -290,18 +290,18 @@ Current final hooks (always-on, cannot be removed):
 
 ### Loop Detection (EVE-227)
 
-The `loop_detection` capability detects repeated identical tool calls and injects a system warning to break the loop. It uses `MessageFilterProvider::post_load` to scan loaded messages.
+The `loop_detection` capability detects repeated tool loops and injects a system warning to break the loop. It uses `MessageFilterProvider::post_load` to scan loaded messages.
 
 **Mechanism:** `ActAtom` emits stable fingerprints on tool events:
 
 - `tool_call_fingerprint` on `tool.started` and `tool.completed`: `sha256:` over the tool name plus normalized arguments. UI-only fields such as `human_intent` and verbosity-only `output` are excluded.
 - `tool_result_fingerprint` on `tool.completed`: `sha256:` over the tool name plus normalized result/error. Common volatile fields such as durations and timestamps are excluded.
 
-After messages are loaded, the filter scans the recent available window in reverse. If `threshold` (default 3) consecutive tool results have identical call+result fingerprints, a system message is appended warning the model to change approach. If result fingerprints are unavailable, it falls back to recent agent messages and detects consecutive identical tool-call batches by normalized name+arguments.
+After messages are loaded, the filter scans the recent available window in reverse. If `threshold` (default 3) consecutive tool results have identical call+result fingerprints, a system message is appended warning the model to change approach. It also detects repeated `read_file` ranges for the same path within the current read cluster, so alternating between the same saved-output ranges is treated as a loop while sequential paging is allowed. If result fingerprints are unavailable, it falls back to recent agent messages and detects consecutive identical tool-call batches by normalized name+arguments.
 
 This is intentionally a rolling-window detector: hosts are not required to read all historical events. Durable hosts can rehydrate from the last relevant events; embedded hosts such as ercode can use their in-memory/logged message history. If the visible window is too short to prove a cycle, the detector continues without blocking.
 
-**Configuration:** `{"threshold": 5}` to change the default repeat count.
+**Configuration:** `{"threshold": 5}` to change the default repeat count for identical results, identical call batches, and repeated read ranges.
 
 See `crates/core/src/capabilities/loop_detection.rs`.
 
