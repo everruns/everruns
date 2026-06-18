@@ -73,6 +73,8 @@ The config source should later become an org-scoped `external_agents` table:
 
 The runtime tool contract should not change when this lands.
 
+The ARD client capability (`resource_discovery`, [`integrations/ard/SPEC.md`](../integrations/ard/SPEC.md)) is one realization of this discovery source, generalized to MCP servers as well as A2A agents: it discovers external capabilities from ARD registries and attaches them mid-session. ARD-attached A2A agents are merged into this capability's `agents` config during turn-context assembly (`everruns_core::ard_attachment::apply_session_attachments`), so they flow through the existing `spawn_agent` path unchanged.
+
 ### Agent Runs
 
 Every external task is represented as an `agent_run` session resource:

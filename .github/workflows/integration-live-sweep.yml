@@ -30,6 +30,7 @@ jobs:
     env:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
       DENO_SANDBOX_REGION: ${{ matrix.deno_sandbox_region || '' }}
+      ARD_LIVE_REGISTRY_URL: ${{ matrix.ard_registry_url || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -50,6 +51,9 @@ jobs:
             required_secret: SPRITES_API_TOKEN
           - name: Brave Search API Tests
             command: cargo test -p everruns-integrations-brave-search --features integration
+          - name: ARD Live Registry Tests
+            command: cargo test -p everruns-integrations-ard --features ard-live-tests --test live_api_test
+            ard_registry_url: https://agenticresourcediscovery.org/api/v1
 
     steps:
       - uses: actions/checkout@v5

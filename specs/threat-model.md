@@ -1354,6 +1354,21 @@ Installed plugins (`specs/plugins.md`) compile third-party remote content into a
 **TM-PLUGIN-002 — Pinned compile-at-install model:**
 The capability that agents execute is the compiled `definition` JSONB persisted in `plugin_installs` at install/update time. Upstream changes to the source repository have no effect on running agents until an admin explicitly updates, at which point the content is re-fetched at the marketplace's current synced SHA and re-validated end to end. This is the same trust shape as a lockfile: sync moves the candidate version; update moves the installed one.
 
+## 27. Agentic Resource Discovery (`resource_discovery`)
+
+The `resource_discovery` capability (`integrations/ard/SPEC.md`, crate `everruns-integrations-ard`) lets a running agent discover external capabilities from ARD registries (the [ARD spec](https://agenticresourcediscovery.org/spec/)) and attach them mid-session. `discover_resources` proxies the registry `POST /search` (outside model context, results cached in session KV `ard_disco:`); `attach_resource` resolves a cached entry, runs a trust gate, and persists an attachment to session KV `ard_attach:`. During turn-context assembly, `everruns_core::ard_attachment::apply_session_attachments` folds attachments into the session config layer in **both** the server `GetTurnContext` and the in-process runtime `load_turn_context`: MCP entries become a session-scoped `mcpServers` record (tools appear next turn, prefixed `mcp_<name>__*`, subject to `tool_search`), and A2A entries merge into the session's `a2a_agent_delegation` config so the existing `spawn_agent` flow can target them. The capability is experimental/Dev-only and `risk_level` High. Registry-returned text is untrusted external data (same class as TM-TOOL-005 / TM-AGENT-002).
+
+This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categories rather than introducing a new prefix.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-API-021 | SSRF to internal services via a registry-resolved artifact or endpoint URL | High | The model never supplies a URL — it selects a `registry_id` from the capability's `registries` allowlist (`{id,url,federation}`), and attach targets resolve from cached registry entries. Every resolved registry, MCP server, and A2A endpoint URL passes `validate_url_dns_pinned` / `validate_safe_url` (loopback, RFC1918, link-local, cloud metadata blocked; resolve-then-check with DNS pinning) before any outbound call. `allow_local_urls` (default false) relaxes this only for tests/dev. | MITIGATED |
+| TM-API-022 | Registry allowlist bypass via model-supplied registry URL | High | `discover_resources` accepts only an optional `registry_id` that must match an entry in the configured `registries` allowlist; raw URLs in tool arguments are rejected. No code path lets the model introduce a registry the operator did not configure. | MITIGATED |
+| TM-TOOL-022 | Forged or spoofed attachment via direct KV write | High | ARD attachments live under reserved KV prefixes `ard_attach:` / `ard_disco:`. `is_internal_session_kv_key` blocks these prefixes from the user-facing `kv_store` tool, so the agent cannot fabricate an `ArdAttachment` that `apply_session_attachments` would later fold into the session config. Only `attach_resource` (after the trust gate) writes them. | MITIGATED |
+| TM-TOOL-023 | trustManifest spoofing — attaching an MCP/A2A resource whose publisher identity does not match its URN | High | Before attach, the trust gate binds the URN publisher FQDN to the `trustManifest` identity domain (e.g. `spiffe://acme.com/...` must match identity domain `acme.com`) and enforces the capability's `require_trust` attestations (e.g. `["soc2"]`). Domain↔URN mismatch, missing required attestation, or missing manifest when required rejects the attach. `allow_attach_types` further restricts which artifact media types (`application/mcp-server+json`, `application/a2a-agent-card+json`) may be attached, and the value-or-reference envelope is validated before resolution. | MITIGATED |
+| TM-AGENT-025 | Prompt-injection-driven attach storm (untrusted registry text steers the agent into attaching many or hostile resources) | Medium | Registry search results are untrusted external data returned via the `tool_result` role (no complete defense, same class as TM-AGENT-002). `max_attachments` (default 5) bounds the number of resources attachable per session; `attach_resource` is idempotent per URN so repeated injected requests cannot inflate the count; the trust gate and allowlist constrain *what* can attach. The agent loop, iteration limits, and `tool_search` deferral are unchanged. | MITIGATED |
+| TM-DOS-019 | Resource exhaustion via unbounded attachments or oversized discovery caches | Medium | `max_attachments` caps attachments per session; cached discovery and attachment entries are bounded by normal session-KV limits; `discover_resources` runs outside model context so large registry responses do not inflate the prompt directly. | MITIGATED |
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -1451,6 +1466,7 @@ The capability that agents execute is the compiled `definition` JSONB persisted 
 | A2A Agent Card disclosure | TM-A2A-009 | Card never echoes API key / hash / internal IDs; only published while app is live and channel enabled |
 | A2A runaway client DoS | TM-A2A-013 | Configurable per-app, per-IP cap (`A2aChannelConfig::rate_limit_per_minute`) enforced after API key check via shared `ChannelRateLimiter` (in-memory governor or Valkey) |
 | A2A replay of captured request | TM-A2A-010 | Opt-in scope-bound HMAC signing (`A2aChannelConfig::signing_secret`) — basestring `v0:{ts}:{app_id}:{channel_id}:{body}` so signatures are non-reusable across channels; 5-minute timestamp window plus signature-keyed dedup; in-memory or Valkey backend |
+| ARD discovery/attach controls | TM-API-021, TM-API-022, TM-TOOL-022, TM-TOOL-023, TM-AGENT-025, TM-DOS-019 | Registry allowlist (no model-supplied URLs), `validate_url_dns_pinned`/`validate_safe_url` on every resolved URL, trustManifest domain↔URN binding + `require_trust` gate, reserved KV prefixes (`is_internal_session_kv_key`), `max_attachments` bound, untrusted registry text role-separated |
 | CI secret scoping | TM-CI-001..005 | No `secrets.*` at workflow `env:`; secrets are injected only into jobs/steps gated on `github.event_name == 'push'` (or `workflow_dispatch`) so fork-PR-controlled cargo/binary code cannot read them from process env |
 
 ## References
@@ -1476,5 +1492,6 @@ The capability that agents execute is the compiled `definition` JSONB persisted 
 - `specs/apps.md` — Apps system (agent deployment to channels)
 - `crates/server/specs/slack-integration.md` — Slack bot integration
 - `integrations/brave-search/SPEC.md` — Brave Search web search integration
+- `integrations/ard/SPEC.md` — Agentic Resource Discovery (`resource_discovery`) client integration
 - `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry

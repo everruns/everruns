@@ -83,6 +83,7 @@ pub mod budget;
 pub mod agent;
 pub mod agent_identity;
 pub mod app;
+pub mod ard_attachment;
 pub mod capability_dto;
 pub mod connector;
 pub mod credential_schema;
@@ -388,6 +389,11 @@ pub use app::{
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
     AppEndpointAuthRequirements, AppStatus, ChannelType, FcpChannelConfig, SessionStrategy,
     SlackChannelConfig, SlackReplyMode,
+};
+pub use ard_attachment::{
+    ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,
+    ArdAttachmentTarget, apply_session_attachments, attachment_kv_key, load_session_attachments,
+    merge_attachment_into_session, urn_slug,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use context_report::{

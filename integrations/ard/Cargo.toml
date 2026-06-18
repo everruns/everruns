@@ -1,0 +1,48 @@
+# Agentic Resource Discovery (ARD) client integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: Client/consumer side only — discover + attach external MCP servers and
+#   A2A agents via ARD registries. Publishing (ARD-as-a-server) is tracked separately.
+# Decision: Connection-backed — registry auth header via a connection provider,
+#   with a fallback session-secret/env var for operator/test use.
+
+[package]
+name = "everruns-integrations-ard"
+readme = "README.md"
+version.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Agentic Resource Discovery (ARD) client integration for Everruns agents"
+keywords = ["everruns", "ard", "discovery", "mcp", "agents"]
+categories = ["api-bindings", "development-tools"]
+documentation = "https://docs.rs/everruns-integrations-ard"
+
+[dependencies]
+everruns-core.workspace = true
+inventory.workspace = true
+
+# HTTP client for ARD registry REST API
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+url = "2"
+
+[features]
+# Gate live registry tests against the public ARD reference registry.
+# CI live jobs pass --features ard-live-tests.
+ard-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

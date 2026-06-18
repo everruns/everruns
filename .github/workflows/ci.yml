@@ -48,6 +48,7 @@ jobs:
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
       parallel_integration: ${{ steps.core_filter.outputs.parallel_integration }}
+      ard: ${{ steps.core_filter.outputs.ard }}
       skip_slow_rust: ${{ steps.ci_opt_outs.outputs.skip_slow_rust }}
       skip_postgres_integration: ${{ steps.ci_opt_outs.outputs.skip_postgres_integration }}
       skip_sdk_compat: ${{ steps.ci_opt_outs.outputs.skip_sdk_compat }}
@@ -186,6 +187,8 @@ jobs:
               - 'integrations/duckduckgo/**'
             parallel_integration:
               - 'integrations/parallel/**'
+            ard:
+              - 'integrations/ard/**'
 
       # Exclusion filters need `predicate-quantifier: every`; with the default
       # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
@@ -351,6 +354,7 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
+          cargo test -p everruns-integrations-ard
 
   # Durable-worker PR coverage. Catches regressions in the worker crate's
   # durable execution paths (act/reason/input task handling, DLQ emission,

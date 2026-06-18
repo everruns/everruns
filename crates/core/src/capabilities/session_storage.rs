@@ -14,10 +14,16 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
-// Reserve the A2A run-record prefix from the user-facing kv_store. Reference
-// the canonical constant so this never drifts from how `a2a_delegation` writes
-// those keys (`run_key`).
-const INTERNAL_KV_PREFIXES: &[&str] = &[super::a2a_delegation::AGENT_RUN_KEY_PREFIX];
+// Reserve internal KV prefixes from the user-facing kv_store. Reference the
+// canonical constants so these never drift from how the owning capabilities
+// write them: A2A run records (`a2a_delegation::run_key`) and ARD runtime
+// attachments / discovery cache (`ard_attachment`). Reserving the ARD prefixes
+// stops a session/tool actor forging attachments via kv_store (TM-TOOL/TM-AGENT).
+const INTERNAL_KV_PREFIXES: &[&str] = &[
+    super::a2a_delegation::AGENT_RUN_KEY_PREFIX,
+    crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
+    crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
+];
 const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:"];
 
 pub fn is_internal_session_kv_key(key: &str) -> bool {

@@ -33,6 +33,7 @@ members = [
     "integrations/browserless",
     "integrations/e2b",
     "integrations/sprites",
+    "integrations/ard",
     "examples/coding-cli",
 ]
 
