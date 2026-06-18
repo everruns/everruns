@@ -63,6 +63,7 @@ impl ProviderService {
     }
 
     pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {
+        validate_provider_type(&req.provider_type)?;
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
 
         // Encrypt API key if provided
@@ -141,6 +142,7 @@ impl ProviderService {
             .provider_type
             .clone()
             .unwrap_or_else(|| existing.provider_type.parse().unwrap_or(DriverId::OpenAI));
+        validate_provider_type(&provider_type)?;
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
 
@@ -210,6 +212,23 @@ impl ProviderService {
     }
 }
 
+fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
+    let raw = provider_type.as_str();
+    if raw.trim().is_empty() {
+        return Err(anyhow!("Provider type cannot be empty"));
+    }
+    // `DriverId::external` preserves the string verbatim, so a padded id like
+    // " openai " is non-empty here but later fails driver-registry lookup and
+    // persists as a corrupt row. Reject surrounding whitespace outright rather
+    // than silently normalizing it.
+    if raw != raw.trim() {
+        return Err(anyhow!(
+            "Provider type cannot have leading or trailing whitespace"
+        ));
+    }
+    Ok(())
+}
+
 fn validate_provider_base_url(provider_type: DriverId, base_url: Option<&str>) -> Result<()> {
     let parsed = match base_url {
         Some(url) => Some(validate_safe_url(url).map_err(|e| anyhow!("Invalid base URL: {e}"))?),
@@ -255,11 +274,39 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_provider_base_url;
+    use super::{validate_provider_base_url, validate_provider_type};
     use everruns_core::DriverId;
     use everruns_core::url_validation::validate_safe_url;
 
     // ---- SSRF prevention tests (EVE-69) ----
+
+    #[test]
+    fn provider_type_rejects_empty_external_id() {
+        let err = validate_provider_type(&DriverId::external("")).unwrap_err();
+        assert!(err.to_string().contains("Provider type cannot be empty"));
+    }
+
+    #[test]
+    fn provider_type_rejects_whitespace_external_id() {
+        let err = validate_provider_type(&DriverId::external(" \t\n")).unwrap_err();
+        assert!(err.to_string().contains("Provider type cannot be empty"));
+    }
+
+    #[test]
+    fn provider_type_rejects_padded_external_id() {
+        // Non-empty but whitespace-padded: would persist verbatim and fail
+        // driver-registry lookup later, so it must be rejected at write time.
+        let err = validate_provider_type(&DriverId::external(" openai ")).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Provider type cannot have leading or trailing whitespace")
+        );
+    }
+
+    #[test]
+    fn provider_type_accepts_external_id() {
+        assert!(validate_provider_type(&DriverId::external("custom-driver")).is_ok());
+    }
 
     #[test]
     fn create_rejects_localhost_base_url() {
