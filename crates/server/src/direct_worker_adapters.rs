@@ -275,6 +275,8 @@ pub struct DirectWorkerAdapters {
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
+    /// Platform vector store for Knowledge Index retrieval (`search_index`).
+    vector_store: Option<Arc<dyn everruns_core::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
@@ -309,6 +311,7 @@ impl DirectWorkerAdapters {
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
+            vector_store: None,
             runner: None,
             encryption: None,
             workflow_store: None,
@@ -364,6 +367,15 @@ impl DirectWorkerAdapters {
         resolver: Arc<dyn everruns_core::traits::UserConnectionResolver>,
     ) -> Self {
         self.connection_resolver = Some(resolver);
+        self
+    }
+
+    /// Set the platform vector store for Knowledge Index retrieval.
+    pub fn with_vector_store(
+        mut self,
+        vector_store: Arc<dyn everruns_core::vector_store::VectorStore>,
+    ) -> Self {
+        self.vector_store = Some(vector_store);
         self
     }
 
@@ -1629,6 +1641,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 permission_resolver: self.permission_resolver.clone(),
                 egress_service: self.egress_service.clone(),
             },
+        ))
+    }
+
+    fn knowledge_index_search(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::vector_store::KnowledgeIndexSearch>> {
+        // The service is org-scoped per call via the `org_id` passed to
+        // `search`, so a single instance is reused across orgs.
+        let vector_store = self.vector_store.clone()?;
+        Some(Arc::new(
+            crate::domains::knowledge_indexes::KnowledgeIndexSearchService::new(
+                self.db.clone(),
+                self.provider_resolver.clone(),
+                Arc::new(self.driver_registry.clone()),
+                vector_store,
+            ),
         ))
     }
 

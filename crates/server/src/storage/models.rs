@@ -1361,6 +1361,25 @@ pub struct KnowledgeIndexChunkRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// A chunk joined with its owning document's citation metadata, used to
+/// hydrate `search_index` results from Postgres. See specs/knowledge-indexes.md
+/// ("Retrieval and citations").
+#[derive(Debug, Clone)]
+pub struct KnowledgeIndexChunkWithDocument {
+    /// Chunk `public_id` (`kchk_…`). The stable citation id.
+    pub chunk_public_id: String,
+    /// Chunk passage text.
+    pub text: String,
+    /// Provenance within the document (line / char / page ranges).
+    pub location: Option<serde_json::Value>,
+    /// Position of the chunk within its document.
+    pub ordinal: i32,
+    /// Owning document stable locator.
+    pub source_uri: String,
+    /// Owning document title, if known.
+    pub document_title: Option<String>,
+}
+
 /// A chunk to persist during a sync pass. The `public_id` (`kchk_…`) is the
 /// stable citation id and the vector-store record key.
 #[derive(Debug, Clone)]

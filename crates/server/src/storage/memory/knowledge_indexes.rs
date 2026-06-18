@@ -216,6 +216,39 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Hydrate chunk + owning-document citation metadata for a set of chunk
+    /// `public_id`s within an index. Used by `search_index`. Missing ids are
+    /// simply absent from the result.
+    pub async fn get_knowledge_index_chunks_with_documents(
+        &self,
+        index_id: Uuid,
+        chunk_public_ids: &[String],
+    ) -> Result<Vec<KnowledgeIndexChunkWithDocument>> {
+        if chunk_public_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let wanted: std::collections::HashSet<&str> =
+            chunk_public_ids.iter().map(String::as_str).collect();
+        let docs = self.knowledge_index_documents.read();
+        let chunks = self.knowledge_index_chunks.read();
+        let result = chunks
+            .values()
+            .filter(|chunk| chunk.index_id == index_id && wanted.contains(chunk.public_id.as_str()))
+            .filter_map(|chunk| {
+                let doc = docs.get(&chunk.document_id)?;
+                Some(KnowledgeIndexChunkWithDocument {
+                    chunk_public_id: chunk.public_id.clone(),
+                    text: chunk.text.clone(),
+                    location: chunk.location.clone(),
+                    ordinal: chunk.ordinal,
+                    source_uri: doc.source_uri.clone(),
+                    document_title: doc.title.clone(),
+                })
+            })
+            .collect();
+        Ok(result)
+    }
+
     // ------------- Syncout pipeline -------------
 
     /// Mark an index pending so the sync worker claims it. Idempotent: a

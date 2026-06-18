@@ -23,6 +23,7 @@ use everruns_core::traits::{
     SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+use everruns_core::vector_store::KnowledgeIndexSearch;
 use everruns_core::{
     Agent, CapabilityRegistry, CapabilityStatus, DependencyBlocker, DriverRegistry, EgressService,
     ErrorDisclosure, Harness, Session, TokenUsage, ToolDefinition, ToolRegistry, UserFacingError,
@@ -154,6 +155,13 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         _org_id: i64,
         _session_id: SessionId,
     ) -> Option<Arc<dyn PlatformStore>> {
+        None
+    }
+
+    /// Get the Knowledge Index search service for the `search_index` tool.
+    /// Org-scoped; returns None when retrieval is not available (e.g. gRPC
+    /// workers without a search RPC, or in-memory test backends).
+    fn knowledge_index_search(&self, _org_id: i64) -> Option<Arc<dyn KnowledgeIndexSearch>> {
         None
     }
 
@@ -1180,6 +1188,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(platform_store) = adapter.platform_store(org_id, input.context.session_id) {
         atom = atom.with_platform_store(platform_store);
+    }
+    if let Some(knowledge_index_search) = adapter.knowledge_index_search(org_id) {
+        atom = atom.with_knowledge_index_search(knowledge_index_search);
     }
     if let Some(budget_checker) = adapter.budget_checker(org_id, input.agent_id) {
         atom = atom.with_budget_checker(budget_checker);

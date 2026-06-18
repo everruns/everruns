@@ -1273,6 +1273,12 @@ pub struct ToolContext {
 
     /// Optional platform store for org-level management tools.
     pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+
+    /// Optional hybrid retrieval over bound Knowledge Indexes for the
+    /// `search_index` tool. Server-implemented; populated only on the server
+    /// act path alongside `platform_store` / `connection_resolver`.
+    pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
+
     /// Optional leased resource store for lifecycle-managed provider resources.
     pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
 
@@ -1364,6 +1370,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1401,6 +1408,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1441,6 +1449,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1482,6 +1491,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1561,6 +1571,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
             session_task_registry: None,
@@ -1630,6 +1641,15 @@ impl ToolContext {
         store: Arc<dyn crate::platform_store::PlatformStore>,
     ) -> Self {
         self.platform_store = Some(store);
+        self
+    }
+
+    /// Add a Knowledge Index search service to this context (for `search_index`).
+    pub fn with_knowledge_index_search(
+        mut self,
+        search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
+    ) -> Self {
+        self.knowledge_index_search = Some(search);
         self
     }
 
@@ -1782,6 +1802,10 @@ impl std::fmt::Debug for ToolContext {
             .field("connection_resolver", &self.connection_resolver.is_some())
             .field("schedule_store", &self.schedule_store.is_some())
             .field("platform_store", &self.platform_store.is_some())
+            .field(
+                "knowledge_index_search",
+                &self.knowledge_index_search.is_some(),
+            )
             .field(
                 "leased_resource_store",
                 &self.leased_resource_store.is_some(),

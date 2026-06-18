@@ -3,8 +3,12 @@
 use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
+pub mod embedding;
+pub mod search;
 pub mod source_sync;
 pub mod types;
+
+pub use search::KnowledgeIndexSearchService;
 
 pub use commands::*;
 

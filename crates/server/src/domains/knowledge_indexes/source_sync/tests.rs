@@ -10,7 +10,7 @@ use everruns_core::CredentialFormSchema;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_core::driver_registry::{
     BoxedEmbeddingsDriver, DriverDescriptor, DriverId, EmbedResponse, EmbeddingsDriver,
-    EmbeddingsDriverError,
+    EmbeddingsDriverError, ServiceKind,
 };
 use everruns_core::typed_id::KnowledgeIndexId;
 use everruns_core::vector_store::{InMemoryVectorStore, VectorQuery, index_namespace};

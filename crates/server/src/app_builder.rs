@@ -1825,6 +1825,7 @@ impl ServerAppBuilder {
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone())
+                .with_vector_store(platform_definition.vector_store())
                 .with_org_rate_limiter(Arc::new(org_rate_limiter.clone()));
 
                 // Wire lazy connection resolver (requires encryption for token decryption).

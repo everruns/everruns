@@ -23,6 +23,52 @@ use serde::{Deserialize, Serialize};
 /// Reciprocal-rank-fusion constant for hybrid (vector + text) queries.
 const RRF_K: f32 = 60.0;
 
+/// A single retrieved chunk returned by [`KnowledgeIndexSearch::search`], shaped
+/// to the `search_index` citation contract in `specs/knowledge-indexes.md`. The
+/// `id` (`kchk_…`) + `source_uri` + `location` give the agent a stable, linkable
+/// citation. Kept compatible with the planned `search_knowledge` citation shape
+/// so the UI can render both uniformly.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct KnowledgeIndexCitation {
+    /// Chunk `public_id` (`kchk_…`). The stable citation id.
+    pub id: String,
+    /// Owning Knowledge Index `public_id` (`kidx_…`).
+    pub index_id: String,
+    /// Title of the source document, if known.
+    pub document_title: Option<String>,
+    /// Stable per-source locator (e.g. `github://owner/repo@main/docs/x.md`).
+    pub source_uri: String,
+    /// Provenance within the document (line / char / page ranges).
+    pub location: Option<serde_json::Value>,
+    /// A trimmed prefix of the chunk passage.
+    pub snippet: String,
+    /// Relevance score; higher is more relevant. Use for ordering only.
+    pub score: f32,
+}
+
+/// Server-implemented hybrid retrieval over an org's bound Knowledge Indexes.
+///
+/// Carried on `ToolContext` so the `search_index` agent tool can reach the
+/// server-side embedding + vector-store machinery without `everruns-core`
+/// depending on server types (mirrors `PlatformStore` / `UserConnectionResolver`).
+#[async_trait]
+pub trait KnowledgeIndexSearch: Send + Sync {
+    /// Embed `query`, run hybrid retrieval against each bound index's
+    /// vector-store namespace, and return up to `top_k` citations ordered by
+    /// score (descending).
+    ///
+    /// `index_ids` are the `kidx_` public ids bound in the capability config.
+    /// Ids that are missing, cross-org, archived, or deleted are silently
+    /// skipped — no existence leak.
+    async fn search(
+        &self,
+        org_id: i64,
+        index_ids: &[String],
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<KnowledgeIndexCitation>>;
+}
+
 /// Derive the vector-store namespace for an index.
 ///
 /// Org-prefixed so every query targets a single, org-derived namespace and

@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
-use everruns_core::driver_registry::{DriverRegistry, EmbedRequest, ProviderConfig, ServiceKind};
+use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
 use everruns_core::vector_store::{VectorRecord, VectorStore};
@@ -251,41 +251,17 @@ impl KnowledgeIndexSyncService {
         index: &KnowledgeIndexRow,
         docs: Vec<ExtractedDocument>,
     ) -> Result<PreparedSync> {
-        let model = self
-            .db
-            .get_model(index.org_id, index.embedding_model_id.uuid())
-            .await?
-            .ok_or_else(|| anyhow!("embedding model not found"))?;
-        let provider = self
-            .db
-            .get_provider(index.org_id, model.provider_id.uuid())
-            .await?
-            .ok_or_else(|| anyhow!("embedding provider not found"))?;
-
         // Resolve credentials for the embeddings service, bound to the model's
-        // provider connection (specs/providers.md resolve_service).
-        let resolved = self
-            .provider_resolver
-            .resolve_service(
-                index.org_id,
-                ServiceKind::Embeddings,
-                Some(&provider.id.to_string()),
-            )
-            .await?;
-        let provider_type = resolved
-            .provider_type
-            .parse()
-            .expect("DriverId::from_str is infallible");
-        let provider_config = ProviderConfig {
-            provider_type,
-            api_key: Some(resolved.credentials.api_key),
-            base_url: resolved.credentials.base_url,
-            metadata: Default::default(),
-        };
-        let driver = self
-            .driver_registry
-            .create_embeddings_driver(&provider_config)
-            .map_err(|e| anyhow!("failed to build embeddings driver: {e}"))?;
+        // provider connection (specs/providers.md resolve_service). Shared with
+        // the retrieval slice via `embedding::build_embeddings_driver`.
+        let embedder = super::embedding::build_embeddings_driver(
+            &self.db,
+            &self.provider_resolver,
+            &self.driver_registry,
+            index,
+        )
+        .await?;
+        let driver = embedder.driver;
 
         let mut documents = Vec::with_capacity(docs.len());
         let mut records = Vec::new();
@@ -301,7 +277,7 @@ impl KnowledgeIndexSyncService {
                 let response = driver
                     .embed(EmbedRequest {
                         texts: batch.iter().map(|p| p.text.clone()).collect(),
-                        model: model.model_id.clone(),
+                        model: embedder.model_id.clone(),
                     })
                     .await
                     .map_err(|e| anyhow!("embedding request failed: {e}"))?;

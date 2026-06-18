@@ -1135,6 +1135,14 @@ impl StorageBackend {
         )
     }
 
+    pub async fn get_knowledge_index_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<KnowledgeIndexRow>> {
+        dispatch!(self, get_knowledge_index_by_public_id, org_id, public_id)
+    }
+
     pub async fn get_knowledge_index_by_id(
         &self,
         org_id: i64,
@@ -1183,6 +1191,19 @@ impl StorageBackend {
         index_id: Uuid,
     ) -> Result<Vec<KnowledgeIndexChunkRow>> {
         dispatch!(self, list_knowledge_index_chunks, index_id)
+    }
+
+    pub async fn get_knowledge_index_chunks_with_documents(
+        &self,
+        index_id: Uuid,
+        chunk_public_ids: &[String],
+    ) -> Result<Vec<KnowledgeIndexChunkWithDocument>> {
+        dispatch!(
+            self,
+            get_knowledge_index_chunks_with_documents,
+            index_id,
+            chunk_public_ids
+        )
     }
 
     pub async fn enqueue_knowledge_index_sync(

@@ -190,6 +190,54 @@ impl Database {
         Ok(rows)
     }
 
+    /// Hydrate chunk + owning-document citation metadata for a set of chunk
+    /// `public_id`s within an index. Used by `search_index` to turn vector-store
+    /// matches into citations. Missing ids are simply absent from the result.
+    pub async fn get_knowledge_index_chunks_with_documents(
+        &self,
+        index_id: Uuid,
+        chunk_public_ids: &[String],
+    ) -> Result<Vec<KnowledgeIndexChunkWithDocument>> {
+        if chunk_public_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let rows = sqlx::query_as::<
+            _,
+            (
+                String,
+                String,
+                Option<serde_json::Value>,
+                i32,
+                String,
+                Option<String>,
+            ),
+        >(
+            "SELECT c.public_id, c.text, c.location, c.ordinal, d.source_uri, d.title \
+             FROM knowledge_index_chunks c \
+             JOIN knowledge_index_documents d ON d.id = c.document_id \
+             WHERE c.index_id = $1 AND c.public_id = ANY($2)",
+        )
+        .bind(index_id)
+        .bind(chunk_public_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(
+                |(chunk_public_id, text, location, ordinal, source_uri, document_title)| {
+                    KnowledgeIndexChunkWithDocument {
+                        chunk_public_id,
+                        text,
+                        location,
+                        ordinal,
+                        source_uri,
+                        document_title,
+                    }
+                },
+            )
+            .collect())
+    }
+
     // ------------- Syncout pipeline -------------
 
     /// Mark an index pending so the sync worker claims it. Idempotent: a
