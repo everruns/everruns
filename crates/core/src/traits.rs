@@ -71,14 +71,19 @@ impl ReasoningEffortHandle {
     /// turn pick this up. Pass `None` to clear the override and fall back to the
     /// message-derived effort.
     pub fn set(&self, effort: Option<String>) {
-        if let Ok(mut guard) = self.inner.write() {
-            *guard = effort;
-        }
+        // Recover from a poisoned lock so a panic elsewhere never silently
+        // disables mid-turn overrides; the stored value is a plain Option<String>
+        // with no broken invariant to worry about.
+        let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
+        *guard = effort;
     }
 
     /// Read the current override effort, if any.
     pub fn get(&self) -> Option<String> {
-        self.inner.read().ok().and_then(|guard| guard.clone())
+        // Recover from a poisoned lock rather than silently reverting to the
+        // message-derived effort mid-turn (see `set`).
+        let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
+        guard.clone()
     }
 }
 
