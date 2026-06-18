@@ -26,5 +26,6 @@ export * from "./use-evals";
 export * from "./use-name-availability";
 export * from "./use-page-title";
 export * from "./use-memory";
+export * from "./use-knowledge-indexes";
 export * from "./use-reporting";
 export * from "./use-plugins";
