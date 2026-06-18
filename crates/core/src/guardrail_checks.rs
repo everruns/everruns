@@ -33,6 +33,8 @@ pub const MAX_ENTRY_LEN: usize = 512;
 pub const MAX_REPLACEMENT_LEN: usize = 2_000;
 /// Maximum length of a check id.
 pub const MAX_CHECK_ID_LEN: usize = 64;
+/// Maximum byte length of an `llm_judge` policy prompt.
+pub const MAX_JUDGE_PROMPT_LEN: usize = 4_000;
 /// Compiled regex size budget per pattern (bytes). Keeps pathological
 /// patterns from ballooning compile time/memory.
 const REGEX_SIZE_LIMIT: usize = 1 << 20;
@@ -94,6 +96,10 @@ pub enum GuardrailOnFail {
 }
 
 /// Deterministic rule variants. Tagged as `"type"` in JSON.
+///
+/// `LlmJudge` is the only async variant — it is excluded from the sync
+/// `evaluate()` path and handled separately by capability hooks via
+/// `CompiledGuardrails::judge_checks_for_stage()`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GuardrailRule {
@@ -108,6 +114,13 @@ pub enum GuardrailRule {
     /// Match the tool name against `*`-wildcard patterns. Only valid for
     /// the `tool_use` stage.
     ToolPattern { tools: Vec<String> },
+    /// Natural-language policy evaluated by the utility LLM.
+    /// Valid only on `tool_use` and `tool_output` stages.
+    /// Runs asynchronously in the hook path, not in `evaluate()`.
+    /// Cost flows through utility-LLM accounting (not the session budget).
+    /// Fails open on timeout or LLM error: the verdict defaults to `allow`
+    /// so a judge outage never wedges a turn.
+    LlmJudge { prompt: String },
 }
 
 impl GuardrailRule {
@@ -116,6 +129,7 @@ impl GuardrailRule {
             GuardrailRule::Regex { .. } => "regex",
             GuardrailRule::Blocklist { .. } => "blocklist",
             GuardrailRule::ToolPattern { .. } => "tool_pattern",
+            GuardrailRule::LlmJudge { .. } => "llm_judge",
         }
     }
 }
@@ -166,12 +180,18 @@ impl GuardrailsConfig {
             ));
         }
         let mut compiled = Vec::with_capacity(self.checks.len());
+        let mut judge_checks = Vec::new();
         for (index, check) in self.checks.iter().enumerate() {
-            compiled.push(compile_check(index, check)?);
+            if let GuardrailRule::LlmJudge { prompt } = &check.rule {
+                judge_checks.push(compile_judge_check(index, check, prompt)?);
+            } else {
+                compiled.push(compile_check(index, check)?);
+            }
         }
         Ok(CompiledGuardrails {
             mode: self.mode,
             checks: compiled,
+            judge_checks,
         })
     }
 }
@@ -206,11 +226,27 @@ pub struct GuardrailHit {
     pub matched: Option<String>,
 }
 
+/// A compiled `llm_judge` check, carried separately from the sync checks
+/// because it must be evaluated asynchronously by the capability hooks.
+#[derive(Debug)]
+pub struct CompiledJudgeCheck {
+    pub index: usize,
+    pub label: String,
+    pub stage: GuardrailStage,
+    pub on_fail: GuardrailOnFail,
+    pub replacement: Option<String>,
+    /// The natural-language policy prompt.
+    pub prompt: String,
+}
+
 /// Validated, pre-compiled guardrails ready for evaluation.
 #[derive(Debug)]
 pub struct CompiledGuardrails {
     mode: GuardrailMode,
     checks: Vec<CompiledCheck>,
+    /// LLM-judge checks, separated from the sync deterministic checks.
+    /// Evaluated asynchronously by capability hooks; never by `evaluate()`.
+    judge_checks: Vec<CompiledJudgeCheck>,
 }
 
 #[derive(Debug)]
@@ -240,9 +276,27 @@ impl CompiledGuardrails {
         self.mode
     }
 
-    /// Whether any check applies to `stage`.
+    /// Whether any check (deterministic or llm_judge) applies to `stage`.
     pub fn has_stage(&self, stage: GuardrailStage) -> bool {
         self.checks.iter().any(|c| c.stage == stage)
+            || self.judge_checks.iter().any(|c| c.stage == stage)
+    }
+
+    /// LLM-judge checks that target `stage`. Empty when no `llm_judge` rule
+    /// targets `stage`. Callers run these asynchronously via the utility LLM.
+    pub fn judge_checks_for_stage(
+        &self,
+        stage: GuardrailStage,
+    ) -> impl Iterator<Item = &CompiledJudgeCheck> {
+        self.judge_checks.iter().filter(move |c| c.stage == stage)
+    }
+
+    /// Effective action for a judge check hit, applying advisory mode.
+    pub fn judge_action(&self, on_fail: GuardrailOnFail) -> GuardrailAction {
+        match (self.mode, on_fail) {
+            (GuardrailMode::Advisory, _) | (_, GuardrailOnFail::Log) => GuardrailAction::Log,
+            (GuardrailMode::Active, GuardrailOnFail::Block) => GuardrailAction::Block,
+        }
     }
 
     /// Evaluate all checks for `stage` against `text`. For the `tool_use`
@@ -367,6 +421,11 @@ fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, 
             validate_entries(&label, "tools", tools)?;
             CompiledRule::ToolPattern(tools.clone())
         }
+        GuardrailRule::LlmJudge { .. } => {
+            unreachable!(
+                "llm_judge checks are routed to compile_judge_check before compile_check is called"
+            )
+        }
     };
     Ok(CompiledCheck {
         index,
@@ -376,6 +435,58 @@ fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, 
         replacement: check.replacement.clone(),
         rule_type: check.rule.rule_type(),
         matcher,
+    })
+}
+
+fn compile_judge_check(
+    index: usize,
+    check: &GuardrailCheck,
+    prompt: &str,
+) -> Result<CompiledJudgeCheck, String> {
+    let label = match &check.id {
+        Some(id) => {
+            if id.is_empty() || id.chars().count() > MAX_CHECK_ID_LEN {
+                return Err(format!(
+                    "check #{index}: id must be 1..={MAX_CHECK_ID_LEN} characters"
+                ));
+            }
+            id.clone()
+        }
+        None => format!("llm_judge#{index}"),
+    };
+    if prompt.is_empty() {
+        return Err(format!(
+            "check '{label}': llm_judge prompt must not be empty"
+        ));
+    }
+    if prompt.len() > MAX_JUDGE_PROMPT_LEN {
+        return Err(format!(
+            "check '{label}': llm_judge prompt exceeds {MAX_JUDGE_PROMPT_LEN} bytes"
+        ));
+    }
+    match check.stage {
+        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {}
+        GuardrailStage::Output => {
+            return Err(format!(
+                "check '{label}': llm_judge is not supported on the 'output' stage in this phase; \
+                 use 'tool_use' or 'tool_output'"
+            ));
+        }
+    }
+    if let Some(replacement) = &check.replacement
+        && replacement.len() > MAX_REPLACEMENT_LEN
+    {
+        return Err(format!(
+            "check '{label}': replacement exceeds {MAX_REPLACEMENT_LEN} bytes"
+        ));
+    }
+    Ok(CompiledJudgeCheck {
+        index,
+        label,
+        stage: check.stage,
+        on_fail: check.on_fail,
+        replacement: check.replacement.clone(),
+        prompt: prompt.to_string(),
     })
 }
 
@@ -695,5 +806,180 @@ mod tests {
         assert_eq!(value["checks"][0]["stage"], "tool_use");
         let back = GuardrailsConfig::from_value(&value).unwrap();
         assert_eq!(back, cfg);
+    }
+
+    // --- llm_judge tests ---
+
+    #[test]
+    fn llm_judge_compiles_for_tool_stages() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block requests to delete data."},
+                {"id": "tj2", "stage": "tool_output", "type": "llm_judge",
+                 "prompt": "Block responses containing PII.", "on_fail": "log"},
+            ]
+        }))
+        .expect("compiles");
+        assert!(compiled.has_stage(GuardrailStage::ToolUse));
+        assert!(compiled.has_stage(GuardrailStage::ToolOutput));
+        // llm_judge checks are not in the sync path
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "{}",
+                    Some("delete_user"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+        let use_checks: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .collect();
+        assert_eq!(use_checks.len(), 1);
+        assert_eq!(use_checks[0].prompt, "Block requests to delete data.");
+        assert_eq!(use_checks[0].on_fail, GuardrailOnFail::Block);
+
+        let out_checks: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolOutput)
+            .collect();
+        assert_eq!(out_checks.len(), 1);
+        assert_eq!(out_checks[0].label, "tj2");
+        assert_eq!(out_checks[0].on_fail, GuardrailOnFail::Log);
+    }
+
+    #[test]
+    fn llm_judge_rejected_on_output_stage() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "output", "type": "llm_judge", "prompt": "Block bad content."},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("not supported on the 'output' stage"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_empty_prompt_rejected() {
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": ""},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("prompt must not be empty"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_prompt_too_long_rejected() {
+        let long_prompt = "x".repeat(MAX_JUDGE_PROMPT_LEN + 1);
+        let err = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": long_prompt},
+            ]
+        }))
+        .unwrap_err();
+        assert!(err.contains("exceeds"), "{err}");
+    }
+
+    #[test]
+    fn llm_judge_not_in_sync_evaluate() {
+        // A config with only an llm_judge check contributes nothing to sync
+        // evaluate() — no hits, ever.
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block everything."},
+            ]
+        }))
+        .unwrap();
+        assert!(
+            compiled
+                .evaluate(
+                    GuardrailStage::ToolUse,
+                    "anything",
+                    Some("tool"),
+                    &no_skip()
+                )
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn llm_judge_advisory_downgrades_judge_action() {
+        let compiled = compile(json!({
+            "mode": "advisory",
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        // advisory mode downgrades block → log
+        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Log);
+    }
+
+    #[test]
+    fn llm_judge_active_block_yields_block_action() {
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "p", "on_fail": "block"},
+            ]
+        }))
+        .unwrap();
+        let check = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .next()
+            .unwrap();
+        assert_eq!(compiled.judge_action(check.on_fail), GuardrailAction::Block);
+    }
+
+    #[test]
+    fn llm_judge_serde_roundtrip() {
+        let cfg = GuardrailsConfig {
+            mode: GuardrailMode::Active,
+            checks: vec![GuardrailCheck {
+                id: Some("pii-judge".into()),
+                stage: GuardrailStage::ToolOutput,
+                on_fail: GuardrailOnFail::Log,
+                replacement: None,
+                rule: GuardrailRule::LlmJudge {
+                    prompt: "Block responses that contain PII.".into(),
+                },
+            }],
+        };
+        let value = serde_json::to_value(&cfg).unwrap();
+        assert_eq!(value["checks"][0]["type"], "llm_judge");
+        assert_eq!(value["checks"][0]["stage"], "tool_output");
+        assert_eq!(
+            value["checks"][0]["prompt"],
+            "Block responses that contain PII."
+        );
+        let back = GuardrailsConfig::from_value(&value).unwrap();
+        assert_eq!(back, cfg);
+    }
+
+    #[test]
+    fn mixed_sync_and_judge_checks_compile_independently() {
+        // A config that has both sync and judge checks: sync checks land in
+        // evaluate(), judge checks in judge_checks_for_stage().
+        let compiled = compile(json!({
+            "checks": [
+                {"stage": "tool_use", "type": "tool_pattern", "tools": ["bash*"]},
+                {"stage": "tool_use", "type": "llm_judge", "prompt": "Block policy violations."},
+            ]
+        }))
+        .unwrap();
+        // Sync path catches bash tool
+        let hits = compiled.evaluate(GuardrailStage::ToolUse, "{}", Some("bash_exec"), &no_skip());
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].rule_type, "tool_pattern");
+        // Judge check is available for async evaluation
+        let judges: Vec<_> = compiled
+            .judge_checks_for_stage(GuardrailStage::ToolUse)
+            .collect();
+        assert_eq!(judges.len(), 1);
     }
 }

@@ -17,13 +17,15 @@ use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::guardrail_checks::{
     CompiledGuardrails, DEFAULT_OUTPUT_REPLACEMENT, DEFAULT_TOOL_OUTPUT_REPLACEMENT,
     GuardrailAction, GuardrailStage, GuardrailsConfig, MAX_CHECK_ID_LEN, MAX_CHECKS,
-    MAX_ENTRIES_PER_CHECK, MAX_ENTRY_LEN, MAX_REPLACEMENT_LEN,
+    MAX_ENTRIES_PER_CHECK, MAX_ENTRY_LEN, MAX_JUDGE_PROMPT_LEN, MAX_REPLACEMENT_LEN,
 };
 use crate::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ToolContext;
+use crate::utility_llm::{UtilityLlmReasoningEffort, UtilityLlmRequest};
+use crate::{LlmMessage, LlmMessageRole};
 
 pub const GUARDRAILS_CAPABILITY_ID: &str = "guardrails";
 
@@ -95,8 +97,8 @@ impl Capability for GuardrailsCapability {
                             },
                             "type": {
                                 "type": "string",
-                                "enum": ["regex", "blocklist", "tool_pattern"],
-                                "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only)."
+                                "enum": ["regex", "blocklist", "tool_pattern", "llm_judge"],
+                                "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (tool_use/tool_output stages only)."
                             },
                             "patterns": {
                                 "type": "array",
@@ -126,6 +128,11 @@ impl Capability for GuardrailsCapability {
                                 "enum": ["block", "log"],
                                 "default": "block",
                                 "description": "block stops the output/tool call; log records the hit and continues."
+                            },
+                            "prompt": {
+                                "type": "string",
+                                "maxLength": MAX_JUDGE_PROMPT_LEN,
+                                "description": "Natural-language policy prompt for llm_judge. Example: 'Block any tool call that reads files outside /home/user.' Evaluated by the utility LLM; fails open on timeout or error."
                             },
                             "replacement": {
                                 "type": "string",
@@ -165,6 +172,114 @@ impl Capability for GuardrailsCapability {
             Some(compiled) => vec![Arc::new(GuardrailPostToolHook { compiled })],
             None => vec![],
         }
+    }
+}
+
+/// Timeout for a single LLM judge call. Fail-open on expiry.
+const JUDGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Maximum judge checks evaluated per single tool call invocation.
+const MAX_JUDGE_CALLS_PER_INVOCATION: usize = 4;
+
+/// System prompt sent to the utility LLM for all judge evaluations.
+const JUDGE_SYSTEM_PROMPT: &str = r#"You are a guardrail policy evaluator for an AI agent runtime.
+Your task: determine whether the provided content violates the given policy.
+Respond ONLY with valid JSON on a single line. No explanation, no prose, no markdown.
+Format: {"verdict":"allow"} or {"verdict":"block","reason":"<concise reason>"}"#;
+
+/// Evaluate one llm_judge check against `content` via the utility LLM.
+/// Returns `Some(GuardrailAction)` on a block/log verdict, `None` on error
+/// (fail-open). The caller is responsible for applying advisory-mode
+/// downgrade via `compiled.judge_action()`.
+async fn run_judge_check(
+    service: &dyn crate::UtilityLlmService,
+    check: &crate::guardrail_checks::CompiledJudgeCheck,
+    stage: GuardrailStage,
+    tool_name: &str,
+    content: &str,
+) -> Option<GuardrailAction> {
+    // Bound content sent to judge; find a safe UTF-8 char boundary.
+    let content_cap = {
+        let mut end = content.len().min(2_000);
+        while end > 0 && !content.is_char_boundary(end) {
+            end -= 1;
+        }
+        end
+    };
+    let user_prompt = format!(
+        "Policy: {}\nStage: {}\nTool: {}\nContent:\n{}",
+        check.prompt,
+        stage.as_str(),
+        xml_escape(tool_name),
+        &content[..content_cap],
+    );
+    let request = UtilityLlmRequest::new(vec![
+        LlmMessage::text(LlmMessageRole::System, JUDGE_SYSTEM_PROMPT),
+        LlmMessage::text(LlmMessageRole::User, user_prompt),
+    ])
+    .with_reasoning_effort(UtilityLlmReasoningEffort::Low)
+    .with_max_tokens(64);
+
+    let response = match tokio::time::timeout(JUDGE_TIMEOUT, service.chat_completion(request)).await
+    {
+        Ok(Ok(r)) => r,
+        Ok(Err(e)) => {
+            tracing::warn!(
+                check = %check.label,
+                error = %e,
+                "guardrails: judge call failed, failing open"
+            );
+            return None;
+        }
+        Err(_) => {
+            tracing::warn!(
+                check = %check.label,
+                "guardrails: judge call timed out, failing open"
+            );
+            return None;
+        }
+    };
+
+    // Parse the verdict from the first JSON-like fragment in the response.
+    let text = response.text.trim();
+    let start = text.find('{').unwrap_or(0);
+    let end = text.rfind('}').map(|i| i + 1).unwrap_or(text.len());
+    let fragment = &text[start..end];
+
+    match serde_json::from_str::<serde_json::Value>(fragment) {
+        Ok(v) if v.get("verdict").and_then(|v| v.as_str()) == Some("block") => {
+            tracing::warn!(
+                check = %check.label,
+                reason = v.get("reason").and_then(|r| r.as_str()).unwrap_or(""),
+                "guardrails: judge verdict block"
+            );
+            Some(GuardrailAction::Block)
+        }
+        Ok(_) => Some(GuardrailAction::Log), // "allow" or unrecognized → no-op
+        Err(e) => {
+            tracing::warn!(
+                check = %check.label,
+                parse_error = %e,
+                raw = %fragment,
+                "guardrails: judge response parse failed, failing open"
+            );
+            None // fail-open
+        }
+    }
+}
+
+fn xml_escape(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.bytes()
+        .any(|b| matches!(b, b'<' | b'>' | b'&' | b'\'' | b'"'))
+    {
+        std::borrow::Cow::Owned(
+            s.replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('\'', "&#39;")
+                .replace('"', "&quot;"),
+        )
+    } else {
+        std::borrow::Cow::Borrowed(s)
     }
 }
 
@@ -269,7 +384,7 @@ impl PreToolUseHook for GuardrailPreToolHook {
         &self,
         tool_call: ToolCall,
         _tool_def: &ToolDefinition,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) -> PreToolUseDecision {
         // tool_pattern rules match the tool name; regex/blocklist rules
         // match the serialized arguments.
@@ -308,6 +423,63 @@ impl PreToolUseHook for GuardrailPreToolHook {
                 }
             }
         }
+        // LLM-judge checks run after deterministic checks; skipped when
+        // the utility LLM is absent or disabled.
+        if let Some(service) = &context.utility_llm_service
+            && service.is_configured()
+        {
+            for (calls, check) in self
+                .compiled
+                .judge_checks_for_stage(GuardrailStage::ToolUse)
+                .enumerate()
+            {
+                if calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
+                    tracing::warn!(
+                        tool = %tool_call.name,
+                        "guardrails: judge call cap reached for tool_use, skipping remaining"
+                    );
+                    break;
+                }
+                let Some(raw_action) = run_judge_check(
+                    service.as_ref(),
+                    check,
+                    GuardrailStage::ToolUse,
+                    &tool_call.name,
+                    &args_text,
+                )
+                .await
+                else {
+                    continue; // fail-open
+                };
+                let action = self.compiled.judge_action(check.on_fail);
+                match action {
+                    GuardrailAction::Block if raw_action == GuardrailAction::Block => {
+                        tracing::warn!(
+                            check = %check.label,
+                            tool = %tool_call.name,
+                            "guardrails: judge blocking tool call"
+                        );
+                        return PreToolUseDecision::Block {
+                            tool_call,
+                            reason: format!(
+                                "Tool call blocked by guardrail check '{}' (guardrail.llm_judge)",
+                                check.label
+                            ),
+                            user_message: check.replacement.clone(),
+                        };
+                    }
+                    _ => {
+                        if raw_action == GuardrailAction::Block {
+                            tracing::warn!(
+                                check = %check.label,
+                                tool = %tool_call.name,
+                                "guardrails: judge hit (log only)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
         PreToolUseDecision::Continue(tool_call)
     }
 }
@@ -327,7 +499,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
         tool_call: &ToolCall,
         _tool_def: &ToolDefinition,
         result: &mut ToolResult,
-        _context: &ToolContext,
+        context: &ToolContext,
     ) {
         let mut haystack = String::new();
         if let Some(value) = &result.result {
@@ -358,9 +530,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                     let notice = hit
                         .replacement
                         .unwrap_or_else(|| DEFAULT_TOOL_OUTPUT_REPLACEMENT.to_string());
-                    // The original content never reaches model context: the
-                    // notice becomes the canonical result and error/images/raw
-                    // payloads are dropped with it.
+                    // The original content never reaches model context.
                     result.result = Some(serde_json::Value::String(notice));
                     result.error = None;
                     result.images = None;
@@ -377,6 +547,63 @@ impl PostToolExecHook for GuardrailPostToolHook {
                 }
             }
         }
+        // LLM-judge checks for tool_output; skipped when utility LLM is absent or disabled.
+        if let Some(service) = &context.utility_llm_service
+            && service.is_configured()
+        {
+            for (calls, check) in self
+                .compiled
+                .judge_checks_for_stage(GuardrailStage::ToolOutput)
+                .enumerate()
+            {
+                if calls >= MAX_JUDGE_CALLS_PER_INVOCATION {
+                    tracing::warn!(
+                        tool = %tool_call.name,
+                        "guardrails: judge call cap reached for tool_output, skipping remaining"
+                    );
+                    break;
+                }
+                let Some(raw_action) = run_judge_check(
+                    service.as_ref(),
+                    check,
+                    GuardrailStage::ToolOutput,
+                    &tool_call.name,
+                    &haystack,
+                )
+                .await
+                else {
+                    continue; // fail-open
+                };
+                let action = self.compiled.judge_action(check.on_fail);
+                match action {
+                    GuardrailAction::Block if raw_action == GuardrailAction::Block => {
+                        tracing::warn!(
+                            check = %check.label,
+                            tool = %tool_call.name,
+                            "guardrails: judge withholding tool output"
+                        );
+                        let notice = check
+                            .replacement
+                            .clone()
+                            .unwrap_or_else(|| DEFAULT_TOOL_OUTPUT_REPLACEMENT.to_string());
+                        result.result = Some(serde_json::Value::String(notice));
+                        result.error = None;
+                        result.images = None;
+                        result.raw_output = None;
+                        return;
+                    }
+                    _ => {
+                        if raw_action == GuardrailAction::Block {
+                            tracing::warn!(
+                                check = %check.label,
+                                tool = %tool_call.name,
+                                "guardrails: judge tool_output hit (log only)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -384,7 +611,76 @@ impl PostToolExecHook for GuardrailPostToolHook {
 mod tests {
     use super::*;
     use crate::typed_id::SessionId;
+    use crate::utility_llm::UtilityLlmService;
+    use crate::{AgentLoopError, LlmCompletionMetadata, LlmResponse, LlmResponseStream};
+    use async_trait::async_trait;
     use serde_json::json;
+    use std::sync::Arc;
+
+    /// Stub utility LLM that returns a fixed verdict string.
+    struct StubJudge {
+        response: String,
+    }
+
+    impl StubJudge {
+        fn block() -> Arc<Self> {
+            Arc::new(Self {
+                response: r#"{"verdict":"block","reason":"test"}"#.to_string(),
+            })
+        }
+        fn allow() -> Arc<Self> {
+            Arc::new(Self {
+                response: r#"{"verdict":"allow"}"#.to_string(),
+            })
+        }
+        fn error() -> Arc<Self> {
+            Arc::new(Self {
+                response: "".to_string(), // unused; chat_completion errors
+            })
+        }
+    }
+
+    #[async_trait]
+    impl UtilityLlmService for StubJudge {
+        fn is_configured(&self) -> bool {
+            true
+        }
+
+        async fn chat_completion(
+            &self,
+            _request: crate::utility_llm::UtilityLlmRequest,
+        ) -> crate::Result<LlmResponse> {
+            if self.response.is_empty() {
+                return Err(AgentLoopError::llm("stub error"));
+            }
+            Ok(LlmResponse {
+                text: self.response.clone(),
+                thinking: None,
+                thinking_signature: None,
+                tool_calls: None,
+                metadata: LlmCompletionMetadata {
+                    total_tokens: None,
+                    prompt_tokens: None,
+                    completion_tokens: None,
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
+                    provider_cost_usd: None,
+                    model: None,
+                    finish_reason: None,
+                    retry_metadata: None,
+                    response_id: None,
+                    phase: None,
+                },
+            })
+        }
+
+        async fn chat_completion_stream(
+            &self,
+            _request: crate::utility_llm::UtilityLlmRequest,
+        ) -> crate::Result<LlmResponseStream> {
+            Err(AgentLoopError::llm("stub: no stream"))
+        }
+    }
 
     fn tool_call(name: &str, args: serde_json::Value) -> ToolCall {
         ToolCall {
@@ -640,5 +936,227 @@ mod tests {
         assert!(cap.is_guardrail());
         assert!(cap.config_schema().is_some());
         assert_eq!(cap.output_guardrails().len(), 1);
+    }
+
+    // --- llm_judge hook tests ---
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_blocks_when_judge_says_block() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block requests to delete data."}]
+        }));
+        assert_eq!(hooks.len(), 1);
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::block());
+        let decision = hooks[0]
+            .before_exec(
+                tool_call("delete_record", json!({"id": 42})),
+                &tool_def(),
+                &ctx,
+            )
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Block { .. }),
+            "judge block verdict should block the tool call"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_continues_when_judge_says_allow() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block requests to delete data."}]
+        }));
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::allow());
+        let decision = hooks[0]
+            .before_exec(tool_call("read_file", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "judge allow verdict should continue"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_fails_open_on_error() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block bad things."}]
+        }));
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::error());
+        let decision = hooks[0]
+            .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "judge error must fail open"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_skipped_without_utility_llm() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block everything."}]
+        }));
+        // No utility LLM service configured → judge checks are skipped
+        let ctx = ToolContext::new(SessionId::new());
+        let decision = hooks[0]
+            .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "without utility LLM, judge checks are silently skipped"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_skipped_when_service_not_configured() {
+        // Service is present in the context but reports is_configured() == false
+        // (e.g. DisabledUtilityLlmService). Judge checks must be silently skipped.
+        use crate::utility_llm::DisabledUtilityLlmService;
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block everything."}]
+        }));
+        let ctx = ToolContext::new(SessionId::new())
+            .with_utility_llm_service(Arc::new(DisabledUtilityLlmService));
+        let decision = hooks[0]
+            .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "disabled utility LLM service must skip judge checks without warn logs"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_advisory_mode_continues_even_on_block_verdict() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "mode": "advisory",
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block everything.", "on_fail": "block"}]
+        }));
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::block());
+        let decision = hooks[0]
+            .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+            .await;
+        assert!(
+            matches!(decision, PreToolUseDecision::Continue(_)),
+            "advisory mode must not block even when judge says block"
+        );
+    }
+
+    #[tokio::test]
+    async fn judge_post_tool_hook_withholds_output_on_block() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.post_tool_exec_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_output", "type": "llm_judge",
+                        "prompt": "Block PII in tool output."}]
+        }));
+        assert_eq!(hooks.len(), 1);
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::block());
+        let mut result = ToolResult {
+            tool_call_id: "call_1".to_string(),
+            result: Some(json!("user email: alice@example.com")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+        hooks[0]
+            .after_exec(
+                &tool_call("web_fetch", json!({})),
+                &tool_def(),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_eq!(
+            result.result,
+            Some(json!(DEFAULT_TOOL_OUTPUT_REPLACEMENT)),
+            "judge block should replace tool output with notice"
+        );
+        assert!(result.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn judge_post_tool_hook_passes_clean_output_on_allow() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.post_tool_exec_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_output", "type": "llm_judge",
+                        "prompt": "Block PII."}]
+        }));
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::allow());
+        let mut result = ToolResult {
+            tool_call_id: "call_1".to_string(),
+            result: Some(json!("no pii here")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+        hooks[0]
+            .after_exec(
+                &tool_call("web_fetch", json!({})),
+                &tool_def(),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_eq!(result.result, Some(json!("no pii here")));
+    }
+
+    #[tokio::test]
+    async fn judge_handles_multibyte_content_without_panic() {
+        // Verifies the 2 000-byte content cap doesn't slice mid-char.
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge", "prompt": "p"}]
+        }));
+        let ctx = ToolContext::new(SessionId::new()).with_utility_llm_service(StubJudge::allow());
+        // 700 × 3-byte chars = 2 100 bytes, boundary at 2 000 falls mid-char
+        let multibyte_args = "€".repeat(700);
+        let decision = hooks[0]
+            .before_exec(
+                tool_call("any_tool", json!({"x": multibyte_args})),
+                &tool_def(),
+                &ctx,
+            )
+            .await;
+        // Just must not panic; allow verdict continues
+        assert!(matches!(decision, PreToolUseDecision::Continue(_)));
+    }
+
+    #[test]
+    fn xml_escape_escapes_special_chars() {
+        assert_eq!(xml_escape("normal"), "normal");
+        assert_eq!(xml_escape("<tag>"), "&lt;tag&gt;");
+        assert_eq!(xml_escape("a&b"), "a&amp;b");
+        assert_eq!(xml_escape("\"quoted\""), "&quot;quoted&quot;");
+        assert_eq!(xml_escape("it's"), "it&#39;s");
+    }
+
+    #[test]
+    fn config_schema_includes_llm_judge() {
+        let cap = GuardrailsCapability;
+        let schema = cap.config_schema().unwrap();
+        let type_enum = &schema["properties"]["checks"]["items"]["properties"]["type"]["enum"];
+        let values: Vec<&str> = type_enum
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(
+            values.contains(&"llm_judge"),
+            "schema enum must include llm_judge"
+        );
     }
 }
