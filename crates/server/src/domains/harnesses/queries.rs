@@ -284,7 +284,7 @@ pub fn merge_preview_layer(
         name: "preview".to_string(),
         display_name: Some("Preview".to_string()),
         description: None,
-        system_prompt: system_prompt.to_string(),
+        system_prompt: (!system_prompt.trim().is_empty()).then(|| system_prompt.to_string()),
         parent_harness_id: None,
         default_model_id: None,
         tags: vec![],
@@ -301,7 +301,10 @@ pub fn merge_preview_layer(
         deleted_at: None,
     };
     let merged = merge_harness(parent, &draft);
-    (merged.system_prompt, merged.capabilities)
+    (
+        merged.system_prompt.unwrap_or_default(),
+        merged.capabilities,
+    )
 }
 
 /// Check if a harness is built-in (system-managed, readonly).

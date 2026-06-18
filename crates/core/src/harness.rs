@@ -80,14 +80,20 @@ pub struct Harness {
     )]
     pub description: Option<String>,
     /// System prompt that defines the harness's base behavior.
-    /// Forms the foundation of the prompt stack.
+    ///
+    /// Forms the foundation of the prompt stack. Optional: when absent the
+    /// harness contributes no base prompt, so the effective prompt comes
+    /// entirely from the parent harness (if any), the agent, the session, and
+    /// capability contributions. Empty/whitespace-only values normalize to
+    /// `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(
         feature = "openapi",
         schema(
             example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
         )
     )]
-    pub system_prompt: String,
+    pub system_prompt: Option<String>,
     /// Optional parent harness that this harness inherits from.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602"))]
@@ -172,8 +178,9 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         updated_at: child.updated_at,
         archived_at: child.archived_at,
         deleted_at: child.deleted_at,
-        // Config: from merged overlay
-        system_prompt: effective.system_prompt.unwrap_or_default(),
+        // Config: from merged overlay. `None` means no base prompt at this
+        // layer; `merge_system_prompts` already trims empties to `None`.
+        system_prompt: effective.system_prompt,
         default_model_id: effective.default_model_id,
         capabilities: effective.capabilities,
         initial_files: effective.initial_files,
@@ -210,7 +217,7 @@ mod tests {
             name: format!("harness-{id_seed}"),
             display_name: Some(format!("Harness {id_seed}")),
             description: None,
-            system_prompt: system_prompt.to_string(),
+            system_prompt: Some(system_prompt.to_string()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],
@@ -271,7 +278,10 @@ mod tests {
 
         let merged = merge_harness(&parent, &child);
 
-        assert_eq!(merged.system_prompt, "Parent prompt.\n\nChild prompt.");
+        assert_eq!(
+            merged.system_prompt.as_deref(),
+            Some("Parent prompt.\n\nChild prompt.")
+        );
         assert_eq!(merged.capabilities.len(), 3);
         assert_eq!(
             merged.capabilities[1],
@@ -329,6 +339,31 @@ mod tests {
         leaf.parent_harness_id = Some(middle.id);
 
         let merged = merge_harness_chain(&[root, middle, leaf]).expect("merged harness");
-        assert_eq!(merged.system_prompt, "Root\n\nMiddle\n\nLeaf");
+        assert_eq!(
+            merged.system_prompt.as_deref(),
+            Some("Root\n\nMiddle\n\nLeaf")
+        );
+    }
+
+    #[test]
+    fn merges_optional_prompts_skipping_empty_layers() {
+        // A child with no base prompt inherits the parent's prompt verbatim.
+        let parent = test_harness(1, "Parent prompt.");
+        let mut child = test_harness(2, "");
+        child.system_prompt = None;
+        child.parent_harness_id = Some(parent.id);
+
+        let merged = merge_harness(&parent, &child);
+        assert_eq!(merged.system_prompt.as_deref(), Some("Parent prompt."));
+
+        // Two promptless layers compose to no base prompt at all.
+        let mut root = test_harness(1, "");
+        root.system_prompt = None;
+        let mut leaf = test_harness(2, "");
+        leaf.system_prompt = None;
+        leaf.parent_harness_id = Some(root.id);
+
+        let merged = merge_harness(&root, &leaf);
+        assert_eq!(merged.system_prompt, None);
     }
 }

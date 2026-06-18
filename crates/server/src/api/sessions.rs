@@ -987,7 +987,7 @@ mod tests {
                     name: "generic".to_string(),
                     display_name: Some("Generic".to_string()),
                     description: Some("Generic".to_string()),
-                    system_prompt: "You are helpful.".to_string(),
+                    system_prompt: Some("You are helpful.".to_string()),
                     parent_harness_id: None,
                     default_model_id: None,
                     tags: vec!["generic".to_string()],

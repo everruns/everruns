@@ -349,7 +349,8 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         name: value.name.clone(),
         description: value.description.clone().unwrap_or_default(),
-        system_prompt: value.system_prompt.clone(),
+        // proto carries a plain string; absent base prompt maps to "".
+        system_prompt: value.system_prompt.clone().unwrap_or_default(),
         default_model_id: value
             .default_model_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),

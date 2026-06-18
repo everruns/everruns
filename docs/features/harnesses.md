@@ -41,6 +41,10 @@ The system prompt is built from three layers, each wrapped in XML tags:
 
 The merge is associative: a chain of inherited harnesses produces the same `RuntimeAgent` as a single pre-merged harness.
 
+### The base system prompt is optional
+
+A harness bundles more than a prompt — capabilities, MCP servers, a default model, network access, and starter files. Because of that, the base `system_prompt` is **optional**. Omit it (or leave it empty) when a harness exists only to add capabilities or MCP servers on top of a parent: the effective prompt is then composed entirely from the parent harness, the agent, the session, and capability contributions. Empty or whitespace-only prompts contribute nothing, and if no layer contributes a prompt the agent runs with no base system prompt at all.
+
 ## Do something
 
 - [Customize a harness](/how-to/customize-a-harness/) — build your own as a base for many agents.

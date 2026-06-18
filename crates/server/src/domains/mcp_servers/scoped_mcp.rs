@@ -343,7 +343,7 @@ mod tests {
             name: "test-harness".to_string(),
             display_name: None,
             description: None,
-            system_prompt: "harness".to_string(),
+            system_prompt: Some("harness".to_string()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],

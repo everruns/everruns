@@ -532,7 +532,7 @@ mod tests {
             name: "h".into(),
             display_name: None,
             description: None,
-            system_prompt: "You are a test harness.".into(),
+            system_prompt: Some("You are a test harness.".into()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],

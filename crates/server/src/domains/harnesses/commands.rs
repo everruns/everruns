@@ -34,7 +34,10 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
             .description
             .as_ref()
             .is_some_and(|d| d.len() > MAX_AGENT_DESCRIPTION_BYTES)
-        || req.system_prompt.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES
+        || req
+            .system_prompt
+            .as_ref()
+            .is_some_and(|s| s.len() > MAX_AGENT_SYSTEM_PROMPT_BYTES)
         || req.capabilities.len() > MAX_AGENT_CAPABILITIES
         || req.initial_files.len() > MAX_INITIAL_FILES
         || initial_files_total_bytes(&req.initial_files) > MAX_INITIAL_FILES_TOTAL_BYTES

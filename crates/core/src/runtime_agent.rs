@@ -185,7 +185,7 @@ impl RuntimeAgentBuilder {
         registry: &CapabilityRegistry,
         ctx: &SystemPromptContext,
     ) -> Self {
-        self.system_prompt(&harness.system_prompt)
+        self.system_prompt(harness.system_prompt.clone().unwrap_or_default())
             .with_capability_configs(&harness.capabilities, registry, ctx)
             .await
     }

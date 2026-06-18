@@ -196,7 +196,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 name: "stats-harness".to_string(),
                 display_name: Some("Stats Harness".to_string()),
                 description: None,
-                system_prompt: String::new(),
+                system_prompt: Some(String::new()),
                 parent_harness_id: None,
                 default_model_id: None,
                 tags: vec![],

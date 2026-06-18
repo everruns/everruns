@@ -16,7 +16,7 @@ import type {
 import { Wrench, FileText, AlertCircle } from "lucide-react";
 
 interface HarnessPreviewProps {
-  systemPrompt: string;
+  systemPrompt: string | null | undefined;
   capabilities: AgentCapabilityConfig[];
   // Accept missing `initial_files` from harnesses persisted before that field existed.
   initialFiles: InitialFile[] | null | undefined;
@@ -35,7 +35,7 @@ export function HarnessPreview({
   useEffect(() => {
     previewMutation.mutate(
       {
-        system_prompt: systemPrompt,
+        system_prompt: systemPrompt ?? undefined,
         parent_harness_id: parentHarnessId,
         capabilities,
       },

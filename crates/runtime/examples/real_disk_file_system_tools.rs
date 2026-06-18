@@ -88,7 +88,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             name: "files".into(),
             display_name: Some("Files".into()),
             description: Some("Harness exposing file_system tools".into()),
-            system_prompt: "Use the file_system tools.".into(),
+            system_prompt: Some("Use the file_system tools.".into()),
             parent_harness_id: None,
             default_model_id: None,
             tags: vec![],

@@ -2392,7 +2392,7 @@ async fn test_copy_harness() {
         copied.description.as_deref(),
         Some("Original harness description")
     );
-    assert_eq!(copied.system_prompt, "Harness prompt");
+    assert_eq!(copied.system_prompt.as_deref(), Some("Harness prompt"));
     assert_eq!(copied.tags, vec!["harness-tag"]);
     assert_eq!(copied.capabilities.len(), 1);
     assert_eq!(copied.capabilities[0].capability_id(), "current_time");

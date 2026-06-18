@@ -181,7 +181,7 @@ pub fn normalize_initial_file_path(path: &str) -> String {
 impl From<&Harness> for AgentConfigOverlay {
     fn from(h: &Harness) -> Self {
         AgentConfigOverlay {
-            system_prompt: Some(h.system_prompt.clone()),
+            system_prompt: h.system_prompt.clone(),
             capabilities: h.capabilities.clone(),
             initial_files: h.initial_files.clone(),
             network_access: h.network_access.clone(),
