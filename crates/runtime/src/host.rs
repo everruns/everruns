@@ -214,6 +214,21 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Live, turn-scoped reasoning-effort handle for the given session (EVE-595).
+    ///
+    /// When a host returns a handle, the Reason activity re-reads it on every
+    /// LLM step and the Act activity hands the same instance to each tool's
+    /// `ToolContext`. A tool can then change effort mid-turn and have subsequent
+    /// LLM steps in the same turn observe it. Hosts MUST return the *same*
+    /// handle instance for a session across reason/act activities of one turn.
+    /// Default: `None` (effort is resolved solely from message controls).
+    fn reasoning_effort_handle(
+        &self,
+        _session_id: SessionId,
+    ) -> Option<everruns_core::ReasoningEffortHandle> {
+        None
+    }
+
     /// Provider stall timeout for the Reason activity (EVE-531).
     /// Default: `None` (use built-in 120s default).
     fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
@@ -1028,6 +1043,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
     }
+    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
+        atom = atom.with_reasoning_effort_handle(handle);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,
@@ -1206,6 +1224,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(store) = adapter.subagent_spawn_store() {
         atom = atom.with_subagent_spawn_store(store);
+    }
+    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
+        atom = atom.with_reasoning_effort_handle(handle);
     }
 
     atom.execute(input).await

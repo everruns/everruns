@@ -282,6 +282,9 @@ where
     /// Final post-tool-exec hooks (infrastructure): run after capability hooks.
     /// Always registered, cannot be removed by capabilities (EVE-225).
     final_post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    /// Optional live reasoning-effort handle (EVE-595) handed to each tool's
+    /// `ToolContext` so a tool can change effort mid-turn.
+    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -325,6 +328,7 @@ where
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
+            reasoning_effort_handle: None,
         }
     }
 
@@ -368,6 +372,7 @@ where
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
+            reasoning_effort_handle: None,
         }
     }
 
@@ -613,6 +618,17 @@ where
         store: Arc<dyn crate::traits::SubagentSpawnStore>,
     ) -> Self {
         self.subagent_spawn_store = Some(store);
+        self
+    }
+
+    /// Set the live reasoning-effort handle (EVE-595). When set, each tool's
+    /// `ToolContext` receives a clone so a tool can change the reasoning effort
+    /// mid-turn for subsequent LLM steps in the same turn.
+    pub fn with_reasoning_effort_handle(
+        mut self,
+        handle: crate::traits::ReasoningEffortHandle,
+    ) -> Self {
+        self.reasoning_effort_handle = Some(handle);
         self
     }
 }
@@ -1552,6 +1568,9 @@ where
         }
         if let Some(ref store) = self.subagent_spawn_store {
             tool_context.subagent_spawn_store = Some(store.clone());
+        }
+        if let Some(ref handle) = self.reasoning_effort_handle {
+            tool_context.reasoning_effort_handle = Some(handle.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence
