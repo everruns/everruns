@@ -212,7 +212,7 @@ reflects what has shipped on the OKF-adoption branch.
 
 1. ✅ **This spec + terminology** — `specs/okf-adoption.md`, README index entry,
    cross-link from `knowledge-bases.md`.
-2. ◑ **Gap closure** — shipped: additive migration `075` adds `resource` to
+2. ◑ **Gap closure** — shipped: additive migration `076` adds `resource` to
    entries (models, storage parity, API, OpenAPI); `index.md`/`log.md` reserved
    semantics handled by importer/exporter. **Deferred:** the
    `knowledge_entry_links` relationship table (export emits a flat bundle; links
