@@ -120,11 +120,15 @@ CREATE TABLE llm_generations (
 Cost is tracked as two independent figures per generation: `actual_cost_usd`, the
 provider's authoritative inline cost when reported (OpenRouter's `usage.cost`),
 and `estimated_cost_usd`, the price-table estimate computed whenever the model
-profile has cost data. Both are computed when the `llm.generation` event's
-`TokenUsage` is built. Keeping them separate avoids information loss: consumers
-prefer the actual charge while still being able to reconcile estimate-vs-actual
-drift. The budget debit uses the actual cost when present and otherwise falls back
-to its own profile-based estimate.
+profile has cost data. The estimate is cache-aware: cached-read tokens are
+billed at the model's `cache_read` rate rather than the full input rate, with
+provider-specific handling for whether the reported prompt count already
+includes cached reads (OpenAI/Gemini) or reports them separately (Anthropic).
+Both are computed when the `llm.generation` event's `TokenUsage` is built.
+Keeping them separate avoids information loss: consumers prefer the actual charge
+while still being able to reconcile estimate-vs-actual drift. The budget debit
+uses the actual cost when present and otherwise falls back to the same
+cache-aware profile estimate.
 
 ### Denormalized Totals
 

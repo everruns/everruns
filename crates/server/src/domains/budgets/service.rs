@@ -13,7 +13,7 @@ use everruns_core::budget::{
     LedgerEntry,
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
-use everruns_core::model_profiles::get_model_profile;
+use everruns_core::model_profiles::estimate_cost_usd;
 use everruns_core::provider::DriverId;
 use everruns_core::typed_id::{AgentId, BudgetId, SessionId};
 use everruns_core::{UserFacingError, user_facing_error_codes};
@@ -240,6 +240,8 @@ impl BudgetService {
         provider: Option<&str>,
         input_tokens: i64,
         output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
         provider_cost_usd: Option<f64>,
         finish_reasons: Option<&[String]>,
     ) {
@@ -313,6 +315,8 @@ impl BudgetService {
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "total_tokens": total_tokens,
+                    "cache_read_tokens": cache_read_tokens,
+                    "cache_creation_tokens": cache_creation_tokens,
                     "provider_cost_usd": provider_cost_usd,
                 }),
                 metadata: serde_json::json!({
@@ -341,6 +345,8 @@ impl BudgetService {
                 total_tokens,
                 input_tokens,
                 output_tokens,
+                cache_read_tokens,
+                cache_creation_tokens,
                 model,
                 provider,
                 provider_cost_usd,
@@ -444,6 +450,8 @@ impl BudgetService {
         total_tokens: i64,
         input_tokens: i64,
         output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
         model: Option<&str>,
         provider: Option<&str>,
         provider_cost_usd: Option<f64>,
@@ -458,32 +466,31 @@ impl BudgetService {
                 if let Some(cost) = provider_cost_usd.filter(|c| *c > 0.0) {
                     return cost;
                 }
-                // Look up model cost from profiles
+                // Fall back to the price-table estimate. This shares the
+                // cache-aware accounting used for `estimated_cost_usd` so the
+                // meter does not bill cached reads at the full input rate (which
+                // overstated cache-heavy runs and could trip a budget early —
+                // EVE-599).
                 let provider_type = provider
                     .and_then(|p| p.parse::<DriverId>().ok())
                     .unwrap_or(DriverId::OpenAI);
                 let model_id = model.unwrap_or("unknown");
-                if let Some(profile) = get_model_profile(&provider_type, model_id) {
-                    if let Some(cost) = profile.cost {
-                        // Cost is per million tokens
-                        let input_cost = (input_tokens as f64 / 1_000_000.0) * cost.input;
-                        let output_cost = (output_tokens as f64 / 1_000_000.0) * cost.output;
-                        input_cost + output_cost
-                    } else {
-                        // No cost data — fall back to token count
-                        warn!(
-                            model = model_id,
-                            "No cost data for model, using token count as debit"
-                        );
-                        total_tokens as f64
-                    }
-                } else {
+                estimate_cost_usd(
+                    &provider_type,
+                    model_id,
+                    input_tokens.max(0) as u32,
+                    output_tokens.max(0) as u32,
+                    cache_read_tokens.max(0) as u32,
+                    cache_creation_tokens.max(0) as u32,
+                )
+                .unwrap_or_else(|| {
+                    // No profile or no cost data — fall back to raw token count.
                     warn!(
                         model = model_id,
-                        "No profile for model, using token count as debit"
+                        "No cost data for model, using token count as debit"
                     );
                     total_tokens as f64
-                }
+                })
             }
             "credits" => {
                 // 1 credit = 1000 tokens (default rate, customizable via metadata)
@@ -694,6 +701,8 @@ impl EventListener for BudgetService {
 
         let input_tokens = usage.input_tokens as i64;
         let output_tokens = usage.output_tokens as i64;
+        let cache_read_tokens = usage.cache_read_tokens.unwrap_or(0) as i64;
+        let cache_creation_tokens = usage.cache_creation_tokens.unwrap_or(0) as i64;
 
         self.process_llm_generation(
             event,
@@ -701,6 +710,8 @@ impl EventListener for BudgetService {
             data.metadata.provider.as_deref(),
             input_tokens,
             output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
             usage.actual_cost_usd,
             data.metadata.finish_reasons.as_deref(),
         )
