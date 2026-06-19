@@ -124,6 +124,40 @@ impl Database {
         Ok(rows)
     }
 
+    /// List tasks across every session owned by `org_id`, newest-first, with
+    /// optional kind/state/age filters and a bounded limit. The org boundary is
+    /// a semijoin on `sessions.org_id` — the authoritative multitenancy scope —
+    /// so a task only appears when its owning session belongs to the org.
+    pub async fn list_org_session_tasks(
+        &self,
+        org_id: i64,
+        kind: Option<&str>,
+        state: Option<&str>,
+        created_after: Option<chrono::DateTime<chrono::Utc>>,
+        limit: i64,
+    ) -> Result<Vec<SessionTaskRow>> {
+        let rows = sqlx::query_as::<_, SessionTaskRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            SELECT {TASK_COLUMNS}
+            FROM session_tasks
+            WHERE session_id IN (SELECT id FROM sessions WHERE org_id = $1)
+              AND ($2::text IS NULL OR kind = $2)
+              AND ($3::text IS NULL OR state = $3)
+              AND ($4::timestamptz IS NULL OR created_at >= $4)
+            ORDER BY created_at DESC, id DESC
+            LIMIT $5
+            "#
+        )))
+        .bind(org_id)
+        .bind(kind)
+        .bind(state)
+        .bind(created_after)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Load the task, apply the update through core invariants, write back.
     /// Runs in a transaction with `SELECT ... FOR UPDATE`.
     pub async fn update_session_task(

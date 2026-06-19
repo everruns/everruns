@@ -12251,6 +12251,70 @@
         }
       }
     },
+    "/v1/tasks": {
+      "get": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "List background tasks across every session in the caller's org.",
+        "operationId": "list_org_tasks",
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "description": "Filter by state",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "description": "Filter by kind",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "created_after",
+            "in": "query",
+            "description": "Only tasks created at/after this RFC3339 timestamp",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max tasks, newest first (default 100, max 500)",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Org tasks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionTask"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/users": {
       "get": {
         "tags": [

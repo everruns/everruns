@@ -2952,3 +2952,170 @@ async fn test_reap_running_agent_health_check_runs() {
         .expect("completed run exists");
     assert_eq!(done_after.status, "completed");
 }
+
+/// Org-scoped task listing (EVE-583) against real PostgreSQL.
+///
+/// Validates the `sessions.org_id` semijoin, the kind/state/created_after
+/// filters, and the bounded limit — including strict cross-org isolation: a
+/// task owned by another org must never appear in the caller org's listing.
+#[tokio::test]
+async fn list_org_session_tasks_pg() {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_SUBAGENT,
+        TaskLinks, TaskWakePolicy, new_session_task,
+    };
+
+    let backend = create_test_backend().await;
+    let org_b = create_test_org(&backend, "EVE-583 Isolation Org").await;
+
+    // A session in each org.
+    let mk_session = |org_id: i64, owner: everruns_core::PrincipalId| {
+        let backend = &backend;
+        async move {
+            backend
+                .create_session(CreateSessionRow {
+                    workspace_id: None,
+                    org_id,
+                    app_id: None,
+                    harness_id: None,
+                    agent_id: None,
+                    agent_identity_id: None,
+                    owner_principal_id: owner,
+                    resolved_owner_user_id: None,
+                    title: Some(format!("eve-583-{}", Uuid::now_v7())),
+                    locale: None,
+                    tags: vec![],
+                    model_id: None,
+                    capabilities: json!([]),
+                    tools: json!([]),
+                    mcp_servers: json!({}),
+                    system_prompt: None,
+                    initial_files: json!([]),
+                    hints: None,
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                    blueprint_id: None,
+                    blueprint_config: None,
+                    parent_session_id: None,
+                })
+                .await
+                .expect("create session")
+                .id
+        }
+    };
+
+    let owner_a = create_test_principal(&backend, TEST_ORG_ID).await;
+    let owner_b = create_test_principal(&backend, org_b).await;
+    let session_a = mk_session(TEST_ORG_ID, owner_a).await;
+    let session_b = mk_session(org_b, owner_b).await;
+
+    // Two tasks in org A (distinct kind/state), one in org B.
+    let mk_task = |session_id, kind: &str, state, name: &str| {
+        let task = new_session_task(
+            CreateSessionTask {
+                session_id,
+                id: None,
+                kind: kind.to_string(),
+                display_name: name.to_string(),
+                spec: json!({}),
+                state,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            },
+            Utc::now(),
+        );
+        let backend = &backend;
+        async move {
+            backend
+                .create_session_task(&task)
+                .await
+                .expect("create task");
+            task.id
+        }
+    };
+
+    let a_sub = mk_task(
+        session_a,
+        TASK_KIND_SUBAGENT,
+        SessionTaskState::Running,
+        "A-sub",
+    )
+    .await;
+    let a_bg = mk_task(
+        session_a,
+        TASK_KIND_BACKGROUND_TOOL,
+        SessionTaskState::Queued,
+        "A-bg",
+    )
+    .await;
+    let b_sub = mk_task(
+        session_b,
+        TASK_KIND_SUBAGENT,
+        SessionTaskState::Running,
+        "B-sub",
+    )
+    .await;
+
+    let ids = |rows: &[everruns_server::storage::SessionTaskRow]| {
+        rows.iter()
+            .map(|r| r.id.clone())
+            .collect::<std::collections::HashSet<_>>()
+    };
+
+    // Org A listing: contains both A tasks, never the B task.
+    let a_all = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 500)
+        .await
+        .expect("list org A");
+    let a_all_ids = ids(&a_all);
+    assert!(a_all_ids.contains(&a_sub), "A-sub must be listed");
+    assert!(a_all_ids.contains(&a_bg), "A-bg must be listed");
+    assert!(
+        !a_all_ids.contains(&b_sub),
+        "org B's task must never leak into org A's listing"
+    );
+
+    // Org B listing: contains only the B task, never A's.
+    let b_all = backend
+        .list_org_session_tasks(org_b, None, None, None, 500)
+        .await
+        .expect("list org B");
+    let b_all_ids = ids(&b_all);
+    assert!(b_all_ids.contains(&b_sub));
+    assert!(!b_all_ids.contains(&a_sub) && !b_all_ids.contains(&a_bg));
+
+    // Kind filter (org A): only the subagent task.
+    let a_subs = backend
+        .list_org_session_tasks(TEST_ORG_ID, Some("subagent"), None, None, 500)
+        .await
+        .expect("list org A subagents");
+    let a_subs_ids = ids(&a_subs);
+    assert!(a_subs_ids.contains(&a_sub));
+    assert!(!a_subs_ids.contains(&a_bg));
+
+    // State filter (org A): only the queued task.
+    let a_queued = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, Some("queued"), None, 500)
+        .await
+        .expect("list org A queued");
+    let a_queued_ids = ids(&a_queued);
+    assert!(a_queued_ids.contains(&a_bg));
+    assert!(!a_queued_ids.contains(&a_sub));
+
+    // created_after in the future excludes our just-created tasks.
+    let future = Utc::now() + chrono::Duration::hours(1);
+    let a_future = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, None, Some(future), 500)
+        .await
+        .expect("list org A future");
+    let a_future_ids = ids(&a_future);
+    assert!(!a_future_ids.contains(&a_sub) && !a_future_ids.contains(&a_bg));
+
+    // Limit is honored.
+    let a_limited = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 1)
+        .await
+        .expect("list org A limited");
+    assert!(a_limited.len() <= 1, "limit must bound the result set");
+}

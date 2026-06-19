@@ -3112,6 +3112,29 @@ impl StorageBackend {
         dispatch!(self, list_session_tasks, session_id, kind, state)
     }
 
+    /// List tasks across every session owned by `org_id`, newest-first, with
+    /// optional kind/state/age filters and a bounded limit. Org scoping is the
+    /// authoritative multitenancy boundary (a semijoin on `sessions.org_id`):
+    /// a task is only returned when its owning session belongs to the org.
+    pub async fn list_org_session_tasks(
+        &self,
+        org_id: i64,
+        kind: Option<&str>,
+        state: Option<&str>,
+        created_after: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<SessionTaskRow>> {
+        dispatch!(
+            self,
+            list_org_session_tasks,
+            org_id,
+            kind,
+            state,
+            created_after,
+            limit
+        )
+    }
+
     pub async fn update_session_task(
         &self,
         session_id: SessionId,

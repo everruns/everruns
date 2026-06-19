@@ -115,6 +115,7 @@ use utoipa::OpenApi;
         api::session_git::create_branch,
         api::session_git::delete_branch,
         api::session_resources::list_resources,
+        api::session_tasks::list_org_tasks,
         api::session_tasks::list_tasks,
         api::session_tasks::get_task,
         api::session_tasks::post_task_message,
