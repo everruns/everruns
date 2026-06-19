@@ -17,9 +17,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use everruns_durable::persistence::{
-    DlqFilter, Pagination, PostgresWorkflowEventStore, StoreError, TaskDefinition,
-    TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter, WorkerInfo, WorkflowEventStore,
-    WorkflowStatus,
+    DEFAULT_NO_PROGRESS_SEAL_THRESHOLD, DlqFilter, Pagination, PostgresWorkflowEventStore,
+    StoreError, TaskDefinition, TaskFailureOutcome, TaskStatus, TraceContext, WorkerFilter,
+    WorkerInfo, WorkflowEventStore, WorkflowStatus,
 };
 use everruns_durable::reliability::RetryPolicy;
 use everruns_durable::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -1735,11 +1735,9 @@ async fn test_stale_reclaim_respects_max_attempts() {
 /// longer claimable, so it cannot keep re-billing.
 #[tokio::test]
 async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
-    // Deterministic threshold for the test (default is also 3).
-    unsafe {
-        std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
-    }
-    let threshold = 3u32;
+    // Relies on the default seal threshold (3); avoid mutating the
+    // process-global env, which is flaky under parallel test execution.
+    let threshold = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD;
 
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
@@ -1812,7 +1810,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
             .await
             .unwrap();
 
-        if (cycle as u32) < threshold {
+        if cycle < threshold {
             assert_eq!(
                 result.reclaimed_ids.len(),
                 1,
@@ -1822,7 +1820,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
                 result.sealed_tasks.is_empty(),
                 "cycle {cycle}: not yet sealed"
             );
-        } else if cycle as u32 == threshold {
+        } else if cycle == threshold {
             // At the Nth no-progress recovery the turn is sealed.
             assert_eq!(
                 result.sealed_tasks.len(),
@@ -1875,9 +1873,7 @@ async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
 /// the no-progress counter resets whenever the progress token advances.
 #[tokio::test]
 async fn test_progressing_turn_is_not_sealed() {
-    unsafe {
-        std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
-    }
+    // Relies on the default seal threshold (3); see note above re: env.
     let store = create_test_store().await;
     let workflow_id = Uuid::now_v7();
 
@@ -1906,8 +1902,7 @@ async fn test_progressing_turn_is_not_sealed() {
 
     // Many cycles, but record a new durable event before each reclaim so the
     // progress token advances every time and the counter never reaches N.
-    let mut next_seq = 0i32;
-    for cycle in 0..6 {
+    for cycle in 0..6i32 {
         let _ = store
             .claim_task("worker-1", &["reason".to_string()], 1)
             .await
@@ -1917,7 +1912,7 @@ async fn test_progressing_turn_is_not_sealed() {
         store
             .append_events(
                 workflow_id,
-                next_seq,
+                cycle,
                 vec![WorkflowEvent::ActivityStarted {
                     activity_id: "reason_task".to_string(),
                     attempt: cycle as u32,
@@ -1926,7 +1921,6 @@ async fn test_progressing_turn_is_not_sealed() {
             )
             .await
             .unwrap();
-        next_seq += 1;
 
         sqlx::query(
             "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '1 hour' WHERE id = $1",

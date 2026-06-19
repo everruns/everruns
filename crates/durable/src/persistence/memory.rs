@@ -767,6 +767,23 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
             }
 
             let wf_id = task.definition.workflow_id;
+
+            // Standalone tasks (workflow_id IS NULL) have no workflow event
+            // stream, so the derived progress token is always 0 and the seal
+            // guard would DLQ them after N reclaims purely from missing workflow
+            // context. Exempt them: always treat as advanced (leave
+            // progress_token NULL, never increment no_progress_count) and
+            // re-queue to pending so they only DLQ via the max-attempts path
+            // above (EVE-534).
+            if wf_id.is_none() {
+                task.no_progress_count = 0;
+                task.status = TaskStatus::Pending;
+                task.claimed_by = None;
+                task.claimed_at = None;
+                reclaimed_ids.push(*task_id);
+                continue;
+            }
+
             let cur_seq = wf_id
                 .and_then(|id| highest_seq.get(&id).copied())
                 .unwrap_or(-1);
@@ -3231,10 +3248,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_no_progress_turn_is_sealed_in_memory() {
-        unsafe {
-            std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
-        }
-        let threshold = 3u32;
+        // Relies on the default seal threshold (3); avoid mutating the
+        // process-global env, which is flaky under parallel test execution.
+        let threshold = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD;
         let store = InMemoryWorkflowEventStore::new();
         let workflow_id = Uuid::now_v7();
         store
@@ -3288,9 +3304,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_progress_resets_no_progress_counter_in_memory() {
-        unsafe {
-            std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
-        }
+        // Relies on the default seal threshold (3); see note above re: env.
         let store = InMemoryWorkflowEventStore::new();
         let workflow_id = Uuid::now_v7();
         store
@@ -3299,8 +3313,7 @@ mod tests {
             .unwrap();
         let task_id = enqueue_reason_task(&store, workflow_id, 50).await;
 
-        let mut next_seq = 0i32;
-        for cycle in 0..6 {
+        for cycle in 0..6u32 {
             let _ = store
                 .claim_task("w1", &["reason".to_string()], 1)
                 .await
@@ -3309,7 +3322,7 @@ mod tests {
             store
                 .append_events(
                     workflow_id,
-                    next_seq,
+                    cycle as i32,
                     vec![WorkflowEvent::ActivityStarted {
                         activity_id: "reason_task".to_string(),
                         attempt: cycle,
@@ -3318,7 +3331,6 @@ mod tests {
                 )
                 .await
                 .unwrap();
-            next_seq += 1;
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
@@ -3332,5 +3344,71 @@ mod tests {
         }
         let task = store.get_task(task_id).await.unwrap();
         assert_eq!(task.status, TaskStatus::Pending);
+    }
+
+    /// EVE-534: standalone tasks (workflow_id IS NULL) have no workflow event
+    /// stream, so the derived progress token is always 0. They must be exempt
+    /// from the seal guard — re-queued to pending across many reclaims and only
+    /// DLQ'd via max-attempts, never sealed for "no progress".
+    #[tokio::test]
+    async fn test_standalone_task_is_not_sealed_in_memory() {
+        let store = InMemoryWorkflowEventStore::new();
+        let options = ActivityOptions {
+            // Generous max_attempts so attempt-exhaustion never fires within the
+            // loop below; only the seal guard could end the task early.
+            retry_policy: crate::reliability::RetryPolicy::exponential().with_max_attempts(50),
+            ..Default::default()
+        };
+        let task_id = store
+            .enqueue_task(TaskDefinition {
+                workflow_id: None,
+                activity_id: "standalone-seal".to_string(),
+                activity_type: "standalone".to_string(),
+                input: serde_json::json!({"org_id": 1}),
+                options,
+            })
+            .await
+            .unwrap();
+
+        // Reclaim far more than the seal threshold; a standalone task must never
+        // be sealed and must always be requeued.
+        let cycles = DEFAULT_NO_PROGRESS_SEAL_THRESHOLD + 5;
+        for cycle in 1..=cycles {
+            let claimed = store
+                .claim_task("w1", &["standalone".to_string()], 1)
+                .await
+                .unwrap();
+            assert_eq!(claimed.len(), 1, "cycle {cycle}: claimable");
+
+            let result = store
+                .reclaim_stale_tasks(Duration::from_secs(30))
+                .await
+                .unwrap();
+            assert!(
+                result.sealed_tasks.is_empty(),
+                "cycle {cycle}: standalone task must never be sealed"
+            );
+            assert_eq!(
+                result.reclaimed_ids.len(),
+                1,
+                "cycle {cycle}: standalone task requeued to pending"
+            );
+
+            let task = store.get_task(task_id).await.unwrap();
+            assert_eq!(task.status, TaskStatus::Pending);
+
+            // Inspect internal bookkeeping: the guard must leave standalone
+            // tasks untouched (no token, no accumulated no-progress count).
+            let tasks = store.tasks.read();
+            let internal = tasks.get(&task_id).unwrap();
+            assert_eq!(
+                internal.no_progress_count, 0,
+                "cycle {cycle}: no_progress_count must stay 0 for standalone tasks"
+            );
+            assert!(
+                internal.progress_token.is_none(),
+                "cycle {cycle}: standalone tasks must not track a progress token"
+            );
+        }
     }
 }

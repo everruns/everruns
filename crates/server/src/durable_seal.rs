@@ -66,11 +66,11 @@ fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
 
     let session_id = session_id_v.and_then(parse_id::<SessionId>)?;
     let input_message_id = input_message_id_v.and_then(parse_id::<MessageId>)?;
-    // turn_id may be absent on a brand-new turn; fall back to a fresh id so the
-    // events still correlate to *something* rather than being dropped.
-    let turn_id = turn_id_v
-        .and_then(parse_id::<TurnId>)
-        .unwrap_or_else(TurnId::new);
+    // A missing/unparseable turn_id means we cannot correlate the user-facing
+    // events to the real turn. Fabricating a fresh TurnId would emit a
+    // turn.sealed whose turn_id matches nothing, so bail out instead. The task
+    // is still sealed in the DLQ regardless of whether we surface the event.
+    let turn_id = turn_id_v.and_then(parse_id::<TurnId>)?;
 
     Some(SealedSessionContext {
         org_id,
@@ -96,8 +96,9 @@ pub async fn handle_sealed_task(
     let Some(ctx) = extract_context(&sealed.input) else {
         tracing::warn!(
             task_id = %sealed.task_id,
+            workflow_id = ?sealed.workflow_id,
             activity_type = %sealed.activity_type,
-            "Cannot surface sealed turn: failed to parse session context from task input"
+            "Cannot surface sealed turn: missing/unparseable session context (e.g. turn_id) in task input"
         );
         return;
     };
@@ -177,4 +178,52 @@ pub async fn handle_sealed_task(
         no_progress_count = sealed.no_progress_count,
         "Surfaced sealed turn to session (EVE-534)"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_context_parses_top_level_shape() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        let input = serde_json::json!({
+            "org_id": 7,
+            "session_id": session_id.to_string(),
+            "turn_id": turn_id.to_string(),
+            "input_message_id": message_id.to_string(),
+        });
+
+        let ctx = extract_context(&input).expect("should parse");
+        assert_eq!(ctx.org_id, 7);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, turn_id);
+        assert_eq!(ctx.input_message_id, message_id);
+    }
+
+    #[test]
+    fn extract_context_returns_none_when_turn_id_missing() {
+        // A missing turn_id must NOT fabricate a synthetic TurnId; we cannot
+        // correlate the sealed turn, so we surface nothing (the task is still
+        // sealed in the DLQ regardless).
+        let input = serde_json::json!({
+            "org_id": 7,
+            "session_id": SessionId::new().to_string(),
+            "input_message_id": MessageId::new().to_string(),
+        });
+        assert!(extract_context(&input).is_none());
+    }
+
+    #[test]
+    fn extract_context_returns_none_when_turn_id_unparseable() {
+        let input = serde_json::json!({
+            "org_id": 7,
+            "session_id": SessionId::new().to_string(),
+            "turn_id": "not-a-valid-id",
+            "input_message_id": MessageId::new().to_string(),
+        });
+        assert!(extract_context(&input).is_none());
+    }
 }

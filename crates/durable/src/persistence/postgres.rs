@@ -1411,13 +1411,22 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 SELECT id,
                        workflow_id,
                        cur_token,
+                       -- Standalone tasks (workflow_id IS NULL) have no workflow
+                       -- event stream, so cur_token is always 0 and the seal
+                       -- guard would DLQ them after N reclaims purely from
+                       -- missing workflow context. Exempt them: always treat as
+                       -- advanced and never increment no_progress_count, so they
+                       -- only DLQ via the max-attempts path (EVE-534).
+                       --
                        -- A missing prior token is treated as the 0 baseline (no
                        -- events recorded yet), so a turn that records nothing on
                        -- its first attempt already counts as no-progress. The
                        -- token only "advances" when it strictly grows past the
                        -- baseline, which a non-progressing retry can never do.
-                       (cur_token > COALESCE(prev_token, 0)) AS advanced,
+                       (workflow_id IS NULL
+                        OR cur_token > COALESCE(prev_token, 0)) AS advanced,
                        CASE
+                           WHEN workflow_id IS NULL THEN 0
                            WHEN cur_token > COALESCE(prev_token, 0) THEN 0
                            ELSE prev_no_progress + 1
                        END AS new_no_progress
@@ -1430,7 +1439,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                             END,
                    claimed_by = NULL,
                    claimed_at = NULL,
-                   progress_token = d.cur_token,
+                   -- Leave standalone tasks' progress_token NULL; only
+                   -- workflow-scoped tasks track a monotonic token.
+                   progress_token = CASE
+                                        WHEN d.workflow_id IS NULL THEN NULL
+                                        ELSE d.cur_token
+                                    END,
                    no_progress_count = d.new_no_progress,
                    last_error = CASE
                                     WHEN d.new_no_progress >= $2
