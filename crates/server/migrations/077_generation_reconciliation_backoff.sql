@@ -1,4 +1,4 @@
--- Migration 076: OpenRouter generation reconciliation retry backoff
+-- Migration 077: OpenRouter generation reconciliation retry backoff
 --
 -- Failed generation reconciliation attempts are delayed before they are
 -- eligible for another batch. This prevents permanently failing oldest rows
