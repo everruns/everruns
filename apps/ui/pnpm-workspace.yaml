@@ -1,9 +1,10 @@
 packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
-# dompurify is pinned to an exact version via pnpm.overrides for a security
-# patch (3.4.11, GHSA ALLOWED_ATTR pollution). Exempt it from the 7-day
-# release-age gate so the fix can land before the window elapses; the exact
-# pin still prevents pulling any other freshly-published version.
+# Security patches adopted before the maturity window (Dependabot GHSA fixes):
+# dompurify 3.4.11 (GHSA-cmwh-pvxp-8882, Dependabot alert #114 — ALLOWED_ATTR
+# pollution via setConfig bypass). Pinned to the exact version via
+# pnpm.overrides, so this exemption cannot pull any other freshly-published
+# version; it only lets the fix land before the 7-day release-age window.
 minimumReleaseAgeExclude:
   - dompurify
