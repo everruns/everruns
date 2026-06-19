@@ -11,6 +11,17 @@ use uuid::Uuid;
 
 use super::config::JwtConfig;
 
+/// `token_type` claim value for browser/session/API access tokens.
+pub const ACCESS_TOKEN_TYPE: &str = "access";
+
+/// `token_type` claim value for MCP OAuth access tokens.
+///
+/// MCP tokens are minted distinctly from regular access tokens so the general
+/// `/api/*` validation path can reject them and the `/mcp` endpoint can reject
+/// regular session/access tokens. Together with the `aud` resource binding this
+/// closes the OAuth confused-deputy / missing-audience gap (TM-MCP-006).
+pub const MCP_ACCESS_TOKEN_TYPE: &str = "mcp_access";
+
 /// Generate a random identifier string (32 hex characters)
 fn generate_random_id() -> String {
     let mut rng = rand::rng();
@@ -29,8 +40,14 @@ pub struct AccessTokenClaims {
     pub name: String,
     /// User roles
     pub roles: Vec<String>,
-    /// Token type
+    /// Token type. `"access"` for browser/session/API tokens, `"mcp_access"`
+    /// for resource-bound MCP OAuth tokens.
     pub token_type: String,
+    /// Audience / resource indicator. Set to the `/mcp` resource URL for MCP
+    /// access tokens (RFC 8707 resource binding); `None` for regular access
+    /// tokens. Skipped on the wire when absent so existing tokens are unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aud: Option<String>,
     /// Expiration time (Unix timestamp)
     pub exp: i64,
     /// Issued at (Unix timestamp)
@@ -97,13 +114,48 @@ impl JwtService {
             email: email.to_string(),
             name: name.to_string(),
             roles: roles.to_vec(),
-            token_type: "access".to_string(),
+            token_type: ACCESS_TOKEN_TYPE.to_string(),
+            aud: None,
             exp: exp.timestamp(),
             iat: now.timestamp(),
         };
 
         encode(&Header::default(), &claims, &self.encoding_key)
             .context("Failed to encode access token")
+    }
+
+    /// Generate a resource-bound MCP access token for a user.
+    ///
+    /// Distinct from [`generate_access_token`](Self::generate_access_token):
+    /// `token_type` is `"mcp_access"` and `aud` is bound to the MCP resource
+    /// (e.g. `https://app.example.com/mcp`). This lets the `/mcp` endpoint accept
+    /// only these tokens while the general `/api/*` validate path rejects them —
+    /// preventing a token minted for `/mcp` from acting as a full user token on
+    /// the entire REST API (TM-MCP-006).
+    pub fn generate_mcp_access_token(
+        &self,
+        user_id: Uuid,
+        email: &str,
+        name: &str,
+        roles: &[String],
+        resource: &str,
+    ) -> Result<String> {
+        let now = Utc::now();
+        let exp = now + Duration::from_std(self.config.access_token_lifetime)?;
+
+        let claims = AccessTokenClaims {
+            sub: user_id.to_string(),
+            email: email.to_string(),
+            name: name.to_string(),
+            roles: roles.to_vec(),
+            token_type: MCP_ACCESS_TOKEN_TYPE.to_string(),
+            aud: Some(resource.to_string()),
+            exp: exp.timestamp(),
+            iat: now.timestamp(),
+        };
+
+        encode(&Header::default(), &claims, &self.encoding_key)
+            .context("Failed to encode MCP access token")
     }
 
     /// Generate refresh token for a user
@@ -147,19 +199,55 @@ impl JwtService {
         Ok((token_pair, jti))
     }
 
-    /// Validate and decode an access token
+    /// Validate and decode a regular access token (browser/session/API).
+    ///
+    /// Rejects MCP access tokens (`token_type == "mcp_access"`): they must only
+    /// be accepted by the `/mcp` endpoint via [`validate_mcp_access_token`].
     pub fn validate_access_token(&self, token: &str) -> Result<AccessTokenClaims> {
         let mut validation = Validation::default();
         validation.validate_exp = true;
+        // The `aud` claim is only set on MCP tokens. Disable the library's
+        // audience check here so a stray/legacy `aud` never gates regular
+        // tokens — the `token_type` gate below is the real resource boundary.
+        validation.validate_aud = false;
 
         let token_data = decode::<AccessTokenClaims>(token, &self.decoding_key, &validation)
             .context("Invalid access token")?;
 
-        if token_data.claims.token_type != "access" {
+        if token_data.claims.token_type != ACCESS_TOKEN_TYPE {
             anyhow::bail!("Invalid token type");
         }
 
         Ok(token_data.claims)
+    }
+
+    /// Validate and decode an MCP access token, enforcing the resource binding.
+    ///
+    /// Accepts only tokens minted by [`generate_mcp_access_token`]: the
+    /// `token_type` must be `"mcp_access"` and the `aud` claim must equal the
+    /// expected `/mcp` resource. Regular session/access tokens are rejected.
+    pub fn validate_mcp_access_token(
+        &self,
+        token: &str,
+        expected_resource: &str,
+    ) -> Result<AccessTokenClaims> {
+        let mut validation = Validation::default();
+        validation.validate_exp = true;
+        // We compare `aud` explicitly below so we can return a precise error and
+        // avoid depending on the library's set-membership semantics.
+        validation.validate_aud = false;
+
+        let token_data = decode::<AccessTokenClaims>(token, &self.decoding_key, &validation)
+            .context("Invalid MCP access token")?;
+
+        if token_data.claims.token_type != MCP_ACCESS_TOKEN_TYPE {
+            anyhow::bail!("Invalid token type for MCP resource");
+        }
+
+        match token_data.claims.aud.as_deref() {
+            Some(aud) if aud == expected_resource => Ok(token_data.claims),
+            _ => anyhow::bail!("MCP access token audience mismatch"),
+        }
     }
 
     /// Validate and decode a refresh token
@@ -280,6 +368,94 @@ mod tests {
         // Try to validate as access token
         let result = service.validate_access_token(&refresh_token);
         assert!(result.is_err());
+    }
+
+    const MCP_RESOURCE: &str = "https://app.example.com/mcp";
+
+    #[test]
+    fn test_mcp_token_carries_distinguishing_claims() {
+        let service = JwtService::new(test_config());
+        let user_id = Uuid::nil();
+        let token = service
+            .generate_mcp_access_token(
+                user_id,
+                "test@example.com",
+                "Test User",
+                &["user".to_string()],
+                MCP_RESOURCE,
+            )
+            .unwrap();
+
+        // The MCP token must validate on the MCP path and carry the
+        // distinguishing token_type + audience claims.
+        let claims = service
+            .validate_mcp_access_token(&token, MCP_RESOURCE)
+            .unwrap();
+        assert_eq!(claims.token_type, MCP_ACCESS_TOKEN_TYPE);
+        assert_eq!(claims.aud.as_deref(), Some(MCP_RESOURCE));
+    }
+
+    #[test]
+    fn test_mcp_token_rejected_by_general_access_validation() {
+        // (a) An mcp_access token must be rejected by the general /api/* path.
+        let service = JwtService::new(test_config());
+        let token = service
+            .generate_mcp_access_token(
+                Uuid::nil(),
+                "test@example.com",
+                "Test User",
+                &["user".to_string()],
+                MCP_RESOURCE,
+            )
+            .unwrap();
+
+        assert!(
+            service.validate_access_token(&token).is_err(),
+            "mcp_access token must not validate on the general access path"
+        );
+    }
+
+    #[test]
+    fn test_regular_access_token_rejected_at_mcp_path() {
+        // (b) A normal session/access token must be rejected at the /mcp path.
+        let service = JwtService::new(test_config());
+        let token = service
+            .generate_access_token(
+                Uuid::nil(),
+                "test@example.com",
+                "Test User",
+                &["user".to_string()],
+            )
+            .unwrap();
+
+        assert!(
+            service
+                .validate_mcp_access_token(&token, MCP_RESOURCE)
+                .is_err(),
+            "regular access token must not validate on the MCP path"
+        );
+    }
+
+    #[test]
+    fn test_mcp_token_audience_must_match() {
+        let service = JwtService::new(test_config());
+        let token = service
+            .generate_mcp_access_token(
+                Uuid::nil(),
+                "test@example.com",
+                "Test User",
+                &["user".to_string()],
+                MCP_RESOURCE,
+            )
+            .unwrap();
+
+        // A token bound to one resource must not validate against another.
+        assert!(
+            service
+                .validate_mcp_access_token(&token, "https://evil.example.com/mcp")
+                .is_err(),
+            "MCP token must be bound to its audience"
+        );
     }
 
     #[test]

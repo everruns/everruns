@@ -15,8 +15,36 @@ use super::routes::AuthConfigResponse;
 /// SaaS wrappers provide their own implementation (e.g., PropelAuth).
 #[async_trait]
 pub trait AuthBackend: Send + Sync + 'static {
-    /// Validate a Bearer token (JWT or opaque) and return the authenticated user.
+    /// Validate a Bearer token (JWT or opaque) for the general `/api/*` surface
+    /// and return the authenticated user.
+    ///
+    /// Implementations MUST reject MCP-scoped access tokens here (tokens minted
+    /// for the `/mcp` resource). MCP tokens are accepted only by
+    /// [`validate_mcp_token`](Self::validate_mcp_token). This audience split
+    /// prevents an OAuth confused-deputy: a token a user authorized for `/mcp`
+    /// must not act as a full user token on the REST API (TM-MCP-006).
     async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError>;
+
+    /// Validate an MCP-scoped Bearer token for the `/mcp` endpoint.
+    ///
+    /// `expected_resource` is the canonical MCP resource URL (e.g.
+    /// `https://app.example.com/mcp`). Implementations MUST accept only tokens
+    /// minted for that resource (distinguishing claim + audience binding) and
+    /// MUST reject regular session/access tokens.
+    ///
+    /// The default implementation fails closed (`401`). Backends that issue MCP
+    /// OAuth tokens — the OSS `BuiltinAuthBackend` and SaaS wrappers — override
+    /// it; the mint side is [`JwtService::generate_mcp_access_token`].
+    async fn validate_mcp_token(
+        &self,
+        _token: &str,
+        _expected_resource: &str,
+    ) -> Result<AuthUser, AuthError> {
+        // Generic 401 (same wording as other token failures): a client must not
+        // be able to tell "backend can't validate MCP tokens" apart from "token
+        // invalid", and the response must not leak backend capability detail.
+        Err(AuthError::unauthorized("Invalid or expired token"))
+    }
 
     /// Validate a personal access token and return the authenticated user.
     async fn validate_personal_access_token(&self, token: &str) -> Result<AuthUser, AuthError>;

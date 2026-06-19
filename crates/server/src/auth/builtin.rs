@@ -225,14 +225,19 @@ impl BuiltinAuthBackend {
     }
 }
 
-#[async_trait]
-impl AuthBackend for BuiltinAuthBackend {
-    async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
-        let claims = self.jwt_service.validate_access_token(token).map_err(|e| {
-            tracing::debug!("JWT validation failed: {}", e);
-            AuthError::unauthorized("Invalid or expired token")
-        })?;
-
+impl BuiltinAuthBackend {
+    /// Build an `AuthUser` from validated JWT claims, enforcing that the subject
+    /// user still exists and loading current org memberships from the DB.
+    ///
+    /// Shared by [`validate_token`](AuthBackend::validate_token) (regular access
+    /// tokens) and [`validate_mcp_token`](AuthBackend::validate_mcp_token)
+    /// (MCP-scoped tokens). `auth_method` distinguishes the two so downstream
+    /// extractors and audit can tell an MCP-resource caller apart.
+    async fn auth_user_from_claims(
+        &self,
+        claims: super::jwt::AccessTokenClaims,
+        auth_method: AuthMethod,
+    ) -> Result<AuthUser, AuthError> {
         let user_id = Uuid::parse_str(&claims.sub)
             .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
 
@@ -267,9 +272,44 @@ impl AuthBackend for BuiltinAuthBackend {
             name: claims.name,
             roles: claims.roles,
             is_platform_user,
-            auth_method: AuthMethod::Jwt,
+            auth_method,
             organizations,
         })
+    }
+}
+
+#[async_trait]
+impl AuthBackend for BuiltinAuthBackend {
+    async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError> {
+        // `validate_access_token` rejects `mcp_access` tokens, so an MCP-scoped
+        // token cannot authenticate the general `/api/*` surface (TM-MCP-006).
+        let claims = self.jwt_service.validate_access_token(token).map_err(|e| {
+            tracing::debug!("JWT validation failed: {}", e);
+            AuthError::unauthorized("Invalid or expired token")
+        })?;
+
+        self.auth_user_from_claims(claims, AuthMethod::Jwt).await
+    }
+
+    async fn validate_mcp_token(
+        &self,
+        token: &str,
+        expected_resource: &str,
+    ) -> Result<AuthUser, AuthError> {
+        // THREAT[TM-MCP-006]: accept only resource-bound `mcp_access` tokens here.
+        // `validate_mcp_access_token` rejects regular session/access tokens and
+        // tokens bound to a different audience, so the `/mcp` endpoint cannot be
+        // entered with a full-API token and an `/mcp` token cannot escape to the
+        // REST API.
+        let claims = self
+            .jwt_service
+            .validate_mcp_access_token(token, expected_resource)
+            .map_err(|e| {
+                tracing::debug!("MCP JWT validation failed: {}", e);
+                AuthError::unauthorized("Invalid or expired MCP token")
+            })?;
+
+        self.auth_user_from_claims(claims, AuthMethod::Mcp).await
     }
 
     async fn validate_personal_access_token(&self, token: &str) -> Result<AuthUser, AuthError> {
@@ -645,6 +685,106 @@ mod tests {
                 .validate_personal_access_token("not-an-api-key")
                 .await;
             assert!(result.is_err(), "malformed key must be rejected");
+        }
+    }
+
+    // TM-MCP-006: MCP OAuth token audience binding. Proves the OSS backend keeps
+    // the `/mcp` and `/api/*` validation paths audience-isolated.
+    mod mcp_token_audience {
+        use super::super::super::backend::AuthBackend;
+        use super::super::super::middleware::AuthMethod;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::CreateUserRow;
+
+        const RESOURCE: &str = "https://app.example.com/mcp";
+
+        async fn backend_with_user() -> (BuiltinAuthBackend, uuid::Uuid) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
+            let user = db
+                .create_user(CreateUserRow {
+                    email: "mcp@example.com".to_string(),
+                    name: "MCP User".to_string(),
+                    avatar_url: None,
+                    roles: vec!["user".to_string()],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+            (backend, user.id)
+        }
+
+        #[tokio::test]
+        async fn mcp_token_rejected_by_general_validate_token() {
+            // (a) An mcp_access token must NOT authenticate the general /api/*
+            // path — this is the confused-deputy fix.
+            let (backend, user_id) = backend_with_user().await;
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(user_id, "mcp@example.com", "MCP User", &[], RESOURCE)
+                .unwrap();
+
+            assert!(
+                backend.validate_token(&token).await.is_err(),
+                "mcp_access token must be rejected by /api/* validate_token"
+            );
+        }
+
+        #[tokio::test]
+        async fn regular_access_token_rejected_by_validate_mcp_token() {
+            // (b) A normal access token must NOT authenticate the /mcp path.
+            let (backend, user_id) = backend_with_user().await;
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "mcp@example.com", "MCP User", &[])
+                .unwrap();
+
+            assert!(
+                backend.validate_mcp_token(&token, RESOURCE).await.is_err(),
+                "regular access token must be rejected at /mcp"
+            );
+        }
+
+        #[tokio::test]
+        async fn mcp_token_accepted_at_mcp_path_with_mcp_auth_method() {
+            let (backend, user_id) = backend_with_user().await;
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(user_id, "mcp@example.com", "MCP User", &[], RESOURCE)
+                .unwrap();
+
+            let user = backend
+                .validate_mcp_token(&token, RESOURCE)
+                .await
+                .expect("mcp token must validate at /mcp");
+            assert_eq!(user.id, user_id);
+            assert_eq!(user.auth_method, AuthMethod::Mcp);
+        }
+
+        #[tokio::test]
+        async fn mcp_token_rejected_for_wrong_resource() {
+            let (backend, user_id) = backend_with_user().await;
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(user_id, "mcp@example.com", "MCP User", &[], RESOURCE)
+                .unwrap();
+
+            assert!(
+                backend
+                    .validate_mcp_token(&token, "https://evil.example.com/mcp")
+                    .await
+                    .is_err(),
+                "mcp token bound to another resource must be rejected"
+            );
         }
     }
 }

@@ -1167,10 +1167,14 @@ impl ServerAppBuilder {
         // MCP endpoint: derive the protected-resource metadata URL from
         // auth_config.base_url. Path-derived per RFC 9728 §3.1 for resource
         // `{root}/mcp` → `{root}/.well-known/oauth-protected-resource/mcp`.
-        let mcp_resource_metadata_url = format!(
-            "{}/.well-known/oauth-protected-resource/mcp",
-            auth::builtin::root_url_from_api_base(&auth_config.base_url)
-        );
+        let mcp_root_url = auth::builtin::root_url_from_api_base(&auth_config.base_url);
+        let mcp_resource_metadata_url =
+            format!("{mcp_root_url}/.well-known/oauth-protected-resource/mcp");
+        // Canonical MCP resource (`{root}/mcp`) that MCP OAuth tokens are bound
+        // to (RFC 8707). Must match the `aud` minted in `mcp_oauth.rs` so the
+        // audience check in `validate_mcp_token` accepts real MCP tokens
+        // (TM-MCP-006).
+        let mcp_resource = format!("{mcp_root_url}/mcp");
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
@@ -1184,7 +1188,8 @@ impl ServerAppBuilder {
             Some(sqldb_store.clone()),
         )
         .with_virtual_registry(virtual_registry.clone())
-        .with_resource_metadata_url(mcp_resource_metadata_url);
+        .with_resource_metadata_url(mcp_resource_metadata_url)
+        .with_mcp_resource(mcp_resource);
         let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
             mcp_endpoint_state.with_session_sandbox_service(service.clone())
         } else {

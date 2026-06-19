@@ -307,7 +307,9 @@ The auth system uses a trait-based pluggable backend so external auth providers 
 
 ### AuthBackend Trait
 
-See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods: `validate_token()`, `validate_personal_access_token()`, `auth_routes()`, `auth_config_response()`.
+See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods: `validate_token()`, `validate_mcp_token()`, `validate_personal_access_token()`, `auth_routes()`, `auth_config_response()`.
+
+`validate_token()` is the general `/api/*` path and MUST reject MCP-scoped access tokens. `validate_mcp_token(token, resource)` is the separate `/mcp` path and accepts only resource-bound `mcp_access` tokens (audience binding). This split prevents an OAuth confused-deputy where a token authorized only for `/mcp` could act as a full user token on the REST API (TM-MCP-006). The default `validate_mcp_token` fails closed; wrappers that issue MCP OAuth tokens override it. See `specs/mcp.md#access-tokens`.
 
 ### BuiltinAuthBackend (OSS Default)
 

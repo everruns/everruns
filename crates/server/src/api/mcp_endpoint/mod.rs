@@ -12,7 +12,10 @@
 // - Tier 0 tools: me, list_organizations
 //   → Identity & org context tools for multi-org OAuth flows
 //   → MCP clients can't set cookies, so org selection is via organization_id arguments
-// - Auth: same as rest of API (API key or session cookie via ResolvedOrg)
+// - Auth: separate path from /api/* (TM-MCP-006). The McpAuthUser/McpResolvedOrg
+//   extractors accept personal access tokens and resource-bound MCP OAuth tokens
+//   (validate_mcp_token), plus anonymous in no-auth mode — never a regular
+//   session/access JWT or cookie. Org context resolves the same as session auth.
 // - No MCP session state — stateless request/response per JSON-RPC call
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
@@ -210,6 +213,12 @@ pub struct AppState {
     /// Path-derived per RFC 9728 §3.1 for the `/mcp` resource.
     /// `None` disables the header (e.g. tests without an issuer configured).
     pub resource_metadata_url: Option<String>,
+    /// Canonical MCP resource URL (`{root}/mcp`) that MCP OAuth access tokens are
+    /// bound to (RFC 8707 audience). The `McpAuthUser` extractor passes this to
+    /// `validate_mcp_token` so only tokens minted for this exact resource are
+    /// accepted (TM-MCP-006). `None` still rejects regular access tokens via the
+    /// token_type check but cannot match an audience.
+    pub mcp_resource: Option<String>,
 }
 
 impl AppState {
@@ -263,11 +272,19 @@ impl AppState {
             utility_llm_service: platform_definition.utility_llm_service(),
             health_check_service: None,
             resource_metadata_url: None,
+            mcp_resource: None,
         }
     }
 
     pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
         self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    /// Set the canonical MCP resource URL (`{root}/mcp`) used to validate the
+    /// audience of MCP OAuth access tokens (TM-MCP-006).
+    pub fn with_mcp_resource(mut self, resource: impl Into<String>) -> Self {
+        self.mcp_resource = Some(resource.into());
         self
     }
 
@@ -295,6 +312,55 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+
+// ============================================================================
+// MCP-scoped auth extractors
+// ============================================================================
+//
+// THREAT[TM-MCP-006]: the `/mcp` endpoint authenticates on a separate path from
+// `/api/*`. `McpAuthUser` accepts only anonymous (no-auth mode), personal access
+// tokens, and resource-bound MCP OAuth tokens — never a regular session/access
+// JWT or cookie. `McpResolvedOrg` then resolves org context from that user
+// without going back through `validate_token`, so the audience split is intact.
+
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+
+/// Authenticated caller for the `/mcp` endpoint (MCP-scoped validation).
+pub struct McpAuthUser(pub AuthUser);
+
+impl FromRequestParts<AppState> for McpAuthUser {
+    type Rejection = crate::auth::middleware::AuthError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let user = crate::auth::middleware::extract_mcp_auth_user(
+            parts,
+            &state.auth,
+            state.mcp_resource.as_deref(),
+        )
+        .await?;
+        Ok(McpAuthUser(user))
+    }
+}
+
+/// Org context for the `/mcp` endpoint, resolved from the MCP-scoped user.
+pub struct McpResolvedOrg(pub ResolvedOrg);
+
+impl FromRequestParts<AppState> for McpResolvedOrg {
+    type Rejection = crate::auth::middleware::AuthError;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let McpAuthUser(user) = McpAuthUser::from_request_parts(parts, state).await?;
+        let org = crate::auth::middleware::resolve_org_for_user(user, parts, &state.auth).await?;
+        Ok(McpResolvedOrg(org))
+    }
+}
 
 // ============================================================================
 // Routes
@@ -357,8 +423,8 @@ async fn inject_www_authenticate(
 // ============================================================================
 
 async fn handle_mcp(
-    auth_user: AuthUser,
-    org: ResolvedOrg,
+    McpAuthUser(auth_user): McpAuthUser,
+    McpResolvedOrg(org): McpResolvedOrg,
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
