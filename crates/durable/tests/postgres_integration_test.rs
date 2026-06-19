@@ -1908,15 +1908,25 @@ async fn test_progressing_turn_is_not_sealed() {
             .await
             .unwrap();
 
-        // Record a workflow event => progress token advances.
+        // Record a genuine progress event (NOT `activity_started`) so the
+        // progress token advances and the no-progress counter resets. `claim_task`
+        // already wrote an `activity_started` bookkeeping event this cycle, which
+        // must NOT count as forward progress (EVE-534) — so query the actual next
+        // sequence rather than assuming one, and append a real `ActivityCompleted`.
+        let next_seq: i32 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(sequence_num) + 1, 0)::INT FROM durable_workflow_events WHERE workflow_id = $1",
+        )
+        .bind(workflow_id)
+        .fetch_one(store.pool())
+        .await
+        .unwrap();
         store
             .append_events(
                 workflow_id,
-                cycle,
-                vec![WorkflowEvent::ActivityStarted {
+                next_seq,
+                vec![WorkflowEvent::ActivityCompleted {
                     activity_id: "reason_task".to_string(),
-                    attempt: cycle as u32,
-                    worker_id: "worker-1".to_string(),
+                    result: json!({ "cycle": cycle }),
                 }],
             )
             .await
