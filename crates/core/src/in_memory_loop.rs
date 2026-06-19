@@ -157,6 +157,22 @@ impl TurnResult {
                 error: None,
                 turn_id,
             },
+            // A sealed turn was deliberately stopped (EVE-534). Surface it as a
+            // non-success with the seal reason so in-memory callers can observe
+            // it distinctly from a normal completion.
+            TurnOutcome::Sealed {
+                reason,
+                response,
+                iterations,
+                tool_calls_count,
+            } => Self {
+                response,
+                iterations,
+                tool_calls_count,
+                success: false,
+                error: Some(format!("turn sealed: {reason}")),
+                turn_id,
+            },
         }
     }
 }

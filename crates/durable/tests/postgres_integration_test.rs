@@ -1728,6 +1728,236 @@ async fn test_stale_reclaim_respects_max_attempts() {
     cleanup_worker(&store, "worker-3").await;
 }
 
+/// EVE-534: a turn that deterministically crashes mid-`reason` every attempt —
+/// recording no new durable events — is SEALED after exactly N no-progress
+/// recoveries instead of looping until it exhausts max_attempts (or hits
+/// max-iterations). The sealed task lands in the DLQ (status='dead') and is no
+/// longer claimable, so it cannot keep re-billing.
+#[tokio::test]
+async fn test_no_progress_turn_is_sealed_after_n_recoveries() {
+    // Deterministic threshold for the test (default is also 3).
+    unsafe {
+        std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
+    }
+    let threshold = 3u32;
+
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    register_test_worker(&store, "worker-1", vec!["reason".to_string()]).await;
+
+    store
+        .create_workflow(workflow_id, "no_progress_seal_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // CRITICAL: max_attempts is generous (much larger than the seal threshold).
+    // The seal must fire on *progress*, independent of attempt exhaustion — this
+    // is exactly the crash-loop the guard defends against.
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(50)
+            .with_initial_interval(Duration::from_millis(1)),
+        ..Default::default()
+    };
+
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "reason_task".to_string(),
+            activity_type: "reason".to_string(),
+            // Minimal session context so the seal can be surfaced; the store
+            // only needs the workflow_id for the progress token.
+            input: json!({
+                "org_id": 1,
+                "session_id": format!("session_{}", Uuid::now_v7().simple()),
+                "turn_id": format!("turn_{}", Uuid::now_v7().simple()),
+                "input_message_id": format!("message_{}", Uuid::now_v7().simple()),
+            }),
+            options,
+        })
+        .await
+        .unwrap();
+
+    // Drive N+? crash/reclaim cycles. Each cycle: claim, "crash" (no fail_task,
+    // no events recorded), force heartbeat stale, reclaim. The progress token is
+    // derived from durable_workflow_events which never grows, so it never
+    // advances and the no-progress counter climbs on every reclaim.
+    let mut sealed = false;
+    for cycle in 1..=(threshold + 1) {
+        let claimed = store
+            .claim_task("worker-1", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+        if cycle <= threshold {
+            assert_eq!(
+                claimed.len(),
+                1,
+                "cycle {cycle}: task should still be claimable before seal"
+            );
+        }
+
+        // Simulate the worker crashing mid-reason (heartbeat goes stale, no
+        // events recorded => no forward progress).
+        sqlx::query(
+            "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '1 hour' WHERE id = $1",
+        )
+        .bind(task_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        let result = store
+            .reclaim_stale_tasks(Duration::from_secs(30))
+            .await
+            .unwrap();
+
+        if (cycle as u32) < threshold {
+            assert_eq!(
+                result.reclaimed_ids.len(),
+                1,
+                "cycle {cycle}: should requeue (not yet at seal threshold)"
+            );
+            assert!(
+                result.sealed_tasks.is_empty(),
+                "cycle {cycle}: not yet sealed"
+            );
+        } else if cycle as u32 == threshold {
+            // At the Nth no-progress recovery the turn is sealed.
+            assert_eq!(
+                result.sealed_tasks.len(),
+                1,
+                "cycle {cycle}: should be sealed at threshold"
+            );
+            let s = &result.sealed_tasks[0];
+            assert_eq!(s.task_id, task_id);
+            assert_eq!(s.workflow_id, Some(workflow_id));
+            assert_eq!(s.reason, "no_progress");
+            assert_eq!(s.no_progress_count, threshold);
+            assert!(
+                result.reclaimed_ids.is_empty(),
+                "sealed task is not requeued"
+            );
+            sealed = true;
+        }
+    }
+    assert!(sealed, "turn should have been sealed at the threshold");
+
+    // The sealed task is terminal/non-retryable: status 'dead' and not claimable.
+    let task = store.get_task(task_id).await.unwrap();
+    assert_eq!(
+        task.status,
+        TaskStatus::Dead,
+        "sealed task should be marked dead (routed to DLQ)"
+    );
+    let claimed = store
+        .claim_task("worker-1", &["reason".to_string()], 1)
+        .await
+        .unwrap();
+    assert!(
+        claimed.is_empty(),
+        "sealed task must not be re-claimed (no more re-billing)"
+    );
+
+    // Attempt count proves we did NOT loop to max_attempts: the seal fired at
+    // the no-progress threshold, well before 50 attempts.
+    assert!(
+        task.attempt <= threshold,
+        "seal must fire on no-progress, not by exhausting max_attempts (attempt={})",
+        task.attempt
+    );
+
+    cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+}
+
+/// EVE-534: a turn that DOES make progress between recoveries is never sealed —
+/// the no-progress counter resets whenever the progress token advances.
+#[tokio::test]
+async fn test_progressing_turn_is_not_sealed() {
+    unsafe {
+        std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
+    }
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    register_test_worker(&store, "worker-1", vec!["reason".to_string()]).await;
+    store
+        .create_workflow(workflow_id, "progressing_test", json!({}), None)
+        .await
+        .unwrap();
+
+    let options = ActivityOptions {
+        retry_policy: RetryPolicy::exponential()
+            .with_max_attempts(50)
+            .with_initial_interval(Duration::from_millis(1)),
+        ..Default::default()
+    };
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "reason_task".to_string(),
+            activity_type: "reason".to_string(),
+            input: json!({"org_id": 1}),
+            options,
+        })
+        .await
+        .unwrap();
+
+    // Many cycles, but record a new durable event before each reclaim so the
+    // progress token advances every time and the counter never reaches N.
+    let mut next_seq = 0i32;
+    for cycle in 0..6 {
+        let _ = store
+            .claim_task("worker-1", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+
+        // Record a workflow event => progress token advances.
+        store
+            .append_events(
+                workflow_id,
+                next_seq,
+                vec![WorkflowEvent::ActivityStarted {
+                    activity_id: "reason_task".to_string(),
+                    attempt: cycle as u32,
+                    worker_id: "worker-1".to_string(),
+                }],
+            )
+            .await
+            .unwrap();
+        next_seq += 1;
+
+        sqlx::query(
+            "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '1 hour' WHERE id = $1",
+        )
+        .bind(task_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+        let result = store
+            .reclaim_stale_tasks(Duration::from_secs(30))
+            .await
+            .unwrap();
+        assert!(
+            result.sealed_tasks.is_empty(),
+            "cycle {cycle}: progressing turn must never be sealed"
+        );
+        assert_eq!(
+            result.reclaimed_ids.len(),
+            1,
+            "cycle {cycle}: should requeue"
+        );
+    }
+
+    let task = store.get_task(task_id).await.unwrap();
+    assert_eq!(task.status, TaskStatus::Pending, "task stays alive");
+
+    cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "worker-1").await;
+}
+
 /// Test that partially exhausted tasks can still be claimed
 ///
 /// Ensures the fix doesn't prevent claiming tasks that still have attempts remaining.

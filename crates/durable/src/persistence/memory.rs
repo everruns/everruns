@@ -39,6 +39,11 @@ struct TaskState {
     error_history: Vec<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     claimed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// Forward-progress guard (EVE-534): progress token observed at the previous
+    /// reclaim, and consecutive no-progress recovery count. `None` token means
+    /// the task has not been reclaimed yet.
+    progress_token: Option<i64>,
+    no_progress_count: u32,
 }
 
 /// Circuit breaker state in memory
@@ -519,6 +524,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 error_history: vec![],
                 created_at: Utc::now(),
                 claimed_at: None,
+                progress_token: None,
+                no_progress_count: 0,
             },
         );
         Ok(task_id)
@@ -727,8 +734,87 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         &self,
         _stale_threshold: Duration,
     ) -> Result<ReclaimResult, StoreError> {
-        // In-memory implementation doesn't track timestamps
-        Ok(ReclaimResult::default())
+        // The in-memory store does not track heartbeats, so every currently
+        // claimed task with attempts remaining is treated as reclaimable. This
+        // mirrors the Postgres forward-progress guard (EVE-534) so unit tests
+        // can exercise the seal decision without a database: derive each task's
+        // progress token from the highest recorded event sequence for its
+        // workflow, compare to the token observed at the previous reclaim, and
+        // seal (mark dead -> DLQ) after N consecutive no-progress recoveries.
+        let threshold = no_progress_seal_threshold_from_env();
+
+        // Snapshot the highest event sequence per workflow first to avoid
+        // holding both locks at once.
+        let highest_seq: HashMap<Uuid, i64> = {
+            let workflows = self.workflows.read();
+            workflows
+                .iter()
+                .map(|(id, wf)| (*id, wf.events.len() as i64 - 1))
+                .collect()
+        };
+
+        let mut reclaimed_ids = Vec::new();
+        let mut sealed_tasks = Vec::new();
+
+        let mut tasks = self.tasks.write();
+        for (task_id, task) in tasks.iter_mut() {
+            if task.status != TaskStatus::Claimed {
+                continue;
+            }
+            let max_attempts = task.definition.options.retry_policy.max_attempts;
+            if task.attempt >= max_attempts {
+                continue;
+            }
+
+            let wf_id = task.definition.workflow_id;
+            let cur_seq = wf_id
+                .and_then(|id| highest_seq.get(&id).copied())
+                .unwrap_or(-1);
+            let cur_token = cur_seq + 1; // -1 (no events) => token 0
+
+            // A missing prior token is treated as the 0 baseline, so a turn that
+            // records nothing on its first attempt already counts as no-progress
+            // (mirrors the Postgres COALESCE(prev_token, 0) rule).
+            let prev = task.progress_token.unwrap_or(0);
+            let advanced = cur_token > prev;
+
+            task.progress_token = Some(cur_token);
+            if advanced {
+                task.no_progress_count = 0;
+            } else {
+                task.no_progress_count += 1;
+            }
+
+            if task.no_progress_count >= threshold {
+                task.status = TaskStatus::Dead;
+                task.last_error = Some(format!(
+                    "Turn sealed: no forward progress across {} consecutive recoveries (EVE-534)",
+                    task.no_progress_count
+                ));
+                task.claimed_by = None;
+                task.claimed_at = None;
+                sealed_tasks.push(SealedTaskInfo {
+                    task_id: *task_id,
+                    workflow_id: wf_id,
+                    activity_id: task.definition.activity_id.clone(),
+                    activity_type: task.definition.activity_type.clone(),
+                    input: task.definition.input.clone(),
+                    reason: "no_progress".to_string(),
+                    no_progress_count: task.no_progress_count,
+                });
+            } else {
+                task.status = TaskStatus::Pending;
+                task.claimed_by = None;
+                task.claimed_at = None;
+                reclaimed_ids.push(*task_id);
+            }
+        }
+
+        Ok(ReclaimResult {
+            reclaimed_ids,
+            dead_tasks: Vec::new(),
+            sealed_tasks,
+        })
     }
 
     async fn send_signal(
@@ -846,6 +932,8 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
                 error_history: vec![],
                 created_at: Utc::now(),
                 claimed_at: None,
+                progress_token: None,
+                no_progress_count: 0,
             },
         );
 
@@ -3115,5 +3203,134 @@ mod tests {
         let unknown = Uuid::now_v7();
         let resolved = store.get_workflow_extended(unknown).await.unwrap();
         assert!(resolved.is_none());
+    }
+
+    // ---- EVE-534: forward-progress guard (no DB) ----
+
+    async fn enqueue_reason_task(
+        store: &InMemoryWorkflowEventStore,
+        workflow_id: Uuid,
+        max_attempts: u32,
+    ) -> Uuid {
+        let options = ActivityOptions {
+            retry_policy: crate::reliability::RetryPolicy::exponential()
+                .with_max_attempts(max_attempts),
+            ..Default::default()
+        };
+        store
+            .enqueue_task(TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "reason_task".to_string(),
+                activity_type: "reason".to_string(),
+                input: serde_json::json!({"org_id": 1}),
+                options,
+            })
+            .await
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn test_no_progress_turn_is_sealed_in_memory() {
+        unsafe {
+            std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
+        }
+        let threshold = 3u32;
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "seal_test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        // max_attempts generous so the seal fires on progress, not attempts.
+        let task_id = enqueue_reason_task(&store, workflow_id, 50).await;
+
+        let mut sealed = false;
+        for cycle in 1..=threshold {
+            // Claim (simulate worker picking it up then crashing) — no events
+            // recorded => no forward progress.
+            let claimed = store
+                .claim_task("w1", &["reason".to_string()], 1)
+                .await
+                .unwrap();
+            assert_eq!(claimed.len(), 1, "cycle {cycle}: claimable before seal");
+
+            let result = store
+                .reclaim_stale_tasks(Duration::from_secs(30))
+                .await
+                .unwrap();
+            if cycle < threshold {
+                assert_eq!(result.reclaimed_ids.len(), 1, "cycle {cycle}: requeued");
+                assert!(result.sealed_tasks.is_empty());
+            } else {
+                assert_eq!(result.sealed_tasks.len(), 1, "sealed at threshold");
+                let s = &result.sealed_tasks[0];
+                assert_eq!(s.task_id, task_id);
+                assert_eq!(s.reason, "no_progress");
+                assert_eq!(s.no_progress_count, threshold);
+                sealed = true;
+            }
+        }
+        assert!(sealed);
+
+        let task = store.get_task(task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::Dead, "sealed => dead (DLQ)");
+        // Not re-claimable: no more re-billing.
+        let claimed = store
+            .claim_task("w1", &["reason".to_string()], 1)
+            .await
+            .unwrap();
+        assert!(claimed.is_empty(), "sealed task must not be re-claimed");
+        assert!(
+            task.attempt <= threshold,
+            "seal fired on no-progress, not max_attempts"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_progress_resets_no_progress_counter_in_memory() {
+        unsafe {
+            std::env::set_var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD", "3");
+        }
+        let store = InMemoryWorkflowEventStore::new();
+        let workflow_id = Uuid::now_v7();
+        store
+            .create_workflow(workflow_id, "progress_test", serde_json::json!({}), None)
+            .await
+            .unwrap();
+        let task_id = enqueue_reason_task(&store, workflow_id, 50).await;
+
+        let mut next_seq = 0i32;
+        for cycle in 0..6 {
+            let _ = store
+                .claim_task("w1", &["reason".to_string()], 1)
+                .await
+                .unwrap();
+            // Record an event each cycle => progress token advances every reclaim.
+            store
+                .append_events(
+                    workflow_id,
+                    next_seq,
+                    vec![WorkflowEvent::ActivityStarted {
+                        activity_id: "reason_task".to_string(),
+                        attempt: cycle,
+                        worker_id: "w1".to_string(),
+                    }],
+                )
+                .await
+                .unwrap();
+            next_seq += 1;
+
+            let result = store
+                .reclaim_stale_tasks(Duration::from_secs(30))
+                .await
+                .unwrap();
+            assert!(
+                result.sealed_tasks.is_empty(),
+                "progressing => never sealed"
+            );
+            assert_eq!(result.reclaimed_ids.len(), 1);
+        }
+        let task = store.get_task(task_id).await.unwrap();
+        assert_eq!(task.status, TaskStatus::Pending);
     }
 }

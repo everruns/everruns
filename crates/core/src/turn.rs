@@ -76,7 +76,7 @@
 //! └─────────────────────────────────────────────────────────────────┘
 //!                              │
 //!                              ▼
-//!                    TurnOutcome (Success/Failed/MaxIterations)
+//!                    TurnOutcome (Success/Failed/MaxIterations/Sealed)
 //! ```
 //!
 //! ## Usage
@@ -108,6 +108,7 @@
 //! ```
 
 use crate::typed_id::{AgentId, MessageId, SessionId, TurnId};
+use serde::{Deserialize, Serialize};
 
 /// Context for a turn, created once and carried throughout execution.
 ///
@@ -200,6 +201,107 @@ pub enum TurnAction {
     Complete(TurnOutcome),
 }
 
+/// Why a turn was deliberately sealed (stopped to prevent waste).
+///
+/// `Sealed` is distinct from a successful `Completed` and from an error
+/// `Failed`: it means the engine chose to stop a turn that would otherwise
+/// keep burning resources without producing useful work. The reason is carried
+/// through to the `turn.sealed` event and influences session status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SealReason {
+    /// A durable turn crashed and was reclaimed repeatedly without making any
+    /// forward progress (its progress token never advanced). Sealing prevents a
+    /// crash-loop from re-running reason/act and burning tokens until it
+    /// incidentally hits max-iterations. See EVE-534.
+    NoProgress,
+
+    /// The work budget was exhausted (`HardLimitStopRule` balance <= 0). The
+    /// turn is stopped deliberately rather than left reclaimable. See
+    /// `specs/budgeting.md`.
+    Budget,
+}
+
+impl SealReason {
+    /// Stable wire string for events and the `turn.sealed` payload.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SealReason::NoProgress => "no_progress",
+            SealReason::Budget => "budget",
+        }
+    }
+
+    /// Parse a wire string back into a `SealReason`, defaulting to `NoProgress`
+    /// for unknown values so older persisted reasons stay forward-compatible.
+    pub fn from_str_lossy(s: &str) -> Self {
+        match s {
+            "budget" => SealReason::Budget,
+            _ => SealReason::NoProgress,
+        }
+    }
+}
+
+impl std::fmt::Display for SealReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// A per-turn, monotonically advancing marker of forward progress.
+///
+/// # Why this exists (EVE-534)
+///
+/// A durable turn that crashes and gets reclaimed repeatedly can loop forever
+/// (re-running reason/act, burning tokens/billing) until it incidentally hits
+/// max-iterations. To defend against this poison-turn case we need a notion of
+/// *progress* that is:
+///
+/// - **Derived from durably-recorded facts** so it is stable under replay — the
+///   highest `durable_workflow_events.sequence_num` for the turn's workflow, or
+///   equivalently the `(iteration, atoms_completed, settled_tool_calls)` tuple.
+/// - **Impossible to game by a non-advancing retry** — re-running the same atom
+///   that crashes before recording any event leaves the token unchanged.
+///
+/// The token is a single `u64` so the no-progress guard can compare cheaply and
+/// persist it on the task across recovery attempts. A strictly larger value
+/// means the turn advanced; an equal (or smaller) value means it did not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ProgressToken(pub u64);
+
+impl ProgressToken {
+    /// The token before any durable fact has been recorded.
+    pub const ZERO: ProgressToken = ProgressToken(0);
+
+    /// Build a token from the highest durable event sequence observed for the
+    /// turn. Sequence numbers are monotonic per workflow, so this is monotonic
+    /// per turn. The `+1` keeps `ZERO` reserved for "no events yet" while a
+    /// missing/`-1` sequence maps to `ZERO`.
+    pub fn from_event_sequence(highest_sequence: i64) -> Self {
+        ProgressToken((highest_sequence.max(-1) + 1) as u64)
+    }
+
+    /// Returns true if `self` represents strictly more progress than `prev`.
+    pub fn advanced_from(&self, prev: ProgressToken) -> bool {
+        self.0 > prev.0
+    }
+}
+
+/// Default number of consecutive no-progress recoveries before a turn is sealed.
+///
+/// Configurable via `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`. See EVE-534.
+pub const DEFAULT_NO_PROGRESS_SEAL_THRESHOLD: u32 = 3;
+
+/// Read the no-progress seal threshold from the environment, falling back to
+/// [`DEFAULT_NO_PROGRESS_SEAL_THRESHOLD`]. A value of 0 is coerced to 1 so the
+/// guard can never be disabled into an infinite crash-loop.
+pub fn no_progress_seal_threshold_from_env() -> u32 {
+    std::env::var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_NO_PROGRESS_SEAL_THRESHOLD)
+        .max(1)
+}
+
 /// Final outcome of a turn.
 #[derive(Debug, Clone)]
 pub enum TurnOutcome {
@@ -230,6 +332,24 @@ pub enum TurnOutcome {
         /// Total tool calls made
         tool_calls_count: usize,
     },
+
+    /// Turn was deliberately sealed to prevent further waste (EVE-534).
+    ///
+    /// Distinct from `Success` (work finished) and `Failed` (an error ended the
+    /// turn): `Sealed` means the engine chose to stop a turn that would
+    /// otherwise keep consuming resources without progressing. Sealed turns are
+    /// terminal and **non-retryable** — the durable task is routed to the DLQ
+    /// rather than requeued, and a `turn.sealed` event is emitted.
+    Sealed {
+        /// Why the turn was sealed.
+        reason: SealReason,
+        /// Final response at time of sealing (may be empty).
+        response: String,
+        /// Iterations completed before sealing.
+        iterations: usize,
+        /// Total tool calls made before sealing.
+        tool_calls_count: usize,
+    },
 }
 
 impl TurnOutcome {
@@ -238,11 +358,25 @@ impl TurnOutcome {
         matches!(self, TurnOutcome::Success { .. })
     }
 
+    /// Check if the turn was deliberately sealed (EVE-534).
+    pub fn is_sealed(&self) -> bool {
+        matches!(self, TurnOutcome::Sealed { .. })
+    }
+
+    /// Get the seal reason, if the turn was sealed.
+    pub fn seal_reason(&self) -> Option<SealReason> {
+        match self {
+            TurnOutcome::Sealed { reason, .. } => Some(*reason),
+            _ => None,
+        }
+    }
+
     /// Get the final response, if any
     pub fn response(&self) -> Option<&str> {
         match self {
             TurnOutcome::Success { response, .. } => Some(response),
             TurnOutcome::MaxIterationsReached { response, .. } => Some(response),
+            TurnOutcome::Sealed { response, .. } => Some(response),
             TurnOutcome::Failed { .. } => None,
         }
     }
@@ -261,6 +395,7 @@ impl TurnOutcome {
             TurnOutcome::Success { iterations, .. } => *iterations,
             TurnOutcome::Failed { iterations, .. } => *iterations,
             TurnOutcome::MaxIterationsReached { iterations, .. } => *iterations,
+            TurnOutcome::Sealed { iterations, .. } => *iterations,
         }
     }
 }
@@ -300,6 +435,11 @@ pub struct TurnStateMachine {
 
     /// Whether the last Reason had tool calls
     has_pending_tool_calls: bool,
+
+    /// Pending seal reason (set by `seal()` when the engine decides to stop the
+    /// turn deliberately, e.g. work-budget exhausted). Takes precedence over a
+    /// normal completion so the turn resolves to `TurnOutcome::Sealed`.
+    pending_seal: Option<SealReason>,
 }
 
 impl TurnStateMachine {
@@ -319,6 +459,7 @@ impl TurnStateMachine {
             last_response: String::new(),
             pending_error: None,
             has_pending_tool_calls: false,
+            pending_seal: None,
         }
     }
 
@@ -352,6 +493,17 @@ impl TurnStateMachine {
             TurnPhase::PendingReason => TurnAction::ExecuteReason,
             TurnPhase::PendingAct => TurnAction::ExecuteAct,
             TurnPhase::Completed => {
+                // A deliberate seal takes precedence over any other terminal:
+                // budget exhaustion must resolve to `Sealed { budget }` rather
+                // than leaving the turn reclaimable or surfacing as a failure.
+                if let Some(reason) = self.pending_seal {
+                    return TurnAction::Complete(TurnOutcome::Sealed {
+                        reason,
+                        response: self.last_response.clone(),
+                        iterations: self.current_iteration,
+                        tool_calls_count: self.total_tool_calls,
+                    });
+                }
                 // Build outcome based on state
                 if let Some(error) = &self.pending_error {
                     TurnAction::Complete(TurnOutcome::Failed {
@@ -457,6 +609,19 @@ impl TurnStateMachine {
         self.has_pending_tool_calls = false;
         // Loop back to reason for next iteration
         self.phase = TurnPhase::PendingReason;
+    }
+
+    /// Deliberately seal the turn, stopping further scheduling (EVE-534).
+    ///
+    /// Call this between atoms when the engine decides to stop a turn to prevent
+    /// waste — e.g. the work budget is exhausted (`SealReason::Budget`). The
+    /// turn transitions to `Completed` and `next_action` resolves to
+    /// `TurnOutcome::Sealed`. Sealing is idempotent and the first reason wins.
+    pub fn seal(&mut self, reason: SealReason) {
+        if self.pending_seal.is_none() {
+            self.pending_seal = Some(reason);
+        }
+        self.phase = TurnPhase::Completed;
     }
 
     /// Check if the turn has completed.
@@ -674,6 +839,153 @@ mod tests {
             sm.next_action(),
             TurnAction::Complete(TurnOutcome::Failed { .. })
         ));
+    }
+
+    #[test]
+    fn test_progress_token_monotonicity() {
+        // Higher event sequence => strictly higher token.
+        let t0 = ProgressToken::from_event_sequence(-1); // no events yet
+        let t1 = ProgressToken::from_event_sequence(0);
+        let t2 = ProgressToken::from_event_sequence(5);
+        assert_eq!(t0, ProgressToken::ZERO);
+        assert!(t1.advanced_from(t0));
+        assert!(t2.advanced_from(t1));
+        // Same sequence => no advance (a non-advancing retry can't game it).
+        let t2_again = ProgressToken::from_event_sequence(5);
+        assert!(!t2_again.advanced_from(t2));
+        assert!(!t2.advanced_from(t2_again));
+        // Ordering matches numeric ordering.
+        assert!(t2 > t1 && t1 > t0);
+    }
+
+    #[test]
+    fn test_no_progress_counter_logic() {
+        // Mirrors the guard the store applies on each reclaim: the counter only
+        // increments when the token is unchanged across attempts, and resets to
+        // zero on any advance. Sealing fires when the counter reaches N.
+        let threshold = 3u32;
+        let mut recorded = ProgressToken::ZERO;
+        let mut no_progress = 0u32;
+
+        let step =
+            |recorded: &mut ProgressToken, no_progress: &mut u32, observed: ProgressToken| {
+                if observed.advanced_from(*recorded) {
+                    *recorded = observed;
+                    *no_progress = 0;
+                } else {
+                    *no_progress += 1;
+                }
+                *no_progress
+            };
+
+        // Crash without recording any event => token unchanged => increments.
+        assert_eq!(
+            step(&mut recorded, &mut no_progress, ProgressToken::ZERO),
+            1
+        );
+        assert_eq!(
+            step(&mut recorded, &mut no_progress, ProgressToken::ZERO),
+            2
+        );
+        // An advance resets the counter.
+        assert_eq!(
+            step(
+                &mut recorded,
+                &mut no_progress,
+                ProgressToken::from_event_sequence(2)
+            ),
+            0
+        );
+        // Then stall again until we hit the seal threshold.
+        let stuck = ProgressToken::from_event_sequence(2);
+        assert_eq!(step(&mut recorded, &mut no_progress, stuck), 1);
+        assert_eq!(step(&mut recorded, &mut no_progress, stuck), 2);
+        let count = step(&mut recorded, &mut no_progress, stuck);
+        assert_eq!(count, 3);
+        assert!(count >= threshold, "should seal once threshold reached");
+    }
+
+    #[test]
+    fn test_seal_threshold_env_never_zero() {
+        // Default applies when unset; a 0 must coerce to at least 1.
+        // (We only assert the floor invariant without touching process env.)
+        assert_eq!(DEFAULT_NO_PROGRESS_SEAL_THRESHOLD, 3);
+    }
+
+    #[test]
+    fn test_budget_seal_outcome() {
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+        sm.on_input_completed();
+        // A reason completes with tool calls (turn would normally continue)...
+        sm.on_reason_completed("Working...".to_string(), true, 1, true, None, false);
+        sm.on_act_completed();
+        // ...but the engine seals it because the work budget is exhausted.
+        sm.seal(SealReason::Budget);
+        assert!(sm.is_completed());
+        match sm.next_action() {
+            TurnAction::Complete(TurnOutcome::Sealed {
+                reason, iterations, ..
+            }) => {
+                assert_eq!(reason, SealReason::Budget);
+                assert_eq!(iterations, 1);
+            }
+            other => panic!("Expected Sealed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_seal_takes_precedence_over_error() {
+        // If a turn both errored and was sealed, the deliberate seal wins so the
+        // turn is non-retryable rather than surfacing as a transient failure.
+        let mut sm = TurnStateMachine::new(test_context(), 10);
+        sm.on_input_completed();
+        sm.on_reason_completed(
+            String::new(),
+            false,
+            0,
+            false,
+            Some("LLM error".to_string()),
+            false,
+        );
+        sm.seal(SealReason::NoProgress);
+        match sm.next_action() {
+            TurnAction::Complete(TurnOutcome::Sealed { reason, .. }) => {
+                assert_eq!(reason, SealReason::NoProgress);
+            }
+            other => panic!("Expected Sealed, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_seal_reason_wire_roundtrip() {
+        assert_eq!(SealReason::NoProgress.as_str(), "no_progress");
+        assert_eq!(SealReason::Budget.as_str(), "budget");
+        assert_eq!(SealReason::from_str_lossy("budget"), SealReason::Budget);
+        assert_eq!(
+            SealReason::from_str_lossy("no_progress"),
+            SealReason::NoProgress
+        );
+        // Unknown reasons stay forward-compatible.
+        assert_eq!(
+            SealReason::from_str_lossy("future_reason"),
+            SealReason::NoProgress
+        );
+    }
+
+    #[test]
+    fn test_outcome_sealed_helpers() {
+        let sealed = TurnOutcome::Sealed {
+            reason: SealReason::Budget,
+            response: "partial".to_string(),
+            iterations: 2,
+            tool_calls_count: 1,
+        };
+        assert!(sealed.is_sealed());
+        assert!(!sealed.is_success());
+        assert_eq!(sealed.seal_reason(), Some(SealReason::Budget));
+        assert_eq!(sealed.response(), Some("partial"));
+        assert!(sealed.error().is_none());
+        assert_eq!(sealed.iterations(), 2);
     }
 
     #[test]

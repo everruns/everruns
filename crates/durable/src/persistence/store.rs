@@ -223,6 +223,46 @@ pub struct DeadTaskInfo {
     pub last_error: Option<String>,
 }
 
+/// Information about a task that was sealed during stale reclamation because the
+/// turn made no forward progress across `N` consecutive recoveries (EVE-534).
+///
+/// A sealed task is terminal and non-retryable: the reclaim path marks it dead
+/// (routing it to the DLQ) instead of returning it to `pending`. Consumers turn
+/// this into a `turn.sealed` event and an appropriate session status.
+#[derive(Debug, Clone)]
+pub struct SealedTaskInfo {
+    pub task_id: Uuid,
+    pub workflow_id: Option<Uuid>,
+    pub activity_id: String,
+    pub activity_type: String,
+    /// The task's serialized input. Consumers parse session context (session_id,
+    /// turn_id, org_id, input_message_id) from it to emit the user-facing
+    /// `turn.sealed` and `session.idled` events.
+    pub input: serde_json::Value,
+    /// Stable seal-reason wire string (always `"no_progress"` here; budget seals
+    /// are decided in the worker turn loop, not during reclaim).
+    pub reason: String,
+    /// Number of consecutive no-progress recoveries that triggered the seal.
+    pub no_progress_count: u32,
+}
+
+/// Default number of consecutive no-progress recoveries before a task is sealed.
+/// Mirrors `everruns_core::turn::DEFAULT_NO_PROGRESS_SEAL_THRESHOLD` but is
+/// duplicated here to avoid a dependency from `everruns-durable` on
+/// `everruns-core`. See EVE-534.
+pub const DEFAULT_NO_PROGRESS_SEAL_THRESHOLD: u32 = 3;
+
+/// Read the no-progress seal threshold from the environment, falling back to
+/// [`DEFAULT_NO_PROGRESS_SEAL_THRESHOLD`]. A value of 0 is coerced to 1 so the
+/// guard can never be disabled into an infinite crash-loop.
+pub fn no_progress_seal_threshold_from_env() -> u32 {
+    std::env::var("DURABLE_NO_PROGRESS_SEAL_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(DEFAULT_NO_PROGRESS_SEAL_THRESHOLD)
+        .max(1)
+}
+
 /// Result of stale task reclamation.
 #[derive(Debug, Clone, Default)]
 pub struct ReclaimResult {
@@ -230,6 +270,9 @@ pub struct ReclaimResult {
     pub reclaimed_ids: Vec<Uuid>,
     /// Tasks that were marked as dead (exhausted all retries).
     pub dead_tasks: Vec<DeadTaskInfo>,
+    /// Tasks that were sealed for making no forward progress across repeated
+    /// recoveries (EVE-534). These are terminal/non-retryable (routed to DLQ).
+    pub sealed_tasks: Vec<SealedTaskInfo>,
 }
 
 /// Filter for listing workers

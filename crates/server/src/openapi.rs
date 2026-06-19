@@ -19,7 +19,7 @@ use everruns_core::{
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
         OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
         SessionStartedData, TokenUsage, ToolCallSummary, ToolCompletedData, ToolStartedData,
-        TurnCompletedData, TurnFailedData, TurnStartedData,
+        TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
 use utoipa::OpenApi;
@@ -342,7 +342,7 @@ use utoipa::OpenApi;
             InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
             ModelMetadata, TokenUsage,
             SessionContextReport, ContextReportSection, ContextReportContribution,
-            TurnStartedData, TurnCompletedData, TurnFailedData,
+            TurnStartedData, TurnCompletedData, TurnFailedData, TurnSealedData,
             ReasonStartedData, ReasonCompletedData,
             ActStartedData, ActCompletedData, ToolCallSummary,
             ToolStartedData, ToolCompletedData,

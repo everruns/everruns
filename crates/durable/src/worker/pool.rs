@@ -641,6 +641,44 @@ impl WorkerPool {
                                     )
                                     .await;
                                 }
+
+                                // Sealed turns (forward-progress guard, EVE-534): the task
+                                // was marked dead -> DLQ for making no progress across N
+                                // recoveries. Record a non-retryable ActivityFailed and mark
+                                // the workflow terminal so no further atoms are scheduled. The
+                                // user-facing `turn.sealed` event is emitted by the control
+                                // plane reclaim loop (see crates/server durable_seal).
+                                for sealed in &result.sealed_tasks {
+                                    info!(
+                                        task_id = %sealed.task_id,
+                                        workflow_id = ?sealed.workflow_id,
+                                        reason = %sealed.reason,
+                                        no_progress_count = sealed.no_progress_count,
+                                        "Sealing non-progressing turn"
+                                    );
+                                    let error_msg = format!(
+                                        "turn sealed: no_progress ({} recoveries)",
+                                        sealed.no_progress_count
+                                    );
+                                    crate::task_events::record_activity_failed(
+                                        store.as_ref(),
+                                        sealed.workflow_id,
+                                        sealed.activity_id.clone(),
+                                        error_msg.clone(),
+                                        false,
+                                    )
+                                    .await;
+                                    if let Some(wf_id) = sealed.workflow_id {
+                                        let _ = store
+                                            .update_workflow_status(
+                                                wf_id,
+                                                crate::WorkflowStatus::Failed,
+                                                None,
+                                                Some(crate::WorkflowError::new(error_msg)),
+                                            )
+                                            .await;
+                                    }
+                                }
                             }
                             Err(e) => {
                                 error!("Stale task reclamation failed: {}", e);

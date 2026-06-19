@@ -644,6 +644,39 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             .await;
     }
 
+    /// Turn was deliberately sealed (EVE-534): emit `turn.sealed` + a
+    /// user-facing message + `session.idled`, and idle the session.
+    ///
+    /// Distinct from `turn_completed` (success) and `turn_failed` (error). The
+    /// session returns to `idle` so the UI unblocks; the Sealed state is
+    /// observable via the `turn.sealed` event and its `reason`.
+    pub async fn turn_sealed(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        reason: &str,
+        iterations: u32,
+        usage: Option<TokenUsage>,
+    ) {
+        let context = EventContext::turn(turn_id, input_message_id);
+
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            context.clone(),
+            everruns_core::events::TurnSealedData {
+                turn_id,
+                reason: reason.to_string(),
+                detail: None,
+                iterations: Some(iterations),
+                usage: usage.clone(),
+            },
+        ))
+        .await;
+
+        self.emit_session_idled(turn_id, input_message_id, Some(iterations), usage)
+            .await;
+    }
+
     /// Fire `turn_end` lifecycle hooks (advisory). Collects the session's hook
     /// specs and runs every `turn_end` hook; failures are logged, never fatal.
     /// `harness_id`/`agent_id` are required to resolve the capability chain.

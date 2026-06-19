@@ -52,6 +52,11 @@ pub const OUTPUT_MESSAGE_REPLACED: &str = "output.message.replaced";
 pub const TURN_STARTED: &str = "turn.started";
 pub const TURN_COMPLETED: &str = "turn.completed";
 pub const TURN_FAILED: &str = "turn.failed";
+/// Turn was deliberately sealed (stopped to prevent waste): no forward progress
+/// across repeated crash-reclaims, or work budget exhausted. Distinct from
+/// `turn.completed` (success) and `turn.failed` (error). Carries a `reason`.
+/// See EVE-534 and `specs/durable-execution-engine.md`.
+pub const TURN_SEALED: &str = "turn.sealed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
 
 // Atom lifecycle events
@@ -152,6 +157,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TURN_STARTED,
     TURN_COMPLETED,
     TURN_FAILED,
+    TURN_SEALED,
     TURN_CANCELLED,
     REASON_STARTED,
     REASON_COMPLETED,
@@ -1963,6 +1969,36 @@ pub struct TurnFailedData {
     pub error_disclosure: Option<String>,
 }
 
+/// Data for turn.sealed event (EVE-534).
+///
+/// A sealed turn was deliberately stopped to prevent waste. It is observably
+/// distinct from `turn.completed` (success) and `turn.failed` (error). The
+/// `reason` is the stable wire form of `everruns_core::turn::SealReason`
+/// (`"no_progress"` or `"budget"`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TurnSealedData {
+    /// Turn identifier
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Why the turn was sealed: `"no_progress"` (crash-loop with no forward
+    /// progress) or `"budget"` (work budget exhausted).
+    pub reason: String,
+
+    /// Human-readable detail for operators (optional).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+
+    /// Iterations completed before the turn was sealed (if known).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub iterations: Option<u32>,
+
+    /// Aggregated token usage before sealing, if available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
+}
+
 /// Data for turn.cancelled event
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -2404,6 +2440,12 @@ pub enum EventData {
     ReasonThinkingStarted(ReasonThinkingStartedData),
     ReasonThinkingCompleted(ReasonThinkingCompletedData),
 
+    // NOTE: TurnSealed requires both `turn_id` and `reason`, so it is more
+    // specific than the turn_id-only variants and is placed here (before
+    // TurnCancelled) so untagged deserialization binds `turn.sealed` payloads
+    // to it rather than to a looser turn_id-only variant.
+    TurnSealed(TurnSealedData),
+
     // NOTE: TurnCancelled is placed at the end (before Raw/Session events) because it only
     // requires turn_id. If placed earlier, it would greedily match JSON for other turn_id-based
     // events (OutputMessageStarted, ReasonThinkingStarted, etc.) and discard their specific fields.
@@ -2473,6 +2515,7 @@ impl EventData {
             EventData::TurnStarted(_) => TURN_STARTED,
             EventData::TurnCompleted(_) => TURN_COMPLETED,
             EventData::TurnFailed(_) => TURN_FAILED,
+            EventData::TurnSealed(_) => TURN_SEALED,
             EventData::TurnCancelled(_) => TURN_CANCELLED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
@@ -2576,6 +2619,9 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::TurnCompleted),
             TURN_FAILED => {
                 serde_json::from_value::<TurnFailedData>(data.clone()).map(EventData::TurnFailed)
+            }
+            TURN_SEALED => {
+                serde_json::from_value::<TurnSealedData>(data.clone()).map(EventData::TurnSealed)
             }
             TURN_CANCELLED => serde_json::from_value::<TurnCancelledData>(data.clone())
                 .map(EventData::TurnCancelled),
@@ -2729,6 +2775,7 @@ impl_from_event_data! {
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,
     TurnFailedData => TurnFailed,
+    TurnSealedData => TurnSealed,
     TurnCancelledData => TurnCancelled,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
@@ -4496,6 +4543,17 @@ mod contract_tests {
                 TurnCancelledData {
                     turn_id: test_turn_id(),
                     reason: None,
+                    usage: None,
+                }
+                .into(),
+            ),
+            (
+                TURN_SEALED,
+                TurnSealedData {
+                    turn_id: test_turn_id(),
+                    reason: "no_progress".to_string(),
+                    detail: Some("sealed".to_string()),
+                    iterations: Some(3),
                     usage: None,
                 }
                 .into(),
