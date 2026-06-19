@@ -780,7 +780,8 @@ jobs:
           for i in {1..30}; do
             # Any HTTP response (incl. 403 from the unauthenticated ListBuckets)
             # means the S3 gateway is up; curl exits 0 once the port answers.
-            if curl -s -o /dev/null http://localhost:9000/; then
+            # Bounded per attempt so a stalled connect can't hang the job.
+            if curl -s -o /dev/null --connect-timeout 5 --max-time 10 http://localhost:9000/; then
               echo "SeaweedFS is ready!"
               ready=1
               break
