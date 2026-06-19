@@ -17636,6 +17636,9 @@
             "$ref": "#/components/schemas/ReasonThinkingCompletedData"
           },
           {
+            "$ref": "#/components/schemas/TurnSealedData"
+          },
+          {
             "$ref": "#/components/schemas/TurnCancelledData"
           },
           {
@@ -31876,6 +31879,52 @@
             "type": "string",
             "description": "Turn identifier",
             "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "TurnSealedData": {
+        "type": "object",
+        "description": "Data for turn.sealed event (EVE-534).\n\nA sealed turn was deliberately stopped to prevent waste. It is observably\ndistinct from `turn.completed` (success) and `turn.failed` (error). The\n`reason` is the stable wire form of `everruns_core::turn::SealReason`\n(`\"no_progress\"` or `\"budget\"`).",
+        "required": [
+          "turn_id",
+          "reason"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable detail for operators (optional)."
+          },
+          "iterations": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Iterations completed before the turn was sealed (if known).",
+            "minimum": 0
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the turn was sealed: `\"no_progress\"` (crash-loop with no forward\nprogress) or `\"budget\"` (work budget exhausted)."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn identifier",
+            "example": "turn_01933b5a00007000800000000000001"
+          },
+          "usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Aggregated token usage before sealing, if available."
+              }
+            ]
           }
         }
       },
