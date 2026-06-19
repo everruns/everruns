@@ -6,6 +6,8 @@
 // layers those extra top-level fields onto the serialized request body:
 //   - `models` / `route` / `provider` — model-fallback and provider routing
 //   - `plugins` — web-search / file-reader activations
+//   - server tools — provider-executed tools appended to the `tools` array as
+//     `{"type":"openrouter:<name>"}` entries
 //   - `session_id` — OpenRouter session grouping (the Everruns session id)
 //   - `reasoning.exclude` — keep provider reasoning private by default
 //   - `HTTP-Referer` / `X-Title` — app attribution headers
@@ -77,6 +79,26 @@ impl OpenResponsesRequestExtension for OpenRouterRequestExtension {
             .and_then(plugins_to_wire)
         {
             obj.insert("plugins".to_string(), Value::Array(plugins));
+        }
+
+        // Server tools (beta) are provider-executed tools the model may invoke.
+        // They ride in the SAME `tools` array as client function tools, so we
+        // append rather than overwrite — the base driver may have already
+        // populated `tools` from `config.tools`.
+        if !effective.server_tools.is_empty() {
+            let tools_entry = obj
+                .entry("tools")
+                .or_insert_with(|| Value::Array(Vec::new()));
+            if let Some(arr) = tools_entry.as_array_mut() {
+                for server_tool in &effective.server_tools {
+                    let mut entry = serde_json::Map::new();
+                    entry.insert("type".to_string(), json!(server_tool.kind.wire_type()));
+                    if let Some(parameters) = &server_tool.parameters {
+                        entry.insert("parameters".to_string(), parameters.clone());
+                    }
+                    arr.push(Value::Object(entry));
+                }
+            }
         }
 
         Ok(())

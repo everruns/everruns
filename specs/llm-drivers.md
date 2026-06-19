@@ -436,6 +436,30 @@ Plugins serialize as a `plugins` array on the wire, each entry carrying an `"id"
 (`"web"` or `"file"`) plus any plugin-specific options. The field is omitted entirely for
 non-OpenRouter providers and when no plugins are configured.
 
+### OpenRouter Server Tools
+
+OpenRouter "server tools" (beta) are provider-executed tools the model may invoke during a
+request (`web_search`, `web_fetch`, `datetime`, `image_generation`, `apply_patch`, `fusion`,
+`advisor`, `subagent`). Unlike client-executed function tools and unlike the `plugins`
+mechanism (which always runs *before* the prompt), server tools are model-decided and run
+**server-side by OpenRouter**, which loops internally and returns the final answer. The agent
+loop therefore never dispatches them; the only client-visible artifact is
+`usage.server_tool_use`.
+
+- **Request shape**: each enabled tool is appended to the request `tools` array (alongside any
+  function tools) as `{"type": "openrouter:<name>"}`, with optional tool-specific
+  `parameters` (e.g. web_search `max_results`). `OpenRouterRoutingConfig.server_tools`
+  (`OpenRouterServerTool` / `OpenRouterServerToolKind`) is the typed representation;
+  `OpenRouterRequestExtension` appends the entries. Emitted only for OpenRouter requests.
+- **Runtime configuration**: the `openrouter_server_tools` capability exposes per-agent
+  toggles (`config_schema`) and compiles the selection into
+  `RuntimeAgent.openrouter_routing.server_tools` during capability collection — the same path
+  `prompt_caching` uses. It contributes *request intent only*, no executable tools. Enabling
+  it on a non-OpenRouter agent is a harmless no-op (the routing config is ignored).
+- **Usage accounting (follow-up)**: `usage.server_tool_use` is not yet surfaced in
+  `LlmCompletionMetadata`; capturing it for cost tracking requires extending that shared
+  cross-provider struct and is tracked separately.
+
 ### OpenRouter Capacity Strategy
 
 `OpenRouterRoutingConfig.capacity_strategy` lets callers express an organization-level

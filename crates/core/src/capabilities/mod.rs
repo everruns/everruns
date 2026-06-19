@@ -119,6 +119,7 @@ mod model_scout;
 mod monitors;
 mod noop;
 mod openai_tool_search;
+mod openrouter_server_tools;
 mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
@@ -253,6 +254,9 @@ pub use noop::{NOOP_CAPABILITY_ID, NoopCapability};
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     model_supports_native_tool_search,
+};
+pub use openrouter_server_tools::{
+    OPENROUTER_SERVER_TOOLS_CAPABILITY_ID, OpenRouterServerToolsCapability,
 };
 pub use openrouter_workspace::{
     OPENROUTER_WORKSPACE_CAPABILITY_ID, OpenRouterKeyInfo, OpenRouterRateLimit,
@@ -1212,6 +1216,7 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(ModelScoutCapability);
         registry.register(OpenRouterWorkspaceCapability);
+        registry.register(OpenRouterServerToolsCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
@@ -1549,6 +1554,9 @@ pub struct CollectedCapabilities {
     pub tool_search: Option<crate::driver_registry::ToolSearchConfig>,
     /// Prompt caching configuration (set when prompt_caching capability is present)
     pub prompt_cache: Option<crate::driver_registry::PromptCacheConfig>,
+    /// OpenRouter routing controls (set when the `openrouter_server_tools`
+    /// capability is present). Carries provider-executed server tools.
+    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
     /// Hooks that transform the final runtime tool definition list.
     pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
     /// Hooks that inspect or transform model-produced tool calls.
@@ -2192,6 +2200,7 @@ pub async fn collect_capabilities_with_configs(
     let mut applied_ids: Vec<String> = Vec::new();
     let mut tool_search: Option<crate::driver_registry::ToolSearchConfig> = None;
     let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
+    let mut openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     // Per-capability narration adapters, appended after explicit tool-call
@@ -2347,6 +2356,17 @@ pub async fn collect_capabilities_with_configs(
                 });
             }
 
+            if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
+                let server_tools =
+                    openrouter_server_tools::server_tools_from_config(&cap_config.config);
+                if !server_tools.is_empty() {
+                    openrouter_routing = Some(crate::driver_registry::OpenRouterRoutingConfig {
+                        server_tools,
+                        ..Default::default()
+                    });
+                }
+            }
+
             // Collect mount points
             mounts.extend(effective.mounts());
 
@@ -2424,6 +2444,7 @@ pub async fn collect_capabilities_with_configs(
         applied_ids,
         tool_search,
         prompt_cache,
+        openrouter_routing,
         tool_definition_hooks,
         tool_call_hooks,
         mcp_servers,
@@ -2515,6 +2536,7 @@ pub async fn apply_capabilities(
         max_tokens: base_runtime_agent.max_tokens,
         tool_search: collected.tool_search,
         prompt_cache: collected.prompt_cache,
+        openrouter_routing: collected.openrouter_routing,
         network_access: base_runtime_agent.network_access,
         parallel_tool_calls: base_runtime_agent.parallel_tool_calls,
     };
@@ -2602,6 +2624,7 @@ mod tests {
             "user_hooks",
             "model_scout",
             "openrouter_workspace",
+            "openrouter_server_tools",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();
@@ -4945,6 +4968,46 @@ mod tests {
             crate::driver_registry::PromptCacheStrategy::Auto
         );
         assert!(prompt_cache.gemini_cached_content.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_apply_capabilities_openrouter_server_tools() {
+        let registry = CapabilityRegistry::with_builtins();
+        let base_runtime_agent = RuntimeAgent::new("You are a helpful assistant.", "gpt-5.4");
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("openrouter_server_tools"),
+            config: serde_json::json!({
+                "tools": ["web_search", "datetime"],
+                "web_search_max_results": 4,
+            }),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        let routing = collected
+            .openrouter_routing
+            .as_ref()
+            .expect("server tools produce routing config");
+        let kinds: Vec<_> = routing.server_tools.iter().map(|t| t.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                crate::driver_registry::OpenRouterServerToolKind::WebSearch,
+                crate::driver_registry::OpenRouterServerToolKind::Datetime,
+            ]
+        );
+
+        // The capability contributes request intent only — no executable tools.
+        // With no tools selected (bare id, empty config) it is a no-op.
+        let applied = apply_capabilities(
+            base_runtime_agent,
+            &["openrouter_server_tools".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert!(applied.tool_registry.is_empty());
+        assert!(applied.runtime_agent.openrouter_routing.is_none());
     }
 
     #[tokio::test]
