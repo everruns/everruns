@@ -56,6 +56,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 
     let result = runner.run_turn("Tell me a dad joke").await.unwrap();
 
+    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(!result.response.is_empty(), "Response should not be empty");
     assert_eq!(result.tool_calls_count, 0, "No tools should be called");
@@ -91,6 +92,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 
     let result = runner.run_turn("What time is it?").await.unwrap();
 
+    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
@@ -133,6 +135,7 @@ async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelCon
 
     let result = runner.run_turn("Say hello").await.unwrap();
 
+    skip_if_quota!(result, config.label());
     assert!(
         result.success,
         "Turn should succeed with file system tools registered: {:?}",

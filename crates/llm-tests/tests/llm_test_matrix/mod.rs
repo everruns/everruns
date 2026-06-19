@@ -149,6 +149,92 @@ pub const BEDROCK_SONNET: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // ============================================================================
+// Provider quota / billing exhaustion handling
+// ============================================================================
+
+// The live LLM matrix is best-effort: it already skips providers whose API key
+// is absent (see `ProviderModelConfig::model`). When a provider account is
+// merely out of credits, a turn fails with a billing/quota error from the live
+// API rather than a code regression. We treat that the same way as an absent
+// key: skip the case with a loud warning so `main` stays green, while a genuine
+// API/contract break still fails the test.
+//
+// Detection is kept specific so ordinary failures (auth, permission, model
+// availability, schema, rate limits unrelated to billing) still fail loudly:
+//   - `insufficient_quota` (OpenAI / OpenRouter)
+//   - `quota` together with `exceeded`/`billing`/`credit` (Gemini, Anthropic,
+//     generic phrasings like "exceeded your current quota")
+//   - HTTP 429 carrying a quota/billing signature (not a bare rate-limit)
+//
+// Authn/authz signals (`unauthorized`, `forbidden`, `invalid api key`,
+// `permission`, 401/403) are deliberately NOT matched, so a broken credential
+// is never silently swallowed.
+pub fn is_quota_exhausted(err: &str) -> bool {
+    let e = err.to_lowercase();
+
+    // Never treat auth/permission failures as quota exhaustion.
+    let auth_failure = e.contains("unauthorized")
+        || e.contains("forbidden")
+        || e.contains("invalid api key")
+        || e.contains("invalid_api_key")
+        || e.contains("permission")
+        || e.contains("authentication")
+        || e.contains(" 401")
+        || e.contains("401 ")
+        || e.contains(" 403")
+        || e.contains("403 ");
+    if auth_failure {
+        return false;
+    }
+
+    if e.contains("insufficient_quota") {
+        return true;
+    }
+
+    let billing_words = e.contains("billing")
+        || e.contains("exceeded")
+        || e.contains("credit")
+        || e.contains("out of quota");
+    if e.contains("quota") && billing_words {
+        return true;
+    }
+
+    // HTTP 429 only counts when paired with a quota/billing signal, so plain
+    // rate limiting (which should be retried/flagged, not skipped) still fails.
+    if e.contains("429") && (e.contains("quota") || billing_words) {
+        return true;
+    }
+
+    false
+}
+
+/// Skip the current test (with a loud stderr warning) if `result` failed due to
+/// the provider being out of quota/credits. Otherwise the test proceeds and its
+/// normal assertions run. `result` must expose `success: bool` and
+/// `error: Option<String>`.
+///
+/// Defined inside this shared module and re-exported via `use
+/// llm_test_matrix::*` so every test binary that includes the module can use it.
+/// `is_quota_exhausted` is called unqualified, resolved through the same glob
+/// import the test files already rely on.
+#[macro_export]
+macro_rules! skip_if_quota {
+    ($result:expr, $label:expr) => {{
+        // Bind once by reference so the expression isn't evaluated twice (no
+        // duplicated side effects / moves if a caller passes a non-trivial expr).
+        let __result = &$result;
+        if !__result.success {
+            if let Some(err) = __result.error.as_deref() {
+                if is_quota_exhausted(err) {
+                    eprintln!("SKIP: provider {} out of quota: {}", $label, err);
+                    return;
+                }
+            }
+        }
+    }};
+}
+
+// ============================================================================
 // Unified driver registry
 // ============================================================================
 
@@ -161,4 +247,57 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
     registry
+}
+
+#[cfg(test)]
+mod quota_detector_tests {
+    use super::is_quota_exhausted;
+
+    #[test]
+    fn matches_provider_quota_signatures() {
+        // OpenAI / OpenRouter
+        assert!(is_quota_exhausted(
+            "LLM error: insufficient_quota: You exceeded your current quota, please check your plan and billing details."
+        ));
+        assert!(is_quota_exhausted("Error: insufficient_quota"));
+        // Generic "exceeded ... quota" phrasing without the machine code.
+        assert!(is_quota_exhausted(
+            "You have exceeded your current quota for this month"
+        ));
+        // Anthropic / Gemini style billing/credit exhaustion.
+        assert!(is_quota_exhausted(
+            "Your account has run out of credit; quota exhausted"
+        ));
+        assert!(is_quota_exhausted(
+            "Request failed: billing quota has been reached"
+        ));
+        // HTTP 429 paired with a quota signal.
+        assert!(is_quota_exhausted(
+            "HTTP 429 Too Many Requests: insufficient_quota"
+        ));
+        assert!(is_quota_exhausted("429: quota exceeded for project"));
+        // Case-insensitive.
+        assert!(is_quota_exhausted("INSUFFICIENT_QUOTA"));
+    }
+
+    #[test]
+    fn does_not_match_ordinary_or_auth_errors() {
+        // Genuine functional/contract breaks must still fail the test.
+        assert!(!is_quota_exhausted(
+            "Model not available: gpt-99-nonexistent"
+        ));
+        assert!(!is_quota_exhausted("Bad request: invalid schema for tool"));
+        assert!(!is_quota_exhausted("Internal server error"));
+        assert!(!is_quota_exhausted(""));
+        // Plain rate limiting (no billing/quota signal) should NOT be skipped.
+        assert!(!is_quota_exhausted("HTTP 429 Too Many Requests: slow down"));
+        assert!(!is_quota_exhausted("rate_limit_exceeded"));
+        // Auth/permission failures must never be swallowed as quota.
+        assert!(!is_quota_exhausted("401 Unauthorized: invalid api key"));
+        assert!(!is_quota_exhausted("403 Forbidden"));
+        assert!(!is_quota_exhausted(
+            "insufficient_quota but actually invalid api key"
+        ));
+        assert!(!is_quota_exhausted("permission denied for this model"));
+    }
 }
