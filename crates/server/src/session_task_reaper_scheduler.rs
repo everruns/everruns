@@ -25,8 +25,11 @@ const SESSION_TASK_REAPER_DESCRIPTION: &str =
 pub async fn ensure_session_task_reaper_schedule(
     store: Arc<dyn WorkflowEventStore + Send + Sync>,
 ) -> Result<()> {
+    // Seed the durable activity input from env so the retention TTL
+    // (SESSION_TASK_RETENTION_TTL_SECONDS) flows through the same configuration
+    // path as the reaper schedule itself (EVE-580).
     let desired_input = serde_json::to_value(
-        everruns_worker::session_task_reaper::SessionTaskReaperInput::default(),
+        everruns_worker::session_task_reaper::SessionTaskReaperInput::from_env(),
     )?;
     let desired_next_trigger = next_trigger()?;
 

@@ -480,6 +480,26 @@ impl GrpcClient {
             .collect()
     }
 
+    /// Prune a bounded batch of terminal session tasks older than the TTL,
+    /// removing rows, messages, and artifacts server-side. Used by the
+    /// retention pass of the session_task_reaper durable activity on gRPC
+    /// workers (EVE-580).
+    pub async fn prune_terminal_session_tasks(
+        &self,
+        ttl_seconds: i64,
+        limit: i64,
+    ) -> Result<usize> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .prune_terminal_session_tasks(proto::PruneTerminalSessionTasksRequest {
+                ttl_seconds,
+                limit,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().pruned.max(0) as usize)
+    }
+
     pub async fn invoke_scheduled_app_channel(
         &self,
         org_id: i64,

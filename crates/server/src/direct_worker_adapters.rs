@@ -1751,6 +1751,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }
         Arc::new(registry)
     }
+
+    async fn prune_terminal_session_tasks(
+        &self,
+        ttl: chrono::Duration,
+        limit: i64,
+    ) -> Result<usize> {
+        self.db
+            .prune_terminal_session_tasks_with_artifacts(ttl, limit)
+            .await
+            .map_err(|e| store_error(format!("Failed to prune terminal session tasks: {e}")))
+    }
 }
 
 impl DirectWorkerAdapters {

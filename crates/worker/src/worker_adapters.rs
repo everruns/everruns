@@ -415,6 +415,21 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn reaper_session_task_registry(
         &self,
     ) -> std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>;
+
+    /// Prune a bounded batch of terminal session tasks (succeeded/failed/
+    /// canceled) whose `finished_at` is older than `ttl`, removing their
+    /// `session_tasks` rows, `session_task_messages`, and `result_path`
+    /// artifacts (EVE-580). Returns the number of tasks pruned this pass.
+    ///
+    /// Row deletion commits first; artifact (blob) deletion happens after, so a
+    /// crash can at worst leak a dangling blob (reclaimed by blob GC) rather
+    /// than leave a row pointing at a deleted artifact. `limit` bounds the work
+    /// per pass; a backlog drains across successive reaper ticks.
+    async fn prune_terminal_session_tasks(
+        &self,
+        ttl: chrono::Duration,
+        limit: i64,
+    ) -> Result<usize>;
 }
 
 // =============================================================================

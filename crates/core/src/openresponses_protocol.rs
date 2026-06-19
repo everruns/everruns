@@ -1378,7 +1378,12 @@ fn handle_streaming_event(
 
         StreamingEvent::ReasoningTextDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
 
-        StreamingEvent::ReasoningSummaryDelta { delta, .. } => LlmStreamEvent::ThinkingDelta(delta),
+        StreamingEvent::ReasoningSummaryDelta { delta, .. } => {
+            // OpenAI's reasoning summary stream is a model-supplied, readable
+            // summary, not raw chain-of-thought. Surface it as public text so
+            // clients can display progress without exposing hidden reasoning.
+            LlmStreamEvent::TextDelta(delta)
+        }
 
         StreamingEvent::FunctionCallArgumentsDelta { item_id, delta, .. } => {
             let mut acc = accumulated_tool_calls.lock().unwrap();
@@ -3765,7 +3770,7 @@ mod tests {
         let accumulated_tool_calls = Mutex::new(Vec::new());
         let finish_reason = Mutex::new(None);
 
-        // ReasoningSummaryDelta (readable summary from GPT-5.x) maps to ThinkingDelta
+        // ReasoningSummaryDelta (readable summary from GPT-5.x) maps to public TextDelta
         let event = StreamingEvent::ReasoningSummaryDelta {
             sequence_number: 4,
             item_id: "rs_002".to_string(),
@@ -3787,10 +3792,10 @@ mod tests {
         );
 
         match result {
-            LlmStreamEvent::ThinkingDelta(text) => {
+            LlmStreamEvent::TextDelta(text) => {
                 assert_eq!(text, "Breaking down the problem...");
             }
-            _ => panic!("Expected ThinkingDelta, got {:?}", result),
+            _ => panic!("Expected TextDelta, got {:?}", result),
         }
     }
 

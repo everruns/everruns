@@ -553,4 +553,16 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             self.client.clone(),
         ))
     }
+
+    async fn prune_terminal_session_tasks(
+        &self,
+        ttl: chrono::Duration,
+        limit: i64,
+    ) -> Result<usize> {
+        // Pruning needs the storage backend + blob store, which only the server
+        // holds, so it runs server-side via the PruneTerminalSessionTasks RPC.
+        self.client
+            .prune_terminal_session_tasks(ttl.num_seconds(), limit)
+            .await
+    }
 }
