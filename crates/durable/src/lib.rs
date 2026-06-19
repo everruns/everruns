@@ -102,13 +102,14 @@ pub mod prelude {
 pub use activity::{Activity, ActivityContext, ActivityError};
 pub use engine::{ExecutorConfig, ExecutorError, WorkflowExecutor, WorkflowRegistry};
 pub use persistence::{
-    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DlqEntry, DlqFilter, HeartbeatResponse,
-    InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore, ScheduleExecutionFilter,
-    ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
-    ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
-    TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
-    WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo,
-    WorkflowInfoExtended, WorkflowStatus,
+    CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry, DlqFilter,
+    HeartbeatResponse, InMemoryWorkflowEventStore, Pagination, PostgresWorkflowEventStore,
+    ReclaimResult, ScheduleExecutionFilter, ScheduleExecutionRow, ScheduleExecutionStatus,
+    ScheduleFilter, ScheduleRow, ScheduleStats, ScheduleTargetType, SchedulerInstanceInfo,
+    SealedTaskInfo, StoreError, SystemHealth, TaskDefinition, TaskFailureOutcome, TaskFilter,
+    TaskInfo, TaskStatus, TraceContext, UpdateSchedule, WorkerFilter, WorkerInfo,
+    WorkflowEventInfo, WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended,
+    WorkflowStatus, no_progress_seal_threshold_from_env,
 };
 pub use reliability::{
     CircuitBreakerConfig, CircuitBreakerError, CircuitState, DistributedCircuitBreaker, RetryPolicy,

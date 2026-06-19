@@ -152,6 +152,21 @@ impl TurnResult {
                 error: None,
                 turn_id,
             },
+            // A sealed turn was deliberately stopped (EVE-534) — distinct from a
+            // success. Report it as non-success carrying the seal reason.
+            TurnOutcome::Sealed {
+                reason,
+                response,
+                iterations,
+                tool_calls_count,
+            } => Self {
+                response,
+                iterations,
+                tool_calls_count,
+                success: false,
+                error: Some(format!("turn sealed: {reason}")),
+                turn_id,
+            },
         }
     }
 }
@@ -772,6 +787,19 @@ impl InProcessRuntime {
                         TurnOutcome::Failed { error, .. } => {
                             lifecycle
                                 .turn_failed(ctx.turn_id, ctx.input_message_id, error, None)
+                                .await;
+                        }
+                        TurnOutcome::Sealed {
+                            reason, iterations, ..
+                        } => {
+                            lifecycle
+                                .turn_sealed(
+                                    ctx.turn_id,
+                                    ctx.input_message_id,
+                                    reason.as_str(),
+                                    *iterations as u32,
+                                    None,
+                                )
                                 .await;
                         }
                     }

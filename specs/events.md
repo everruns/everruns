@@ -190,7 +190,7 @@ This pattern provides:
 
 | Operation | Started | Completed | Failed |
 |-----------|---------|-----------|--------|
-| Turn | `turn.started` | `turn.completed` | `turn.failed` |
+| Turn | `turn.started` | `turn.completed` | `turn.failed` (also `turn.sealed` — deliberate stop, see below) |
 | Reason | `reason.started` | `reason.completed` | (uses `success=false` in completed) |
 | Act | `act.started` | `act.completed` | (uses `success=false` in completed) |
 | Tool Call | `tool.call_started` | `tool.call_completed` | (uses `status` field) |
@@ -611,6 +611,51 @@ When a turn fails, an `output.message.completed` event with a user-friendly fall
 - `error_code` carries the stable user-facing classification.
 - `error_fields` carries interpolation values such as `spent`, `limit`, `soft_limit`, `currency`, `model_id`, `provider`, `retry_after`, and (detailed disclosure mode only) `detail`.
 - `error_disclosure` records the error-disclosure mode applied to `error_code`/`error_fields` (`generic` | `standard` | `detailed`, see `specs/error-disclosure.md`). Full diagnostic detail remains available to operators via `reason.completed` failure events, logs, and tracing.
+
+#### `turn.sealed`
+
+Turn was deliberately **sealed** — stopped to prevent waste — and is observably
+distinct from both `turn.completed` (success) and `turn.failed` (error). A sealed
+turn is terminal and non-retryable: the durable task is routed to the DLQ rather
+than requeued. See `specs/durable-execution-engine.md` (Forward-progress guard
+and Sealed terminal) and EVE-534.
+
+Emitted when:
+- a durable turn crashed and was reclaimed `N` times (default 3, configurable
+  via `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`) without its progress token advancing
+  (`reason = "no_progress"`); or
+- the work budget was exhausted (`HardLimitStopRule` balance ≤ 0)
+  (`reason = "budget"`), instead of leaving the turn reclaimable.
+
+A user-facing `output.message.completed` event and `session.idled` are emitted
+alongside, and the session returns to `idle` (there is no dedicated `sealed`
+session status; the distinct signal is this event and its `reason`).
+
+```json
+{
+  "type": "turn.sealed",
+  "session_id": "...",
+  "context": {
+    "turn_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "reason": "no_progress",
+    "detail": "No forward progress across 3 consecutive recoveries; sealed to prevent a crash-loop.",
+    "iterations": null,
+    "usage": null
+  }
+}
+```
+
+**Fields:**
+| Field | Type | Description |
+|-------|------|-------------|
+| `turn_id` | UUID | The sealed turn identifier |
+| `reason` | string | `"no_progress"` or `"budget"` |
+| `detail` | string? | Optional human-readable explanation for operators |
+| `iterations` | number? | Iterations completed before sealing, if known |
+| `usage` | object? | Aggregated token usage before sealing, if available |
 
 #### `turn.cancelled`
 

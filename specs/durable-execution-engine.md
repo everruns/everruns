@@ -137,6 +137,45 @@ See `crates/durable/src/persistence/store.rs` for `TaskDefinition` and `crates/s
 
 4. **Dead Letter Queue** - Failed tasks preserved for debugging/replay
 
+### Forward-progress guard and Sealed terminal (EVE-534)
+
+`RetryPolicy.max_attempts` bounds *how many times* a task may run, but a turn
+that crashes and is reclaimed repeatedly without ever advancing can still loop —
+re-running reason/act and burning tokens/billing — until it incidentally hits
+max-iterations or max_attempts. The forward-progress guard adds a poison-turn
+defense tied to *progress* and a deliberate **Sealed** terminal.
+
+- **Progress token** — a per-turn, monotonically advancing marker derived from
+  durably-recorded facts so it is stable under replay and cannot be advanced by
+  a non-progressing retry. It is the highest `durable_workflow_events.sequence_num`
+  for the turn's workflow (encoded so "no events yet" = 0). Each stale reclaim
+  records the token observed for the task (`durable_task_queue.progress_token`).
+- **No-progress detection** — on each reclaim, the store compares the current
+  token to the previously recorded one. If it did not advance, the per-task
+  `no_progress_count` is incremented; any advance resets it to 0.
+- **Sealing** — when `no_progress_count` reaches `N` (default 3, configurable via
+  `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`), the reclaim path marks the task `dead`
+  (→ DLQ) instead of returning it to `pending`. This stops scheduling, makes the
+  turn **non-retryable**, and surfaces a distinct `turn.sealed { reason }` event
+  plus `session.idled` (session returns to `idle`). The reclaim consumer also
+  marks the workflow terminal so no further atoms are scheduled.
+  See `crates/durable/src/persistence/store.rs` (`SealedTaskInfo`, `ReclaimResult`)
+  and `reclaim_stale_tasks` in the Postgres/in-memory stores.
+
+The turn-level outcome is `everruns_core::turn::TurnOutcome::Sealed { reason, .. }`,
+distinct from `Success` and `Failed`. `SealReason` is `no_progress` (this guard)
+or `budget`.
+
+**Budget interplay** — work-budget-exceeded (`HardLimitStopRule` balance ≤ 0,
+see `specs/budgeting.md`) resolves to `Sealed { reason: budget }` rather than
+retrying: the worker classifies the budget-exhausted failure as a deliberate,
+non-retryable seal, routes it straight to the DLQ (no re-billing retries), and
+emits `turn.sealed { budget }`.
+
+Operator follow-up (not yet implemented): a UI to inspect and replay sealed
+turns from the DLQ. Sealed tasks already carry the seal reason and counters via
+`SealedTaskInfo` and persist in `durable_dead_letter_queue`.
+
 ### Backpressure
 
 - **Worker-side**: High/low watermarks based on load ratio

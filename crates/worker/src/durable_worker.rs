@@ -589,6 +589,17 @@ fn is_non_retryable_task_error(error: &str) -> bool {
         || lower.contains(&MISSING_ACT_ORG_ID_ERROR.to_ascii_lowercase())
 }
 
+/// Detect a work-budget-exhausted failure (`HardLimitStopRule` balance <= 0).
+///
+/// EVE-534: budget exhaustion must resolve to a deliberate `Sealed { budget }`
+/// rather than retrying — retries only re-bill against an already-exhausted
+/// budget and leave the turn reclaimable. We reuse the user-facing error
+/// classifier so this stays in lockstep with how budget errors are surfaced
+/// elsewhere instead of brittle substring matching here.
+fn is_budget_exhausted_error(error: &str) -> bool {
+    user_facing_failure(error).code == everruns_core::user_facing_error_codes::BUDGET_EXHAUSTED
+}
+
 impl DurableWorker {
     /// Poll for tasks and execute them concurrently
     async fn poll_and_execute(self: &Arc<Self>) -> Result<usize> {
@@ -665,7 +676,11 @@ impl DurableWorker {
                     );
 
                     let error_msg = failure.persisted_message;
-                    let force_dlq = is_non_retryable_task_error(&error_msg);
+                    // Budget exhaustion is a deliberate seal, not a transient
+                    // failure: force it to DLQ immediately (no re-billing retries)
+                    // and surface a `turn.sealed { budget }` event (EVE-534).
+                    let budget_sealed = is_budget_exhausted_error(&error_msg);
+                    let force_dlq = budget_sealed || is_non_retryable_task_error(&error_msg);
 
                     if force_dlq {
                         // Deterministic error — retrying will never succeed.
@@ -674,6 +689,7 @@ impl DurableWorker {
                         warn!(
                             task_id = %task.id,
                             activity_type = %task.activity_type,
+                            budget_sealed,
                             error = %error_msg,
                             "Non-retryable error detected, exhausting retries"
                         );
@@ -719,7 +735,15 @@ impl DurableWorker {
                             "reason" | "process_input" | "act"
                         ) {
                             drop(store);
-                            worker.emit_dlq_error_event(&task, &error_msg).await;
+                            if budget_sealed {
+                                // Distinct terminal: emit turn.sealed { budget }
+                                // instead of a generic DLQ error event.
+                                worker
+                                    .emit_turn_sealed_event(&task, "budget", &error_msg)
+                                    .await;
+                            } else {
+                                worker.emit_dlq_error_event(&task, &error_msg).await;
+                            }
                         }
                     } else {
                         // Report failure to store (may retry)
@@ -1093,6 +1117,107 @@ impl DurableWorker {
     /// prevent duplicate "I encountered an error" messages in the UI. This method
     /// emits one final error event so the user sees exactly one error message,
     /// then emits session.idled + sets session status to idle so the UI unblocks.
+    /// Emit a `turn.sealed` session event plus a user-facing message and
+    /// `session.idled`, then idle the session (EVE-534).
+    ///
+    /// Used when a turn is deliberately sealed by the worker — currently the
+    /// work-budget-exhausted path (`reason = "budget"`). Mirrors
+    /// `emit_dlq_error_event` but produces the distinct sealed terminal instead
+    /// of a generic processing error.
+    async fn emit_turn_sealed_event(
+        &self,
+        task: &ClaimedTask,
+        reason: &str,
+        persisted_error: &str,
+    ) {
+        let ctx = match extract_task_session_context(&task.activity_type, &task.input) {
+            Ok(ctx) => ctx,
+            Err(err) => {
+                warn!(
+                    task_id = %task.id,
+                    activity_type = %task.activity_type,
+                    error = format!("{err:#}"),
+                    "Cannot emit turn.sealed event: failed to parse task input"
+                );
+                return;
+            }
+        };
+
+        let grpc_client = match GrpcClient::connect(&self.grpc_address).await {
+            Ok(client) => client,
+            Err(e) => {
+                warn!(task_id = %task.id, error = %e, "Cannot emit turn.sealed: gRPC connect failed");
+                return;
+            }
+        };
+        let event_emitter = GrpcEventEmitter::new(grpc_client.clone());
+        let TaskSessionContext {
+            org_id,
+            session_id,
+            turn_id,
+            input_message_id,
+        } = ctx;
+        let context = EventContext::turn(turn_id, input_message_id);
+
+        // 1) turn.sealed — the distinct terminal event.
+        if let Err(e) = event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                context.clone(),
+                everruns_core::events::TurnSealedData {
+                    turn_id,
+                    reason: reason.to_string(),
+                    detail: Some("Work budget exhausted; turn stopped.".to_string()),
+                    iterations: None,
+                    usage: None,
+                },
+            ))
+            .await
+        {
+            warn!(task_id = %task.id, error = %e, "Failed to emit turn.sealed event");
+        }
+
+        // 2) User-facing message carrying the budget copy.
+        let user_error = user_facing_failure(persisted_error);
+        let mut message = Message::assistant(user_error.fallback_message());
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        message.metadata = Some(metadata);
+        if let Err(e) = event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                context.clone(),
+                OutputMessageCompletedData::new(message).with_user_facing_error(&user_error),
+            ))
+            .await
+        {
+            warn!(task_id = %task.id, error = %e, "Failed to emit sealed budget message");
+        }
+
+        // 3) session.idled + idle status so the UI unblocks.
+        if let Err(e) = event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                context,
+                SessionIdledData {
+                    turn_id,
+                    iterations: None,
+                    usage: None,
+                },
+            ))
+            .await
+        {
+            warn!(task_id = %task.id, error = %e, "Failed to emit session.idled after seal");
+        }
+        if let Err(e) = grpc_client
+            .set_session_status(org_id, session_id, "idle")
+            .await
+        {
+            warn!(session_id = %session_id, error = %e, "Failed to idle session after seal");
+        }
+        info!(task_id = %task.id, session_id = %session_id, reason, "Emitted turn.sealed for user");
+    }
+
     async fn emit_dlq_error_event(&self, task: &ClaimedTask, persisted_error: &str) {
         // Extract session context from the task input. `act` task input is
         // wrapped in `ActTaskInput`, while `reason`/`process_input` use

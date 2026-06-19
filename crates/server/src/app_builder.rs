@@ -743,6 +743,10 @@ impl ServerAppBuilder {
         }
         sessions_state.session_service = Arc::new(session_service);
         sessions_state.org_rate_limiter = org_rate_limiter.clone();
+        // Captured for the stale-task reclaim loop so it can surface sealed turns
+        // (forward-progress guard, EVE-534). `sessions_state` is moved into the
+        // router later, so grab a clone of the service now.
+        let reclaim_session_service = sessions_state.session_service.clone();
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -1633,6 +1637,8 @@ impl ServerAppBuilder {
                     let stale_threshold = Duration::from_secs(30);
                     let reclaim_interval = Duration::from_secs(10);
                     let reclaim_error_reporter = error_reporter.clone();
+                    let reclaim_event_service = event_service.clone();
+                    let reclaim_session_service = reclaim_session_service.clone();
 
                     tokio::spawn(async move {
                         let store = PostgresWorkflowEventStore::new(pool);
@@ -1674,6 +1680,42 @@ impl ServerAppBuilder {
                                             dead.activity_id.clone(),
                                             error_msg,
                                             false,
+                                        )
+                                        .await;
+                                    }
+
+                                    // Sealed turns (forward-progress guard, EVE-534): the task
+                                    // was marked dead -> DLQ because the turn made no progress
+                                    // across N recoveries. Mark the workflow terminal so no
+                                    // further atoms are scheduled, then surface the seal to the
+                                    // session as a distinct `turn.sealed` event + idle.
+                                    for sealed in &result.sealed_tasks {
+                                        tracing::warn!(
+                                            task_id = %sealed.task_id,
+                                            workflow_id = ?sealed.workflow_id,
+                                            reason = %sealed.reason,
+                                            no_progress_count = sealed.no_progress_count,
+                                            "Sealing non-progressing turn"
+                                        );
+                                        if let Some(wf_id) = sealed.workflow_id {
+                                            let _ = store
+                                                .update_workflow_status(
+                                                    wf_id,
+                                                    everruns_durable::WorkflowStatus::Failed,
+                                                    None,
+                                                    Some(everruns_durable::WorkflowError::new(
+                                                        format!(
+                                                            "turn sealed: no_progress ({} recoveries)",
+                                                            sealed.no_progress_count
+                                                        ),
+                                                    )),
+                                                )
+                                                .await;
+                                        }
+                                        crate::durable_seal::handle_sealed_task(
+                                            &reclaim_event_service,
+                                            &reclaim_session_service,
+                                            sealed,
                                         )
                                         .await;
                                     }

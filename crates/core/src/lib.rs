@@ -416,9 +416,9 @@ pub use events::{
     ReasonThinkingStartedData, RecoveryMode, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
     SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
     TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,
-    TURN_FAILED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
+    TURN_FAILED, TURN_SEALED, TURN_STARTED, TokenUsage, ToolCallRequestedData, ToolCallSummary,
     ToolCompletedData, ToolOutputDeltaData, ToolProgressData, ToolStartedData, TurnCancelledData,
-    TurnCompletedData, TurnFailedData, TurnStartedData, VALID_EVENT_TYPES,
+    TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData, VALID_EVENT_TYPES,
 };
 pub use guardrail_checks::{
     CompiledJudgeCheck, GuardrailAction, GuardrailHit, GuardrailMode, GuardrailOnFail,

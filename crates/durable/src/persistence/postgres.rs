@@ -18,10 +18,11 @@ use super::store::{
     CapacitySnapshot, CircuitBreakerState, ClaimedTask, CreateScheduleRow, DeadTaskInfo, DlqEntry,
     DlqFilter, HeartbeatResponse, Pagination, ReclaimResult, ScheduleExecutionFilter,
     ScheduleExecutionRow, ScheduleExecutionStatus, ScheduleFilter, ScheduleRow, ScheduleStats,
-    ScheduleTargetType, SchedulerInstanceInfo, StoreError, SystemHealth, TaskDefinition,
-    TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext, UpdateSchedule,
-    WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkflowEventInfo, WorkflowEventStore,
-    WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    ScheduleTargetType, SchedulerInstanceInfo, SealedTaskInfo, StoreError, SystemHealth,
+    TaskDefinition, TaskFailureOutcome, TaskFilter, TaskInfo, TaskStatus, TraceContext,
+    UpdateSchedule, WORKER_HEARTBEAT_TIMEOUT_SECS, WorkerFilter, WorkerInfo, WorkflowEventInfo,
+    WorkflowEventStore, WorkflowFilter, WorkflowInfo, WorkflowInfoExtended, WorkflowStatus,
+    no_progress_seal_threshold_from_env,
 };
 use crate::reliability::{CircuitBreakerConfig, CircuitState};
 use crate::workflow::{ActivityOptions, WorkflowError, WorkflowEvent, WorkflowSignal};
@@ -1367,20 +1368,117 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             );
         }
 
-        // Then, reclaim stale tasks that still have attempts remaining
+        // Forward-progress guard (EVE-534).
+        //
+        // For each stale task that still has retry attempts, derive its current
+        // progress token from durably-recorded facts — the highest
+        // durable_workflow_events.sequence_num for the task's workflow — and
+        // compare it to the token observed at the previous reclaim:
+        //
+        //   - advanced (or first observation): record the new token, reset the
+        //     no-progress counter, and requeue (status='pending').
+        //   - not advanced: increment the no-progress counter. If it reaches the
+        //     configured threshold, SEAL the turn — mark the task 'dead' so it
+        //     routes to the DLQ instead of looping forever — otherwise requeue.
+        //
+        // The token is monotonic per workflow, so a non-progressing retry (an
+        // atom that crashes before recording any event) cannot game it. The
+        // whole transition is a single UPDATE so concurrent reclaimers stay
+        // consistent under the row lock.
+        let threshold_i64 = no_progress_seal_threshold_from_env() as i64;
         let rows = sqlx::query(
             r#"
-            UPDATE durable_task_queue
-            SET status = 'pending',
-                claimed_by = NULL,
-                claimed_at = NULL
-            WHERE status = 'claimed'
-              AND heartbeat_at < $1
-              AND attempt < max_attempts
-            RETURNING id
+            WITH stale AS (
+                SELECT q.id,
+                       q.workflow_id,
+                       q.progress_token AS prev_token,
+                       q.no_progress_count AS prev_no_progress,
+                       -- Highest durable event sequence for this workflow encoded
+                       -- as a monotonic token (-1 => no progress events yet =>
+                       -- token 0).
+                       --
+                       -- We EXCLUDE 'activity_started' events: claim_task writes
+                       -- one on EVERY (re)claim (see started_by_workflow loop),
+                       -- so counting them would make the token advance on every
+                       -- reclaim cycle even when the turn records no genuine
+                       -- forward progress — defeating the seal guard (EVE-534).
+                       -- 'activity_started' is the only per-(re)claim/per-attempt
+                       -- bookkeeping event written to durable_workflow_events;
+                       -- every other event_type records a real workflow fact
+                       -- (scheduled/completed/failed/timer/signal/child), so a
+                       -- denylist of just this one type is complete.
+                       COALESCE(
+                           (SELECT MAX(e.sequence_num)
+                              FROM durable_workflow_events e
+                             WHERE e.workflow_id = q.workflow_id
+                               AND e.event_type <> 'activity_started'),
+                           -1
+                       )::BIGINT + 1 AS cur_token
+                  FROM durable_task_queue q
+                 WHERE q.status = 'claimed'
+                   AND q.heartbeat_at < $1
+                   AND q.attempt < q.max_attempts
+                   FOR UPDATE OF q SKIP LOCKED
+            ),
+            decided AS (
+                SELECT id,
+                       workflow_id,
+                       cur_token,
+                       -- Standalone tasks (workflow_id IS NULL) have no workflow
+                       -- event stream, so cur_token is always 0 and the seal
+                       -- guard would DLQ them after N reclaims purely from
+                       -- missing workflow context. Exempt them: always treat as
+                       -- advanced and never increment no_progress_count, so they
+                       -- only DLQ via the max-attempts path (EVE-534).
+                       --
+                       -- A missing prior token is treated as the 0 baseline (no
+                       -- events recorded yet), so a turn that records nothing on
+                       -- its first attempt already counts as no-progress. The
+                       -- token only "advances" when it strictly grows past the
+                       -- baseline, which a non-progressing retry can never do.
+                       (workflow_id IS NULL
+                        OR cur_token > COALESCE(prev_token, 0)) AS advanced,
+                       CASE
+                           WHEN workflow_id IS NULL THEN 0
+                           WHEN cur_token > COALESCE(prev_token, 0) THEN 0
+                           ELSE prev_no_progress + 1
+                       END AS new_no_progress
+                  FROM stale
+            )
+            UPDATE durable_task_queue q
+               SET status = CASE
+                                WHEN d.new_no_progress >= $2 THEN 'dead'
+                                ELSE 'pending'
+                            END,
+                   claimed_by = NULL,
+                   claimed_at = NULL,
+                   -- Leave standalone tasks' progress_token NULL; only
+                   -- workflow-scoped tasks track a monotonic token.
+                   progress_token = CASE
+                                        WHEN d.workflow_id IS NULL THEN NULL
+                                        ELSE d.cur_token
+                                    END,
+                   no_progress_count = d.new_no_progress,
+                   last_error = CASE
+                                    WHEN d.new_no_progress >= $2
+                                    THEN 'Turn sealed: no forward progress across '
+                                         || d.new_no_progress::TEXT
+                                         || ' consecutive recoveries (EVE-534)'
+                                    ELSE q.last_error
+                                END
+              FROM decided d
+             WHERE q.id = d.id
+            RETURNING q.id,
+                      q.workflow_id,
+                      q.activity_id,
+                      q.activity_type,
+                      q.input,
+                      q.status AS new_status,
+                      q.no_progress_count
             "#,
         )
         .bind(threshold)
+        .bind(threshold_i64)
         .fetch_all(&self.pool)
         .await
         .map_err(|e| {
@@ -1388,7 +1486,24 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             StoreError::Database(e.to_string())
         })?;
 
-        let reclaimed_ids: Vec<Uuid> = rows.iter().map(|r| r.get("id")).collect();
+        let mut reclaimed_ids: Vec<Uuid> = Vec::new();
+        let mut sealed_tasks: Vec<SealedTaskInfo> = Vec::new();
+        for r in &rows {
+            let new_status: String = r.get("new_status");
+            if new_status == "dead" {
+                sealed_tasks.push(SealedTaskInfo {
+                    task_id: r.get("id"),
+                    workflow_id: r.get("workflow_id"),
+                    activity_id: r.get("activity_id"),
+                    activity_type: r.get("activity_type"),
+                    input: r.get("input"),
+                    reason: "no_progress".to_string(),
+                    no_progress_count: r.get::<i32, _>("no_progress_count") as u32,
+                });
+            } else {
+                reclaimed_ids.push(r.get("id"));
+            }
+        }
 
         #[cfg(feature = "failpoints")]
         fail_point!("postgres_reclaim_stale_after_update", |_| {
@@ -1397,11 +1512,18 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             ))
         });
 
-        if !reclaimed_ids.is_empty() || !dead_tasks.is_empty() {
+        if !reclaimed_ids.is_empty() || !dead_tasks.is_empty() || !sealed_tasks.is_empty() {
             debug!(
                 reclaimed = reclaimed_ids.len(),
                 dead = dead_tasks.len(),
+                sealed = sealed_tasks.len(),
                 "processed stale tasks"
+            );
+        }
+        if !sealed_tasks.is_empty() {
+            info!(
+                count = sealed_tasks.len(),
+                "sealed non-progressing turns during reclaim (EVE-534)"
             );
         }
 
@@ -1434,6 +1556,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         Ok(ReclaimResult {
             reclaimed_ids,
             dead_tasks,
+            sealed_tasks,
         })
     }
 

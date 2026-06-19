@@ -94,6 +94,9 @@ pub mod event_retention;
 // Object-storage blob garbage collector
 pub mod blob_gc;
 
+// Surface sealed durable turns (forward-progress guard, EVE-534) to sessions.
+pub mod durable_seal;
+
 // Organization initialization (built-in harnesses, reconciliation)
 pub mod org_init;
 
