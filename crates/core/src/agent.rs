@@ -257,6 +257,15 @@ pub struct Agent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = 50))]
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    ///
+    /// `None` (default) preserves provider defaults. `Some(true)` signals the
+    /// provider that parallel tool calls are wanted; `Some(false)` requests at
+    /// most one tool call per turn and forces serial execution. Merged across
+    /// harness/agent/session layers (overlay wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = true))]
+    pub parallel_tool_calls: Option<bool>,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -407,6 +416,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,

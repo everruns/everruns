@@ -134,6 +134,7 @@ impl SessionStore for DbSessionStore {
                         .and_then(|v| serde_json::from_value(v).ok()),
                     hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
                     max_iterations: max_iterations::from_db(row.max_iterations),
+                    parallel_tool_calls: row.parallel_tool_calls,
                     status: SessionStatus::from(row.status.as_str()),
                     created_at: row.created_at,
                     updated_at: row.updated_at,

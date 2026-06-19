@@ -191,6 +191,7 @@ async fn run_case(
                 // but a hard iteration cap prevents expensive tool/LLM loops
                 // (TM-DOS / cost). Matches the deterministic turn budget.
                 max_iterations: Some(MAX_CASE_TURNS as usize),
+                parallel_tool_calls: None,
             },
         )
         .await;

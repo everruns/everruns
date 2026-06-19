@@ -567,6 +567,15 @@ impl ChatDriver for AnthropicChatDriver {
         let needs_interleaved_thinking =
             matches!(thinking, Some(AnthropicThinking::Enabled { .. })) && tools.is_some();
 
+        // Map the request-level parallel preference (EVE-598) onto Anthropic's
+        // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
+        // when tools are present, so skip it for tool-less requests.
+        let tool_choice = if tools.is_some() {
+            AnthropicToolChoice::from_parallel_preference(config.parallel_tool_calls)
+        } else {
+            None
+        };
+
         let mut request = AnthropicRequest {
             model: wire_model.to_string(),
             messages: anthropic_messages,
@@ -575,6 +584,7 @@ impl ChatDriver for AnthropicChatDriver {
             system,
             stream: true,
             tools,
+            tool_choice,
             thinking,
             output_config,
         };
@@ -1118,12 +1128,41 @@ struct AnthropicRequest {
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<AnthropicToolEntry>>,
+    /// Tool-choice controls. Carries `disable_parallel_tool_use` to map the
+    /// request-level `parallel_tool_calls` preference (EVE-598). Only sent when
+    /// the request has tools and a parallel preference is set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tool_choice: Option<AnthropicToolChoice>,
     /// Extended thinking configuration (for Claude models that support it)
     #[serde(skip_serializing_if = "Option::is_none")]
     thinking: Option<AnthropicThinking>,
     /// Output configuration — carries `effort` for adaptive thinking
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<AnthropicOutputConfig>,
+}
+
+/// Anthropic `tool_choice` object.
+///
+/// We always use `type: "auto"` (the model decides whether/which tools to call)
+/// and only set this when mapping the request-level `parallel_tool_calls`
+/// preference: `Some(false)` → `disable_parallel_tool_use = true`, `Some(true)`
+/// → `disable_parallel_tool_use = false` (explicitly allow parallel use).
+#[derive(Debug, Serialize)]
+struct AnthropicToolChoice {
+    r#type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    disable_parallel_tool_use: Option<bool>,
+}
+
+impl AnthropicToolChoice {
+    /// Build an `auto` tool choice that encodes the parallel preference, or
+    /// `None` when no preference is set (preserve the provider default).
+    fn from_parallel_preference(parallel_tool_calls: Option<bool>) -> Option<Self> {
+        parallel_tool_calls.map(|parallel| Self {
+            r#type: "auto",
+            disable_parallel_tool_use: Some(!parallel),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1814,6 +1853,57 @@ mod tests {
         let content = LlmMessageContent::Text(String::new());
         let blocks = AnthropicChatDriver::convert_content(&content);
         assert!(blocks.is_empty(), "Empty text should be filtered out");
+    }
+
+    /// EVE-598: `Some(false)` disables parallel tool use; `Some(true)` allows
+    /// it; `None` sends no `tool_choice` at all (provider default preserved).
+    #[test]
+    fn test_tool_choice_from_parallel_preference() {
+        // None → no tool_choice object.
+        assert!(AnthropicToolChoice::from_parallel_preference(None).is_none());
+
+        // Some(false) → disable_parallel_tool_use = true.
+        let choice = AnthropicToolChoice::from_parallel_preference(Some(false)).unwrap();
+        let json = serde_json::to_value(&choice).unwrap();
+        assert_eq!(json["type"], "auto");
+        assert_eq!(json["disable_parallel_tool_use"], true);
+
+        // Some(true) → disable_parallel_tool_use = false (explicitly allow).
+        let choice = AnthropicToolChoice::from_parallel_preference(Some(true)).unwrap();
+        let json = serde_json::to_value(&choice).unwrap();
+        assert_eq!(json["type"], "auto");
+        assert_eq!(json["disable_parallel_tool_use"], false);
+    }
+
+    /// EVE-598: the serialized Anthropic request omits `tool_choice` unless a
+    /// parallel preference is set, and maps `Some(false)` to
+    /// `disable_parallel_tool_use = true`.
+    #[test]
+    fn test_anthropic_request_serializes_tool_choice() {
+        let base = |tool_choice: Option<AnthropicToolChoice>| AnthropicRequest {
+            model: "claude-opus-4-8".to_string(),
+            messages: vec![],
+            max_tokens: 1024,
+            temperature: None,
+            system: None,
+            stream: true,
+            tools: None,
+            tool_choice,
+            thinking: None,
+            output_config: None,
+        };
+
+        // No preference → tool_choice omitted.
+        let json = serde_json::to_value(base(None)).unwrap();
+        assert!(json.get("tool_choice").is_none());
+
+        // Some(false) → disable_parallel_tool_use = true on the wire.
+        let json = serde_json::to_value(base(AnthropicToolChoice::from_parallel_preference(Some(
+            false,
+        ))))
+        .unwrap();
+        assert_eq!(json["tool_choice"]["type"], "auto");
+        assert_eq!(json["tool_choice"]["disable_parallel_tool_use"], true);
     }
 
     #[test]

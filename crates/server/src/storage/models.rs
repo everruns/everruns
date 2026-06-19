@@ -397,6 +397,9 @@ pub struct AgentRow {
     /// Maximum iterations per turn
     #[sqlx(default)]
     pub max_iterations: Option<i32>,
+    /// Request-level parallel tool calling preference (EVE-598)
+    #[sqlx(default)]
+    pub parallel_tool_calls: Option<bool>,
     /// Cumulative input tokens across all sessions
     #[sqlx(default)]
     pub total_input_tokens: i64,
@@ -485,6 +488,8 @@ pub struct CreateAgentRow {
     pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     pub max_iterations: Option<i32>,
+    /// Request-level parallel tool calling preference (EVE-598)
+    pub parallel_tool_calls: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -506,6 +511,9 @@ pub struct UpdateAgent {
     pub network_access: Option<Option<serde_json::Value>>,
     /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
     pub max_iterations: Option<Option<i32>>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    /// None = don't change, Some(None) = set to NULL, Some(Some(v)) = set to v
+    pub parallel_tool_calls: Option<Option<bool>>,
 }
 
 // ============================================
@@ -659,6 +667,9 @@ pub struct SessionRow {
     /// Maximum iterations per turn
     #[sqlx(default)]
     pub max_iterations: Option<i32>,
+    /// Request-level parallel tool calling preference (EVE-598)
+    #[sqlx(default)]
+    pub parallel_tool_calls: Option<bool>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -746,6 +757,8 @@ pub struct CreateSessionRow {
     pub network_access: Option<serde_json::Value>,
     /// Maximum iterations per turn
     pub max_iterations: Option<i32>,
+    /// Request-level parallel tool calling preference (EVE-598)
+    pub parallel_tool_calls: Option<bool>,
     /// Blueprint ID for blueprint-backed sessions.
     pub blueprint_id: Option<String>,
     /// Validated blueprint config (JSONB in DB).

@@ -387,6 +387,7 @@ fn harness(harness_id: HarnessId) -> Harness {
         capabilities: vec![AgentCapabilityConfig::new("test_math")],
         initial_files: vec![],
         network_access: None,
+        parallel_tool_calls: None,
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
@@ -425,6 +426,7 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         status: SessionStatus::Started,
         created_at: Utc::now(),
         updated_at: Utc::now(),
@@ -458,6 +460,7 @@ fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         initial_files: vec![],
         network_access: None,
         max_iterations: Some(8),
+        parallel_tool_calls: None,
         tools: vec![],
         mcp_servers: Default::default(),
         status: AgentStatus::Active,
@@ -1095,6 +1098,7 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
         response_id: Some("resp_123".into()),
         locale: Some("en-US".into()),
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1110,8 +1114,65 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
             assert_eq!(plan.iteration, 1);
             assert_eq!(plan.previous_response_id.as_deref(), Some("resp_123"));
             assert_eq!(plan.input.tool_calls.len(), 1);
+            // EVE-598: default None preference threads through unchanged.
+            assert_eq!(plan.input.parallel_tool_calls, None);
         }
         other => panic!("expected ScheduleAct, got {other:?}"),
+    }
+}
+
+/// EVE-598: the request-level `parallel_tool_calls` preference set on the
+/// reason result threads through to the scheduled `ActInput` for every value.
+#[tokio::test]
+async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
+    for preference in [Some(true), Some(false), None] {
+        let adapter = mock_host();
+        let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+        let session_id = SessionId::from_uuid(Uuid::now_v7());
+        adapter.harness_store.add_harness(harness(harness_id)).await;
+        adapter
+            .session_store
+            .insert(session(session_id, harness_id))
+            .await;
+
+        let input = turn_state(session_id, harness_id);
+        let output = serde_json::to_value(ReasonResult {
+            success: true,
+            text: "Calling a tool".into(),
+            tool_calls: vec![ToolCall {
+                id: "call_mul".into(),
+                name: "multiply".into(),
+                arguments: serde_json::json!({ "a": 6, "b": 7 }),
+            }],
+            has_tool_calls: true,
+            tool_definitions: vec![],
+            max_iterations: 8,
+            error: None,
+            user_facing_error: None,
+            error_disclosure: None,
+            usage: None,
+            output_message_id: None,
+            time_to_first_token_ms: None,
+            response_id: Some("resp_123".into()),
+            locale: None,
+            network_access: None,
+            parallel_tool_calls: preference,
+        })
+        .unwrap();
+
+        let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+            .await
+            .unwrap();
+
+        match plan {
+            RuntimeTurnPlan::ScheduleAct(plan) => {
+                assert_eq!(
+                    plan.input.parallel_tool_calls, preference,
+                    "parallel_tool_calls must thread through unchanged"
+                );
+            }
+            other => panic!("expected ScheduleAct, got {other:?}"),
+        }
     }
 }
 
@@ -1150,6 +1211,7 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
         response_id: Some("resp_blueprint".into()),
         locale: Some("en-US".into()),
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1196,6 +1258,7 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         response_id: Some("resp_steer".into()),
         locale: None,
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1248,6 +1311,7 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
         response_id: Some("resp_done".into()),
         locale: None,
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1309,6 +1373,7 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
         response_id: None,
         locale: None,
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1372,6 +1437,7 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
         response_id: None,
         locale: None,
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 
@@ -1431,6 +1497,7 @@ async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
         response_id: None,
         locale: None,
         network_access: None,
+        parallel_tool_calls: None,
     })
     .unwrap();
 

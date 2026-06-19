@@ -116,6 +116,13 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 20)]
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598). `true` signals
+    /// the provider that parallel tool calls are wanted; `false` requests at
+    /// most one tool call per turn and forces serial execution. Omit to inherit
+    /// the agent/harness preference or the provider default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = true)]
+    pub parallel_tool_calls: Option<bool>,
     /// Internal: parent session for subagent nesting guard.
     /// Set by the worker when spawning a child session so the child cannot itself
     /// spawn further children (prevents runaway recursion).

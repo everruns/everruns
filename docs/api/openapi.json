@@ -13466,6 +13466,14 @@
               }
             ]
           },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+            "example": true
+          },
           "root_agent_id": {
             "type": [
               "string",
@@ -15627,6 +15635,14 @@
               }
             ]
           },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to use the\nprovider default.",
+            "example": true
+          },
           "system_prompt": {
             "type": "string",
             "description": "The system prompt that defines the agent's behavior and capabilities.\nThis is sent as the first message in every conversation.",
@@ -16795,6 +16811,14 @@
                 "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
               }
             ]
+          },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to inherit\nthe agent/harness preference or the provider default.",
+            "example": true
           },
           "system_prompt": {
             "type": [
@@ -19227,6 +19251,14 @@
               }
             ]
           },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+            "example": true
+          },
           "parent_harness_id": {
             "type": [
               "string",
@@ -20781,6 +20813,14 @@
                     }
                   ]
                 },
+                "parallel_tool_calls": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                  "example": true
+                },
                 "root_agent_id": {
                   "type": [
                     "string",
@@ -21397,6 +21437,14 @@
                       "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
                     }
                   ]
+                },
+                "parallel_tool_calls": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                  "example": true
                 },
                 "parent_harness_id": {
                   "type": [
@@ -23593,6 +23641,14 @@
                               "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
                             }
                           ]
+                        },
+                        "parallel_tool_calls": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ],
+                          "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                          "example": true
                         },
                         "parent_harness_id": {
                           "type": [
@@ -26197,6 +26253,14 @@
                   "description": "Owning principal for this session.",
                   "example": "principal_01933b5a000070008000000000000001"
                 },
+                "parallel_tool_calls": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ],
+                  "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                  "example": true
+                },
                 "parent_session_id": {
                   "type": [
                     "string",
@@ -26716,6 +26780,14 @@
                             }
                           ]
                         },
+                        "parallel_tool_calls": {
+                          "type": [
+                            "boolean",
+                            "null"
+                          ],
+                          "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                          "example": true
+                        },
                         "root_agent_id": {
                           "type": [
                             "string",
@@ -27087,6 +27159,14 @@
                       "type": "string",
                       "description": "Owning principal for this session.",
                       "example": "principal_01933b5a000070008000000000000001"
+                    },
+                    "parallel_tool_calls": {
+                      "type": [
+                        "boolean",
+                        "null"
+                      ],
+                      "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                      "example": true
                     },
                     "parent_session_id": {
                       "type": [
@@ -29552,6 +29632,14 @@
             "description": "Owning principal for this session.",
             "example": "principal_01933b5a000070008000000000000001"
           },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+            "example": true
+          },
           "parent_session_id": {
             "type": [
               "string",
@@ -31921,6 +32009,14 @@
               }
             ]
           },
+          "parallel_tool_calls": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Request-level parallel tool calling preference (EVE-598). `true` signals\nthe provider that parallel tool calls are wanted; `false` requests at\nmost one tool call per turn and forces serial execution. Omit to leave\nunchanged.",
+            "example": true
+          },
           "status": {
             "oneOf": [
               {
@@ -33737,6 +33833,14 @@
                   }
                 ]
               },
+              "parallel_tool_calls": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                "example": true
+              },
               "root_agent_id": {
                 "type": [
                   "string",
@@ -34425,6 +34529,14 @@
                   }
                 ]
               },
+              "parallel_tool_calls": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                "example": true
+              },
               "parent_harness_id": {
                 "type": [
                   "string",
@@ -35108,6 +35220,14 @@
                       }
                     ]
                   },
+                  "parallel_tool_calls": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                    "example": true
+                  },
                   "root_agent_id": {
                     "type": [
                       "string",
@@ -35338,6 +35458,14 @@
                         "description": "Network access list controlling which hosts/URLs sessions can reach.\nMerged with agent and session layers (allowed: intersect, blocked: union)."
                       }
                     ]
+                  },
+                  "parallel_tool_calls": {
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                    "example": true
                   },
                   "parent_harness_id": {
                     "type": [
@@ -35647,6 +35775,14 @@
                 "type": "string",
                 "description": "Owning principal for this session.",
                 "example": "principal_01933b5a000070008000000000000001"
+              },
+              "parallel_tool_calls": {
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "description": "Request-level parallel tool calling preference (EVE-598).\n\n`None` (default) preserves provider defaults. `Some(true)` signals the\nprovider that parallel tool calls are wanted; `Some(false)` requests at\nmost one tool call per turn and forces serial execution. Merged across\nharness/agent/session layers (overlay wins).",
+                "example": true
               },
               "parent_session_id": {
                 "type": [

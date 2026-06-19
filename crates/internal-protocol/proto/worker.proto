@@ -358,6 +358,7 @@ message Agent {
     Timestamp updated_at = 10;
     repeated string capability_ids = 11;
     optional string display_name = 12;
+    optional bool parallel_tool_calls = 13;
 }
 
 message GetAgentRequest {
@@ -437,6 +438,7 @@ message Session {
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;
     optional string blueprint_config_json = 24;
+    optional bool parallel_tool_calls = 25;
 }
 
 message GetSessionRequest {

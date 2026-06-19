@@ -404,6 +404,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 include_usage: true,
             }),
             tools,
+            parallel_tool_calls: config.parallel_tool_calls,
             // Skip "none" — sending reasoning_effort to non-thinking models causes API errors
             reasoning_effort: config
                 .reasoning_effort
@@ -804,6 +805,10 @@ struct OpenAiRequest {
     stream_options: Option<OpenAiStreamOptions>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAiTool>>,
+    /// Request-level control over parallel tool calls. Omitted when unset so the
+    /// provider default applies.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
     /// Metadata for tracking API usage (up to 16 key-value pairs).
@@ -1155,6 +1160,7 @@ mod tests {
                 include_usage: true,
             }),
             tools: None,
+            parallel_tool_calls: None,
             reasoning_effort: None,
             metadata: None,
         };
@@ -1184,6 +1190,7 @@ mod tests {
             stream: true,
             stream_options: None,
             tools: None,
+            parallel_tool_calls: None,
             reasoning_effort: None,
             metadata: Some(metadata),
         };
@@ -1483,6 +1490,7 @@ mod tests {
             stream: true,
             stream_options: None,
             tools: None,
+            parallel_tool_calls: None,
             reasoning_effort: Some("none".to_string())
                 .as_ref()
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
@@ -1512,6 +1520,7 @@ mod tests {
             stream: true,
             stream_options: None,
             tools: None,
+            parallel_tool_calls: None,
             reasoning_effort: Some("high".to_string())
                 .as_ref()
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
@@ -1521,6 +1530,39 @@ mod tests {
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["reasoning_effort"], "high");
+    }
+
+    /// EVE-598: the Chat Completions request (used by the OpenAI Chat driver,
+    /// OpenRouter, and MAI) serializes `parallel_tool_calls` only when set, so
+    /// the provider default applies when the operator leaves it unset.
+    #[test]
+    fn test_request_serializes_parallel_tool_calls() {
+        fn build(flag: Option<bool>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                model: "gpt-4o-mini".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: flag,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        // Omitted when None.
+        assert!(build(None).get("parallel_tool_calls").is_none());
+        // Present and preserved for Some(_).
+        assert_eq!(build(Some(true))["parallel_tool_calls"], true);
+        assert_eq!(build(Some(false))["parallel_tool_calls"], false);
     }
 
     // ------------------------------------------------------------------

@@ -34,6 +34,7 @@ pub struct HarnessBuilder {
     capabilities: Vec<AgentCapabilityConfig>,
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
+    parallel_tool_calls: Option<bool>,
     mcp_servers: ScopedMcpServers,
     embedder_metadata: HashMap<String, String>,
     is_built_in: bool,
@@ -57,6 +58,7 @@ impl HarnessBuilder {
             capabilities: Vec::new(),
             initial_files: Vec::new(),
             network_access: None,
+            parallel_tool_calls: None,
             mcp_servers: ScopedMcpServers::default(),
             embedder_metadata: HashMap::new(),
             is_built_in: false,
@@ -150,6 +152,12 @@ impl HarnessBuilder {
         self
     }
 
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: bool) -> Self {
+        self.parallel_tool_calls = Some(parallel_tool_calls);
+        self
+    }
+
     pub fn mcp_servers(mut self, mcp_servers: ScopedMcpServers) -> Self {
         self.mcp_servers = mcp_servers;
         self
@@ -228,6 +236,7 @@ impl HarnessBuilder {
             capabilities: self.capabilities,
             initial_files: self.initial_files,
             network_access: self.network_access,
+            parallel_tool_calls: self.parallel_tool_calls,
             mcp_servers: self.mcp_servers,
             embedder_metadata: self.embedder_metadata,
             is_built_in: self.is_built_in,
@@ -254,6 +263,7 @@ pub struct AgentBuilder {
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
+    parallel_tool_calls: Option<bool>,
     tools: Vec<ToolDefinition>,
     mcp_servers: ScopedMcpServers,
     status: AgentStatus,
@@ -276,6 +286,7 @@ impl AgentBuilder {
             initial_files: Vec::new(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: Vec::new(),
             mcp_servers: ScopedMcpServers::default(),
             status: AgentStatus::Active,
@@ -368,6 +379,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: bool) -> Self {
+        self.parallel_tool_calls = Some(parallel_tool_calls);
+        self
+    }
+
     pub fn tool(mut self, tool: ToolDefinition) -> Self {
         self.tools.push(tool);
         self
@@ -423,6 +440,7 @@ impl AgentBuilder {
             initial_files: self.initial_files,
             network_access: self.network_access,
             max_iterations: self.max_iterations,
+            parallel_tool_calls: self.parallel_tool_calls,
             tools: self.tools,
             mcp_servers: self.mcp_servers,
             status: self.status,
@@ -454,6 +472,7 @@ pub struct SessionBuilder {
     initial_files: Vec<everruns_core::InitialFile>,
     network_access: Option<NetworkAccessList>,
     max_iterations: Option<usize>,
+    parallel_tool_calls: Option<bool>,
     status: SessionStatus,
     created_at: Option<DateTime<Utc>>,
     updated_at: Option<DateTime<Utc>>,
@@ -479,6 +498,7 @@ impl SessionBuilder {
             initial_files: Vec::new(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             status: SessionStatus::Started,
             created_at: None,
             updated_at: None,
@@ -602,6 +622,12 @@ impl SessionBuilder {
         self
     }
 
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: bool) -> Self {
+        self.parallel_tool_calls = Some(parallel_tool_calls);
+        self
+    }
+
     pub fn status(mut self, status: SessionStatus) -> Self {
         self.status = status;
         self
@@ -648,6 +674,7 @@ impl SessionBuilder {
             hints: None,
             network_access: self.network_access,
             max_iterations: self.max_iterations,
+            parallel_tool_calls: self.parallel_tool_calls,
             status: self.status,
             created_at,
             updated_at,

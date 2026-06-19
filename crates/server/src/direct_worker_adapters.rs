@@ -567,6 +567,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .and_then(|v| serde_json::from_value(v).ok()),
                 hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
                 max_iterations: max_iterations::from_db(r.max_iterations),
+                parallel_tool_calls: r.parallel_tool_calls,
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1824,6 +1825,8 @@ impl DirectWorkerAdapters {
                 network_access: row
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),
+                // No per-harness config column (EVE-598).
+                parallel_tool_calls: None,
                 embedder_metadata: serde_json::from_value(row.embedder_metadata)
                     .unwrap_or_default(),
                 is_built_in: row.is_built_in,
@@ -1879,6 +1882,7 @@ impl DirectWorkerAdapters {
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: max_iterations::from_db(r.max_iterations),
+            parallel_tool_calls: r.parallel_tool_calls,
             tools: serde_json::from_value(r.tools).unwrap_or_default(),
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
@@ -3345,6 +3349,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -3541,6 +3546,7 @@ mod tests {
             mcp_servers: serde_json::json!({}),
             max_iterations: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
         db.create_agent_with_id(everruns_core::DEFAULT_ORG_ID, id, create)
             .await
@@ -4166,6 +4172,7 @@ mod tests {
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,

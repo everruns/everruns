@@ -224,10 +224,9 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                         locale: reason_result.locale,
                         blueprint_id: session_blueprint_id,
                         network_access: reason_result.network_access,
-                        // Request-level `parallel_tool_calls` is not yet plumbed
-                        // into the reason path; the act scheduler defaults to its
-                        // class-aware concurrent schedule.
-                        parallel_tool_calls: None,
+                        // Request-level parallel tool calling preference, carried
+                        // from agent config through the reason path (EVE-598).
+                        parallel_tool_calls: reason_result.parallel_tool_calls,
                     },
                     previous_response_id: response_id,
                     iteration: state.iteration,

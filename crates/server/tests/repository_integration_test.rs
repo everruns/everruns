@@ -133,6 +133,7 @@ async fn test_agent_crud() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -213,6 +214,7 @@ async fn test_agent_upsert_initial_files() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -240,6 +242,7 @@ async fn test_agent_upsert_initial_files() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -387,6 +390,7 @@ async fn test_agent_get_by_name() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -443,6 +447,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -600,6 +605,7 @@ async fn test_session_crud() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -670,6 +676,7 @@ async fn test_session_crud() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -797,6 +804,7 @@ async fn test_event_crud() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -825,6 +833,7 @@ async fn test_event_crud() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -890,6 +899,7 @@ async fn test_event_exclude_types() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -918,6 +928,7 @@ async fn test_event_exclude_types() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -991,6 +1002,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1019,6 +1031,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1086,6 +1099,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1114,6 +1128,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1197,6 +1212,7 @@ async fn test_event_filter_types() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1225,6 +1241,7 @@ async fn test_event_filter_types() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1501,6 +1518,7 @@ async fn test_session_file_crud() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1529,6 +1547,7 @@ async fn test_session_file_crud() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1695,6 +1714,7 @@ async fn test_agent_capabilities() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1965,6 +1985,7 @@ async fn test_session_usage_tracking() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1993,6 +2014,7 @@ async fn test_session_usage_tracking() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -2067,6 +2089,7 @@ async fn test_session_previews() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -2095,6 +2118,7 @@ async fn test_session_previews() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -2702,6 +2726,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,

@@ -333,6 +333,22 @@ See `crates/core/src/capabilities/loop_detection.rs`.
 
 This logic is shared by all execution paths — the in-process runtime/host loop and the durable worker both run the same `ActAtom`. The `parallel_tool_calls` field is additive and `skip_serializing_if = "Option::is_none"`, so serialized `ActInput`s from older durable runs deserialize unchanged.
 
+### Request-level `parallel_tool_calls` (EVE-598)
+
+`parallel_tool_calls: Option<bool>` is a config field on harness/agent/session that merges through `AgentConfigOverlay` (overlay wins) into `RuntimeAgent`, then threads through `ReasonResult` into `ActInput`, and is serialized onto the provider request:
+
+- **Default `None`** preserves all current behavior: no field is sent to the provider, and the act scheduler uses its class-aware concurrent schedule.
+- **`Some(true)`** explicitly signals the provider that parallel tool calls are wanted. This lets an embedder opt into batching independent reads/searches instead of relying on each provider's undocumented default.
+- **`Some(false)`** asks the provider to emit at most one tool call per turn *and* forces the act scheduler to serialize the batch.
+
+Provider wire mapping (only sent when `Some(_)`):
+
+- **OpenAI** (Responses, and the Chat Completions `OpenAiRequest` shape used by the OpenAI Chat driver and MAI): `parallel_tool_calls` top-level boolean.
+- **Anthropic** (Messages): `tool_choice` with `type: "auto"` and `disable_parallel_tool_use = !value`. Sent only when the request carries tools (Anthropic rejects `tool_choice` without tools).
+- **OpenRouter**: wraps the Open Responses driver, so the request body inherits the Responses serialization (already includes `parallel_tool_calls`); the OpenRouter decoration layer does not strip it.
+
+Durable parity: the worker builds `RuntimeAgent` from gRPC-fetched schema objects, so the proto `Agent` and `Session` messages carry `parallel_tool_calls`. The server schema→proto and worker proto→schema adapters round-trip the value, preserving the operator setting through `RuntimeAgent` → `ReasonResult` → provider in durable mode.
+
 ### Step-Based Execution (Durable Mode)
 
 In durable mode, each LLM call and each tool call is a **separate durable activity (task)**:

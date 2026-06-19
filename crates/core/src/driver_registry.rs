@@ -1038,6 +1038,13 @@ pub struct LlmCallConfig {
     pub prompt_cache: Option<PromptCacheConfig>,
     /// OpenRouter-only model fallback and provider routing controls.
     pub openrouter_routing: Option<OpenRouterRoutingConfig>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    ///
+    /// Serialized onto the provider request when `Some(_)`: OpenAI sets
+    /// `parallel_tool_calls`; Anthropic maps `Some(false)` →
+    /// `tool_choice.disable_parallel_tool_use = true`. `None` preserves
+    /// provider defaults (no field sent).
+    pub parallel_tool_calls: Option<bool>,
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -1053,6 +1060,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             tool_search: runtime_agent.tool_search.clone(),
             prompt_cache: runtime_agent.prompt_cache.clone(),
             openrouter_routing: None,
+            parallel_tool_calls: runtime_agent.parallel_tool_calls,
         }
     }
 }
@@ -1165,6 +1173,12 @@ impl LlmCallConfigBuilder {
     /// Set OpenRouter model fallback and provider routing controls.
     pub fn openrouter_routing(mut self, config: OpenRouterRoutingConfig) -> Self {
         self.config.openrouter_routing = (!config.is_empty()).then_some(config);
+        self
+    }
+
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
+        self.config.parallel_tool_calls = parallel_tool_calls;
         self
     }
 

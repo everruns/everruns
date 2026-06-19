@@ -421,6 +421,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,

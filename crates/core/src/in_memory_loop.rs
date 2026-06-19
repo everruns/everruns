@@ -175,6 +175,7 @@ pub struct InMemoryAgenticLoopBuilder {
     tools: Vec<Box<dyn Tool>>,
     capabilities: Vec<Box<dyn Capability>>,
     max_iterations: usize,
+    parallel_tool_calls: Option<bool>,
     reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
@@ -196,6 +197,7 @@ impl InMemoryAgenticLoopBuilder {
             tools: vec![],
             capabilities: vec![],
             max_iterations: 10,
+            parallel_tool_calls: None,
             reasoning_effort_handle: None,
         }
     }
@@ -318,6 +320,16 @@ impl InMemoryAgenticLoopBuilder {
         self
     }
 
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    ///
+    /// `Some(true)` signals the provider that parallel tool calls are wanted;
+    /// `Some(false)` requests at most one tool call per turn and forces serial
+    /// execution. `None` (default) preserves provider defaults.
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
+        self.parallel_tool_calls = parallel_tool_calls;
+        self
+    }
+
     /// Build the agentic loop
     pub async fn build(self) -> Result<InMemoryAgenticLoop> {
         // Create stores
@@ -350,6 +362,7 @@ impl InMemoryAgenticLoopBuilder {
             mcp_servers: Default::default(),
             initial_files: vec![],
             network_access: None,
+            parallel_tool_calls: None,
             embedder_metadata: Default::default(),
             is_built_in: false,
             status: crate::harness::HarnessStatus::Active,
@@ -387,6 +400,7 @@ impl InMemoryAgenticLoopBuilder {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: self.parallel_tool_calls,
             tools: explicit_tool_definitions,
             status: AgentStatus::Active,
             created_at: now,
@@ -425,6 +439,7 @@ impl InMemoryAgenticLoopBuilder {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             status: SessionStatus::Started,
             created_at: now,
             updated_at: now,
@@ -727,10 +742,9 @@ impl InMemoryAgenticLoop {
                             locale: reason_result.locale,
                             blueprint_id: None,
                             network_access: reason_result.network_access,
-                            // Request-level `parallel_tool_calls` is not yet
-                            // plumbed into the reason path; the act scheduler
-                            // defaults to its class-aware concurrent schedule.
-                            parallel_tool_calls: None,
+                            // Request-level parallel tool calling preference,
+                            // carried from agent config through reason (EVE-598).
+                            parallel_tool_calls: reason_result.parallel_tool_calls,
                         })
                         .await?;
                     state_machine.on_act_completed();

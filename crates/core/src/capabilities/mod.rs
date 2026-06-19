@@ -2516,6 +2516,7 @@ pub async fn apply_capabilities(
         tool_search: collected.tool_search,
         prompt_cache: collected.prompt_cache,
         network_access: base_runtime_agent.network_access,
+        parallel_tool_calls: base_runtime_agent.parallel_tool_calls,
     };
 
     AppliedCapabilities {

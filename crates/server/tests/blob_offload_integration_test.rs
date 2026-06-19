@@ -128,6 +128,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
                 mcp_servers: json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -156,6 +157,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,

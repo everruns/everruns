@@ -308,6 +308,7 @@ async fn execute_case_inner(
                 hints: None,
                 network_access: None,
                 max_iterations,
+                parallel_tool_calls: None,
                 parent_session_id: None,
             },
         )

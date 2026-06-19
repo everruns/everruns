@@ -655,6 +655,7 @@ async fn process_slack_message(
                 hints: None,
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 parent_session_id: None,
             };
             let internal_caller = Caller::internal(org_id);
@@ -2437,6 +2438,7 @@ mod tests {
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             network_access: None,

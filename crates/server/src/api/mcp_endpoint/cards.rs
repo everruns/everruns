@@ -434,6 +434,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,

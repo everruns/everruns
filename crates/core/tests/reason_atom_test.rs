@@ -63,6 +63,7 @@ async fn setup_test_environment() -> (
         capabilities: vec![],
         initial_files: vec![],
         network_access: None,
+        parallel_tool_calls: None,
         mcp_servers: Default::default(),
         embedder_metadata: Default::default(),
         is_built_in: false,
@@ -92,6 +93,7 @@ async fn setup_test_environment() -> (
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         tools: vec![],
         mcp_servers: Default::default(),
         tags: vec![],
@@ -133,6 +135,7 @@ async fn setup_test_environment() -> (
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         created_at: now,
         updated_at: now,
         started_at: None,
@@ -544,6 +547,7 @@ async fn test_reason_atom_with_different_configs() {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         created_at: now2,
         updated_at: now2,
         started_at: None,
@@ -1127,6 +1131,7 @@ async fn test_driver_registry_integration() {
         tool_search: None,
         prompt_cache: None,
         openrouter_routing: None,
+        parallel_tool_calls: None,
     };
 
     let response = driver
@@ -1422,6 +1427,7 @@ async fn test_previous_response_id_round_trips_through_serde() {
         locale: None,
         response_id: Some("resp_out_456".to_string()),
         network_access: None,
+        parallel_tool_calls: None,
     };
     let result_json = serde_json::to_value(&result).unwrap();
     assert_eq!(result_json["response_id"], "resp_out_456");
@@ -2063,6 +2069,7 @@ async fn test_session_system_prompt_is_prepended_to_agent_prompt() {
                 hints: None,
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 created_at: now,
                 updated_at: now,
                 started_at: None,
@@ -2185,6 +2192,7 @@ async fn test_empty_session_system_prompt_is_ignored() {
                 hints: None,
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 created_at: now,
                 updated_at: now,
                 started_at: None,
@@ -2308,6 +2316,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
             tags: vec![],
@@ -2478,6 +2487,7 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
             tags: vec![],

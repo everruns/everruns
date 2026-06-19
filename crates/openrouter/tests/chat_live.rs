@@ -46,6 +46,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
             route: Some(OpenRouterRoute::Fallback),
             ..Default::default()
         }),
+        parallel_tool_calls: None,
     };
 
     let messages = vec![LlmMessage::text(
