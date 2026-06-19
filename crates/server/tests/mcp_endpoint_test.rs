@@ -2814,6 +2814,57 @@ async fn test_oauth_token_expires_in_matches_jwt_lifetime() {
     assert_eq!(expires_in, jwt_lifetime_secs(access_token));
 }
 
+/// Decode a JWT payload to a JSON object without verifying the signature.
+fn jwt_claims(token: &str) -> Value {
+    use base64::Engine;
+    let payload = token.split('.').nth(1).expect("JWT must have payload");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .expect("JWT payload must be base64url");
+    serde_json::from_slice(&decoded).expect("JWT payload must be JSON")
+}
+
+/// TM-MCP-006: the MCP OAuth flow must mint a resource-bound `mcp_access`
+/// token (distinguishing claim + `aud` audience) rather than a full-API access
+/// token. Proves claim (c) end-to-end through the real authorization_code grant.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_is_mcp_scoped_with_audience() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let token: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
+    let access_token = token["access_token"]
+        .as_str()
+        .expect("access_token present");
+
+    let claims = jwt_claims(access_token);
+    assert_eq!(
+        claims["token_type"], "mcp_access",
+        "MCP OAuth token must carry the distinguishing token_type"
+    );
+    let aud = claims["aud"].as_str().expect("MCP token must carry aud");
+    assert!(
+        aud.ends_with("/mcp"),
+        "MCP token aud must be the /mcp resource, got {aud}"
+    );
+
+    // Same audience binding must hold after refresh-token rotation.
+    let refreshed: Value = refresh_mcp_oauth_token(
+        &server,
+        &client_id,
+        &client_secret,
+        token["refresh_token"].as_str().unwrap(),
+    )
+    .await
+    .assert_success()
+    .json();
+    let refreshed_claims = jwt_claims(refreshed["access_token"].as_str().unwrap());
+    assert_eq!(refreshed_claims["token_type"], "mcp_access");
+    assert!(
+        refreshed_claims["aud"].as_str().unwrap().ends_with("/mcp"),
+        "refreshed MCP token must remain bound to /mcp"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
     let server = TestServer::in_memory().await;

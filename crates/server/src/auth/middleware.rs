@@ -163,8 +163,13 @@ impl AuthUser {
 pub enum AuthMethod {
     /// No authentication (anonymous)
     None,
-    /// JWT access token
+    /// JWT access token (browser/session/API)
     Jwt,
+    /// MCP OAuth access token (resource-bound to the `/mcp` endpoint).
+    /// Behaves like `Jwt` for org resolution but is minted and validated on a
+    /// separate path so it cannot act as a full user token on `/api/*`
+    /// (TM-MCP-006).
+    Mcp,
     /// Personal access token
     PersonalAccessToken,
 }
@@ -323,6 +328,81 @@ async fn extract_auth_user(
     }
 
     // No valid credentials found
+    Err(AuthError::unauthorized("Authentication required"))
+}
+
+/// Extract the authenticated caller for the MCP (`/mcp`) endpoint.
+///
+/// THREAT[TM-MCP-006]: this is the separate validation path for the `/mcp`
+/// resource. It accepts only:
+/// - the anonymous user in `AuthMode::None` (local dev),
+/// - personal access tokens (`evr_pat_` / `ApiKey`) — intentionally full-access
+///   programmatic credentials,
+/// - MCP-scoped OAuth Bearer JWTs, via `validate_mcp_token(token, resource)`.
+///
+/// It deliberately does NOT accept regular session/access JWTs or the
+/// `access_token` cookie: a browser session must not be replayed onto the MCP
+/// resource, and (symmetrically) `validate_token` rejects MCP tokens on
+/// `/api/*`, so the two surfaces stay audience-isolated.
+pub async fn extract_mcp_auth_user(
+    parts: &mut Parts,
+    auth_state: &AuthState,
+    mcp_resource: &str,
+) -> Result<AuthUser, AuthError> {
+    if auth_state.config.mode == AuthMode::None {
+        return Ok(AuthUser::anonymous());
+    }
+
+    if let Some(auth_header) = parts.headers.get(header::AUTHORIZATION) {
+        let auth_str = auth_header
+            .to_str()
+            .map_err(|_| AuthError::unauthorized("Invalid authorization header"))?;
+
+        // Bearer scheme (RFC 7235, case-insensitive).
+        let token_after_bearer = {
+            let mut it = auth_str.splitn(2, ' ');
+            match (it.next(), it.next()) {
+                (Some(scheme), Some(token)) if scheme.eq_ignore_ascii_case("bearer") => Some(token),
+                _ => None,
+            }
+        };
+        if let Some(token) = token_after_bearer {
+            if token.starts_with(PAT_PREFIX) {
+                return auth_state
+                    .backend
+                    .validate_personal_access_token(token)
+                    .await;
+            }
+            // Bearer JWT must be an MCP-scoped token for this resource.
+            return auth_state
+                .backend
+                .validate_mcp_token(token, mcp_resource)
+                .await;
+        }
+
+        // Legacy "ApiKey" scheme / bare PAT (kept for non-Bearer clients).
+        let token_after_scheme = {
+            let mut it = auth_str.splitn(2, ' ');
+            match (it.next(), it.next()) {
+                (Some(scheme), Some(token)) if scheme.eq_ignore_ascii_case("apikey") => Some(token),
+                _ => None,
+            }
+        };
+        if let Some(token) = token_after_scheme {
+            return auth_state
+                .backend
+                .validate_personal_access_token(token)
+                .await;
+        }
+        if auth_str.starts_with(PAT_PREFIX) {
+            return auth_state
+                .backend
+                .validate_personal_access_token(auth_str)
+                .await;
+        }
+    }
+
+    // Cookie sessions are intentionally NOT accepted on /mcp (see doc above).
     Err(AuthError::unauthorized("Authentication required"))
 }
 
@@ -594,9 +674,23 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
-
         let auth_state = AuthState::from_ref(state);
+        resolve_org_for_user(user, parts, &auth_state).await
+    }
+}
 
+/// Resolve the organization context for an already-authenticated user.
+///
+/// Shared by the `ResolvedOrg` extractor and the MCP endpoint's
+/// `McpResolvedOrg`, so an MCP-scoped token (validated on the `/mcp` path) gets
+/// the same org-resolution semantics as a session JWT without going back
+/// through `validate_token`.
+pub(crate) async fn resolve_org_for_user(
+    user: AuthUser,
+    parts: &mut Parts,
+    auth_state: &AuthState,
+) -> Result<ResolvedOrg, AuthError> {
+    {
         match user.auth_method {
             AuthMethod::PersonalAccessToken => {
                 // Personal access token auth: org resolved from X-Org-Id header,
@@ -629,7 +723,7 @@ where
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
                     }
-                    .with_effective_feature_flags(&auth_state)
+                    .with_effective_feature_flags(auth_state)
                     .await);
                 }
 
@@ -645,7 +739,7 @@ where
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
                     }
-                    .with_effective_feature_flags(&auth_state)
+                    .with_effective_feature_flags(auth_state)
                     .await);
                 }
 
@@ -678,7 +772,7 @@ where
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
                     }
-                    .with_effective_feature_flags(&auth_state)
+                    .with_effective_feature_flags(auth_state)
                     .await);
                 }
 
@@ -696,13 +790,16 @@ where
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
                 }
-                .with_effective_feature_flags(&auth_state)
+                .with_effective_feature_flags(auth_state)
                 .await)
             }
-            AuthMethod::Jwt => {
-                // Session auth: get org from everruns_org cookie
-                // Cookie is set via the switch-org endpoint.
-                // Cookies work automatically with SSE (EventSource) unlike headers
+            AuthMethod::Jwt | AuthMethod::Mcp => {
+                // Session auth (and MCP OAuth tokens, which resolve org the same
+                // way): get org from everruns_org cookie. Cookie is set via the
+                // switch-org endpoint and works automatically with SSE unlike
+                // headers. MCP clients can't set cookies, so they fall through to
+                // the first-org default below (and override per-call via
+                // `organization_id`).
                 let jar = CookieJar::from_headers(&parts.headers);
                 let cookie_org = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
 
@@ -722,7 +819,7 @@ where
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
                     }
-                    .with_effective_feature_flags(&auth_state)
+                    .with_effective_feature_flags(auth_state)
                     .await);
                 }
 
@@ -753,7 +850,7 @@ where
                             is_platform_user: user.is_platform_user,
                             feature_flags: FeatureFlags::default(),
                         }
-                        .with_effective_feature_flags(&auth_state)
+                        .with_effective_feature_flags(auth_state)
                         .await);
                     }
                     // DB available, user not a member → 404
@@ -781,7 +878,7 @@ where
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
                 }
-                .with_effective_feature_flags(&auth_state)
+                .with_effective_feature_flags(auth_state)
                 .await)
             }
         }

@@ -250,7 +250,7 @@ default 900 seconds). It is not a separate MCP-specific constant.
 
 ### Access Tokens
 
-Standard JWTs signed with `AUTH_JWT_SECRET` via `JwtService::generate_access_token()`. MCP OAuth tokens use the same claims as regular access tokens:
+MCP OAuth access tokens are JWTs signed with `AUTH_JWT_SECRET`, but minted distinctly from browser/session/API tokens via `JwtService::generate_mcp_access_token()`. They are **resource-bound** (RFC 8707): `token_type="mcp_access"` and `aud` is the canonical `/mcp` resource URL.
 
 ```json
 {
@@ -258,13 +258,19 @@ Standard JWTs signed with `AUTH_JWT_SECRET` via `JwtService::generate_access_tok
   "email": "<email>",
   "name": "<name>",
   "roles": ["user"],
-  "token_type": "access",
+  "token_type": "mcp_access",
+  "aud": "https://app.example.com/mcp",
   "exp": 1711234567,
   "iat": 1711230967
 }
 ```
 
-MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The access-token lifetime is the configured JWT access-token lifetime; MCP refresh tokens are opaque, stored hashed, and rotated by the OAuth flow.
+Audience binding (TM-MCP-006 / EVE-596) keeps the `/mcp` and `/api/*` surfaces isolated, preventing an OAuth confused-deputy:
+
+- The general `/api/*` path (`AuthUser` → `AuthBackend::validate_token` → `JwtService::validate_access_token`) **rejects** `mcp_access` tokens — a token authorized only for `/mcp` cannot act as a full user token on the REST API.
+- The `/mcp` endpoint uses a separate `McpAuthUser`/`McpResolvedOrg` extractor (`AuthBackend::validate_mcp_token` → `JwtService::validate_mcp_access_token`) that **accepts only** `mcp_access` tokens bound to the exact `/mcp` resource, and rejects regular session/access tokens and cookie sessions. Personal access tokens (`evr_pat_`) remain accepted on `/mcp` as intentional programmatic credentials.
+
+Acting-as-user is preserved (claims still carry the user's identity and roles); only the unbounded-resource scope is removed. The access-token lifetime is the configured JWT access-token lifetime; MCP refresh tokens are opaque, stored hashed, and rotated by the OAuth flow (rotation re-mints an `mcp_access` token with the same audience).
 
 ### Database Schema
 
@@ -335,8 +341,8 @@ The well-known endpoint is also merged — the API prefix is handled by construc
 Works automatically because:
 1. `POST /oauth/register` — no auth needed, backend not involved
 2. `GET /oauth/authorize` — resolves user from cookie, redirects to login if needed
-3. `POST /oauth/token` — validates code + PKCE, creates JWT. Backend not involved.
-4. Token validation — standard JWT validation via `validate_token()`
+3. `POST /oauth/token` — validates code + PKCE, mints a resource-bound `mcp_access` JWT via `JwtService::generate_mcp_access_token()`. Backend not involved.
+4. Token validation — the `/mcp` endpoint calls `AuthBackend::validate_mcp_token(token, resource)`, NOT the general `validate_token()`. External backends that issue their own MCP tokens must override `validate_mcp_token` to enforce the same audience binding (the OSS default fails closed); the mint + validate split is exposed on `JwtService`/`AuthBackend` for this purpose (TM-MCP-006).
 
 External backends only need to ensure their login page honors the shared `return_to` query parameter (see [Login Page Contract](authentication.md#login-page-contract) in the authentication spec). `return_to` is the single public auth-resume parameter across app, MCP OAuth, and CLI flows — there is no separate `redirect_to`.
 
@@ -349,6 +355,7 @@ External backends only need to ensure their login page honors the shared `return
 | Open redirect | Redirect URIs must exactly match pre-registered values. |
 | CSRF | State parameter required and validated by client. |
 | Refresh token theft | Stored hashed, 30-day TTL, rotation on use. |
+| MCP token confused-deputy | Access tokens are resource-bound (`token_type="mcp_access"`, `aud={root}/mcp`). `/api/*` rejects them and `/mcp` rejects regular session/access tokens (TM-MCP-006). |
 | Unauthorized MCP access | Permission policies: `MCP_SERVER_VIEW`, `MCP_SERVER_MANAGE`, `MCP_SERVER_DANGEROUS`. |
 | SSRF via MCP server URL | URLs validated on create/update and re-validated at execution time. Private IPs, loopback, link-local, and cloud metadata endpoints blocked. |
 | API key exposure | Encrypted at rest (envelope encryption). Never returned in API responses. |

@@ -224,6 +224,16 @@ pub struct McpOAuthState {
     pub frontend_url: String,
 }
 
+impl McpOAuthState {
+    /// Canonical MCP resource URL (`{issuer}/mcp`) used as the `aud` for minted
+    /// MCP access tokens (RFC 8707). Must match the `resource` advertised in the
+    /// protected-resource metadata and the audience the `/mcp` endpoint checks
+    /// (TM-MCP-006).
+    fn mcp_resource(&self) -> String {
+        format!("{}/mcp", self.issuer_url.trim_end_matches('/'))
+    }
+}
+
 impl FromRef<McpOAuthState> for AuthState {
     fn from_ref(state: &McpOAuthState) -> Self {
         state.auth.clone()
@@ -1114,10 +1124,18 @@ async fn handle_authorization_code_grant(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Generate MCP access token (JWT with mcp_access token_type)
+    // THREAT[TM-MCP-006]: mint a resource-bound MCP access token (token_type
+    // "mcp_access", aud = `{root}/mcp`) rather than a full-API access token, so
+    // it is accepted only at `/mcp` and rejected on `/api/*`.
     let access_token = state
         .jwt_service
-        .generate_access_token(auth_code.user_id, &user.email, &user.name, &roles)
+        .generate_mcp_access_token(
+            auth_code.user_id,
+            &user.email,
+            &user.name,
+            &roles,
+            &state.mcp_resource(),
+        )
         .map_err(|_| OAuthErrorResponse {
             error: "server_error".to_string(),
             error_description: Some("Failed to generate token".to_string()),
@@ -1246,10 +1264,16 @@ async fn handle_refresh_token_grant(
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
-    // Generate new access token
+    // Generate new resource-bound MCP access token (see TM-MCP-006 above).
     let access_token = state
         .jwt_service
-        .generate_access_token(stored_token.user_id, &user.email, &user.name, &roles)
+        .generate_mcp_access_token(
+            stored_token.user_id,
+            &user.email,
+            &user.name,
+            &roles,
+            &state.mcp_resource(),
+        )
         .map_err(|_| OAuthErrorResponse {
             error: "server_error".to_string(),
             error_description: Some("Failed to generate token".to_string()),
