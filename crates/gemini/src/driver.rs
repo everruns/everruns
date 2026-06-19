@@ -13,6 +13,7 @@ use futures::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use everruns_core::credential_schema::CredentialFormSchema;
@@ -142,6 +143,7 @@ impl GeminiChatDriver {
             parts: vec![GeminiPart::Text { text }],
         });
         let mut contents = Vec::new();
+        let visible_function_call_ids = visible_tool_call_ids(messages);
 
         for msg in messages {
             match msg.role {
@@ -152,6 +154,12 @@ impl GeminiChatDriver {
                 LlmMessageRole::Tool => {
                     // Tool results in Gemini use functionResponse parts
                     if let Some(tool_call_id) = &msg.tool_call_id {
+                        // Gemini rejects functionResponse parts unless the matching
+                        // functionCall is present in the visible request after trimming.
+                        if !visible_function_call_ids.contains(tool_call_id.as_str()) {
+                            continue;
+                        }
+
                         // Try to parse as JSON, fall back to wrapping in object
                         let response_value = serde_json::from_str::<Value>(&msg.content.to_text())
                             .unwrap_or_else(|_| json!({"result": msg.content.to_text()}));
@@ -854,6 +862,15 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 // SSE Parsing
 // ============================================================================
 
+fn visible_tool_call_ids(messages: &[LlmMessage]) -> HashSet<&str> {
+    messages
+        .iter()
+        .filter(|msg| msg.role == LlmMessageRole::Assistant)
+        .flat_map(|msg| msg.tool_calls.iter().flatten())
+        .map(|tool_call| tool_call.id.as_str())
+        .collect()
+}
+
 /// Extract a complete SSE event from the buffer, returning the data payload
 fn extract_sse_event(buffer: &mut String) -> Option<String> {
     // Look for "data: " followed by a complete JSON object or "[DONE]"
@@ -1401,6 +1418,39 @@ mod tests {
 
     #[test]
     fn test_convert_messages_tool_result() {
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "get_weather".to_string(),
+                    name: "get_weather".to_string(),
+                    arguments: json!({"city": "London"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("get_weather".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let (_, contents) = GeminiChatDriver::convert_messages(&messages);
+
+        assert_eq!(contents.len(), 2);
+        assert_eq!(contents[1].role.as_deref(), Some("user"));
+    }
+
+    #[test]
+    fn test_convert_messages_drops_orphan_tool_result() {
         let messages = vec![LlmMessage {
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Text("{\"temp\": 20}".to_string()),
@@ -1413,8 +1463,7 @@ mod tests {
 
         let (_, contents) = GeminiChatDriver::convert_messages(&messages);
 
-        assert_eq!(contents.len(), 1);
-        assert_eq!(contents[0].role.as_deref(), Some("user"));
+        assert!(contents.is_empty());
     }
 
     #[test]
