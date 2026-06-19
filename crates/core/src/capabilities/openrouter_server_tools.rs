@@ -68,10 +68,13 @@ pub fn server_tools_from_config(config: &Value) -> Vec<OpenRouterServerTool> {
 }
 
 impl OpenRouterServerToolsCapability {
-    fn tool_enum() -> Vec<Value> {
+    /// `oneOf` entries (`{const, title}`) for the server-tool enum, so the UI
+    /// renders a readable label per tool and `enum_labels` overlays can localize
+    /// each one. Title source of truth is `OpenRouterServerToolKind::display_name`.
+    fn tool_one_of() -> Vec<Value> {
         OpenRouterServerToolKind::ALL
             .iter()
-            .map(|kind| json!(kind.name()))
+            .map(|kind| json!({ "const": kind.name(), "title": kind.display_name() }))
             .collect()
     }
 }
@@ -93,11 +96,52 @@ impl Capability for OpenRouterServerToolsCapability {
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
-        vec![CapabilityLocalization::text(
-            "uk",
-            "Серверні інструменти OpenRouter",
-            "Вмикає серверні інструменти OpenRouter (веб-пошук, веб-завантаження, дата й час, генерація зображень тощо), які виконуються на боці OpenRouter. Інші провайдери ігнорують це налаштування.",
-        )]
+        vec![
+            CapabilityLocalization {
+                locale: "en",
+                name: None,
+                description: None,
+                config_description: Some(
+                    "Choose which OpenRouter server tools the model may invoke.",
+                ),
+                config_overlay: None,
+            },
+            CapabilityLocalization {
+                locale: "uk",
+                name: Some("Серверні інструменти OpenRouter"),
+                description: Some(
+                    "Вмикає серверні інструменти OpenRouter (веб-пошук, веб-завантаження, дата й час, генерація зображень тощо), які виконуються на боці OpenRouter. Інші провайдери ігнорують це налаштування.",
+                ),
+                config_description: Some(
+                    "Визначає, які серверні інструменти OpenRouter може викликати модель.",
+                ),
+                config_overlay: Some(json!({
+                    "properties": {
+                        TOOLS_KEY: {
+                            "title": "Увімкнені серверні інструменти",
+                            "description": "Серверні інструменти OpenRouter, які може викликати модель.",
+                            "items": {
+                                "title": "Серверний інструмент",
+                                "enum_labels": {
+                                    "web_search": "Веб-пошук",
+                                    "web_fetch": "Веб-завантаження",
+                                    "datetime": "Дата й час",
+                                    "image_generation": "Генерація зображень",
+                                    "apply_patch": "Застосування патчів",
+                                    "fusion": "Fusion",
+                                    "advisor": "Порадник",
+                                    "subagent": "Субагент",
+                                },
+                            },
+                        },
+                        WEB_SEARCH_MAX_RESULTS_KEY: {
+                            "title": "Максимум результатів веб-пошуку",
+                            "description": "Максимальна кількість результатів для інструмента веб-пошуку.",
+                        },
+                    },
+                })),
+            },
+        ]
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -122,7 +166,8 @@ impl Capability for OpenRouterServerToolsCapability {
                     "description": "OpenRouter server tools the model may invoke.",
                     "items": {
                         "type": "string",
-                        "enum": Self::tool_enum(),
+                        "title": "Server tool",
+                        "oneOf": Self::tool_one_of(),
                     },
                     "uniqueItems": true,
                 },
@@ -134,6 +179,17 @@ impl Capability for OpenRouterServerToolsCapability {
                 },
             },
             "additionalProperties": false,
+        }))
+    }
+
+    fn config_ui_schema(&self) -> Option<Value> {
+        Some(json!({
+            // Render the tool list as a multi-select of checkboxes, and show it
+            // before the web-search-only numeric option.
+            "ui:order": [TOOLS_KEY, WEB_SEARCH_MAX_RESULTS_KEY],
+            TOOLS_KEY: {
+                "ui:widget": "checkboxes",
+            },
         }))
     }
 
@@ -182,6 +238,58 @@ mod tests {
         // Provider-executed: contributes no executable tools or prompt text.
         assert!(cap.tools().is_empty());
         assert!(cap.config_schema().is_some());
+        assert!(cap.config_ui_schema().is_some());
+    }
+
+    #[test]
+    fn schema_lists_every_tool_with_a_title() {
+        let schema = OpenRouterServerToolsCapability.config_schema().unwrap();
+        let one_of = schema["properties"][TOOLS_KEY]["items"]["oneOf"]
+            .as_array()
+            .expect("tools render as a oneOf of labeled consts");
+        assert_eq!(one_of.len(), OpenRouterServerToolKind::ALL.len());
+        for entry in one_of {
+            assert!(entry["const"].is_string());
+            assert!(
+                entry["title"].as_str().is_some_and(|t| !t.is_empty()),
+                "every server tool needs a UI title: {entry}"
+            );
+        }
+    }
+
+    #[test]
+    fn localization_resolves_ukrainian() {
+        let cap = OpenRouterServerToolsCapability;
+        assert_eq!(
+            cap.localized_name(Some("uk")),
+            "Серверні інструменти OpenRouter"
+        );
+        // config_description has an `en` base and a `uk` override.
+        assert!(cap.describe_schema(Some("en")).is_some());
+        assert!(cap.describe_schema(Some("uk")).is_some());
+        assert_ne!(
+            cap.describe_schema(Some("en")),
+            cap.describe_schema(Some("uk"))
+        );
+    }
+
+    #[test]
+    fn ukrainian_overlay_labels_every_tool() {
+        // Drift guard: adding a server tool must also add its localized label.
+        let loc = OpenRouterServerToolsCapability
+            .localizations()
+            .into_iter()
+            .find(|l| l.locale == "uk")
+            .expect("uk localization present");
+        let overlay = loc.config_overlay.expect("uk overlay present");
+        let labels = &overlay["properties"][TOOLS_KEY]["items"]["enum_labels"];
+        for kind in OpenRouterServerToolKind::ALL {
+            assert!(
+                labels[kind.name()].as_str().is_some_and(|s| !s.is_empty()),
+                "missing uk enum_label for {}",
+                kind.name()
+            );
+        }
     }
 
     #[test]

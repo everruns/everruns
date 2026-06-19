@@ -651,6 +651,20 @@ impl OpenRouterServerToolKind {
         }
     }
 
+    /// Human-readable English display name, used for UI schema titles.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::WebSearch => "Web Search",
+            Self::WebFetch => "Web Fetch",
+            Self::Datetime => "Date & Time",
+            Self::ImageGeneration => "Image Generation",
+            Self::ApplyPatch => "Apply Patch",
+            Self::Fusion => "Fusion",
+            Self::Advisor => "Advisor",
+            Self::Subagent => "Subagent",
+        }
+    }
+
     /// The `type` discriminator OpenRouter expects in the request `tools` array,
     /// e.g. `"openrouter:web_search"`.
     pub fn wire_type(&self) -> String {
