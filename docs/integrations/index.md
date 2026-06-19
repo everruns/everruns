@@ -15,6 +15,7 @@ Give agents an isolated environment to run code, edit files, and persist state.
 | Integration | What it provides |
 |---|---|
 | [Daytona](/integrations/daytona/) | Cloud sandbox environments via the Daytona REST API |
+| [E2B](/integrations/e2b/) | Cloud sandboxes via the E2B management + runtime APIs (bring your own key) |
 | [Container Sandbox](/integrations/container-sandbox/) | Self-hosted container sandboxes via Docker Engine — no external SaaS |
 | [Deno](/integrations/deno/) | Cloud sandboxes via the Deno websocket sandbox API |
 | [Sprites](/integrations/sprites/) | Persistent Firecracker microVMs with checkpoints and HTTP services |
