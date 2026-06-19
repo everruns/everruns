@@ -2059,6 +2059,32 @@ mod tests {
         assert!(llm_config.max_tokens.is_none());
         assert!(llm_config.tools.is_empty());
         assert!(llm_config.metadata.is_empty());
+        // No server tools configured on the agent → none on the call config.
+        assert!(llm_config.openrouter_routing.is_none());
+    }
+
+    #[test]
+    fn runtime_agent_openrouter_routing_flows_into_call_config() {
+        // Closes the assembly loop: a capability sets RuntimeAgent.openrouter_routing
+        // (server tools), and the From<&RuntimeAgent> conversion the reason atom
+        // uses must carry it through to the OpenRouter driver.
+        let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
+        runtime_agent.openrouter_routing = Some(OpenRouterRoutingConfig {
+            server_tools: vec![OpenRouterServerTool::new(
+                OpenRouterServerToolKind::WebSearch,
+            )],
+            ..Default::default()
+        });
+
+        let llm_config = LlmCallConfig::from(&runtime_agent);
+        let routing = llm_config
+            .openrouter_routing
+            .expect("server-tool routing survives into the call config");
+        assert_eq!(routing.server_tools.len(), 1);
+        assert_eq!(
+            routing.server_tools[0].kind.wire_type(),
+            "openrouter:web_search"
+        );
     }
 
     #[test]

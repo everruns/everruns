@@ -15,6 +15,7 @@
 // https://openrouter.ai/docs/guides/features/server-tools.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use crate::capabilities::RiskLevel;
 use crate::driver_registry::{OpenRouterServerTool, OpenRouterServerToolKind};
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -152,6 +153,15 @@ impl Capability for OpenRouterServerToolsCapability {
         Some("Tools")
     }
 
+    /// THREAT[TM-AGENT-026]: enabling server tools grants the model
+    /// provider-executed web reach (`web_search`/`web_fetch`). OpenRouter runs
+    /// these, so Everruns' egress controls (TM-AGENT-018) do not apply — same
+    /// exfil class as web_fetch (TM-AGENT-013). Medium so assignment is logged
+    /// and admin-visible; the capability must be explicitly enabled per agent.
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::Medium
+    }
+
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
         None
     }
@@ -239,6 +249,8 @@ mod tests {
         assert!(cap.tools().is_empty());
         assert!(cap.config_schema().is_some());
         assert!(cap.config_ui_schema().is_some());
+        // Grants the model provider-side web reach (TM-AGENT-026).
+        assert_eq!(cap.risk_level(), RiskLevel::Medium);
     }
 
     #[test]
