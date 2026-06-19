@@ -12,7 +12,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use serde_json::json;
 
-use crate::atoms::{PostToolExecHook, PreToolUseDecision, PreToolUseHook};
+use crate::atoms::{
+    PostToolExecHook, PostToolExecHookPriority, PreToolUseDecision, PreToolUseHook,
+};
 use crate::capabilities::{Capability, CapabilityLocalization};
 use crate::guardrail_checks::{
     CompiledGuardrails, DEFAULT_OUTPUT_REPLACEMENT, DEFAULT_TOOL_OUTPUT_REPLACEMENT,
@@ -704,6 +706,10 @@ struct GuardrailPostToolHook {
 
 #[async_trait]
 impl PostToolExecHook for GuardrailPostToolHook {
+    fn priority(&self) -> PostToolExecHookPriority {
+        PostToolExecHookPriority::Guardrail
+    }
+
     async fn after_exec(
         &self,
         tool_call: &ToolCall,
@@ -711,51 +717,65 @@ impl PostToolExecHook for GuardrailPostToolHook {
         result: &mut ToolResult,
         context: &ToolContext,
     ) {
-        let mut haystack = String::new();
+        let mut visible = String::new();
         if let Some(value) = &result.result {
             match value {
-                serde_json::Value::String(s) => haystack.push_str(s),
-                other => haystack.push_str(&other.to_string()),
+                serde_json::Value::String(s) => visible.push_str(s),
+                other => visible.push_str(&other.to_string()),
             }
         }
         if let Some(error) = &result.error {
-            haystack.push('\n');
-            haystack.push_str(error);
+            visible.push('\n');
+            visible.push_str(error);
         }
-        if haystack.is_empty() {
+        // Deterministic checks scan the visible output and, separately, the full
+        // pre-truncation `raw_output`. Exec-style tools keep the unbudgeted output
+        // in `raw_output`, and persistence hooks write it to /outputs, so it must
+        // be scanned — but as its own slice rather than concatenated, so large
+        // outputs aren't duplicated in memory. Block clears `raw_output` below.
+        let raw = result.raw_output.as_deref().filter(|s| !s.is_empty());
+        let visible_slice = (!visible.is_empty()).then_some(visible.as_str());
+        if visible_slice.is_none() && raw.is_none() {
             return;
         }
-        let hits = self
-            .compiled
-            .evaluate(GuardrailStage::ToolOutput, &haystack, None, &|_| false);
-        for hit in hits {
-            match hit.action {
-                GuardrailAction::Block => {
-                    tracing::warn!(
-                        check = %hit.check_label,
-                        reason_code = %hit.reason_code,
-                        tool = %tool_call.name,
-                        "guardrails: withholding tool output"
-                    );
-                    let notice = hit
-                        .replacement
-                        .unwrap_or_else(|| DEFAULT_TOOL_OUTPUT_REPLACEMENT.to_string());
-                    // The original content never reaches model context.
-                    result.result = Some(serde_json::Value::String(notice));
-                    result.error = None;
-                    result.images = None;
-                    result.raw_output = None;
-                    return;
-                }
-                GuardrailAction::Log => {
-                    tracing::warn!(
-                        check = %hit.check_label,
-                        reason_code = %hit.reason_code,
-                        tool = %tool_call.name,
-                        "guardrails: tool output check hit (log only)"
-                    );
+        let mut block_notice: Option<String> = None;
+        'scan: for input in [visible_slice, raw].into_iter().flatten() {
+            for hit in self
+                .compiled
+                .evaluate(GuardrailStage::ToolOutput, input, None, &|_| false)
+            {
+                match hit.action {
+                    GuardrailAction::Block => {
+                        tracing::warn!(
+                            check = %hit.check_label,
+                            reason_code = %hit.reason_code,
+                            tool = %tool_call.name,
+                            "guardrails: withholding tool output"
+                        );
+                        block_notice = Some(
+                            hit.replacement
+                                .unwrap_or_else(|| DEFAULT_TOOL_OUTPUT_REPLACEMENT.to_string()),
+                        );
+                        break 'scan;
+                    }
+                    GuardrailAction::Log => {
+                        tracing::warn!(
+                            check = %hit.check_label,
+                            reason_code = %hit.reason_code,
+                            tool = %tool_call.name,
+                            "guardrails: tool output check hit (log only)"
+                        );
+                    }
                 }
             }
+        }
+        if let Some(notice) = block_notice {
+            // The original content never reaches model context or persistence.
+            result.result = Some(serde_json::Value::String(notice));
+            result.error = None;
+            result.images = None;
+            result.raw_output = None;
+            return;
         }
         // LLM-judge checks for tool_output; skipped when utility LLM is absent or disabled.
         if let Some(service) = &context.utility_llm_service
@@ -778,7 +798,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                     check,
                     GuardrailStage::ToolOutput,
                     &tool_call.name,
-                    &haystack,
+                    &visible,
                 )
                 .await
                 else {
@@ -834,7 +854,7 @@ impl PostToolExecHook for GuardrailPostToolHook {
                     check,
                     GuardrailStage::ToolOutput,
                     &tool_call.name,
-                    &haystack,
+                    &visible,
                 )
                 .await
                 else {
@@ -1203,6 +1223,7 @@ mod tests {
             }]
         }));
         assert_eq!(hooks.len(), 1);
+        assert_eq!(hooks[0].priority(), PostToolExecHookPriority::Guardrail);
         let ctx = ToolContext::new(SessionId::new());
         let mut result = ToolResult {
             tool_call_id: "call_1".to_string(),
@@ -1226,6 +1247,47 @@ mod tests {
             "matched output must be replaced with the notice"
         );
         assert!(result.error.is_none());
+    }
+
+    #[tokio::test]
+    async fn post_tool_hook_scans_raw_output_persistence_surface() {
+        // Sensitive content lives only in raw_output (the visible result is
+        // clean/budgeted). Because persistence writes raw_output to /outputs,
+        // the guardrail must still detect it, withhold the result, and clear
+        // raw_output so it never reaches the persistence surface.
+        let cap = GuardrailsCapability;
+        let hooks = cap.post_tool_exec_hooks_with_config(&json!({
+            "checks": [{
+                "id": "aws_key", "stage": "tool_output", "type": "regex",
+                "patterns": ["AKIA[0-9A-Z]{16}"]
+            }]
+        }));
+        let ctx = ToolContext::new(SessionId::new());
+        let mut result = ToolResult {
+            tool_call_id: "call_1".to_string(),
+            result: Some(json!("ok (truncated)")),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: Some("full output AKIAIOSFODNN7EXAMPLE trailing".to_string()),
+        };
+        hooks[0]
+            .after_exec(
+                &tool_call("bashkit_shell", json!({})),
+                &tool_def(),
+                &mut result,
+                &ctx,
+            )
+            .await;
+        assert_eq!(
+            result.result,
+            Some(json!(DEFAULT_TOOL_OUTPUT_REPLACEMENT)),
+            "raw_output match must withhold the visible result"
+        );
+        assert!(
+            result.raw_output.is_none(),
+            "raw_output must be cleared so persistence cannot leak it"
+        );
     }
 
     #[tokio::test]
