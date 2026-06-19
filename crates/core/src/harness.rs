@@ -117,6 +117,15 @@ pub struct Harness {
     /// Merged with agent and session layers (allowed: intersect, blocked: union).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<NetworkAccessList>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    ///
+    /// `None` (default) preserves provider defaults. `Some(true)` signals the
+    /// provider that parallel tool calls are wanted; `Some(false)` requests at
+    /// most one tool call per turn and forces serial execution. Merged across
+    /// harness/agent/session layers (overlay wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = true))]
+    pub parallel_tool_calls: Option<bool>,
     /// Remote MCP servers scoped to this harness and inherited by descendant layers.
     #[serde(
         default,
@@ -185,6 +194,7 @@ pub fn merge_harness(parent: &Harness, child: &Harness) -> Harness {
         capabilities: effective.capabilities,
         initial_files: effective.initial_files,
         network_access: effective.network_access,
+        parallel_tool_calls: effective.parallel_tool_calls,
         mcp_servers: effective.mcp_servers,
         // embedder_metadata: parent base, child keys win
         embedder_metadata: {
@@ -224,6 +234,7 @@ mod tests {
             capabilities: vec![],
             initial_files: vec![],
             network_access: None,
+            parallel_tool_calls: None,
             mcp_servers: ScopedMcpServers::default(),
             embedder_metadata: HashMap::new(),
             is_built_in: false,

@@ -779,6 +779,7 @@ async fn find_or_create_session(
                         hints: None,
                         network_access: None,
                         max_iterations: None,
+                        parallel_tool_calls: None,
                         parent_session_id: None,
                     },
                 )

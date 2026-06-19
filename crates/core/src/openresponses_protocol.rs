@@ -892,6 +892,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             reasoning,
             metadata,
             prompt_cache_key,
+            parallel_tool_calls: config.parallel_tool_calls,
         };
 
         // Log request details for debugging LLM errors.
@@ -1958,6 +1959,10 @@ struct ResponsesRequest {
     metadata: Option<std::collections::HashMap<String, String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     prompt_cache_key: Option<String>,
+    /// Request-level parallel tool calling preference (EVE-598). Omitted when
+    /// `None` to preserve the provider default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parallel_tool_calls: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2108,6 +2113,7 @@ mod tests {
             reasoning: None,
             metadata: None,
             prompt_cache_key: None,
+            parallel_tool_calls: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -2139,6 +2145,7 @@ mod tests {
             }),
             metadata: None,
             prompt_cache_key: None,
+            parallel_tool_calls: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
@@ -2169,11 +2176,49 @@ mod tests {
             reasoning: None,
             metadata: Some(metadata),
             prompt_cache_key: None,
+            parallel_tool_calls: None,
         };
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["metadata"]["session_id"], "session_abc123");
         assert_eq!(json["metadata"]["agent_id"], "agent_xyz789");
+    }
+
+    /// EVE-598: the Responses request serializes `parallel_tool_calls` only when
+    /// the config sets it, preserving provider defaults when `None`.
+    #[test]
+    fn test_request_serializes_parallel_tool_calls() {
+        let make = |flag: Option<bool>| ResponsesRequest {
+            model: "gpt-5.4".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: flag,
+        };
+
+        // None → field omitted entirely (provider default preserved).
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("parallel_tool_calls").is_none());
+
+        // Some(true) → field present and true.
+        let json = serde_json::to_value(make(Some(true))).unwrap();
+        assert_eq!(json["parallel_tool_calls"], true);
+
+        // Some(false) → field present and false.
+        let json = serde_json::to_value(make(Some(false))).unwrap();
+        assert_eq!(json["parallel_tool_calls"], false);
     }
 
     #[test]
@@ -2195,6 +2240,7 @@ mod tests {
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2233,6 +2279,7 @@ mod tests {
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
         let first_input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2284,6 +2331,7 @@ mod tests {
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2325,6 +2373,7 @@ mod tests {
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -3196,6 +3245,7 @@ mod tests {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -3280,6 +3330,7 @@ mod tests {
             }),
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3340,6 +3391,7 @@ mod tests {
                 provider: None,
                 ..Default::default()
             }),
+            parallel_tool_calls: None,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3398,6 +3450,7 @@ mod tests {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let stream = driver
@@ -3989,6 +4042,7 @@ mod tests {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         // Simulate the driver's filter logic
@@ -4021,6 +4075,7 @@ mod tests {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let reasoning = config

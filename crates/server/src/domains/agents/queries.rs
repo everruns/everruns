@@ -73,6 +73,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> 
             .network_access
             .and_then(|v| serde_json::from_value(v).ok()),
         max_iterations: max_iterations::from_db(row.max_iterations),
+        parallel_tool_calls: row.parallel_tool_calls,
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
         created_at: row.created_at,
@@ -124,6 +125,7 @@ pub fn authored_config(agent: &Agent) -> serde_json::Value {
         "mcp_servers": agent.mcp_servers,
         "network_access": agent.network_access,
         "max_iterations": agent.max_iterations,
+        "parallel_tool_calls": agent.parallel_tool_calls,
     })
 }
 
@@ -186,6 +188,10 @@ pub fn version_to_agent(source: &Agent, version: &AgentVersion) -> Agent {
         .and_then(|v| serde_json::from_value(v).ok());
     agent.max_iterations = cfg
         .get("max_iterations")
+        .cloned()
+        .and_then(|v| serde_json::from_value(v).ok());
+    agent.parallel_tool_calls = cfg
+        .get("parallel_tool_calls")
         .cloned()
         .and_then(|v| serde_json::from_value(v).ok());
 

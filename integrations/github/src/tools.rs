@@ -638,6 +638,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             status: SessionStatus::Idle,
             created_at: Utc::now(),
             updated_at: Utc::now(),

@@ -30,6 +30,7 @@ async fn test_create_and_get_agent() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -121,6 +122,7 @@ async fn test_create_and_list_sessions() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -148,6 +150,7 @@ async fn test_create_and_list_sessions() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -185,6 +188,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -232,6 +236,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -302,6 +307,7 @@ async fn test_session_updated_at() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -330,6 +336,7 @@ async fn test_session_updated_at() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -383,6 +390,7 @@ async fn test_events_sequence() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -410,6 +418,7 @@ async fn test_events_sequence() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -464,6 +473,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -491,6 +501,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -600,6 +611,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -747,6 +759,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -795,6 +808,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -822,6 +836,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1505,6 +1520,7 @@ async fn test_list_events_empty_session_with_limit() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1532,6 +1548,7 @@ async fn test_list_events_empty_session_with_limit() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1567,6 +1584,7 @@ async fn test_sessions_pagination() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1595,6 +1613,7 @@ async fn test_sessions_pagination() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -1669,6 +1688,7 @@ async fn test_sessions_pagination_ordering() {
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -1697,6 +1717,7 @@ async fn test_sessions_pagination_ordering() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -2167,6 +2188,7 @@ async fn create_test_agent(
             mcp_servers: serde_json::json!({}),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         },
     )
     .await
@@ -2428,6 +2450,7 @@ async fn test_search_sessions_by_title() {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
@@ -2456,6 +2479,7 @@ async fn test_search_sessions_by_title() {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
@@ -2500,6 +2524,7 @@ async fn test_search_sessions_with_agent_filter() {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
@@ -2528,6 +2553,7 @@ async fn test_search_sessions_with_agent_filter() {
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
@@ -2730,6 +2756,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 mcp_servers: serde_json::json!({}),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -2757,6 +2784,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -2949,6 +2977,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -2977,6 +3006,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -3005,6 +3035,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -3099,6 +3130,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
@@ -3151,6 +3183,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,

@@ -219,6 +219,7 @@ impl JudgeClient for LlmJudgeClient {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let response = driver.chat_completion(messages, &config).await?;

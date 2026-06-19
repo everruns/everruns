@@ -20,6 +20,7 @@
 // - default_model_id: overlay wins if set, else inherit base
 // - tools: additive (overlay appended after base, deduplicated at build time)
 // - max_iterations: overlay wins if set, else inherit base
+// - parallel_tool_calls: overlay wins if set, else inherit base
 // - mcp_servers: overlay overrides base by logical server name (last wins)
 
 use crate::agent::Agent;
@@ -52,6 +53,8 @@ pub struct AgentConfigOverlay {
     pub tools: Vec<ToolDefinition>,
     /// Max iterations per turn.
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    pub parallel_tool_calls: Option<bool>,
     /// Remote MCP servers scoped to this layer.
     pub mcp_servers: ScopedMcpServers,
 }
@@ -72,6 +75,7 @@ impl AgentConfigOverlay {
         );
         let default_model_id = overlay.default_model_id.or(self.default_model_id);
         let max_iterations = overlay.max_iterations.or(self.max_iterations);
+        let parallel_tool_calls = overlay.parallel_tool_calls.or(self.parallel_tool_calls);
         let mcp_servers = merge_scoped_mcp_servers(&self.mcp_servers, &overlay.mcp_servers);
 
         let mut tools = self.tools;
@@ -85,6 +89,7 @@ impl AgentConfigOverlay {
             default_model_id,
             tools,
             max_iterations,
+            parallel_tool_calls,
             mcp_servers,
         }
     }
@@ -188,6 +193,7 @@ impl From<&Harness> for AgentConfigOverlay {
             default_model_id: h.default_model_id,
             tools: vec![],
             max_iterations: None,
+            parallel_tool_calls: h.parallel_tool_calls,
             mcp_servers: h.mcp_servers.clone(),
         }
     }
@@ -203,6 +209,7 @@ impl From<&Agent> for AgentConfigOverlay {
             default_model_id: a.default_model_id,
             tools: a.tools.clone(),
             max_iterations: a.max_iterations,
+            parallel_tool_calls: a.parallel_tool_calls,
             mcp_servers: a.mcp_servers.clone(),
         }
     }
@@ -218,6 +225,7 @@ impl From<&Session> for AgentConfigOverlay {
             default_model_id: s.model_id,
             tools: s.tools.clone(),
             max_iterations: s.max_iterations,
+            parallel_tool_calls: s.parallel_tool_calls,
             mcp_servers: s.mcp_servers.clone(),
         }
     }
@@ -422,6 +430,35 @@ mod tests {
         let overlay = AgentConfigOverlay::default();
         let merged = base.merge(overlay);
         assert_eq!(merged.max_iterations, Some(100));
+    }
+
+    #[test]
+    fn merge_parallel_tool_calls_overlay_wins() {
+        // EVE-598: overlay wins when set, even when it flips the base value.
+        let base = AgentConfigOverlay {
+            parallel_tool_calls: Some(true),
+            ..Default::default()
+        };
+        let overlay = AgentConfigOverlay {
+            parallel_tool_calls: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(base.merge(overlay).parallel_tool_calls, Some(false));
+    }
+
+    #[test]
+    fn merge_parallel_tool_calls_inherits_base() {
+        // EVE-598: an unset overlay inherits the base preference; an all-unset
+        // fold leaves it None (provider default preserved).
+        let base = AgentConfigOverlay {
+            parallel_tool_calls: Some(true),
+            ..Default::default()
+        };
+        let merged = base.merge(AgentConfigOverlay::default());
+        assert_eq!(merged.parallel_tool_calls, Some(true));
+
+        let none_fold = AgentConfigOverlay::default().merge(AgentConfigOverlay::default());
+        assert_eq!(none_fold.parallel_tool_calls, None);
     }
 
     #[test]

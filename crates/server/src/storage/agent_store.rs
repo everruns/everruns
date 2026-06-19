@@ -80,6 +80,7 @@ impl AgentStore for DbAgentStore {
                         .network_access
                         .and_then(|v| serde_json::from_value(v).ok()),
                     max_iterations: max_iterations::from_db(row.max_iterations),
+                    parallel_tool_calls: row.parallel_tool_calls,
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,

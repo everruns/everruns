@@ -279,6 +279,7 @@ mod tests {
             response_id: None,
             locale: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let json = serde_json::to_string(&result).unwrap();

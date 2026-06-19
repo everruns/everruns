@@ -432,6 +432,7 @@ impl SessionService {
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
+            parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
@@ -581,6 +582,7 @@ impl SessionService {
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
+            parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
             parent_session_id: None,
@@ -1204,6 +1206,7 @@ impl SessionService {
             initial_files: serde_json::Value::Array(vec![]),
             hints: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             blueprint_id: None,
             blueprint_config: None,
             network_access: None,
@@ -1713,6 +1716,7 @@ impl SessionService {
                 .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
             max_iterations: max_iterations::from_db(row.max_iterations),
+            parallel_tool_calls: row.parallel_tool_calls,
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1941,6 +1945,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             parent_session_id: None,
         }
     }
@@ -2168,6 +2173,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         })
         .execute(&ctx)
         .await
@@ -2337,6 +2343,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         })
         .execute(&ctx)
         .await
@@ -2528,6 +2535,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         })
         .execute(&other_ctx)
         .await
@@ -2557,6 +2565,7 @@ mod tests {
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,
@@ -2797,6 +2806,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         })
         .execute(&other_ctx)
         .await
@@ -2823,6 +2833,7 @@ mod tests {
                 initial_files: serde_json::Value::Array(vec![]),
                 hints: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
                 blueprint_id: None,
                 blueprint_config: None,
                 network_access: None,

@@ -253,6 +253,7 @@ mod tests {
             mcp_servers: serde_json::json!([]),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         };
         let mut agent_two = agent_one.clone();
         agent_two.public_id = "agent_00000000000000000000000000000042".to_string();

@@ -569,6 +569,7 @@ mod tests {
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
+            parallel_tool_calls: None,
         }
     }
 }

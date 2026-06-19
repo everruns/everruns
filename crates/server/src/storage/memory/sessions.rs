@@ -69,6 +69,7 @@ impl InMemoryDatabase {
             hints: input.hints,
             network_access: input.network_access,
             max_iterations: input.max_iterations,
+            parallel_tool_calls: input.parallel_tool_calls,
             status: "started".to_string(),
             created_at: now,
             updated_at: now,

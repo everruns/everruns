@@ -841,6 +841,7 @@ pub async fn upsert_agent(
                     mcp_servers: Some(req.mcp_servers),
                     network_access: req.network_access,
                     max_iterations: req.max_iterations,
+                    parallel_tool_calls: req.parallel_tool_calls,
                     status: None,
                 };
                 let agent = crate::domains::agents::UpdateAgentCmd {
@@ -1051,6 +1052,7 @@ async fn import_from_example(
         mcp_servers: Default::default(),
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
     };
 
     let agent = crate::domains::agents::CreateAgent(req)
@@ -1141,6 +1143,7 @@ async fn import_from_file(
         mcp_servers: agent_file.mcp_servers,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
     };
 
     // TM-AGENT-005: High-risk capabilities require admin role

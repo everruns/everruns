@@ -3631,6 +3631,7 @@ impl WorkerService for WorkerServiceImpl {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         };
 
         use crate::domains::common::Command;
@@ -3667,6 +3668,7 @@ impl WorkerService for WorkerServiceImpl {
             mcp_servers: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             status: None,
         };
 
@@ -3780,6 +3782,7 @@ impl WorkerService for WorkerServiceImpl {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             parent_session_id: None,
         };
 

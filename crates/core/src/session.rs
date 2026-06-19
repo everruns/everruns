@@ -224,6 +224,15 @@ pub struct Session {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = 50))]
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598).
+    ///
+    /// `None` (default) preserves provider defaults. `Some(true)` signals the
+    /// provider that parallel tool calls are wanted; `Some(false)` requests at
+    /// most one tool call per turn and forces serial execution. Merged across
+    /// harness/agent/session layers (overlay wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = true))]
+    pub parallel_tool_calls: Option<bool>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.

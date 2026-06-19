@@ -178,6 +178,7 @@ mod tests {
                 mcp_servers: serde_json::json!([]),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await
@@ -219,6 +220,7 @@ mod tests {
                 mcp_servers: serde_json::json!([]),
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         )
         .await

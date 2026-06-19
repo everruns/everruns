@@ -424,6 +424,11 @@ pub struct ReasonResult {
     /// Merged network access list for URL filtering in tools.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<crate::network_access::NetworkAccessList>,
+    /// Request-level parallel tool calling preference (EVE-598), carried from
+    /// the resolved agent config into `ActInput` so the act scheduler can honor
+    /// `Some(false)` (force serialize). `None` preserves the default schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 fn default_max_iterations() -> usize {
@@ -1038,6 +1043,7 @@ impl ReasonAtom {
                     response_id: None,
                     locale: None,
                     network_access: None,
+                    parallel_tool_calls: None,
                 }
             }
         };
@@ -1834,6 +1840,7 @@ impl ReasonAtom {
                                 tool_search: None,
                                 prompt_cache: None,
                                 openrouter_routing: None,
+                                parallel_tool_calls: None,
                             };
 
                             match chat_driver
@@ -2566,6 +2573,7 @@ impl ReasonAtom {
             response_id,
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
+            parallel_tool_calls: runtime_agent.parallel_tool_calls,
         })
     }
 
@@ -2648,6 +2656,8 @@ impl ReasonAtom {
             response_id: None,
             locale: None,
             network_access: None,
+            // Finalize path has no tool calls, so the preference is irrelevant.
+            parallel_tool_calls: None,
         })
     }
 
@@ -3321,6 +3331,7 @@ mod tests {
                 gemini_cached_content: None,
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let request_options = build_request_options(&config, "openai").unwrap();
@@ -3353,6 +3364,7 @@ mod tests {
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         let request_options = build_request_options(&config, "gemini").unwrap();
@@ -3385,6 +3397,7 @@ mod tests {
                 gemini_cached_content: Some("cachedContents/demo-cache".to_string()),
             }),
             openrouter_routing: None,
+            parallel_tool_calls: None,
         };
 
         assert!(build_request_options(&config, "gemini").is_none());

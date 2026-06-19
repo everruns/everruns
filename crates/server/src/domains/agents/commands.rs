@@ -213,6 +213,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap()),
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
+                parallel_tool_calls: req.parallel_tool_calls,
             };
             let row = ctx
                 .db
@@ -241,6 +242,7 @@ impl Command for CreateAgent {
                     .map(|na| serde_json::to_value(na).unwrap()),
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
+                parallel_tool_calls: req.parallel_tool_calls,
             };
             let row = ctx
                 .db
@@ -720,6 +722,7 @@ impl Command for UpsertAgent {
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
             max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
+            parallel_tool_calls: req.parallel_tool_calls,
             network_access: req
                 .network_access
                 .as_ref()
@@ -816,6 +819,7 @@ impl Command for CopyAgent {
             mcp_servers: source.mcp_servers,
             network_access: None,
             max_iterations: source.max_iterations,
+            parallel_tool_calls: source.parallel_tool_calls,
         };
 
         CreateAgent(req).execute(ctx).await
@@ -946,6 +950,7 @@ async fn build_resolved_config(
         "mcp_servers": agent.mcp_servers,
         "default_model_id": agent.default_model_id.map(|id| id.to_string()),
         "max_iterations": agent.max_iterations,
+        "parallel_tool_calls": agent.parallel_tool_calls,
     }))
 }
 
@@ -1298,6 +1303,7 @@ impl Command for RollbackAgentVersion {
                     max_iterations: Some(
                         max_iterations::to_db(restored.max_iterations).map_err(classify_anyhow)?,
                     ),
+                    parallel_tool_calls: Some(restored.parallel_tool_calls),
                     ..Default::default()
                 },
             )
@@ -1446,6 +1452,7 @@ impl Command for ForkAgentVersion {
             mcp_servers: fork.mcp_servers.clone(),
             network_access: fork.network_access.clone(),
             max_iterations: fork.max_iterations,
+            parallel_tool_calls: fork.parallel_tool_calls,
         })
         .execute(ctx)
         .await?;
@@ -1824,6 +1831,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         }
     }
 
@@ -1842,6 +1850,7 @@ mod tests {
             mcp_servers: Default::default(),
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         }
     }
 
@@ -1860,6 +1869,7 @@ mod tests {
             mcp_servers: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
         }
     }
 
@@ -1986,6 +1996,7 @@ mod tests {
                 mcp_servers: None,
                 network_access: None,
                 max_iterations: None,
+                parallel_tool_calls: None,
             },
         }
         .run(&ctx)

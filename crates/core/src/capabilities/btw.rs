@@ -185,6 +185,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             status: SessionStatus::Started,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

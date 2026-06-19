@@ -84,6 +84,7 @@ pub async fn tool_context_for_ctx(
         default_model_id: session_row.model_id,
         tools: serde_json::from_value(session_row.tools.clone()).unwrap_or_default(),
         max_iterations: max_iterations::from_db(session_row.max_iterations),
+        parallel_tool_calls: session_row.parallel_tool_calls,
         mcp_servers: serde_json::from_value(session_row.mcp_servers.clone()).unwrap_or_default(),
     };
 
@@ -228,6 +229,8 @@ async fn load_harness_chain(
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
+            // No per-harness config column (EVE-598).
+            parallel_tool_calls: None,
             embedder_metadata: serde_json::from_value(row.embedder_metadata).unwrap_or_default(),
             is_built_in: row.is_built_in,
             status: HarnessStatus::from(row.status.as_str()),

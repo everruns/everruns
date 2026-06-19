@@ -968,6 +968,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             response_id: None,
             locale: None,
             network_access: None,
+            parallel_tool_calls: None,
         });
     }
 
@@ -1011,6 +1012,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
                     response_id: None,
                     locale: None,
                     network_access: None,
+                    parallel_tool_calls: None,
                 });
             }
             everruns_core::lifecycle_hooks::UserPromptDecision::Continue { message } => {

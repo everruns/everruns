@@ -63,6 +63,16 @@ pub struct RuntimeAgent {
     /// Used by tools (web_fetch) to enforce URL access policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<crate::network_access::NetworkAccessList>,
+
+    /// Request-level parallel tool calling preference (EVE-598).
+    ///
+    /// `None` (default) preserves provider defaults and the act scheduler's
+    /// class-aware concurrent schedule. `Some(true)` explicitly signals the
+    /// provider that parallel tool calls are wanted; `Some(false)` asks the
+    /// provider to emit at most one tool call per turn AND forces the act
+    /// scheduler to serialize the batch (see `ActInput.parallel_tool_calls`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 /// Default maximum iterations per turn (500).
@@ -85,6 +95,7 @@ impl RuntimeAgent {
             tool_search: None,
             prompt_cache: None,
             network_access: None,
+            parallel_tool_calls: None,
         }
     }
 }
@@ -101,6 +112,7 @@ impl Default for RuntimeAgent {
             tool_search: None,
             prompt_cache: None,
             network_access: None,
+            parallel_tool_calls: None,
         }
     }
 }
@@ -170,6 +182,9 @@ impl RuntimeAgentBuilder {
 
         // Set merged network_access
         builder = builder.network_access(layer.network_access);
+
+        // Set merged request-level parallel_tool_calls preference (EVE-598)
+        builder = builder.parallel_tool_calls(layer.parallel_tool_calls);
 
         builder
     }
@@ -369,6 +384,12 @@ impl RuntimeAgentBuilder {
         network_access: Option<crate::network_access::NetworkAccessList>,
     ) -> Self {
         self.runtime_agent.network_access = network_access;
+        self
+    }
+
+    /// Set the request-level parallel tool calling preference (EVE-598).
+    pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
+        self.runtime_agent.parallel_tool_calls = parallel_tool_calls;
         self
     }
 
@@ -651,6 +672,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,
@@ -795,6 +817,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![client_tool],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,
@@ -856,6 +879,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![client_tool],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,
@@ -913,6 +937,7 @@ mod tests {
             initial_files: vec![],
             network_access: None,
             max_iterations: None,
+            parallel_tool_calls: None,
             tools: vec![],
             mcp_servers: Default::default(),
             status: AgentStatus::Active,

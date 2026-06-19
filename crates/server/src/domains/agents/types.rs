@@ -72,6 +72,13 @@ pub struct CreateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 20)]
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598). `true` signals
+    /// the provider that parallel tool calls are wanted; `false` requests at
+    /// most one tool call per turn and forces serial execution. Omit to use the
+    /// provider default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = true)]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 /// Request to update an agent. Only provided fields will be updated.
@@ -140,6 +147,13 @@ pub struct UpdateAgentRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = 20)]
     pub max_iterations: Option<usize>,
+    /// Request-level parallel tool calling preference (EVE-598). `true` signals
+    /// the provider that parallel tool calls are wanted; `false` requests at
+    /// most one tool call per turn and forces serial execution. Omit to leave
+    /// unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = true)]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 /// Request body for the `create_agent_version` operation.
