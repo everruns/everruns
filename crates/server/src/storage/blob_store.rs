@@ -92,7 +92,7 @@ const META_RECOVERY_KEY: &str = "everruns-recovery";
 ///
 /// Set via object_store's portable `Attribute::Metadata` — the key is just
 /// `everruns-kind` / `everruns-recovery`. On an S3-protocol backend (AWS S3 and
-/// every S3-compatible store: SeaweedFS, MinIO, R2, ...) this surfaces on the
+/// every S3-compatible store: SeaweedFS, R2, ...) this surfaces on the
 /// wire as `x-amz-meta-<key>`; a native GCS/Azure backend would map the same
 /// attribute to its own convention. Nothing here is AWS-specific.
 ///
@@ -188,7 +188,7 @@ pub fn content_sha256(bytes: &[u8]) -> String {
 
 /// A [`BlobStore`] backed by any [`object_store::ObjectStore`].
 ///
-/// Production uses the AWS S3 (S3-compatible, incl. MinIO/R2/etc.) backend;
+/// Production uses the AWS S3 (S3-compatible, incl. SeaweedFS/R2/etc.) backend;
 /// tests use object_store's in-memory backend so the exact production code path
 /// (prefixing, not-found handling) is exercised without a network dependency.
 pub struct ObjectStoreBlobStore {
@@ -222,7 +222,7 @@ impl ObjectStoreBlobStore {
 
         // Start from the environment so AWS deployments can use IAM-role /
         // instance credentials, then override with explicit STORAGE_S3_* values
-        // for S3-compatible endpoints (MinIO, R2, ...) that pass static creds.
+        // for S3-compatible endpoints (SeaweedFS, R2, ...) that pass static creds.
         let mut builder = AmazonS3Builder::from_env().with_bucket_name(&config.bucket);
         if let Some(region) = &config.region {
             builder = builder.with_region(region);
@@ -239,7 +239,7 @@ impl ObjectStoreBlobStore {
         if config.allow_http {
             builder = builder.with_allow_http(true);
         }
-        // MinIO and most non-AWS S3 implementations require path-style requests.
+        // SeaweedFS and most non-AWS S3 implementations require path-style requests.
         if config.force_path_style {
             builder = builder.with_virtual_hosted_style_request(false);
         }
@@ -384,7 +384,7 @@ impl BlobStoreConfig {
             prefix: env_string("STORAGE_S3_PREFIX", ""),
             allow_http: env_bool("STORAGE_S3_ALLOW_HTTP", false),
             // Default to path-style: it is the safe choice for S3-compatible
-            // endpoints (MinIO) and still works against AWS S3.
+            // endpoints (SeaweedFS) and still works against AWS S3.
             force_path_style: env_bool("STORAGE_S3_FORCE_PATH_STYLE", true),
         })
     }

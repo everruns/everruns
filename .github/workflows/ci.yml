@@ -182,7 +182,7 @@ jobs:
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
             # S3 blob-backend integration coverage. Narrow on purpose so the
-            # MinIO-backed job only runs when the object-storage offload code,
+            # SeaweedFS-backed job only runs when the object-storage offload code,
             # its sidecar migration, or the harness/workflow that drives it
             # changes — it should not burn CI on unrelated PRs.
             object_storage:
@@ -616,9 +616,9 @@ jobs:
       # Blob-offload suite against the in-memory object_store backend (no S3
       # container). Exercises the same offload code paths the S3 job covers,
       # giving every PostgreSQL PR coverage of the offload invariants without an
-      # S3/MinIO container (the PostgreSQL service container is still used). The
-      # dedicated `s3-integration-test` job re-runs the
-      # identical suite with STORAGE_BLOB_BACKEND=s3 against MinIO.
+      # S3/SeaweedFS container (the PostgreSQL service container is still used).
+      # The dedicated `s3-integration-test` job re-runs the
+      # identical suite with STORAGE_BLOB_BACKEND=s3 against SeaweedFS.
       - name: Run blob offload integration tests (in-memory backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1
 
@@ -686,7 +686,8 @@ jobs:
   # S3 blob-backend integration tests.
   # The PostgreSQL `integration-test` job above only exercises the inline
   # (STORAGE_BLOB_BACKEND=db) storage path. This job brings up a real
-  # S3-compatible object store (MinIO) alongside PostgreSQL and runs the
+  # S3-compatible object store (SeaweedFS, matching local dev) alongside
+  # PostgreSQL and runs the
   # backend-agnostic offload suite with STORAGE_BLOB_BACKEND=s3 so the
   # object-storage offload code (create/read/update/CAS/move/copy/delete,
   # materialization, org-scoped image delete guard) is covered against the real
@@ -710,9 +711,10 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-      # MinIO is started as a `docker run` step (see "Start MinIO" below) rather
-      # than a service container, because the upstream minio/minio image needs a
-      # `server /data` command and GH service containers cannot express a command.
+      # SeaweedFS is started as a `docker run` step (see "Start SeaweedFS"
+      # below) rather than a service container, because the upstream seaweedfs
+      # image needs a `server -s3` command and GH service containers cannot
+      # express a command.
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
@@ -759,34 +761,53 @@ jobs:
       - name: Run migrations
         run: sqlx migrate run --source crates/server/migrations
 
-      - name: Start MinIO and create the bucket
+      - name: Start SeaweedFS and create the bucket
         run: |
-          # Ephemeral S3-compatible store for this job only. `latest` is used
+          # Ephemeral S3-compatible store for this job only, matching the
+          # SeaweedFS backend used in local dev (scripts/lib/seaweedfs.sh). The
+          # S3 gateway runs on the container's :8333, mapped to host :9000 so
+          # STORAGE_S3_ENDPOINT stays unchanged. The same identities config the
+          # local script uses supplies the static credentials. `latest` is used
           # deliberately: these are throwaway test containers (no production
           # surface), and it avoids pinning to an unverifiable date-stamped tag.
-          docker run -d --name minio \
-            -p 9000:9000 \
-            -e MINIO_ROOT_USER=everruns \
-            -e MINIO_ROOT_PASSWORD=everruns-secret \
-            minio/minio:latest server /data
-          echo "Waiting for MinIO to accept S3 requests..."
+          docker run -d --name seaweedfs \
+            -p 9000:8333 \
+            -v "${{ github.workspace }}/local/seaweedfs-s3-config.json:/etc/seaweedfs/s3.json:ro" \
+            chrislusf/seaweedfs:latest \
+            server -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json
+          echo "Waiting for SeaweedFS to accept S3 requests..."
           ready=
           for i in {1..30}; do
-            if curl -fsS http://localhost:9000/minio/health/live > /dev/null 2>&1; then
-              echo "MinIO is ready!"
+            # Any HTTP response (incl. 403 from the unauthenticated ListBuckets)
+            # means the S3 gateway is up; curl exits 0 once the port answers.
+            # Bounded per attempt so a stalled connect can't hang the job.
+            if curl -s -o /dev/null --connect-timeout 5 --max-time 10 http://localhost:9000/; then
+              echo "SeaweedFS is ready!"
               ready=1
               break
             fi
-            echo "Attempt $i: MinIO not ready yet..."
+            echo "Attempt $i: SeaweedFS not ready yet..."
             sleep 2
           done
           if [ -z "$ready" ]; then
-            echo "MinIO failed to become ready"; docker logs minio || true; exit 1
+            echo "SeaweedFS failed to become ready"; docker logs seaweedfs || true; exit 1
           fi
-          # Create the test bucket with the MinIO client (idempotent).
-          docker run --rm --network host \
-            -e MC_HOST_local="http://everruns:everruns-secret@localhost:9000" \
-            minio/mc:latest mb --ignore-existing local/everruns-test
+          # Create the test bucket via the SeaweedFS shell (idempotent), retried
+          # while the filer finishes coming up behind the S3 gateway.
+          created=
+          for i in {1..15}; do
+            if echo 's3.bucket.create -name everruns-test' \
+              | docker exec -i seaweedfs weed shell -master localhost:9333 > /dev/null 2>&1; then
+              echo "Bucket ready!"
+              created=1
+              break
+            fi
+            echo "Attempt $i: bucket not created yet..."
+            sleep 2
+          done
+          if [ -z "$created" ]; then
+            echo "SeaweedFS bucket creation failed"; docker logs seaweedfs || true; exit 1
+          fi
 
       - name: Run blob offload integration tests (S3 backend)
         run: cargo test -p everruns-server --test blob_offload_integration_test -- --test-threads=1

@@ -223,12 +223,12 @@ clients or workers. See [specs/object-storage.md](../../specs/object-storage.md)
 | `STORAGE_BLOB_BACKEND` | No | `db` | `db` keeps bytes inline in PostgreSQL (current behavior); `s3` offloads to object storage. |
 | `STORAGE_S3_BUCKET` | When `s3` | — | Target bucket name. |
 | `STORAGE_S3_REGION` | No | — | Bucket region / region label. |
-| `STORAGE_S3_ENDPOINT` | No | — | Custom endpoint for S3-compatible stores (MinIO, R2). Unset for AWS S3. |
+| `STORAGE_S3_ENDPOINT` | No | — | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS S3. |
 | `STORAGE_S3_ACCESS_KEY_ID` | No | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | No | — | Static secret key. |
 | `STORAGE_S3_PREFIX` | No | (empty) | Key prefix isolating multiple deployments within one bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
-| `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by MinIO; harmless on AWS S3). |
+| `STORAGE_S3_ALLOW_HTTP` | No | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS over HTTP). |
+| `STORAGE_S3_FORCE_PATH_STYLE` | No | `true` | Use path-style requests (required by SeaweedFS; harmless on AWS S3). |
 | `STORAGE_BLOB_GC_INTERVAL_SECONDS` | No | `21600` (6h) | Interval between blob GC sweeps that reclaim orphaned objects. `0` disables GC. Only effective with the `s3` backend (inline `db` storage has no orphans). |
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | No | `86400` (24h) | Safety grace period; orphaned objects younger than this are never deleted (avoids racing in-flight creates). |
 | `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | No | `10000` | Per-sweep deletion cap to bound work; remaining orphans are reclaimed next sweep. |
@@ -246,7 +246,7 @@ STORAGE_S3_SECRET_ACCESS_KEY=everruns-secret
 STORAGE_S3_ALLOW_HTTP=true
 ```
 
-Any S3-compatible store works (AWS S3, SeaweedFS, MinIO, R2); only the endpoint
+Any S3-compatible store works (AWS S3, SeaweedFS, R2); only the endpoint
 and credentials differ.
 
 **Notes:**
