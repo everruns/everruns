@@ -6,6 +6,9 @@
   "type": "module",
   "workspaces": [],
   "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.18.1"
+  },
   "dependencies": {
     "deepsec": "^2.0.12"
   },
@@ -13,6 +16,7 @@
     "overrides": {
       "@anthropic-ai/sdk": "^0.91.1",
       "tar": "7.5.16",
+      "undici": "^7.28.0",
       "zod": "^3.25.76"
     }
   }

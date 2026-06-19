@@ -1,3 +1,10 @@
 packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
+# Security patches adopted before the maturity window (Dependabot GHSA fixes):
+# dompurify 3.4.11 (GHSA-cmwh-pvxp-8882, Dependabot alert #114 — ALLOWED_ATTR
+# pollution via setConfig bypass). Pinned to the exact version via
+# pnpm.overrides, so this exemption cannot pull any other freshly-published
+# version; it only lets the fix land before the 7-day release-age window.
+minimumReleaseAgeExclude:
+  - dompurify
