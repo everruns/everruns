@@ -129,36 +129,15 @@ async fn entra_oauth_mints_token_and_sends_bearer() {
     assert_eq!(drain_text(stream).await, "pong");
 }
 
-/// The full server path: a provider is configured with an Entra OAuth **JSON
-/// document** in its (encrypted) credential field, and the driver is built via
-/// the registry exactly as model resolution / model sync do. This proves OAuth
-/// works end-to-end without any provider-metadata plumbing.
+/// Registry-built providers parse OAuth JSON credentials before any network call.
+/// Unsafe credential authorities must be rejected at build time so server-stored
+/// credentials cannot point token minting at local/internal services.
 #[tokio::test]
-async fn registry_built_driver_uses_oauth_json_credential() {
+async fn registry_built_driver_rejects_unsafe_oauth_json_authority() {
     let server = MockServer::start().await;
 
-    Mock::given(method("POST"))
-        .and(path("/tenant-9/oauth2/v2.0/token"))
-        .and(body_string_contains("grant_type=client_credentials"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
-            "token_type": "Bearer",
-            "access_token": "cred-doc-token",
-            "expires_in": 3600,
-        })))
-        .mount(&server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/openai/v1/chat/completions"))
-        .and(header("authorization", "Bearer cred-doc-token"))
-        .respond_with(
-            ResponseTemplate::new(200).set_body_raw(sse_chat_response(), "text/event-stream"),
-        )
-        .mount(&server)
-        .await;
-
     // OAuth credentials carried as a JSON document in the credential field,
-    // pointing `authority` at the mock token endpoint.
+    // attempting to point `authority` at a local mock token endpoint.
     let credential = serde_json::json!({
         "tenant_id": "tenant-9",
         "client_id": "client-9",
@@ -175,13 +154,15 @@ async fn registry_built_driver_uses_oauth_json_credential() {
                 .with_api_key(credential)
                 .with_base_url(server.uri()),
         )
-        .expect("registry should build a MAI driver from an OAuth JSON credential");
+        .expect("registry should construct the lazy MAI driver");
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "ping")];
-    let stream = driver
+    let result = driver
         .chat_completion_stream(messages, &config("mai-code-1-flash"))
-        .await
-        .expect("registry-built MAI driver should authenticate via OAuth");
+        .await;
+    let Err(err) = result else {
+        panic!("unsafe OAuth authority should be rejected before token minting");
+    };
 
-    assert_eq!(drain_text(stream).await, "pong");
+    assert!(err.to_string().contains("OAuth authority URL"), "{err}");
 }
