@@ -336,9 +336,12 @@ impl FromRequestParts<AppState> for McpAuthUser {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let resource = state.mcp_resource.as_deref().unwrap_or("");
-        let user =
-            crate::auth::middleware::extract_mcp_auth_user(parts, &state.auth, resource).await?;
+        let user = crate::auth::middleware::extract_mcp_auth_user(
+            parts,
+            &state.auth,
+            state.mcp_resource.as_deref(),
+        )
+        .await?;
         Ok(McpAuthUser(user))
     }
 }

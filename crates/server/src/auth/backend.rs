@@ -40,9 +40,10 @@ pub trait AuthBackend: Send + Sync + 'static {
         _token: &str,
         _expected_resource: &str,
     ) -> Result<AuthUser, AuthError> {
-        Err(AuthError::unauthorized(
-            "MCP token validation not supported",
-        ))
+        // Generic 401 (same wording as other token failures): a client must not
+        // be able to tell "backend can't validate MCP tokens" apart from "token
+        // invalid", and the response must not leak backend capability detail.
+        Err(AuthError::unauthorized("Invalid or expired token"))
     }
 
     /// Validate a personal access token and return the authenticated user.

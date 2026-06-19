@@ -347,7 +347,7 @@ async fn extract_auth_user(
 pub async fn extract_mcp_auth_user(
     parts: &mut Parts,
     auth_state: &AuthState,
-    mcp_resource: &str,
+    mcp_resource: Option<&str>,
 ) -> Result<AuthUser, AuthError> {
     if auth_state.config.mode == AuthMode::None {
         return Ok(AuthUser::anonymous());
@@ -373,11 +373,15 @@ pub async fn extract_mcp_auth_user(
                     .validate_personal_access_token(token)
                     .await;
             }
-            // Bearer JWT must be an MCP-scoped token for this resource.
-            return auth_state
-                .backend
-                .validate_mcp_token(token, mcp_resource)
-                .await;
+            // Bearer JWT must be an MCP-scoped token for this resource. Fail
+            // fast with a 500 (not a 401) when the server has no MCP resource
+            // configured: an empty/absent audience would reject every otherwise
+            // valid MCP token as if it were the client's fault, masking a
+            // server misconfiguration (TM-MCP-006).
+            let resource = mcp_resource
+                .filter(|r| !r.is_empty())
+                .ok_or_else(|| AuthError::internal("MCP resource not configured"))?;
+            return auth_state.backend.validate_mcp_token(token, resource).await;
         }
 
         // Legacy "ApiKey" scheme / bare PAT (kept for non-Bearer clients).
