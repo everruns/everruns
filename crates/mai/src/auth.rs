@@ -242,9 +242,11 @@ impl EntraOAuthConfig {
             || url.path() != "/"
             || url.query().is_some()
             || url.fragment().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
         {
             return Err(AgentLoopError::llm(
-                "Invalid Microsoft Entra ID OAuth authority URL: authority must be an https origin without port, path, query, or fragment",
+                "Invalid Microsoft Entra ID OAuth authority URL: authority must be an https origin without port, path, query, fragment, or credentials",
             ));
         }
 
@@ -518,6 +520,8 @@ mod tests {
             "https://login.microsoftonline.com/path",
             "https://login.microsoftonline.com?query=1",
             "https://login.microsoftonline.com#fragment",
+            "https://user:pass@login.microsoftonline.com",
+            "https://user@login.microsoftonline.com",
         ] {
             let extra = serde_json::json!({
                 "tenant_id": "tenant",
