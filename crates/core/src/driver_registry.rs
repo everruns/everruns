@@ -603,6 +603,110 @@ pub enum OpenRouterCapacityStrategy {
     ByokOnly,
 }
 
+/// One of OpenRouter's provider-executed "server tools" (beta).
+///
+/// Server tools are tools OpenRouter runs server-side — it loops internally and
+/// returns the final answer, so unlike client-executed function tools the agent
+/// loop never dispatches them. The only client-visible artifact is
+/// `usage.server_tool_use`. See
+/// <https://openrouter.ai/docs/guides/features/server-tools>.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum OpenRouterServerToolKind {
+    WebSearch,
+    WebFetch,
+    Datetime,
+    ImageGeneration,
+    ApplyPatch,
+    Fusion,
+    Advisor,
+    Subagent,
+}
+
+impl OpenRouterServerToolKind {
+    /// Every known server tool, in catalog order.
+    pub const ALL: [OpenRouterServerToolKind; 8] = [
+        Self::WebSearch,
+        Self::WebFetch,
+        Self::Datetime,
+        Self::ImageGeneration,
+        Self::ApplyPatch,
+        Self::Fusion,
+        Self::Advisor,
+        Self::Subagent,
+    ];
+
+    /// Bare tool name (no prefix), e.g. `"web_search"`.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::WebSearch => "web_search",
+            Self::WebFetch => "web_fetch",
+            Self::Datetime => "datetime",
+            Self::ImageGeneration => "image_generation",
+            Self::ApplyPatch => "apply_patch",
+            Self::Fusion => "fusion",
+            Self::Advisor => "advisor",
+            Self::Subagent => "subagent",
+        }
+    }
+
+    /// Human-readable English display name, used for UI schema titles.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            Self::WebSearch => "Web Search",
+            Self::WebFetch => "Web Fetch",
+            Self::Datetime => "Date & Time",
+            Self::ImageGeneration => "Image Generation",
+            Self::ApplyPatch => "Apply Patch",
+            Self::Fusion => "Fusion",
+            Self::Advisor => "Advisor",
+            Self::Subagent => "Subagent",
+        }
+    }
+
+    /// The `type` discriminator OpenRouter expects in the request `tools` array,
+    /// e.g. `"openrouter:web_search"`.
+    pub fn wire_type(&self) -> String {
+        format!("openrouter:{}", self.name())
+    }
+
+    /// Parse a bare tool name (no `openrouter:` prefix).
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
+    }
+}
+
+/// One activated OpenRouter server tool plus optional tool-specific parameters
+/// (e.g. web_search `max_results`). Parameters are forwarded verbatim under the
+/// wire entry's `parameters` field.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+pub struct OpenRouterServerTool {
+    pub kind: OpenRouterServerToolKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub parameters: Option<serde_json::Value>,
+}
+
+impl OpenRouterServerTool {
+    /// A server tool with no parameters.
+    pub fn new(kind: OpenRouterServerToolKind) -> Self {
+        Self {
+            kind,
+            parameters: None,
+        }
+    }
+
+    /// A server tool carrying parameters forwarded verbatim to OpenRouter.
+    pub fn with_parameters(kind: OpenRouterServerToolKind, parameters: serde_json::Value) -> Self {
+        Self {
+            kind,
+            parameters: Some(parameters),
+        }
+    }
+}
+
 /// These fields mirror OpenRouter's request-level routing extensions. Drivers
 /// must only forward this config to OpenRouter-compatible endpoints.
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -631,6 +735,10 @@ pub struct OpenRouterRoutingConfig {
     /// Explicit `provider` fields override preset-derived values.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub presets: Vec<OpenRouterRoutingPreset>,
+    /// OpenRouter server tools (beta) the model may invoke. Provider-executed;
+    /// appended to the request `tools` array as `{"type":"openrouter:<name>"}`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub server_tools: Vec<OpenRouterServerTool>,
 }
 
 impl OpenRouterRoutingConfig {
@@ -644,6 +752,7 @@ impl OpenRouterRoutingConfig {
                 None | Some(OpenRouterCapacityStrategy::SharedCapacity)
             )
             && self.presets.is_empty()
+            && self.server_tools.is_empty()
     }
 
     /// Build an ordered model-fallback routing config.
@@ -657,6 +766,7 @@ impl OpenRouterRoutingConfig {
             plugins: None,
             capacity_strategy: None,
             presets: vec![],
+            server_tools: vec![],
         }
     }
 
@@ -1059,7 +1169,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             previous_response_id: None,
             tool_search: runtime_agent.tool_search.clone(),
             prompt_cache: runtime_agent.prompt_cache.clone(),
-            openrouter_routing: None,
+            openrouter_routing: runtime_agent.openrouter_routing.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
         }
     }
@@ -1949,6 +2059,32 @@ mod tests {
         assert!(llm_config.max_tokens.is_none());
         assert!(llm_config.tools.is_empty());
         assert!(llm_config.metadata.is_empty());
+        // No server tools configured on the agent → none on the call config.
+        assert!(llm_config.openrouter_routing.is_none());
+    }
+
+    #[test]
+    fn runtime_agent_openrouter_routing_flows_into_call_config() {
+        // Closes the assembly loop: a capability sets RuntimeAgent.openrouter_routing
+        // (server tools), and the From<&RuntimeAgent> conversion the reason atom
+        // uses must carry it through to the OpenRouter driver.
+        let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
+        runtime_agent.openrouter_routing = Some(OpenRouterRoutingConfig {
+            server_tools: vec![OpenRouterServerTool::new(
+                OpenRouterServerToolKind::WebSearch,
+            )],
+            ..Default::default()
+        });
+
+        let llm_config = LlmCallConfig::from(&runtime_agent);
+        let routing = llm_config
+            .openrouter_routing
+            .expect("server-tool routing survives into the call config");
+        assert_eq!(routing.server_tools.len(), 1);
+        assert_eq!(
+            routing.server_tools[0].kind.wire_type(),
+            "openrouter:web_search"
+        );
     }
 
     #[test]

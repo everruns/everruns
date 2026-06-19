@@ -59,6 +59,12 @@ pub struct RuntimeAgent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt_cache: Option<PromptCacheConfig>,
 
+    /// OpenRouter routing controls, including provider-executed server tools
+    /// (set by the `openrouter_server_tools` capability). Only forwarded to
+    /// OpenRouter-compatible endpoints.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
+
     /// Merged network access list (harness ∩ agent ∩ session).
     /// Used by tools (web_fetch) to enforce URL access policy.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -94,6 +100,7 @@ impl RuntimeAgent {
             max_tokens: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
             network_access: None,
             parallel_tool_calls: None,
         }
@@ -111,6 +118,7 @@ impl Default for RuntimeAgent {
             max_tokens: None,
             tool_search: None,
             prompt_cache: None,
+            openrouter_routing: None,
             network_access: None,
             parallel_tool_calls: None,
         }
@@ -302,6 +310,10 @@ impl RuntimeAgentBuilder {
 
         if let Some(pc_config) = collected.prompt_cache {
             self.runtime_agent.prompt_cache = Some(pc_config);
+        }
+
+        if let Some(routing) = collected.openrouter_routing {
+            self.runtime_agent.openrouter_routing = Some(routing);
         }
 
         self.tool_definition_hooks

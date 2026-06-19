@@ -10,7 +10,8 @@ use everruns_core::driver_registry::{
     ChatDriver, LlmCallConfig, LlmMessage, LlmMessageRole, OpenRouterDataCollection,
     OpenRouterMaxPrice, OpenRouterPluginConfig, OpenRouterProviderRouting, OpenRouterProviderSort,
     OpenRouterProviderSortBy, OpenRouterProviderSortOptions, OpenRouterRoute,
-    OpenRouterRoutingConfig, OpenRouterSortPartition, OpenRouterWebSearchPlugin,
+    OpenRouterRoutingConfig, OpenRouterServerTool, OpenRouterServerToolKind,
+    OpenRouterSortPartition, OpenRouterWebSearchPlugin,
 };
 use everruns_openrouter::OpenRouterChatDriver;
 use serde_json::json;
@@ -453,4 +454,42 @@ async fn includes_plugins_in_request() {
     assert_eq!(plugins.len(), 1);
     assert_eq!(plugins[0]["id"], "web");
     assert_eq!(plugins[0]["max_results"], 5);
+}
+
+#[tokio::test]
+async fn server_tools_are_appended_to_tools_array() {
+    let mut config = base_config("openai/gpt-5-mini");
+    config.openrouter_routing = Some(OpenRouterRoutingConfig {
+        server_tools: vec![
+            OpenRouterServerTool::with_parameters(
+                OpenRouterServerToolKind::WebSearch,
+                json!({ "max_results": 3 }),
+            ),
+            OpenRouterServerTool::new(OpenRouterServerToolKind::Datetime),
+        ],
+        ..Default::default()
+    });
+
+    let body = capture_request_body(&config).await;
+
+    let tools = body["tools"]
+        .as_array()
+        .expect("tools array should be present");
+    // Provider-executed server tools serialize as `openrouter:<name>` entries.
+    let types: Vec<&str> = tools.iter().filter_map(|t| t["type"].as_str()).collect();
+    assert!(types.contains(&"openrouter:web_search"));
+    assert!(types.contains(&"openrouter:datetime"));
+
+    let web = tools
+        .iter()
+        .find(|t| t["type"] == "openrouter:web_search")
+        .expect("web_search entry present");
+    assert_eq!(web["parameters"]["max_results"], 3);
+
+    let datetime = tools
+        .iter()
+        .find(|t| t["type"] == "openrouter:datetime")
+        .expect("datetime entry present");
+    // Tools without parameters omit the field entirely.
+    assert!(datetime.get("parameters").is_none());
 }
