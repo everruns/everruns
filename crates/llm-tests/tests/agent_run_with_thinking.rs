@@ -73,6 +73,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 
     let result = runner.run_turn(input).await.unwrap();
 
+    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.response.contains("503"),
@@ -168,6 +169,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
 
     let result = runner.run_turn(input).await.unwrap();
 
+    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
