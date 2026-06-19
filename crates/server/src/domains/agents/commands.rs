@@ -1630,6 +1630,20 @@ impl Command for AnalyzeAgent {
                      configured on this deployment",
                 )
             })?;
+        let analysis_permit =
+            super::analysis::acquire_analysis_permit(&ctx.caller).map_err(|e| {
+                let retry_after_seconds = match e {
+                    super::analysis::AnalysisAdmissionError::RateLimited {
+                        retry_after_seconds,
+                    }
+                    | super::analysis::AnalysisAdmissionError::Busy {
+                        retry_after_seconds,
+                    } => retry_after_seconds,
+                };
+                CommandError::rate_limited(e.to_string())
+                    .with_code("agent_analysis_rate_limited")
+                    .with_retry_after(retry_after_seconds)
+            })?;
         let authored_prompt = self.system_prompt.clone().unwrap_or_default();
         let preview = PreviewAgent {
             system_prompt: self.system_prompt,
@@ -1639,6 +1653,14 @@ impl Command for AnalyzeAgent {
         }
         .execute(ctx)
         .await?;
+        // Oversized input is a client error (the prompt/tool descriptions are
+        // too large) — reject it as a 4xx before issuing any paid LLM call.
+        super::analysis::ensure_analysis_input_within_limit(
+            &authored_prompt,
+            &preview.system_prompt,
+            &preview.tools,
+        )
+        .map_err(CommandError::bad_request)?;
         let llm_findings = super::analysis::run_llm_checks(
             service.clone(),
             &authored_prompt,
@@ -1647,6 +1669,7 @@ impl Command for AnalyzeAgent {
         )
         .await
         .map_err(|e| CommandError::internal(anyhow::anyhow!(e)))?;
+        drop(analysis_permit);
         let mut findings = preview.findings;
         findings.extend(llm_findings);
         // Custom NL-rubric rules (phase 4) are judged by the utility LLM too.

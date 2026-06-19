@@ -375,6 +375,7 @@ fn command_error_kind(err: &CommandError) -> &'static str {
         CommandErrorKind::Forbidden(_) => "forbidden",
         CommandErrorKind::NotFound(_) => "not_found",
         CommandErrorKind::Conflict(_) => "conflict",
+        CommandErrorKind::RateLimited(_) => "rate_limited",
         CommandErrorKind::Internal(_) => "internal",
     }
 }

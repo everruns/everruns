@@ -38,6 +38,8 @@ pub enum CommandErrorKind {
     NotFound(String),
     #[error("{0}")]
     Conflict(String),
+    #[error("{0}")]
+    RateLimited(String),
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
@@ -95,6 +97,7 @@ impl CommandError {
             CommandErrorKind::Forbidden(_) => StatusCode::FORBIDDEN,
             CommandErrorKind::NotFound(_) => StatusCode::NOT_FOUND,
             CommandErrorKind::Conflict(_) => StatusCode::CONFLICT,
+            CommandErrorKind::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             CommandErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -133,6 +136,10 @@ impl CommandError {
 
     pub fn conflict(msg: impl Into<String>) -> Self {
         CommandErrorKind::Conflict(msg.into()).into()
+    }
+
+    pub fn rate_limited(msg: impl Into<String>) -> Self {
+        CommandErrorKind::RateLimited(msg.into()).into()
     }
 
     pub fn forbidden(msg: impl Into<String>) -> Self {
@@ -752,6 +759,10 @@ fn command_error_status_label(err: &CommandError) -> &'static str {
             kind: CommandErrorKind::Conflict(_),
             ..
         } => "conflict",
+        CommandError {
+            kind: CommandErrorKind::RateLimited(_),
+            ..
+        } => "rate_limited",
         CommandError {
             kind: CommandErrorKind::Internal(_),
             ..

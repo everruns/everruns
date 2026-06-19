@@ -5,13 +5,15 @@
 // Advisory only, on-demand: the Analyze action triggers these; they never
 // run implicitly with preview.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use everruns_core::{
-    LlmMessage, LlmMessageRole, ToolDefinition, UtilityLlmRequest, UtilityLlmService,
+    Caller, LlmMessage, LlmMessageRole, ToolDefinition, UtilityLlmRequest, UtilityLlmService,
 };
 use serde::Deserialize;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 use super::checks::{Finding, FindingCategory, FindingLocation, FindingSeverity, FindingSource};
 
@@ -24,6 +26,133 @@ const CHECKER_MAX_TOKENS: u32 = 2_000;
 const MAX_FINDINGS_PER_CHECKER: usize = 10;
 /// Finding message length bound (defense against runaway checker output).
 const MAX_MESSAGE_CHARS: usize = 600;
+/// Maximum escaped user-message payload sent to any one checker. The authored
+/// and resolved prompts are already bounded for normal preview/save flows; this
+/// analysis-specific cap prevents a high-cost LLM request from being amplified
+/// by duplicated prompt sections plus tool descriptions.
+const MAX_CHECKER_INPUT_BYTES: usize = 128 * 1024;
+/// Per-process cap for concurrent paid analysis jobs.
+const MAX_CONCURRENT_ANALYSES: usize = 4;
+/// Per-process rolling-window limit per organization.
+const MAX_ANALYSES_PER_ORG_WINDOW: usize = 20;
+/// Per-process rolling-window limit per authenticated user / API-key caller.
+const MAX_ANALYSES_PER_CALLER_WINDOW: usize = 6;
+const ANALYSIS_RATE_WINDOW: Duration = Duration::from_secs(60 * 60);
+const ANALYSIS_RETRY_AFTER_SECONDS: u32 = 60 * 60;
+
+static ANALYSIS_CONCURRENCY: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(MAX_CONCURRENT_ANALYSES)));
+static ANALYSIS_RATE_LIMITS: LazyLock<Mutex<AnalysisRateLimits>> =
+    LazyLock::new(|| Mutex::new(AnalysisRateLimits::default()));
+
+#[derive(Default)]
+struct AnalysisRateLimits {
+    by_org: HashMap<i64, VecDeque<Instant>>,
+    by_caller: HashMap<String, VecDeque<Instant>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AnalysisAdmissionError {
+    RateLimited { retry_after_seconds: u32 },
+    Busy { retry_after_seconds: u32 },
+}
+
+impl std::fmt::Display for AnalysisAdmissionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RateLimited { .. } => {
+                f.write_str("Agent analysis rate limit exceeded; please try again later")
+            }
+            Self::Busy { .. } => f.write_str("Too many agent analyses are already running"),
+        }
+    }
+}
+
+impl std::error::Error for AnalysisAdmissionError {}
+
+/// Permit that holds one global analysis concurrency slot until dropped. The
+/// inner `OwnedSemaphorePermit` releases the slot via its own `Drop`; the field
+/// is held only for that side effect.
+pub struct AnalysisPermit(#[allow(dead_code)] OwnedSemaphorePermit);
+
+/// Enforce cheap abuse controls before issuing paid utility-LLM calls.
+///
+/// Both the rate windows and the concurrency slot are *charged only after every
+/// check has passed and the slot is held*, so a rejected request never consumes
+/// another caller's headroom (no double-charging on rate-limit or busy).
+pub fn acquire_analysis_permit(caller: &Caller) -> Result<AnalysisPermit, AnalysisAdmissionError> {
+    let now = Instant::now();
+    let caller_key = caller
+        .user_id
+        .map(|id| format!("user:{id}"))
+        .unwrap_or_else(|| format!("org:{}:api-key-or-internal", caller.org_id));
+
+    // Recover from a poisoned lock instead of turning one prior panic into a
+    // permanent analysis outage.
+    let mut limits = ANALYSIS_RATE_LIMITS
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+    // Drop fully-expired entries so the maps stay bounded by *active* callers.
+    reap_expired(&mut limits, now);
+
+    if limits
+        .by_org
+        .get(&caller.org_id)
+        .is_some_and(|events| events.len() >= MAX_ANALYSES_PER_ORG_WINDOW)
+    {
+        return Err(AnalysisAdmissionError::RateLimited {
+            retry_after_seconds: ANALYSIS_RETRY_AFTER_SECONDS,
+        });
+    }
+    if limits
+        .by_caller
+        .get(&caller_key)
+        .is_some_and(|events| events.len() >= MAX_ANALYSES_PER_CALLER_WINDOW)
+    {
+        return Err(AnalysisAdmissionError::RateLimited {
+            retry_after_seconds: ANALYSIS_RETRY_AFTER_SECONDS,
+        });
+    }
+
+    // Both windows have headroom; only now take a concurrency slot.
+    let permit = ANALYSIS_CONCURRENCY
+        .clone()
+        .try_acquire_owned()
+        .map_err(|_| AnalysisAdmissionError::Busy {
+            retry_after_seconds: 30,
+        })?;
+
+    // Charge both windows only after the request is fully admitted.
+    limits
+        .by_org
+        .entry(caller.org_id)
+        .or_default()
+        .push_back(now);
+    limits
+        .by_caller
+        .entry(caller_key)
+        .or_default()
+        .push_back(now);
+
+    Ok(AnalysisPermit(permit))
+}
+
+/// Drop window events older than `ANALYSIS_RATE_WINDOW`, removing entries that
+/// become empty so the maps cannot grow unbounded over the process lifetime.
+fn reap_expired(limits: &mut AnalysisRateLimits, now: Instant) {
+    fn prune(events: &mut VecDeque<Instant>, now: Instant) -> bool {
+        while events
+            .front()
+            .is_some_and(|event| now.duration_since(*event) >= ANALYSIS_RATE_WINDOW)
+        {
+            events.pop_front();
+        }
+        !events.is_empty()
+    }
+    limits.by_org.retain(|_, events| prune(events, now));
+    limits.by_caller.retain(|_, events| prune(events, now));
+}
 
 struct Checker {
     rule_id: &'static str,
@@ -88,6 +217,32 @@ struct CheckerItem {
     message: String,
     quote: Option<String>,
     replacement: Option<String>,
+}
+
+/// Reject analysis inputs whose per-checker payload would exceed the size cap,
+/// *before* any paid LLM call or admission slot is taken. This is a client
+/// (4xx) condition — the caller's prompt/tool descriptions are too large — so
+/// callers should surface it as a bad request, not a 500.
+pub fn ensure_analysis_input_within_limit(
+    authored_prompt: &str,
+    resolved_prompt: &str,
+    tools: &[ToolDefinition],
+) -> Result<(), String> {
+    let tool_listing = tools
+        .iter()
+        .map(|t| format!("- {}: {}", t.name(), t.description()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for checker in CHECKERS {
+        let input = checker_input(checker, authored_prompt, resolved_prompt, &tool_listing);
+        if input.len() > MAX_CHECKER_INPUT_BYTES {
+            return Err(format!(
+                "agent analysis input is too large for {}; reduce the system prompt or tool descriptions",
+                checker.rule_id
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// Run all tier-2 checkers concurrently. Individual checker failures are
@@ -499,6 +654,23 @@ mod tests {
         ]);
         let result = run_llm_checks(mock, PROMPT, PROMPT, &[]).await;
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn oversized_checker_input_is_rejected_before_llm_call() {
+        let oversized_prompt = "x".repeat(MAX_CHECKER_INPUT_BYTES);
+        let result = ensure_analysis_input_within_limit(&oversized_prompt, &oversized_prompt, &[]);
+        assert!(
+            result
+                .unwrap_err()
+                .contains("agent analysis input is too large"),
+            "oversized analysis input must be rejected before any LLM call"
+        );
+    }
+
+    #[test]
+    fn within_limit_input_passes_size_check() {
+        assert!(ensure_analysis_input_within_limit("ok", "ok", &[]).is_ok());
     }
 
     #[tokio::test]
