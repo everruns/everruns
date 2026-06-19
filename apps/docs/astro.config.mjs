@@ -269,7 +269,7 @@ export default defineConfig({
             },
             {
               label: "Integrations",
-              link: "/integrations/daytona/",
+              link: "/integrations/",
               icon: "laptop",
               items: [
                 {
