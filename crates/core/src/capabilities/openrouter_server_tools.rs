@@ -36,16 +36,22 @@ pub struct OpenRouterServerToolsCapability;
 
 /// Compile the per-agent config into the list of activated server tools.
 ///
-/// Unknown tool names are skipped (forward-compatible with OpenRouter adding or
-/// renaming tools); `validate_config` rejects them on the write path so stored
-/// configs stay clean. Tool order follows the config, de-duplicated by kind.
+/// This is the read path; it is defensive about malformed input. The write
+/// path's `validate_config` already rejects unknown tool names and a
+/// non-positive `web_search_max_results`, so a normally-validated config never
+/// hits these guards — they only matter for legacy or hand-edited/corrupt
+/// configs. Unknown tool names are dropped, `max_results` is forwarded only when
+/// `>= 1`, and tools are de-duplicated by kind in config order.
 pub fn server_tools_from_config(config: &Value) -> Vec<OpenRouterServerTool> {
     let Some(names) = config.get(TOOLS_KEY).and_then(Value::as_array) else {
         return Vec::new();
     };
+    // Enforce the schema's `>= 1` constraint here too: a stale `0` must not be
+    // forwarded as an invalid OpenRouter `max_results`.
     let max_results = config
         .get(WEB_SEARCH_MAX_RESULTS_KEY)
-        .and_then(Value::as_u64);
+        .and_then(Value::as_u64)
+        .filter(|n| *n >= 1);
 
     let mut seen: Vec<OpenRouterServerToolKind> = Vec::new();
     let mut tools: Vec<OpenRouterServerTool> = Vec::new();
@@ -211,6 +217,14 @@ impl Capability for OpenRouterServerToolsCapability {
             .as_object()
             .ok_or_else(|| "config must be an object".to_string())?;
 
+        // Honor the schema's `additionalProperties: false` — server write paths
+        // gate on this method, not on JSON-schema validation.
+        for key in obj.keys() {
+            if key != TOOLS_KEY && key != WEB_SEARCH_MAX_RESULTS_KEY {
+                return Err(format!("unknown config key: {key}"));
+            }
+        }
+
         if let Some(tools) = obj.get(TOOLS_KEY) {
             let arr = tools
                 .as_array()
@@ -347,6 +361,20 @@ mod tests {
     }
 
     #[test]
+    fn stale_zero_max_results_is_not_forwarded() {
+        // A legacy/corrupt `0` must not become an invalid OpenRouter request.
+        let tools = server_tools_from_config(&json!({
+            "tools": ["web_search"],
+            "web_search_max_results": 0,
+        }));
+        let web = tools
+            .iter()
+            .find(|t| t.kind == OpenRouterServerToolKind::WebSearch)
+            .expect("web_search present");
+        assert!(web.parameters.is_none());
+    }
+
+    #[test]
     fn duplicate_tool_names_are_deduped() {
         let tools = server_tools_from_config(&json!({
             "tools": ["datetime", "datetime"],
@@ -365,6 +393,15 @@ mod tests {
         assert!(
             cap.validate_config(&json!({ "tools": ["web_search"], "web_search_max_results": 0 }))
                 .is_err()
+        );
+        // additionalProperties: false — unknown keys are rejected.
+        assert!(
+            cap.validate_config(&json!({ "tools": ["web_search"], "extra": true }))
+                .is_err()
+        );
+        assert!(
+            cap.validate_config(&json!({ "web_search_max_results": 3 }))
+                .is_ok()
         );
         assert!(cap.validate_config(&Value::Null).is_ok());
     }
