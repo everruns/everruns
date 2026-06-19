@@ -1,5 +1,6 @@
 // Force-link integration crates so inventory::submit! registrations are included
 extern crate everruns_container_sandbox;
+extern crate everruns_integrations_ard;
 extern crate everruns_integrations_brave_search;
 extern crate everruns_integrations_browserless;
 extern crate everruns_integrations_cursor;

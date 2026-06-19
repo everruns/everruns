@@ -964,11 +964,18 @@ impl RuntimeHostAdapter for InProcessRuntime {
         _org_id: i64,
         session_id: SessionId,
     ) -> Result<RuntimeHostTurnContext> {
-        let session = self
+        let mut session = self
             .session_store
             .get_session(session_id)
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        // Fold runtime ARD attachments into the session config layer before
+        // scoped MCP servers / capabilities are resolved (resource_discovery).
+        everruns_core::ard_attachment::apply_session_attachments(
+            self.storage_store.as_ref(),
+            &mut session,
+        )
+        .await;
         let agent = match session.agent_id {
             Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
             None => None,

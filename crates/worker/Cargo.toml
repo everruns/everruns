@@ -33,6 +33,7 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
+everruns-integrations-ard = { path = "../../integrations/ard" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }

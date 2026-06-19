@@ -1,0 +1,90 @@
+name: ARD Integration
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/ard/**'
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+    paths:
+      - 'integrations/ard/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope so it
+  # cannot reach the PR-triggered unit-test job (which runs untrusted
+  # code). It is scoped to live-test below, which only runs on push or
+  # workflow_dispatch.
+
+jobs:
+  unit-test:
+    name: ARD Unit + Integration Tests
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      # Covers crate unit tests plus the wiremock-backed tool_integration
+      # tests (no network/secrets required).
+      - name: Run unit + integration tests
+        run: cargo test -p everruns-integrations-ard
+
+  # Live tests hit the public ARD reference registry. Restricted to
+  # push/workflow_dispatch so an optional Doppler-provided token is never
+  # available in a fork-PR context. The weekly `integration-live-sweep.yml`
+  # backstop catches shared-crate regressions that slip past this gate.
+  live-test:
+    name: ARD Live Registry Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+      # Public reference registry base URL (not a secret). Required by the
+      # fail-closed live tests.
+      ARD_LIVE_REGISTRY_URL: https://agenticresourcediscovery.org/api/v1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@v3
+
+      # Optional bearer token for the registry. The reference registry is
+      # anonymous-read; the token is only used if configured in Doppler.
+      - name: Fetch optional ARD registry token from Doppler
+        run: |
+          echo "ARD_REGISTRY_TOKEN=$(doppler secrets get ARD_REGISTRY_TOKEN --plain 2>/dev/null || true)" >> "$GITHUB_ENV"
+
+      - name: Run live registry tests
+        run: cargo test -p everruns-integrations-ard --features ard-live-tests --test live_api_test

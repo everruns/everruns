@@ -90,7 +90,7 @@ impl WorkerService for WorkerServiceImpl {
         let internal_caller = everruns_core::Caller::internal(req.org_id);
 
         // Get session via SessionService
-        let session = self
+        let mut session = self
             .session_service
             .get(&internal_caller, session_id, None)
             .await
@@ -99,6 +99,15 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to get session")
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
+
+        // Fold any runtime ARD attachments (specs/integrations.md, resource_discovery)
+        // into the session config layer before scoped MCP servers / capabilities
+        // are resolved, so attached MCP servers and A2A agents become usable on
+        // the next turn with no change to the agent loop.
+        if let Ok(store) = self.storage_store() {
+            everruns_core::ard_attachment::apply_session_attachments(store.as_ref(), &mut session)
+                .await;
+        }
 
         // Get agent with capabilities via domain query (optional)
         let mut agent = if let Some(agent_id) = session.agent_id {
