@@ -220,8 +220,11 @@ pub fn is_quota_exhausted(err: &str) -> bool {
 #[macro_export]
 macro_rules! skip_if_quota {
     ($result:expr, $label:expr) => {{
-        if !$result.success {
-            if let Some(err) = $result.error.as_deref() {
+        // Bind once by reference so the expression isn't evaluated twice (no
+        // duplicated side effects / moves if a caller passes a non-trivial expr).
+        let __result = &$result;
+        if !__result.success {
+            if let Some(err) = __result.error.as_deref() {
                 if is_quota_exhausted(err) {
                     eprintln!("SKIP: provider {} out of quota: {}", $label, err);
                     return;
