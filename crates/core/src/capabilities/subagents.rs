@@ -82,7 +82,10 @@ const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent works
 
 fn terminal_subagent_status(wait_status: &str) -> Option<crate::session::SubagentStatus> {
     match wait_status {
-        "idle" | "completed" => Some(crate::session::SubagentStatus::Completed),
+        // Plain `idle` only means the worker is ready for another turn — failed
+        // turns also leave the session idle — so only explicit terminal
+        // outcomes may settle the spawn handle and persist terminal metadata.
+        "completed" => Some(crate::session::SubagentStatus::Completed),
         "error" | "failed" => Some(crate::session::SubagentStatus::Failed),
         "cancelled" => Some(crate::session::SubagentStatus::Cancelled),
         "max_iterations_reached" => Some(crate::session::SubagentStatus::MaxIterationsReached),
@@ -809,8 +812,11 @@ mod tests {
 
     #[test]
     fn terminal_subagent_status_maps_only_terminal_wait_states() {
+        // `idle` is not terminal: a failed turn also idles the worker, so it
+        // must not settle the subagent as completed.
+        assert_eq!(terminal_subagent_status("idle"), None);
         assert_eq!(
-            terminal_subagent_status("idle"),
+            terminal_subagent_status("completed"),
             Some(crate::session::SubagentStatus::Completed)
         );
         assert_eq!(
