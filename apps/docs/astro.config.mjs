@@ -109,6 +109,7 @@ export default defineConfig({
       ],
       components: {
         Header: "./src/components/Header.astro",
+        Footer: "./src/components/Footer.astro",
         TableOfContents: "./src/components/TableOfContents.astro",
         MobileTableOfContents: "./src/components/MobileTableOfContents.astro",
       },

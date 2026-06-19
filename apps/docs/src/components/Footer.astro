@@ -1,0 +1,57 @@
+---
+import DefaultFooter from "@astrojs/starlight/components/Footer.astro";
+
+// Cross-site links surfaced on every docs page. Keeping them here (rather than
+// per-page markdown) guarantees the marketing site and the bashkit project are
+// always one click away and discoverable to crawlers from any docs URL.
+const crossLinks = [
+  { label: "Everruns", href: "https://everruns.com" },
+  { label: "Bashkit", href: "https://bashkit.sh" },
+  { label: "GitHub", href: "https://github.com/everruns/everruns" },
+];
+---
+
+<div class="site-footer-links">
+  <nav aria-label="Everruns sites">
+    <ul>
+      {
+        crossLinks.map((link) => (
+          <li>
+            <a href={link.href} rel="noopener">
+              {link.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </nav>
+</div>
+
+<DefaultFooter {...Astro.props} />
+
+<style>
+  .site-footer-links {
+    margin-block-end: 1rem;
+    padding-block-end: 1rem;
+    border-bottom: 1px solid var(--sl-color-hairline-light);
+  }
+
+  .site-footer-links ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+
+  .site-footer-links a {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+  }
+
+  .site-footer-links a:hover {
+    color: var(--sl-color-text-accent);
+  }
+</style>
