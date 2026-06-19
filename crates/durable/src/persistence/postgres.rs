@@ -1394,11 +1394,24 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                        q.progress_token AS prev_token,
                        q.no_progress_count AS prev_no_progress,
                        -- Highest durable event sequence for this workflow encoded
-                       -- as a monotonic token (-1 => no events yet => token 0).
+                       -- as a monotonic token (-1 => no progress events yet =>
+                       -- token 0).
+                       --
+                       -- We EXCLUDE 'activity_started' events: claim_task writes
+                       -- one on EVERY (re)claim (see started_by_workflow loop),
+                       -- so counting them would make the token advance on every
+                       -- reclaim cycle even when the turn records no genuine
+                       -- forward progress — defeating the seal guard (EVE-534).
+                       -- 'activity_started' is the only per-(re)claim/per-attempt
+                       -- bookkeeping event written to durable_workflow_events;
+                       -- every other event_type records a real workflow fact
+                       -- (scheduled/completed/failed/timer/signal/child), so a
+                       -- denylist of just this one type is complete.
                        COALESCE(
                            (SELECT MAX(e.sequence_num)
                               FROM durable_workflow_events e
-                             WHERE e.workflow_id = q.workflow_id),
+                             WHERE e.workflow_id = q.workflow_id
+                               AND e.event_type <> 'activity_started'),
                            -1
                        )::BIGINT + 1 AS cur_token
                   FROM durable_task_queue q

@@ -743,13 +743,32 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         // seal (mark dead -> DLQ) after N consecutive no-progress recoveries.
         let threshold = no_progress_seal_threshold_from_env();
 
-        // Snapshot the highest event sequence per workflow first to avoid
-        // holding both locks at once.
+        // Snapshot the highest *progress* event sequence per workflow first to
+        // avoid holding both locks at once.
+        //
+        // We must use the SAME progress-signal rule as the Postgres reclaim CTE
+        // (EVE-534): 'activity_started' events are excluded because claim_task
+        // writes one on every (re)claim, so counting them would make the token
+        // advance every cycle and defeat the seal guard. The token is the
+        // highest sequence position of a NON-'activity_started' event (-1 => no
+        // progress events yet => token 0). The in-memory store happens not to
+        // write 'activity_started' on claim, but the derivation rule must still
+        // match so both stores agree and tests can replicate the Postgres flow.
         let highest_seq: HashMap<Uuid, i64> = {
             let workflows = self.workflows.read();
             workflows
                 .iter()
-                .map(|(id, wf)| (*id, wf.events.len() as i64 - 1))
+                .map(|(id, wf)| {
+                    let seq = wf
+                        .events
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, e)| event_type_name(e) != "activity_started")
+                        .map(|(i, _)| i as i64)
+                        .next_back()
+                        .unwrap_or(-1);
+                    (*id, seq)
+                })
                 .collect()
         };
 
@@ -3262,13 +3281,33 @@ mod tests {
 
         let mut sealed = false;
         for cycle in 1..=threshold {
-            // Claim (simulate worker picking it up then crashing) — no events
-            // recorded => no forward progress.
+            // Claim (simulate worker picking it up then crashing) — no genuine
+            // forward-progress event recorded.
             let claimed = store
                 .claim_task("w1", &["reason".to_string()], 1)
                 .await
                 .unwrap();
             assert_eq!(claimed.len(), 1, "cycle {cycle}: claimable before seal");
+
+            // Replicate the Postgres claim_task flow: a real claim writes an
+            // 'activity_started' event to durable_workflow_events on EVERY
+            // (re)claim, advancing the event sequence. The seal guard MUST NOT
+            // treat that bookkeeping event as forward progress (EVE-534) —
+            // otherwise the token advances every cycle and the crash-looping
+            // turn is never sealed (the original bug). We append it here so the
+            // in-memory test exercises the same event stream as Postgres.
+            store
+                .append_events(
+                    workflow_id,
+                    (cycle - 1) as i32,
+                    vec![WorkflowEvent::ActivityStarted {
+                        activity_id: "reason_task".to_string(),
+                        attempt: cycle,
+                        worker_id: "w1".to_string(),
+                    }],
+                )
+                .await
+                .unwrap();
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
@@ -3313,16 +3352,22 @@ mod tests {
             .unwrap();
         let task_id = enqueue_reason_task(&store, workflow_id, 50).await;
 
+        // events.len() before each cycle's appends. Each cycle appends two
+        // events (one 'activity_started' claim marker + one real progress
+        // event), so this grows by 2 per cycle.
+        let mut next_seq: i32 = 0;
         for cycle in 0..6u32 {
             let _ = store
                 .claim_task("w1", &["reason".to_string()], 1)
                 .await
                 .unwrap();
-            // Record an event each cycle => progress token advances every reclaim.
+            // Mirror Postgres claim_task: an 'activity_started' bookkeeping
+            // event on every (re)claim. On its own this must NOT count as
+            // forward progress (EVE-534).
             store
                 .append_events(
                     workflow_id,
-                    cycle as i32,
+                    next_seq,
                     vec![WorkflowEvent::ActivityStarted {
                         activity_id: "reason_task".to_string(),
                         attempt: cycle,
@@ -3331,6 +3376,22 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            next_seq += 1;
+            // ...but the turn also records a genuine progress event each cycle
+            // (e.g. the activity completed), which MUST advance the token and
+            // reset the no-progress counter so the turn is never sealed.
+            store
+                .append_events(
+                    workflow_id,
+                    next_seq,
+                    vec![WorkflowEvent::ActivityCompleted {
+                        activity_id: "reason_task".to_string(),
+                        result: serde_json::json!({"cycle": cycle}),
+                    }],
+                )
+                .await
+                .unwrap();
+            next_seq += 1;
 
             let result = store
                 .reclaim_stale_tasks(Duration::from_secs(30))
