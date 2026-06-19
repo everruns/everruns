@@ -702,33 +702,89 @@ fn finalize_input_for_request(
     if previous_response_id.is_some() {
         compute_delta_input_items(input_items)
     } else {
-        drop_locally_orphaned_function_call_outputs(input_items)
+        repair_unpaired_function_call_items(input_items)
     }
 }
 
-fn drop_locally_orphaned_function_call_outputs(
-    input_items: Vec<ResponsesInputItem>,
-) -> Vec<ResponsesInputItem> {
-    let visible_call_ids: HashSet<String> = input_items
+/// Find `call_id`s that break the OpenAI/Codex Responses tool-pairing invariant
+/// for a stateless full-replay `input`: a serialized `function_call` with no
+/// matching `function_call_output` (EVE-597) or a `function_call_output` with
+/// no matching `function_call` (EVE-519). An empty result means the input is
+/// protocol-valid in both directions.
+fn unpaired_function_call_ids(items: &[ResponsesInputItem]) -> Vec<String> {
+    let call_ids: HashSet<&str> = items
         .iter()
         .filter_map(|item| match item {
-            ResponsesInputItem::FunctionCall { call_id, .. } => Some(call_id.clone()),
+            ResponsesInputItem::FunctionCall { call_id, .. } => Some(call_id.as_str()),
+            _ => None,
+        })
+        .collect();
+    let output_ids: HashSet<&str> = items
+        .iter()
+        .filter_map(|item| match item {
+            ResponsesInputItem::FunctionCallOutput { call_id, .. } => Some(call_id.as_str()),
             _ => None,
         })
         .collect();
 
-    if visible_call_ids.is_empty() {
-        return input_items
-            .into_iter()
-            .filter(|item| !matches!(item, ResponsesInputItem::FunctionCallOutput { .. }))
-            .collect();
+    items
+        .iter()
+        .filter_map(|item| match item {
+            ResponsesInputItem::FunctionCall { call_id, .. }
+                if !output_ids.contains(call_id.as_str()) =>
+            {
+                Some(call_id.clone())
+            }
+            ResponsesInputItem::FunctionCallOutput { call_id, .. }
+                if !call_ids.contains(call_id.as_str()) =>
+            {
+                Some(call_id.clone())
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Repair a stateless full-replay Responses `input` so every `function_call` is
+/// paired with its `function_call_output` and vice versa.
+///
+/// OpenAI/Codex Responses reject requests that contain a `function_call`
+/// without a matching `function_call_output` ("No tool output found for
+/// function call …", EVE-597) or a `function_call_output` without a matching
+/// `function_call` ("No tool call found for function call output", EVE-519).
+/// Long-session compaction / model-view masking can evict one side of a pair —
+/// e.g. `keep_recent_tool_outputs = 3` drops an old tool result while its
+/// assistant `function_call` survives — leaving the serialized request
+/// protocol-invalid and producing a permanent 400 on every continuation.
+///
+/// Tool-call pairs are atomic here: when only one side survives we drop both so
+/// the request stays valid rather than 400ing at the provider. Dropped dangling
+/// items are logged with their `call_id` to point at the responsible
+/// compaction/serialization stage.
+fn repair_unpaired_function_call_items(
+    input_items: Vec<ResponsesInputItem>,
+) -> Vec<ResponsesInputItem> {
+    let unpaired: HashSet<String> = unpaired_function_call_ids(&input_items)
+        .into_iter()
+        .collect();
+
+    if unpaired.is_empty() {
+        return input_items;
     }
+
+    tracing::warn!(
+        unpaired_call_ids = ?unpaired,
+        "dropping unpaired function_call / function_call_output items before \
+         stateless Responses replay; one side of the pair was likely evicted by \
+         compaction or model-view masking (EVE-597/EVE-519)"
+    );
 
     input_items
         .into_iter()
         .filter(|item| match item {
-            ResponsesInputItem::FunctionCallOutput { call_id, .. } => {
-                visible_call_ids.contains(call_id.as_str())
+            ResponsesInputItem::FunctionCall { call_id, .. }
+            | ResponsesInputItem::FunctionCallOutput { call_id, .. } => {
+                !unpaired.contains(call_id.as_str())
             }
             _ => true,
         })
@@ -2862,6 +2918,125 @@ mod tests {
         assert!(
             out.is_empty(),
             "empty delta is valid — the provider can resume purely from the response id"
+        );
+    }
+
+    // ------------------------------------------------------------------------
+    // EVE-597: stateless full-replay must not serialize a `function_call` whose
+    // `function_call_output` was evicted by compaction / model-view masking.
+    // OpenAI/Codex Responses 400 with "No tool output found for function call …"
+    // and the session wedges permanently. This is the sibling of EVE-519 (orphan
+    // output, covered above); the repair drops both sides of a broken pair.
+    // ------------------------------------------------------------------------
+
+    fn function_call(call_id: &str, name: &str) -> ResponsesInputItem {
+        ResponsesInputItem::FunctionCall {
+            r#type: "function_call".to_string(),
+            call_id: call_id.to_string(),
+            name: name.to_string(),
+            arguments: "{}".to_string(),
+        }
+    }
+
+    fn function_call_output(call_id: &str) -> ResponsesInputItem {
+        ResponsesInputItem::FunctionCallOutput {
+            r#type: "function_call_output".to_string(),
+            call_id: call_id.to_string(),
+            output: "result".to_string(),
+        }
+    }
+
+    fn user_message(text: &str) -> ResponsesInputItem {
+        ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text(text.to_string()),
+            phase: None,
+        }
+    }
+
+    #[test]
+    fn finalize_input_drops_dangling_function_call_without_previous_response_id() {
+        // The exact incident: an early `read_file` call survived compaction but
+        // its tool output was evicted (keep_recent_tool_outputs), leaving a
+        // dangling `function_call`.
+        let items = vec![
+            user_message("fresh"),
+            function_call("call_pHJNxIuwzLppFsQK5nJrDOpZ", "read_file"),
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 1);
+        assert!(
+            unpaired_function_call_ids(&out).is_empty(),
+            "the dangling function_call must be dropped"
+        );
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+    }
+
+    #[test]
+    fn finalize_input_preserves_paired_function_call_and_output() {
+        let items = vec![
+            user_message("what time is it?"),
+            function_call("call_ok", "get_current_time"),
+            function_call_output("call_ok"),
+        ];
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert_eq!(out.len(), 3, "an intact call/output pair must survive");
+        assert!(unpaired_function_call_ids(&out).is_empty());
+    }
+
+    #[test]
+    fn finalize_input_compaction_drops_only_the_dangling_old_call() {
+        // Post-compaction model view equivalent to keep_recent_tool_outputs = 3:
+        // one old call whose output was masked away, followed by three intact
+        // recent pairs. Only the dangling old call is dropped; the recent pairs
+        // and the surrounding messages are preserved.
+        let mut items = vec![
+            user_message("long session"),
+            function_call("call_old", "read_file"),
+        ];
+        for i in 0..3 {
+            let id = format!("call_recent_{i}");
+            items.push(function_call(&id, "tool"));
+            items.push(function_call_output(&id));
+        }
+
+        let out = finalize_input_for_request(items, &None);
+
+        assert!(
+            unpaired_function_call_ids(&out).is_empty(),
+            "no dangling function_call may remain after repair"
+        );
+        assert!(
+            !out.iter().any(|item| matches!(
+                item,
+                ResponsesInputItem::FunctionCall { call_id, .. } if call_id == "call_old"
+            )),
+            "the old dangling call must be removed"
+        );
+        // 1 user message + 3 intact recent pairs (6 items) = 7.
+        assert_eq!(out.len(), 7);
+    }
+
+    #[test]
+    fn unpaired_function_call_ids_reports_both_directions() {
+        let items = vec![
+            function_call("call_no_output", "read_file"), // EVE-597: dangling call
+            function_call_output("out_no_call"),          // EVE-519: orphan output
+            function_call("paired", "tool"),
+            function_call_output("paired"),
+        ];
+
+        let mut ids = unpaired_function_call_ids(&items);
+        ids.sort();
+        assert_eq!(
+            ids,
+            vec!["call_no_output".to_string(), "out_no_call".to_string()]
         );
     }
 
