@@ -19,6 +19,8 @@ use crate::storage::{EncryptionService, StorageBackend};
 
 const OPENROUTER_PROVIDER: &str = "openrouter";
 const RECONCILE_BATCH: i64 = 50;
+const MISSING_KEY_RETRY_AFTER_SECONDS: i32 = 60 * 60;
+const LOOKUP_FAILURE_RETRY_AFTER_SECONDS: i32 = 10 * 60;
 
 pub struct GenerationReconcilerService {
     db: Arc<StorageBackend>,
@@ -72,8 +74,11 @@ impl GenerationReconcilerService {
                 debug!(
                     org_id = row.org_id,
                     generation_id = %row.id,
-                    "no OpenRouter API key for org; skipping reconciliation"
+                    retry_after_seconds = MISSING_KEY_RETRY_AFTER_SECONDS,
+                    "no OpenRouter API key for org; delaying reconciliation"
                 );
+                self.delay_retry(row.id, MISSING_KEY_RETRY_AFTER_SECONDS)
+                    .await;
                 continue;
             };
 
@@ -105,13 +110,30 @@ impl GenerationReconcilerService {
                         generation_id = %row.id,
                         provider_response_id = %row.provider_response_id,
                         error = %e,
-                        "OpenRouter generation lookup failed; will retry on next cycle"
+                        retry_after_seconds = LOOKUP_FAILURE_RETRY_AFTER_SECONDS,
+                        "OpenRouter generation lookup failed; delaying retry"
                     );
+                    self.delay_retry(row.id, LOOKUP_FAILURE_RETRY_AFTER_SECONDS)
+                        .await;
                 }
             }
         }
 
         Ok(())
+    }
+
+    async fn delay_retry(&self, id: uuid::Uuid, retry_after_seconds: i32) {
+        if let Err(e) = self
+            .db
+            .mark_llm_generation_reconciliation_failed(id, retry_after_seconds)
+            .await
+        {
+            error!(
+                generation_id = %id,
+                error = %e,
+                "failed to record generation reconciliation retry delay"
+            );
+        }
     }
 
     async fn resolve_openrouter_key(&self, org_id: i64) -> Option<String> {

@@ -2409,6 +2409,19 @@ impl StorageBackend {
         )
     }
 
+    pub async fn mark_llm_generation_reconciliation_failed(
+        &self,
+        id: Uuid,
+        retry_after_seconds: i32,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            mark_llm_generation_reconciliation_failed,
+            id,
+            retry_after_seconds
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub async fn increment_session_usage(
         &self,

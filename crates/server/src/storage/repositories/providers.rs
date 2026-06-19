@@ -534,9 +534,10 @@ impl Database {
         Ok(())
     }
 
-    /// Returns rows that have a `provider_response_id` but no `reconciled_at`,
-    /// ordered oldest-first. Used by the reconciliation service to find
-    /// generations that need an authoritative usage/cost lookup.
+    /// Returns rows that have a `provider_response_id` but no `reconciled_at`
+    /// and are ready to retry, ordered oldest-first. Failed rows are delayed by
+    /// `mark_llm_generation_reconciliation_failed` so they cannot monopolize
+    /// every batch.
     pub async fn list_unreconciled_llm_generations(
         &self,
         provider: &str,
@@ -549,6 +550,7 @@ impl Database {
             WHERE  provider = $1
               AND  provider_response_id IS NOT NULL
               AND  reconciled_at IS NULL
+              AND  (reconcile_after IS NULL OR reconcile_after <= NOW())
             ORDER  BY created_at ASC
             LIMIT  $2
             "#,
@@ -558,6 +560,31 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Records a failed reconciliation attempt and delays the row before it is
+    /// eligible for another batch. Idempotent with successful reconciliation:
+    /// a row already reconciled (`reconciled_at IS NOT NULL`) is not modified.
+    pub async fn mark_llm_generation_reconciliation_failed(
+        &self,
+        id: Uuid,
+        retry_after_seconds: i32,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE llm_generations
+            SET
+                reconciliation_attempts = reconciliation_attempts + 1,
+                reconcile_after = NOW() + ($2 * INTERVAL '1 second')
+            WHERE id = $1
+              AND reconciled_at IS NULL
+            "#,
+        )
+        .bind(id)
+        .bind(retry_after_seconds)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     /// Updates a generation row with authoritative data from the provider and
@@ -581,6 +608,7 @@ impl Database {
                 actual_cost_usd       = COALESCE($4, actual_cost_usd),
                 provider              = COALESCE($5, provider),
                 model                 = COALESCE($6, model),
+                reconcile_after       = NULL,
                 reconciled_at         = NOW()
             WHERE id = $1
               AND reconciled_at IS NULL
