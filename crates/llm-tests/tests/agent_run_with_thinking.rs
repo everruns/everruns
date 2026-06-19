@@ -102,12 +102,10 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         // OpenAI GPT-5.x surfaces its readable reasoning summary as public
         // text instead of on the private `thinking` field. The summary is
         // folded into the response, which we already asserted is non-empty and
-        // carries the worked-out answer above.
+        // carries the worked-out answer above, so `thinking` must stay empty
+        // (absent or blank).
         assert!(
-            !assistant_msg
-                .thinking
-                .as_ref()
-                .is_some_and(|t| !t.is_empty()),
+            assistant_msg.thinking.as_ref().is_none_or(|t| t.is_empty()),
             "GPT-5.x reasoning summary should surface as public text, not on \
              the private thinking field, for {config}"
         );
