@@ -314,6 +314,53 @@ impl Database {
         Ok(rows)
     }
 
+    /// Prune terminal session tasks whose `finished_at` is older than the TTL
+    /// cutoff, in a bounded batch. Deletes the `session_tasks` rows (their
+    /// `session_task_messages` cascade via the ON DELETE CASCADE FK) and
+    /// returns the `(session_id, task_id, result_path)` triples that were
+    /// removed, so the caller can clean up `result_path` artifacts after the
+    /// row delete commits (EVE-580).
+    ///
+    /// Only terminal states ('succeeded', 'failed', 'canceled') with a
+    /// non-NULL `finished_at` strictly older than `cutoff` are eligible —
+    /// live/running/queued tasks are never touched. The `LIMIT` bounds work
+    /// per reaper tick so a large backlog can't wedge the tick or blow memory;
+    /// a backlog is drained across successive ticks.
+    ///
+    /// The query is global/by-age (not org-scoped) but deletes are keyed on
+    /// each task's own primary key, so it cannot cross-delete between orgs.
+    pub async fn prune_terminal_session_tasks(
+        &self,
+        cutoff: chrono::DateTime<chrono::Utc>,
+        limit: i64,
+    ) -> Result<Vec<(SessionId, String, Option<String>)>> {
+        // Single statement: select the eligible batch and delete it atomically,
+        // returning what was removed. Messages cascade via the FK. Selecting in
+        // a CTE with the partial terminal+finished_at index keeps the scan cheap.
+        let rows = sqlx::query_as::<_, (SessionId, String, Option<String>)>(
+            r#"
+            WITH eligible AS (
+                SELECT id
+                FROM session_tasks
+                WHERE state IN ('succeeded', 'failed', 'canceled')
+                  AND finished_at IS NOT NULL
+                  AND finished_at < $1
+                ORDER BY finished_at ASC
+                LIMIT $2
+            )
+            DELETE FROM session_tasks st
+            USING eligible e
+            WHERE st.id = e.id
+            RETURNING st.session_id, st.id, st.result_path
+            "#,
+        )
+        .bind(cutoff)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     /// Messages on the task channel, oldest first.
     ///
     /// When `after_id` is `Some`, only messages newer than that message are
