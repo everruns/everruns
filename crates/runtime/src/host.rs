@@ -444,6 +444,9 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
                 .unwrap_or_default()
         })
         .collect();
+    // Tool-output guardrails must inspect the original result before other
+    // capability hooks can persist or compact it into secondary surfaces.
+    post_tool_hooks.sort_by_key(|hook| hook.priority());
 
     // User-hook contributions (see `specs/user-hooks.md`). `finalize_specs_from_configs`
     // gathers specs across every resolved capability — both the user-facing
