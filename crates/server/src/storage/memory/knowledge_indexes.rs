@@ -145,6 +145,9 @@ impl InMemoryDatabase {
         if let Some(source_config) = input.source_config {
             idx.source_config = source_config;
         }
+        input
+            .resolved_owner_user_id
+            .apply(&mut idx.resolved_owner_user_id);
         if let Some(embedding_model_id) = input.embedding_model_id {
             idx.embedding_model_id = embedding_model_id;
         }

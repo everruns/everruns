@@ -1344,6 +1344,7 @@ pub struct UpdateKnowledgeIndex {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub source_config: Option<serde_json::Value>,
+    pub resolved_owner_user_id: UpdateField<Uuid>,
     /// Optional update to the embedding model. `None` = unchanged. The model is
     /// required on the index, so `Clear` is not representable.
     pub embedding_model_id: Option<ModelId>,

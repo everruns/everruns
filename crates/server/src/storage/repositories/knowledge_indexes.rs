@@ -114,15 +114,16 @@ impl Database {
                 name = COALESCE($3, name), \
                 description = CASE WHEN $4 THEN $5 ELSE description END, \
                 source_config = COALESCE($6, source_config), \
-                embedding_model_id = COALESCE($7, embedding_model_id), \
-                status = COALESCE($8, status), \
+                resolved_owner_user_id = CASE WHEN $7 THEN $8 ELSE resolved_owner_user_id END, \
+                embedding_model_id = COALESCE($9, embedding_model_id), \
+                status = COALESCE($10, status), \
                 archived_at = CASE \
-                    WHEN $8 = 'archived' THEN COALESCE(archived_at, NOW()) \
-                    WHEN $8 = 'active' THEN NULL \
+                    WHEN $10 = 'archived' THEN COALESCE(archived_at, NOW()) \
+                    WHEN $10 = 'active' THEN NULL \
                     ELSE archived_at \
                 END, \
                 deleted_at = CASE \
-                    WHEN $8 = 'deleted' THEN COALESCE(deleted_at, NOW()) \
+                    WHEN $10 = 'deleted' THEN COALESCE(deleted_at, NOW()) \
                     ELSE deleted_at \
                 END, \
                 updated_at = NOW() \
@@ -136,6 +137,8 @@ impl Database {
             .bind(input.description.is_some())
             .bind(input.description.flatten())
             .bind(&input.source_config)
+            .bind(input.resolved_owner_user_id.is_changed())
+            .bind(input.resolved_owner_user_id.into_value())
             .bind(input.embedding_model_id.map(|m| m.uuid()))
             .bind(&input.status)
             .fetch_optional(&self.pool)
