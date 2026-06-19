@@ -80,21 +80,36 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
         result.response
     );
 
-    // Verify thinking tokens were captured on the stored assistant message
+    // Verify reasoning was captured on the stored assistant message.
     let messages = runner.messages().await.unwrap();
     let assistant_msg = messages
         .iter()
         .find(|m| m.role == MessageRole::Agent)
         .expect("Should have an agent message");
 
-    assert!(
-        assistant_msg.thinking.is_some(),
-        "Agent message should have thinking content for {config}"
-    );
-    assert!(
-        !assistant_msg.thinking.as_ref().unwrap().is_empty(),
-        "Thinking content should not be empty for {config}"
-    );
+    if config.reasoning_on_thinking_field {
+        // Anthropic (and OpenAI o-series) keep raw reasoning on the private
+        // `thinking` field.
+        assert!(
+            assistant_msg.thinking.is_some(),
+            "Agent message should have thinking content for {config}"
+        );
+        assert!(
+            !assistant_msg.thinking.as_ref().unwrap().is_empty(),
+            "Thinking content should not be empty for {config}"
+        );
+    } else {
+        // OpenAI GPT-5.x surfaces its readable reasoning summary as public
+        // text instead of on the private `thinking` field. The summary is
+        // folded into the response, which we already asserted is non-empty and
+        // carries the worked-out answer above, so `thinking` must stay empty
+        // (absent or blank).
+        assert!(
+            assistant_msg.thinking.as_ref().is_none_or(|t| t.is_empty()),
+            "GPT-5.x reasoning summary should surface as public text, not on \
+             the private thinking field, for {config}"
+        );
+    }
 
     // thinking_signature is provider-specific:
     // - Anthropic: cryptographic signature (always present with thinking)

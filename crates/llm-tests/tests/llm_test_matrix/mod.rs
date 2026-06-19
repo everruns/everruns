@@ -21,6 +21,12 @@ pub struct ProviderModelConfig {
     pub provider_type: DriverId,
     pub model_name: &'static str,
     pub env_var: &'static str,
+    /// Whether the model surfaces extended reasoning on the private `thinking`
+    /// field. Anthropic (and OpenAI o-series encrypted reasoning) do. OpenAI
+    /// GPT-5.x instead surfaces its readable reasoning *summary* as public
+    /// text, leaving `thinking` empty — see the `ReasoningSummaryDelta`
+    /// mapping in `openresponses_protocol`.
+    pub reasoning_on_thinking_field: bool,
 }
 
 impl ProviderModelConfig {
@@ -33,7 +39,15 @@ impl ProviderModelConfig {
             provider_type,
             model_name,
             env_var,
+            reasoning_on_thinking_field: true,
         }
+    }
+
+    /// Mark this model as surfacing its reasoning summary as public text rather
+    /// than on the private `thinking` field (OpenAI GPT-5.x behavior).
+    pub const fn reasoning_as_text(mut self) -> Self {
+        self.reasoning_on_thinking_field = false;
+        self
     }
 
     /// Build a `ResolvedModel` from env, returning `None` if the key is
@@ -100,13 +114,13 @@ pub const OPENAI_GPT4O_MINI: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::OpenAI, "gpt-4o-mini", "OPENAI_API_KEY");
 
 pub const OPENAI_GPT52: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.2", "OPENAI_API_KEY").reasoning_as_text();
 
 pub const OPENAI_GPT54: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.4", "OPENAI_API_KEY").reasoning_as_text();
 
 pub const OPENAI_GPT55: ProviderModelConfig =
-    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY");
+    ProviderModelConfig::new(DriverId::OpenAI, "gpt-5.5", "OPENAI_API_KEY").reasoning_as_text();
 
 pub const GEMINI_FLASH: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Gemini, "gemini-2.5-flash", "GEMINI_API_KEY");
