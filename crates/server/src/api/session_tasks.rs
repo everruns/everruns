@@ -7,7 +7,8 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_tasks::{
-    CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage, SessionTaskDetail,
+    CancelSessionTask, GetSessionTask, ListOrgTasks, ListSessionTasks, PostSessionTaskMessage,
+    SessionTaskDetail,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;
@@ -57,6 +58,7 @@ impl_auth_state!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
+        .route("/v1/tasks", get(list_org_tasks))
         .route("/v1/sessions/{session_id}/tasks", get(list_tasks))
         .route("/v1/sessions/{session_id}/tasks/{task_id}", get(get_task))
         .route(
@@ -68,6 +70,46 @@ pub fn routes(state: AppState) -> Router {
             post(cancel_task),
         )
         .with_state(state)
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct ListOrgTasksQuery {
+    pub state: Option<String>,
+    pub kind: Option<String>,
+    pub created_after: Option<String>,
+    pub limit: Option<u32>,
+}
+
+/// List background tasks across every session in the caller's org.
+#[utoipa::path(
+    get,
+    path = "/v1/tasks",
+    params(
+        ("state" = Option<String>, Query, description = "Filter by state"),
+        ("kind" = Option<String>, Query, description = "Filter by kind"),
+        ("created_after" = Option<String>, Query, description = "Only tasks created at/after this RFC3339 timestamp"),
+        ("limit" = Option<u32>, Query, description = "Max tasks, newest first (default 100, max 500)"),
+    ),
+    responses(
+        (status = 200, description = "Org tasks", body = Vec<SessionTask>),
+    ),
+    tag = "session-tasks"
+)]
+pub async fn list_org_tasks(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<ListOrgTasksQuery>,
+) -> ApiResult<Vec<SessionTask>> {
+    Ok(Json(
+        ListOrgTasks {
+            state: query.state,
+            kind: query.kind,
+            created_after: query.created_after,
+            limit: query.limit,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
 }
 
 #[derive(Debug, Default, Deserialize)]

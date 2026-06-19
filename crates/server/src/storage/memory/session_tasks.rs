@@ -62,6 +62,46 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// List tasks across every session owned by `org_id`, newest-first, with
+    /// optional kind/state/age filters and a bounded limit. Mirrors the
+    /// PostgreSQL repository: org scoping is the authoritative multitenancy
+    /// boundary — a task is only returned when its owning session belongs to
+    /// the org.
+    pub async fn list_org_session_tasks(
+        &self,
+        org_id: i64,
+        kind: Option<&str>,
+        state: Option<&str>,
+        created_after: Option<chrono::DateTime<chrono::Utc>>,
+        limit: i64,
+    ) -> Result<Vec<SessionTaskRow>> {
+        // Sessions owned by the org — the multitenancy boundary, mirroring the
+        // SQL semijoin on sessions.org_id.
+        let org_sessions: std::collections::HashSet<SessionId> = {
+            let sessions = self.sessions.read();
+            sessions
+                .values()
+                .filter(|s| s.org_id == org_id)
+                .map(|s| s.id)
+                .collect()
+        };
+        let tasks = self.session_tasks.read();
+        let mut result: Vec<_> = tasks
+            .values()
+            .filter(|row| {
+                org_sessions.contains(&row.session_id)
+                    && kind.is_none_or(|k| row.kind == k)
+                    && state.is_none_or(|s| row.state == s)
+                    && created_after.is_none_or(|c| row.created_at >= c)
+            })
+            .cloned()
+            .collect();
+        // Newest-first, matching the PG `ORDER BY created_at DESC, id DESC`.
+        result.sort_by(|a, b| (b.created_at, &b.id).cmp(&(a.created_at, &a.id)));
+        result.truncate(limit.max(0) as usize);
+        Ok(result)
+    }
+
     /// Load the task, apply the update through core invariants, write back.
     pub async fn update_session_task(
         &self,

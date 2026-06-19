@@ -76,6 +76,96 @@ impl Command for ListSessionTasks {
 
 inventory::submit! { CommandDescriptor::of::<ListSessionTasks>() }
 
+/// List background tasks across every session in the caller's org.
+///
+/// Org-scoped observability query (EVE-583): unlike `ListSessionTasks`, this is
+/// not bound to a single session. The org is taken from the authenticated
+/// caller (`ctx.org_id()`), never from input, so the result is always scoped to
+/// the caller's tenant.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct ListOrgTasks {
+    /// Optional state filter (queued, running, awaiting_input, succeeded, failed, canceled).
+    #[serde(default)]
+    pub state: Option<String>,
+    /// Optional kind filter (subagent, external_agent, background_tool, monitor, ...).
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// Optional age filter: only tasks created at or after this RFC3339 timestamp.
+    #[serde(default)]
+    pub created_after: Option<String>,
+    /// Max tasks to return, newest first. Defaults to 100, capped at 500.
+    #[serde(default)]
+    pub limit: Option<u32>,
+}
+
+impl Command for ListOrgTasks {
+    type Output = Vec<SessionTask>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_org_tasks",
+            category: "session_tasks",
+            description: "List background tasks across every session in the org.",
+            method: "GET",
+            path: "/v1/tasks",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionTask>, CommandError> {
+        const DEFAULT_LIMIT: u32 = 100;
+        const MAX_LIMIT: u32 = 500;
+
+        let state = match self.state.as_deref().filter(|s| !s.is_empty()) {
+            Some(raw) => Some(SessionTaskState::parse(raw).ok_or_else(|| {
+                CommandError::bad_request(format!(
+                    "Unknown state filter \"{raw}\". Valid states: queued, running, \
+                     awaiting_input, succeeded, failed, canceled."
+                ))
+            })?),
+            None => None,
+        };
+        let kind = self.kind.filter(|k| !k.is_empty());
+        let created_after = match self.created_after.as_deref().filter(|s| !s.is_empty()) {
+            Some(raw) => Some(
+                chrono::DateTime::parse_from_rfc3339(raw)
+                    .map(|dt| dt.with_timezone(&chrono::Utc))
+                    .map_err(|e| {
+                        CommandError::bad_request(format!(
+                            "Invalid created_after timestamp \"{raw}\" (expected RFC3339): {e}"
+                        ))
+                    })?,
+            ),
+            None => None,
+        };
+        let limit = self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as i64;
+
+        let rows = ctx
+            .db
+            .list_org_session_tasks(
+                ctx.org_id(),
+                kind.as_deref(),
+                state.map(|s| s.to_string()).as_deref(),
+                created_after,
+                limit,
+            )
+            .await
+            .map_err(classify_anyhow)?;
+        rows.iter()
+            .map(|r| {
+                r.to_task().map_err(|e| {
+                    CommandError::internal(anyhow::anyhow!("Invalid session task row: {e}"))
+                })
+            })
+            .collect()
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListOrgTasks>() }
+
 /// Task snapshot plus the recent message thread.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SessionTaskDetail {
@@ -444,6 +534,164 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    /// Create a session owned by an arbitrary org (for cross-tenant tests).
+    async fn create_session_in_org(
+        db: &Arc<StorageBackend>,
+        org_id: i64,
+    ) -> everruns_core::SessionId {
+        db.create_session(CreateSessionRow {
+            org_id,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("other-org session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            workspace_id: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
+    // -------------------------------------------------------------------------
+    // ListOrgTasks — cross-session, org-scoped listing (EVE-583)
+    // -------------------------------------------------------------------------
+
+    /// Org-scoped listing must return every task across the caller's org while
+    /// never leaking tasks owned by another org, and must honor kind/state/limit
+    /// filters.
+    #[tokio::test]
+    async fn list_org_tasks_scopes_to_org_and_filters() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone()); // DEFAULT_ORG_ID
+        let registry = q::registry_for_ctx(&ctx);
+
+        // Org A (the caller's org): one subagent (running), one background_tool (queued).
+        let sess_a = create_session(&db).await;
+        registry
+            .create(CreateSessionTask {
+                session_id: sess_a,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "A-sub".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        registry
+            .create(CreateSessionTask {
+                session_id: sess_a,
+                id: None,
+                kind: TASK_KIND_BACKGROUND_TOOL.to_string(),
+                display_name: "A-bg".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Queued,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // Org B (a different tenant): a task that must never surface for org A.
+        let other_org = DEFAULT_ORG_ID + 12_345;
+        let sess_b = create_session_in_org(&db, other_org).await;
+        registry
+            .create(CreateSessionTask {
+                session_id: sess_b,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "B-sub".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        // Unfiltered: only org A's two tasks, never org B's.
+        let all = ListOrgTasks::default().execute(&ctx).await.unwrap();
+        assert_eq!(all.len(), 2, "must list exactly org A's two tasks");
+        assert!(
+            all.iter().all(|t| t.session_id == sess_a),
+            "must never leak another org's tasks"
+        );
+
+        // Kind filter.
+        let subs = ListOrgTasks {
+            kind: Some("subagent".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(subs.len(), 1);
+        assert_eq!(subs[0].kind, TASK_KIND_SUBAGENT);
+
+        // State filter.
+        let queued = ListOrgTasks {
+            state: Some("queued".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].state, SessionTaskState::Queued);
+
+        // Limit caps the result set.
+        let one = ListOrgTasks {
+            limit: Some(1),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(one.len(), 1, "limit must bound the result set");
+
+        // Age filter: a future cutoff excludes everything; bad input is rejected.
+        let future = (chrono::Utc::now() + chrono::Duration::hours(1)).to_rfc3339();
+        let none = ListOrgTasks {
+            created_after: Some(future),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert!(none.is_empty(), "future created_after must exclude all");
+
+        let bad = ListOrgTasks {
+            created_after: Some("not-a-timestamp".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await;
+        assert!(
+            matches!(bad.unwrap_err().kind, CommandErrorKind::BadRequest(_)),
+            "invalid created_after must be a bad request"
+        );
     }
 
     // -------------------------------------------------------------------------

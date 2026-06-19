@@ -314,11 +314,20 @@ a registry policy rather than per-capability cleanup.
 ## API
 
 ```
+GET  /v1/tasks                                  — org-scoped list (state/kind/created_after, newest-first, bounded limit)
 GET  /v1/sessions/{session_id}/tasks            — list (filter by state/kind)
 GET  /v1/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
 POST /v1/sessions/{session_id}/tasks/{task_id}/messages — inbound message
 POST /v1/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
 ```
+
+`GET /v1/tasks` (EVE-583) is the cross-session, org-scoped query for
+ops/observability: it lists tasks across every session in the caller's org,
+newest-first, with optional `state`, `kind`, and `created_after` (RFC3339) age
+filters and a bounded `limit` (default 100, max 500). The org is taken from the
+authenticated caller, never from input; scoping is a semijoin on
+`sessions.org_id` (the authoritative tenant boundary), backed by the
+`session_tasks (created_at DESC)` index.
 
 Message posts and cancels both invoke the kind's `TaskExecutor` best-effort
 after the durable registry write: the message is recorded and the cancel intent
@@ -441,4 +450,3 @@ No backward compatibility is required; data migrates forward once:
 - Webhooks / push notifications on task transitions.
 - Per-org retention TTL overrides (global TTL ships first; see Retention).
 - Task definitions / recurrence (monitors ship as long-lived tasks first).
-- Cross-session or org-scoped task queries.
