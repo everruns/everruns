@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
-- **Knowledge Indexes** - Source-backed semantic search using Open Knowledge Format (OKF), enabling structured retrieval across knowledge bases ([#2321](https://github.com/everruns/everruns/pull/2321)).
+- **Knowledge Indexes** - Source-backed semantic search with OKF-backed knowledge bases, enabling structured retrieval across indexed sources.
 - **Agentic Resource Discovery (ARD)** - New ARD client capability for discovering and connecting to agentic resources ([#2324](https://github.com/everruns/everruns/pull/2324)).
 - **everruns-local Crate** - Embedded host backends for local development and testing ([#2298](https://github.com/everruns/everruns/pull/2298)).
 - **MCP External Guardrails** - New `mcp` check type for external guardrail validation over scoped MCP connections ([#2302](https://github.com/everruns/everruns/pull/2302)).
