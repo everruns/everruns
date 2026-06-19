@@ -6,8 +6,11 @@
 //!   are never accepted from the model.
 //! - Trust gate: `trustManifest` domain↔URN binding + `require_trust`
 //!   attestations are enforced before any attach.
-//! - SSRF: every resolved artifact/endpoint URL is DNS-pinned validated unless
-//!   `allow_local_urls` is set (tests/dev only).
+//! - SSRF: the resolved artifact URL is DNS-pinned validated before it is
+//!   fetched (`validate_url_dns_pinned`); the live MCP/A2A endpoint URL is
+//!   statically validated at attach time (`validate_safe_url`) and then
+//!   DNS-pinned re-validated on every subsequent call by the scoped-server / A2A
+//!   path. `allow_local_urls` (tests/dev only) relaxes both.
 //! - `max_attachments` bounds prompt-injection-driven attach storms.
 //! - All registry-returned text is treated as untrusted external data.
 
@@ -179,7 +182,7 @@ impl Tool for DiscoverResourcesTool {
         // a compact ranked view back to the model.
         let mut ranked = Vec::new();
         for entry in &response.results {
-            cache_entry(context, entry).await;
+            cache_entry(context, &registry.id, entry).await;
             ranked.push(json!({
                 "urn": entry.identifier,
                 "displayName": entry.display_name(),
@@ -206,12 +209,26 @@ impl Tool for DiscoverResourcesTool {
     }
 }
 
+/// A discovery-cache record: the catalog entry plus the **allowlisted**
+/// `registry_id` it was found through. Persisting the config id (not the
+/// registry-returned, untrusted `entry.source`) keeps attach-time audit metadata
+/// trustworthy.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CachedEntry {
+    registry_id: String,
+    entry: CatalogEntry,
+}
+
 /// Persist a discovered entry under `ard_disco:{slug}` (best-effort).
-async fn cache_entry(context: &ToolContext, entry: &CatalogEntry) {
+async fn cache_entry(context: &ToolContext, registry_id: &str, entry: &CatalogEntry) {
     let Some(storage) = &context.storage_store else {
         return;
     };
-    let Ok(serialized) = serde_json::to_string(entry) else {
+    let cached = CachedEntry {
+        registry_id: registry_id.to_string(),
+        entry: entry.clone(),
+    };
+    let Ok(serialized) = serde_json::to_string(&cached) else {
         return;
     };
     let key = format!("{ARD_DISCOVERY_KV_PREFIX}{}", urn_slug(&entry.identifier));
@@ -296,9 +313,10 @@ impl Tool for AttachResourceTool {
             }));
         }
 
-        // Resolve the cached catalog entry.
+        // Resolve the cached catalog entry plus the allowlisted registry id it
+        // was discovered through.
         let disco_key = format!("{ARD_DISCOVERY_KV_PREFIX}{slug}");
-        let entry: CatalogEntry = match storage.get_value(context.session_id, &disco_key).await {
+        let cached: CachedEntry = match storage.get_value(context.session_id, &disco_key).await {
             Ok(Some(raw)) => match serde_json::from_str(&raw) {
                 Ok(e) => e,
                 Err(e) => {
@@ -314,6 +332,8 @@ impl Tool for AttachResourceTool {
                 ));
             }
         };
+        let registry_id = cached.registry_id;
+        let entry = cached.entry;
 
         if let Err(e) = entry.validate_envelope() {
             return ToolExecutionResult::tool_error(e);
@@ -339,6 +359,8 @@ impl Tool for AttachResourceTool {
         }
 
         // Enforce attachment cap (count distinct existing attachments).
+        // Fail closed: if the count can't be determined, refuse rather than
+        // bypass the threat-model bound.
         match count_attachments(context).await {
             Ok(n) if n >= self.config.max_attachments => {
                 return ToolExecutionResult::tool_error(format!(
@@ -346,7 +368,13 @@ impl Tool for AttachResourceTool {
                     self.config.max_attachments
                 ));
             }
-            _ => {}
+            Ok(_) => {}
+            Err(()) => {
+                return ToolExecutionResult::tool_error(
+                    "Could not verify the session's attachment count; refusing to attach \
+                     (fail-closed on the max_attachments bound).",
+                );
+            }
         }
 
         // Resolve the artifact document (embedded `data` or fetched `url`).
@@ -365,10 +393,7 @@ impl Tool for AttachResourceTool {
             urn: entry.identifier.clone(),
             display_name: entry.display_name(),
             media_type: entry.media_type.clone(),
-            registry_id: entry
-                .source
-                .clone()
-                .unwrap_or_else(|| "unknown".to_string()),
+            registry_id,
             target,
         };
 
@@ -565,18 +590,24 @@ async fn register_resource(context: &ToolContext, attachment: &ArdAttachment) {
 }
 
 /// Derive a stable MCP/agent logical name from a URN's terminal segments.
+///
+/// Takes the last **non-empty** colon segment and collapses every run of
+/// non-alphanumerics into a single `_`. Collapsing matters: the scoped-MCP
+/// layer uses `__` as the `mcp_<server>__<tool>` separator and rejects server
+/// names containing `__`, which would skip all scoped MCP tools for the turn.
 fn sanitize_server_name(urn: &str) -> String {
-    let tail = urn.rsplit(':').next().unwrap_or(urn);
-    let name: String = tail
-        .chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() {
-                c.to_ascii_lowercase()
-            } else {
-                '_'
-            }
-        })
-        .collect();
+    let tail = urn.rsplit(':').find(|s| !s.is_empty()).unwrap_or(urn);
+    let mut name = String::with_capacity(tail.len());
+    let mut prev_underscore = false;
+    for c in tail.chars() {
+        if c.is_ascii_alphanumeric() {
+            name.push(c.to_ascii_lowercase());
+            prev_underscore = false;
+        } else if !prev_underscore {
+            name.push('_');
+            prev_underscore = true;
+        }
+    }
     let trimmed = name.trim_matches('_');
     if trimmed.is_empty() {
         "ard_resource".to_string()
@@ -674,7 +705,15 @@ mod tests {
             sanitize_server_name("urn:ai:acme.com:agent:Weather-Bot"),
             "weather_bot"
         );
-        assert_eq!(sanitize_server_name("urn:ai:x.com::"), "ard_resource");
+        // Runs of non-alphanumerics collapse to a single `_` so the name can
+        // never contain the `__` scoped-MCP separator.
+        assert_eq!(
+            sanitize_server_name("urn:ai:acme.com:agent:Weather--Bot"),
+            "weather_bot"
+        );
+        assert!(!sanitize_server_name("urn:ai:acme.com:agent:a..b__c").contains("__"));
+        // Trailing empty segments are skipped; the last non-empty wins.
+        assert_eq!(sanitize_server_name("urn:ai:x.com:agent:"), "agent");
     }
 
     #[test]

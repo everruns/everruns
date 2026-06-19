@@ -352,7 +352,13 @@ fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
         s.to_string()
     } else {
-        format!("{}…", &s[..max])
+        // Slice on a char boundary at or below `max` so a non-ASCII registry
+        // error body (where `max` may fall mid-codepoint) cannot panic.
+        let mut end = max;
+        while end > 0 && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        format!("{}…", &s[..end])
     }
 }
 
@@ -425,6 +431,15 @@ pub fn a2a_target_from_artifact(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn truncate_handles_non_ascii_without_panic() {
+        // Repeated multi-byte char so `max` lands mid-codepoint.
+        let s = "é".repeat(400);
+        let out = truncate(&s, 500);
+        assert!(out.ends_with('…'));
+        assert!(out.len() <= 503);
+    }
 
     #[test]
     fn parses_valid_urn() {
