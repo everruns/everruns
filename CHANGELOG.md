@@ -9,6 +9,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.15.0] - 2026-06-19
+
+### Highlights
+
+- **Knowledge Indexes** - Source-backed semantic search with OKF-backed knowledge bases, enabling structured retrieval across indexed sources.
+- **Agentic Resource Discovery (ARD)** - New ARD client capability for discovering and connecting to agentic resources ([#2324](https://github.com/everruns/everruns/pull/2324)).
+- **everruns-local Crate** - Embedded host backends for local development and testing ([#2298](https://github.com/everruns/everruns/pull/2298)).
+- **MCP External Guardrails** - New `mcp` check type for external guardrail validation over scoped MCP connections ([#2302](https://github.com/everruns/everruns/pull/2302)).
+- **LLM Judge Guardrails** - New `llm_judge` check type for tool stages, enabling LLM-evaluated guardrail policies ([#2229](https://github.com/everruns/everruns/pull/2229)).
+- **Session Task Retention** - Retention TTL and reaper cleanup for terminal tasks ([#2318](https://github.com/everruns/everruns/pull/2318)).
+- **Org-Scoped Task Listing** - New endpoint for listing session tasks scoped to an organization (EVE-583) ([#2339](https://github.com/everruns/everruns/pull/2339)).
+
+### What's Changed
+
+- feat(session-tasks): org-scoped task listing endpoint (EVE-583) ([#2339](https://github.com/everruns/everruns/pull/2339)) by [@chaliy](https://github.com/chaliy)
+- fix(mai): validate OAuth authority URLs ([#2337](https://github.com/everruns/everruns/pull/2337)) by [@chaliy](https://github.com/chaliy)
+- feat(openrouter): support provider-executed server tools ([#2330](https://github.com/everruns/everruns/pull/2330)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump everruns-sdk to 0.1.10 ([#2329](https://github.com/everruns/everruns/pull/2329)) by [@chaliy](https://github.com/chaliy)
+- feat(durable): seal non-progressing turns (EVE-534) ([#2336](https://github.com/everruns/everruns/pull/2336)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): plumb request-level parallel_tool_calls (EVE-598) ([#2335](https://github.com/everruns/everruns/pull/2335)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): scope MCP OAuth tokens to /mcp resource (EVE-596) ([#2333](https://github.com/everruns/everruns/pull/2333)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): skip live LLM tests when provider quota is exhausted ([#2334](https://github.com/everruns/everruns/pull/2334)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): cache-aware cost estimation (EVE-599) by [@chaliy](https://github.com/chaliy)
+- fix(agents): throttle LLM analysis ([#2310](https://github.com/everruns/everruns/pull/2310)) by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid completing idle subagents ([#2316](https://github.com/everruns/everruns/pull/2316)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): prioritize tool output checks ([#2309](https://github.com/everruns/everruns/pull/2309)) by [@chaliy](https://github.com/chaliy)
+- fix(openresponses): reject dangling function calls after compaction ([#2328](https://github.com/everruns/everruns/pull/2328)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): route workspace checks through egress ([#2307](https://github.com/everruns/everruns/pull/2307)) by [@chaliy](https://github.com/chaliy)
+- fix(model-scout): enforce probe guardrails ([#2308](https://github.com/everruns/everruns/pull/2308)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): delay failed generation reconciliation ([#2312](https://github.com/everruns/everruns/pull/2312)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): drop orphan tool results for stateless providers ([#2317](https://github.com/everruns/everruns/pull/2317)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): reject empty provider types ([#2315](https://github.com/everruns/everruns/pull/2315)) by [@chaliy](https://github.com/chaliy)
+- feat(knowledge-bases): adopt Open Knowledge Format (OKF) ([#2321](https://github.com/everruns/everruns/pull/2321)) by [@chaliy](https://github.com/chaliy)
+- feat(ard): Agentic Resource Discovery (ARD) client capability ([#2324](https://github.com/everruns/everruns/pull/2324)) by [@chaliy](https://github.com/chaliy)
+- chore: use SeaweedFS instead of MinIO for S3 blob backend ([#2323](https://github.com/everruns/everruns/pull/2323)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): patch Dependabot npm vulnerabilities (undici, dompurify) ([#2326](https://github.com/everruns/everruns/pull/2326)) by [@chaliy](https://github.com/chaliy)
+- fix(knowledge-indexes): rebind source update owner ([#2304](https://github.com/everruns/everruns/pull/2304)) by [@chaliy](https://github.com/chaliy)
+- fix(observers): bound scorer configuration ([#2311](https://github.com/everruns/everruns/pull/2311)) by [@chaliy](https://github.com/chaliy)
+- fix(fs): escape display root in prompt ([#2306](https://github.com/everruns/everruns/pull/2306)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): provide file store for task reattach ([#2314](https://github.com/everruns/everruns/pull/2314)) by [@chaliy](https://github.com/chaliy)
+- fix(openresponses): surface reasoning summaries as text by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): retention TTL + reaper cleanup for terminal tasks ([#2318](https://github.com/everruns/everruns/pull/2318)) by [@chaliy](https://github.com/chaliy)
+- fix(hooks): preserve commit signing by default ([#2313](https://github.com/everruns/everruns/pull/2313)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): patch Dependabot-flagged npm vulnerabilities ([#2303](https://github.com/everruns/everruns/pull/2303)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): mcp check type — external guardrail over scoped MCP ([#2302](https://github.com/everruns/everruns/pull/2302)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): llm_judge check type for tool stages ([#2229](https://github.com/everruns/everruns/pull/2229)) by [@chaliy](https://github.com/chaliy)
+- feat(storage): garbage-collect orphaned object-storage blobs ([#2300](https://github.com/everruns/everruns/pull/2300)) by [@chaliy](https://github.com/chaliy)
+- feat(core): mid-turn reasoning-effort changes within a single run_turn ([#2299](https://github.com/everruns/everruns/pull/2299)) by [@chaliy](https://github.com/chaliy)
+- feat(local): everruns-local crate for embedded host backends ([#2298](https://github.com/everruns/everruns/pull/2298)) by [@chaliy](https://github.com/chaliy)
+- feat(knowledge): Knowledge Indexes — source-backed semantic search by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): make base system prompt optional ([#2296](https://github.com/everruns/everruns/pull/2296)) by [@chaliy](https://github.com/chaliy)
+- fix(core): detect repeated read range loops by [@chaliy](https://github.com/chaliy)
+- fix(core): keep paginated reads in model view by [@chaliy](https://github.com/chaliy)
+- fix(docs): render GFM tables in .mdx pages ([#2293](https://github.com/everruns/everruns/pull/2293)) by [@chaliy](https://github.com/chaliy)
+- docs(runtime): add runnable OpenAI example and clarify provider setup ([#2291](https://github.com/everruns/everruns/pull/2291)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.14.0] - 2026-06-17
 
 ### Highlights
