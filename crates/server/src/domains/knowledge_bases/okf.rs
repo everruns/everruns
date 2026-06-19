@@ -23,6 +23,22 @@ const RESERVED_FILES: &[&str] = &["index.md", "log.md"];
 pub const OKF_TYPE_TAG_PREFIX: &str = "okf:type=";
 pub const OKF_PATH_TAG_PREFIX: &str = "okf:path=";
 
+/// Max length of an OKF `resource` URI accepted on import. Mirrors the CRUD
+/// `MAX_RESOURCE_LEN` so untrusted bundles can't store pathologically large
+/// values (DB bloat + oversized API/tool responses).
+const MAX_RESOURCE_LEN: usize = 2048;
+/// Per-file and total decompressed caps for tarball bundles, defending against
+/// gzip bombs (a small gzip can expand to huge data).
+const MAX_BUNDLE_FILE_BYTES: u64 = 1024 * 1024; // 1 MiB per file
+const MAX_BUNDLE_UNCOMPRESSED_BYTES: u64 = 64 * 1024 * 1024; // 64 MiB total
+
+/// True if a bundle-relative path is unsafe (absolute or parent traversal).
+/// Applied to both tarball entries and inline `files[].path` so a malicious
+/// `okf:path` can't later be re-emitted as a traversing tar entry on export.
+fn is_unsafe_path(path: &str) -> bool {
+    path.starts_with('/') || path.split('/').any(|c| c == "..")
+}
+
 /// Map a free-form OKF `type` string onto our closed `kind` enum.
 /// Case-insensitive substring match; defaults to `note`. See specs/okf-adoption.md.
 pub fn map_type_to_kind(okf_type: &str) -> &'static str {
@@ -104,6 +120,9 @@ pub fn parse_okf_document(path: &str, content: &str) -> Result<Option<ParsedOkfD
     if is_reserved_file(path) {
         return Ok(None);
     }
+    if is_unsafe_path(path) {
+        anyhow::bail!("{path}: unsafe path (absolute or parent traversal)");
+    }
 
     let (frontmatter, body) = split_frontmatter(content);
     let frontmatter = frontmatter.with_context(|| format!("{path}: missing YAML frontmatter"))?;
@@ -143,7 +162,9 @@ pub fn parse_okf_document(path: &str, content: &str) -> Result<Option<ParsedOkfD
         };
     }
 
-    let resource = get_str("resource");
+    // Drop an over-length resource rather than store it (OKF: degrade gracefully;
+    // mirrors the CRUD MAX_RESOURCE_LEN guard).
+    let resource = get_str("resource").filter(|r| r.len() <= MAX_RESOURCE_LEN);
 
     // User tags from the `tags` list, lowercased and de-duplicated.
     let mut tags: Vec<String> = Vec::new();
@@ -178,6 +199,7 @@ pub fn decode_tar_gz_bundle(bytes: &[u8]) -> Result<Vec<(String, String)>> {
     let decoder = flate2::read::GzDecoder::new(bytes);
     let mut archive = tar::Archive::new(decoder);
     let mut out = Vec::new();
+    let mut total_uncompressed: u64 = 0;
     for entry in archive.entries().context("reading tar entries")? {
         let mut entry = entry.context("reading tar entry")?;
         let path = entry
@@ -185,16 +207,28 @@ pub fn decode_tar_gz_bundle(bytes: &[u8]) -> Result<Vec<(String, String)>> {
             .context("tar entry path")?
             .to_string_lossy()
             .into_owned();
-        // Reject absolute paths and parent-directory traversal.
-        if path.starts_with('/') || path.split('/').any(|c| c == "..") {
+        if is_unsafe_path(&path) {
             anyhow::bail!("unsafe path in bundle: {path}");
         }
         if !path.ends_with(".md") {
             continue;
         }
+        // Cap per-file and total decompressed size (defends against gzip bombs);
+        // the tar header size can lie, so also bound the actual read below.
+        if entry.size() > MAX_BUNDLE_FILE_BYTES {
+            anyhow::bail!("bundle file {path} exceeds {MAX_BUNDLE_FILE_BYTES} bytes");
+        }
+        total_uncompressed = total_uncompressed.saturating_add(entry.size());
+        if total_uncompressed > MAX_BUNDLE_UNCOMPRESSED_BYTES {
+            anyhow::bail!("bundle decompresses to more than {MAX_BUNDLE_UNCOMPRESSED_BYTES} bytes");
+        }
         let mut content = String::new();
+        let mut limited = (&mut entry).take(MAX_BUNDLE_FILE_BYTES + 1);
         // Tolerate non-utf8 by skipping with no entry rather than failing the bundle.
-        if entry.read_to_string(&mut content).is_ok() {
+        if limited.read_to_string(&mut content).is_ok() {
+            if content.len() as u64 > MAX_BUNDLE_FILE_BYTES {
+                anyhow::bail!("bundle file {path} exceeds {MAX_BUNDLE_FILE_BYTES} bytes");
+            }
             // Normalize a leading `./` so paths are bundle-relative.
             let path = path.strip_prefix("./").unwrap_or(&path).to_string();
             out.push((path, content));
@@ -287,6 +321,15 @@ pub async fn import_parsed_bundle(
         let key = doc_key(&doc);
         matched_keys.insert(key.clone());
         let tags = build_import_tags(&doc);
+        // Two reserved okf:* tags consume part of the DB tag budget; warn when
+        // that forces user tags to be dropped rather than dropping silently.
+        let dropped = (doc.tags.len() + 2).saturating_sub(MAX_ENTRY_TAGS);
+        if dropped > 0 {
+            summary.warnings.push(format!(
+                "{}: {dropped} user tag(s) dropped (max {MAX_ENTRY_TAGS} tags including reserved okf:*)",
+                doc.source_path
+            ));
+        }
 
         if let Some(entry) = by_key.get(&key) {
             db.update_knowledge_entry(
@@ -698,6 +741,21 @@ tags: [Sales, revenue]\n\
     #[test]
     fn missing_frontmatter_is_an_error() {
         assert!(parse_okf_document("notes/x.md", "# just a heading\n").is_err());
+    }
+
+    #[test]
+    fn rejects_unsafe_paths() {
+        let content = "---\ntype: note\n---\nbody";
+        assert!(parse_okf_document("../escape.md", content).is_err());
+        assert!(parse_okf_document("/abs.md", content).is_err());
+        assert!(parse_okf_document("a/../../b.md", content).is_err());
+    }
+
+    #[test]
+    fn over_length_resource_is_dropped() {
+        let content = format!("---\ntype: note\nresource: {}\n---\nbody", "x".repeat(3000));
+        let doc = parse_okf_document("notes/x.md", &content).unwrap().unwrap();
+        assert!(doc.resource.is_none());
     }
 
     #[test]

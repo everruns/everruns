@@ -134,24 +134,25 @@ infrastructure (no credential storage, git polling, or webhook plumbing).
   An explicit `prune` option archives KB entries that originated from a prior
   import (tracked via `okf:path`/`resource`) and are absent from the new
   bundle, giving full mirror behavior when desired.
-* **Surface:** `POST /v1/knowledge-bases/{kb_id}/okf:import` accepting either a
-  multipart tarball or `{ "git_url": "...", "ref": "..." }`. Synchronous for
-  small bundles; large bundles run as a session/background task per
-  `specs/session-tasks.md`.
+* **Surface (implemented):** `POST /v1/knowledge-bases/{kb_id}/okf_import`
+  accepting JSON with either inline `files` (`[{path, content}]`) or a base64
+  `.tar.gz` `bundle_base64`, plus an optional `prune` flag. Synchronous.
 
-**Future "live" mode** (explicitly out of v1): a scheduled task
+**Future "live" / git mode** (explicitly out of v1, *not implemented*): a
+`{ "git_url": "...", "ref": "..." }` input and/or a scheduled task
 (`specs/scheduled-tasks.md`) or git webhook that calls the same idempotent sync
 on a cadence. The idempotency-key design above is what makes this a drop-in
 follow-up rather than a rewrite.
 
 Security: bundle parsing runs untrusted input — enforce the 64 KiB body cap per
-entry, a total-bundle size/entry-count cap, path traversal rejection on
-`source_path`, and the cross-org guarantees from `specs/threat-model.md`. Git
-URL fetches obey `specs/network-access.md`.
+entry, per-file and total decompressed caps (gzip-bomb defense), path traversal
+rejection on both inline `files[].path` and tar entries, and the cross-org
+guarantees from `specs/threat-model.md`. A future git-URL input would obey
+`specs/network-access.md` (no network egress in v1).
 
 ## Exporter
 
-`GET /v1/knowledge-bases/{kb_id}/okf:export` streams a conformant OKF bundle as
+`GET /v1/knowledge-bases/{kb_id}/okf_export` streams a conformant OKF bundle as
 a tarball (`.tar.gz`). Layout:
 
 * One `.md` per entry under a `kind`-derived subdirectory
@@ -211,7 +212,7 @@ reflects what has shipped on the OKF-adoption branch.
 
 1. ✅ **This spec + terminology** — `specs/okf-adoption.md`, README index entry,
    cross-link from `knowledge-bases.md`.
-2. ◑ **Gap closure** — shipped: additive migration `073` adds `resource` to
+2. ◑ **Gap closure** — shipped: additive migration `075` adds `resource` to
    entries (models, storage parity, API, OpenAPI); `index.md`/`log.md` reserved
    semantics handled by importer/exporter. **Deferred:** the
    `knowledge_entry_links` relationship table (export emits a flat bundle; links
@@ -255,9 +256,12 @@ knowledge. Implemented as a cross-crate slice:
 
 Inherits `specs/threat-model.md`. New surface area:
 
-* **Untrusted bundle import:** size/count caps, body 64 KiB cap, path-traversal
-  rejection, frontmatter parsing hardened against malformed YAML.
-* **Git URL fetch:** subject to `specs/network-access.md` allowlist/blocklist.
+* **Untrusted bundle import:** per-file + total decompressed caps (gzip-bomb
+  defense), body 64 KiB cap, path-traversal rejection on inline `files[].path`
+  and tar entries, frontmatter parsing hardened against malformed YAML.
+* **Git URL fetch (future, not implemented):** a future git-URL input would be
+  subject to `specs/network-access.md` allowlist/blocklist. v1 has no network
+  egress — only inline files and base64 tarballs.
 * **Cross-org:** import/export are org-scoped like all KB CRUD; errors never
   leak existence of other-org KBs.
 * **Export disclosure:** export reflects only the requesting org's KB content;

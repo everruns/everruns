@@ -145,11 +145,17 @@ impl Tool for SearchKnowledgeTool {
         };
 
         // Explicit kind wins; otherwise fall back to the configured default filter.
+        // The store filters by a single kind. Apply a configured default only
+        // when exactly one kind is configured; with multiple, search across all
+        // kinds rather than silently honoring just the first.
         let kind = arguments
             .get("kind")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())
-            .or_else(|| self.config.kinds.first().cloned());
+            .or_else(|| match self.config.kinds.as_slice() {
+                [single] => Some(single.clone()),
+                _ => None,
+            });
         let tags: Vec<String> = arguments
             .get("tags")
             .and_then(|v| v.as_array())
