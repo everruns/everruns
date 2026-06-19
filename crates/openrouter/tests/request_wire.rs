@@ -258,6 +258,29 @@ async fn sends_reasoning_none_to_disable_openrouter_reasoning() {
 }
 
 #[tokio::test]
+async fn omits_parallel_tool_calls_when_unset() {
+    // EVE-598: OpenRouter wraps the Open Responses driver, so the body carries
+    // `parallel_tool_calls` from the Responses serialization. Omitted when None.
+    let config = base_config("openai/gpt-5-mini");
+
+    let body = capture_request_body(&config).await;
+
+    assert!(body.get("parallel_tool_calls").is_none());
+}
+
+#[tokio::test]
+async fn forwards_parallel_tool_calls_when_set() {
+    // EVE-598: the operator setting reaches the OpenRouter wire and `decorate`
+    // does not strip it.
+    let mut config = base_config("openai/gpt-5-mini");
+    config.parallel_tool_calls = Some(false);
+
+    let body = capture_request_body(&config).await;
+
+    assert_eq!(body["parallel_tool_calls"], false);
+}
+
+#[tokio::test]
 async fn retries_after_openrouter_rate_limit_reset() {
     use futures::StreamExt;
     use std::time::{SystemTime, UNIX_EPOCH};

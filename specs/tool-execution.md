@@ -343,9 +343,11 @@ This logic is shared by all execution paths — the in-process runtime/host loop
 
 Provider wire mapping (only sent when `Some(_)`):
 
-- **OpenAI** (Responses, and the Chat Completions request shape): `parallel_tool_calls` top-level boolean.
+- **OpenAI** (Responses, and the Chat Completions `OpenAiRequest` shape used by the OpenAI Chat driver and MAI): `parallel_tool_calls` top-level boolean.
 - **Anthropic** (Messages): `tool_choice` with `type: "auto"` and `disable_parallel_tool_use = !value`. Sent only when the request carries tools (Anthropic rejects `tool_choice` without tools).
-- **OpenRouter**: inherits the OpenAI Responses serialization (the request body already includes `parallel_tool_calls`); the OpenRouter decoration layer does not strip it.
+- **OpenRouter**: wraps the Open Responses driver, so the request body inherits the Responses serialization (already includes `parallel_tool_calls`); the OpenRouter decoration layer does not strip it.
+
+Durable parity: the worker builds `RuntimeAgent` from gRPC-fetched schema objects, so the proto `Agent` and `Session` messages carry `parallel_tool_calls`. The server schema→proto and worker proto→schema adapters round-trip the value, preserving the operator setting through `RuntimeAgent` → `ReasonResult` → provider in durable mode.
 
 ### Step-Based Execution (Durable Mode)
 

@@ -314,6 +314,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         "status": value.status,
         "created_at": value.created_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
         "updated_at": value.updated_at.as_ref().map(|t| proto_timestamp_to_datetime(t).to_rfc3339()),
+        "parallel_tool_calls": value.parallel_tool_calls,
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -340,6 +341,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .map(|c| c.capability_id().to_string())
             .collect(),
         display_name: value.display_name.clone(),
+        parallel_tool_calls: value.parallel_tool_calls,
     }
 }
 
@@ -500,6 +502,7 @@ pub fn proto_session_to_schema(
         "parent_session_id": parent_session_id_str,
         "blueprint_id": value.blueprint_id,
         "blueprint_config": blueprint_config,
+        "parallel_tool_calls": value.parallel_tool_calls,
     });
     serde_json::from_value(json).map_err(ConversionError::from)
 }
@@ -542,6 +545,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         }),
         system_prompt: value.system_prompt.clone(),
         initial_files_json: serde_json::to_string(&value.initial_files).unwrap_or_default(),
+        parallel_tool_calls: value.parallel_tool_calls,
     }
 }
 
@@ -1464,7 +1468,7 @@ mod tests {
             hints: None,
             network_access: None,
             max_iterations: None,
-            parallel_tool_calls: None,
+            parallel_tool_calls: Some(true),
             mcp_servers: Default::default(),
             status: everruns_core::SessionStatus::Idle,
             created_at: now,
@@ -1489,6 +1493,7 @@ mod tests {
         assert_eq!(proto_session.capabilities.len(), 1);
         assert_eq!(proto_session.tags, vec!["slack:thread:123.456".to_string()]);
         assert_eq!(proto_session.blueprint_id.as_deref(), Some("oracle"));
+        assert_eq!(proto_session.parallel_tool_calls, Some(true));
 
         // Convert back to schema
         let schema_session = proto_session_to_schema(proto_session).unwrap();
@@ -1514,6 +1519,7 @@ mod tests {
         assert_eq!(schema_session.parent_session_id, session.parent_session_id);
         assert_eq!(schema_session.blueprint_id, session.blueprint_id);
         assert_eq!(schema_session.blueprint_config, session.blueprint_config);
+        assert_eq!(schema_session.parallel_tool_calls, Some(true));
     }
 
     #[test]

@@ -1119,8 +1119,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         initial_files: vec![],
         network_access: None,
         max_iterations: None,
-        // Re-resolved from durable config, not carried on the proto.
-        parallel_tool_calls: None,
+        parallel_tool_calls: proto_agent.parallel_tool_calls,
         tools: vec![],
         status,
         created_at: proto_timestamp_or_now(proto_agent.created_at.as_ref()),
@@ -1341,8 +1340,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         }),
         network_access: None,
         max_iterations: None,
-        // Re-resolved from durable config, not carried on the proto.
-        parallel_tool_calls: None,
+        parallel_tool_calls: proto_session.parallel_tool_calls,
         status,
         created_at,
         updated_at,

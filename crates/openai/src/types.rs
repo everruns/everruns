@@ -85,10 +85,6 @@ pub struct ChatRequest {
     pub stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<OpenAiTool>>,
-    /// Request-level parallel tool calling preference (EVE-598). Omitted when
-    /// `None` to preserve the provider default.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parallel_tool_calls: Option<bool>,
 }
 
 // ============================================================================
