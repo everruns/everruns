@@ -95,6 +95,27 @@ fn validate_title(title: &str) -> Result<String, CommandError> {
     Ok(trimmed.to_string())
 }
 
+/// Max length of an OKF `resource` URI. Bounds storage and response size; OKF
+/// does not constrain the value, so we only guard against pathological input.
+const MAX_RESOURCE_LEN: usize = 2048;
+
+fn validate_resource(resource: Option<String>) -> Result<Option<String>, CommandError> {
+    let Some(resource) = resource else {
+        return Ok(None);
+    };
+    let trimmed = resource.trim();
+    if trimmed.is_empty() {
+        // Treat an empty/whitespace resource as "not set" rather than storing "".
+        return Ok(None);
+    }
+    if trimmed.len() > MAX_RESOURCE_LEN {
+        return Err(CommandError::bad_request(format!(
+            "Entry resource must be at most {MAX_RESOURCE_LEN} characters"
+        )));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
 fn validate_body(body: &str) -> Result<String, CommandError> {
     if body.len() > MAX_ENTRY_BODY_BYTES {
         return Err(CommandError::bad_request(format!(
@@ -425,7 +446,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 /// Resolve a KB's internal UUID. If `require_active` is true, archived KBs
 /// reject the call so write paths honor the lifecycle contract from
 /// `specs/models.md` (archived = read-only).
-async fn resolve_kb_internal_id(
+pub(super) async fn resolve_kb_internal_id(
     ctx: &Ctx,
     kb_id: &str,
     require_active: bool,
@@ -516,6 +537,9 @@ pub struct CreateKnowledgeEntry {
     #[serde(default)]
     /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    /// Optional OKF resource URI identifying the underlying asset.
+    pub resource: Option<String>,
 }
 
 impl CreateKnowledgeEntry {
@@ -526,6 +550,7 @@ impl CreateKnowledgeEntry {
             body: request.body,
             kind: request.kind,
             tags: request.tags,
+            resource: request.resource,
         }
     }
 }
@@ -557,12 +582,14 @@ impl Command for CreateKnowledgeEntry {
         let body = validate_body(&self.body)?;
         let kind = validate_kind(self.kind.as_deref())?.unwrap_or_else(|| "note".to_string());
         let tags = validate_tags(self.tags)?.unwrap_or_default();
+        let resource = validate_resource(self.resource)?;
         let input = CreateKnowledgeEntryRow {
             public_id: KnowledgeEntryId::new().to_string(),
             title,
             body,
             kind,
             tags,
+            resource,
         };
         let row = ctx
             .db
@@ -673,6 +700,11 @@ impl Command for UpdateKnowledgeEntryCmd {
             .transpose()?;
         let kind = validate_kind(self.request.kind.as_deref())?;
         let tags = validate_tags(self.request.tags)?;
+        let resource = match self.request.resource {
+            UpdateField::Set(resource) => Some(validate_resource(Some(resource))?),
+            UpdateField::Clear => Some(None),
+            UpdateField::Unchanged => None,
+        };
         let row = ctx
             .db
             .update_knowledge_entry(
@@ -683,6 +715,7 @@ impl Command for UpdateKnowledgeEntryCmd {
                     body,
                     kind,
                     tags,
+                    resource,
                 },
             )
             .await
@@ -803,6 +836,7 @@ mod tests {
             body: "Pipeline = sum of opportunities at stages 2-4.".into(),
             kind: Some("business".into()),
             tags: Some(vec!["pipeline".into(), "Pipeline".into()]),
+            resource: None,
         }
         .run(&ctx)
         .await
@@ -830,6 +864,7 @@ mod tests {
                 body: None,
                 kind: None,
                 tags: None,
+                resource: UpdateField::Unchanged,
             },
         }
         .run(&ctx)
@@ -890,6 +925,7 @@ mod tests {
             body: "B".into(),
             kind: Some("nope".into()),
             tags: None,
+            resource: None,
         }
         .run(&ctx)
         .await
@@ -909,6 +945,7 @@ mod tests {
             body: oversize,
             kind: None,
             tags: None,
+            resource: None,
         }
         .run(&ctx)
         .await
@@ -1000,6 +1037,7 @@ mod tests {
             body: "body".into(),
             kind: None,
             tags: None,
+            resource: None,
         }
         .run(&ctx)
         .await
@@ -1030,6 +1068,7 @@ mod tests {
             body: "body".into(),
             kind: None,
             tags: None,
+            resource: None,
         }
         .run(&ctx)
         .await
@@ -1050,6 +1089,7 @@ mod tests {
                 body: None,
                 kind: None,
                 tags: None,
+                resource: UpdateField::Unchanged,
             },
         }
         .run(&ctx)

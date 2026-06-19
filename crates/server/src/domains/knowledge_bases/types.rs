@@ -121,6 +121,10 @@ pub struct KnowledgeEntryResponse {
     pub kind: String,
     /// Free-form tags attached to this resource.
     pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Optional OKF resource URI identifying the underlying asset.
+    #[schema(example = "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders")]
+    pub resource: Option<String>,
     /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     /// Timestamp when this resource was last updated (RFC 3339).
@@ -138,6 +142,7 @@ pub fn knowledge_entry_response(
         body: row.body,
         kind: row.kind,
         tags: row.tags,
+        resource: row.resource,
         created_at: row.created_at,
         updated_at: row.updated_at,
     })
@@ -163,6 +168,10 @@ pub struct CreateKnowledgeEntryRequest {
     /// Free-form tags attached to this resource.
     #[schema(example = json!(["billing", "refunds"]))]
     pub tags: Option<Vec<String>>,
+    #[serde(default)]
+    /// Optional OKF resource URI identifying the underlying asset.
+    #[schema(example = "https://console.cloud.google.com/bigquery?p=acme&d=sales&t=orders")]
+    pub resource: Option<String>,
 }
 
 /// Request body for the `update_knowledge_entry` operation.
@@ -187,6 +196,10 @@ pub struct UpdateKnowledgeEntryRequest {
     /// Free-form tags attached to this resource.
     #[schema(example = json!(["billing", "refunds", "vp-approval"]))]
     pub tags: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    /// Optional OKF resource URI. Set to null to clear.
+    pub resource: UpdateField<String>,
 }
 
 /// Query parameters for listing entries inside a knowledge base — optional

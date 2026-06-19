@@ -813,6 +813,41 @@ pub struct SecretInfo {
 /// - Store data in a database (production)
 /// - Use in-memory storage for testing
 ///
+/// A single ranked hit from a Knowledge Base search. Public-id surface only;
+/// no internal UUIDs. See specs/knowledge-bases.md and specs/okf-adoption.md.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KnowledgeSearchHit {
+    /// Entry public id (`kbe_…`).
+    pub id: String,
+    /// Owning Knowledge Base public id (`kb_…`).
+    pub kb_id: String,
+    pub title: String,
+    pub kind: String,
+    pub tags: Vec<String>,
+    /// Short body excerpt for the LLM.
+    pub snippet: String,
+    /// Optional OKF resource URI, when set on the entry.
+    pub resource: Option<String>,
+}
+
+/// Org-scoped search over curated Knowledge Bases, backing the agent-facing
+/// `search_knowledge` tool. Implementations MUST scope to `org_id` and silently
+/// ignore KB ids not owned by that org (no existence leak across tenants).
+#[async_trait]
+pub trait KnowledgeStore: Send + Sync {
+    async fn search_knowledge(
+        &self,
+        org_id: crate::typed_id::OrgId,
+        kb_public_ids: &[String],
+        query: &str,
+        kind: Option<&str>,
+        tags: &[String],
+        limit: usize,
+    ) -> Result<Vec<KnowledgeSearchHit>>;
+}
+
+/// Storage for session-scoped key/value pairs and secrets.
+///
 /// Key/value storage is for general data that doesn't need encryption.
 /// Secret storage is for sensitive data that is encrypted at rest.
 #[async_trait]
@@ -1340,6 +1375,8 @@ pub struct ToolContext {
 
     /// Optional platform store for org-level management tools.
     pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    /// Optional knowledge store backing the `search_knowledge` tool.
+    pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
 
     /// Optional hybrid retrieval over bound Knowledge Indexes for the
     /// `search_index` tool. Server-implemented; populated only on the server
@@ -1443,6 +1480,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
@@ -1483,6 +1521,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
@@ -1526,6 +1565,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
@@ -1570,6 +1610,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,
@@ -1660,6 +1701,7 @@ impl ToolContext {
             connection_resolver: None,
             schedule_store: None,
             platform_store: None,
+            knowledge_store: None,
             knowledge_index_search: None,
             leased_resource_store: None,
             session_resource_registry: None,

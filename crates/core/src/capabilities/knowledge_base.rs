@@ -3,17 +3,19 @@
 //! Binds an agent or harness to one or more org-scoped Knowledge Bases. See
 //! `specs/knowledge-bases.md` for the durable design.
 //!
-//! This module registers the capability and validates the structural shape of
-//! its config (`bases[]` entries: `kb_`-prefixed Knowledge Base IDs;
-//! `kinds[]` entries from a fixed enum). Domain-level cross-validation
-//! (cross-org references, archived/deleted KBs) and the runtime
-//! `search_knowledge` tool ship in follow-up vertical slices on top of this
-//! foundation.
+//! This module registers the capability, validates the structural shape of its
+//! config (`bases[]`: `kb_`-prefixed Knowledge Base IDs; `kinds[]` from a fixed
+//! enum), and provides the agent-facing `search_knowledge` tool. Org scoping of
+//! the bound bases is enforced by the `KnowledgeStore` implementation at search
+//! time (cross-org ids are silently skipped). See specs/okf-adoption.md.
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
+use crate::tools::{Tool, ToolExecutionResult};
+use crate::traits::ToolContext;
 
 /// Stable string id for the knowledge base capability.
 pub const KNOWLEDGE_BASE_CAPABILITY_ID: &str = "knowledge_base";
@@ -69,6 +71,139 @@ fn is_valid_kb_id(s: &str) -> bool {
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
 }
 
+/// Agent-facing tool that searches the bound Knowledge Bases. Holds the
+/// capability's config (which `bases` to search, default `kinds`), populated at
+/// collection time via `tools_with_config`. See specs/okf-adoption.md.
+pub struct SearchKnowledgeTool {
+    config: KnowledgeBaseConfig,
+}
+
+impl SearchKnowledgeTool {
+    pub fn new(config: KnowledgeBaseConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl Tool for SearchKnowledgeTool {
+    fn name(&self) -> &str {
+        "search_knowledge"
+    }
+
+    fn description(&self) -> &str {
+        "Search curated organization Knowledge Bases (table docs, business rules, \
+         validated query templates, runbooks) by keyword. Consult this before \
+         answering data questions and cite results by their kbe_ id."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "query": { "type": "string", "description": "Keyword search across entry title and body" },
+                "kind": {
+                    "type": "string",
+                    "enum": ["note", "table", "business", "query", "runbook"],
+                    "description": "Optional filter by entry kind"
+                },
+                "tags": { "type": "array", "items": { "type": "string" }, "description": "Optional tag filter" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": 25, "default": 10 }
+            },
+            "required": ["query"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error("search_knowledge requires execution context")
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let query = match arguments.get("query").and_then(|v| v.as_str()) {
+            Some(q) if !q.trim().is_empty() => q.trim().to_string(),
+            _ => return ToolExecutionResult::tool_error("Missing required parameter: query"),
+        };
+
+        // No bound bases → empty result set (valid per spec).
+        if self.config.bases.is_empty() {
+            return ToolExecutionResult::success(json!({ "count": 0, "results": [] }));
+        }
+
+        let Some(store) = context.knowledge_store.as_ref() else {
+            return ToolExecutionResult::tool_error(
+                "Knowledge search is not available in this execution context",
+            );
+        };
+        let Some(org_id) = context.org_id else {
+            return ToolExecutionResult::tool_error(
+                "Knowledge search requires an organization context",
+            );
+        };
+
+        // Explicit kind wins; otherwise fall back to the configured default filter.
+        // The store filters by a single kind. Apply a configured default only
+        // when exactly one kind is configured; with multiple, search across all
+        // kinds rather than silently honoring just the first.
+        let kind = arguments
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| match self.config.kinds.as_slice() {
+                [single] => Some(single.clone()),
+                _ => None,
+            });
+        let tags: Vec<String> = arguments
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(|s| s.to_lowercase()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let limit = arguments
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .map(|v| (v as usize).clamp(1, 25))
+            .unwrap_or(10);
+
+        match store
+            .search_knowledge(
+                org_id,
+                &self.config.bases,
+                &query,
+                kind.as_deref(),
+                &tags,
+                limit,
+            )
+            .await
+        {
+            Ok(hits) => ToolExecutionResult::success(json!({
+                "count": hits.len(),
+                "results": hits,
+            })),
+            Err(e) => {
+                ToolExecutionResult::internal_error_msg(format!("knowledge search failed: {e}"))
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn deferrable_policy(&self) -> crate::tool_types::DeferrablePolicy {
+        // "Consult-first" tool: keep its full schema directly callable so the
+        // model invokes it rather than routing through tool-search. See
+        // specs/tool-search.md (never-defer) and specs/okf-adoption.md.
+        crate::tool_types::DeferrablePolicy::Never
+    }
+}
+
 pub struct KnowledgeBaseCapability;
 
 impl Capability for KnowledgeBaseCapability {
@@ -81,10 +216,10 @@ impl Capability for KnowledgeBaseCapability {
     }
 
     fn description(&self) -> &str {
-        "Bind an agent to curated org Knowledge Bases. Used to ground answers in \
-         human-edited table docs, business rules, validated SQL templates, and \
-         runbooks. The runtime `search_knowledge` tool ships in a follow-up PR; \
-         see `specs/knowledge-bases.md`."
+        "Bind an agent to curated org Knowledge Bases and give it the \
+         `search_knowledge` tool to ground answers in human-edited table docs, \
+         business rules, validated SQL templates, and runbooks. \
+         See `specs/knowledge-bases.md`."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -105,6 +240,23 @@ impl Capability for KnowledgeBaseCapability {
 
     fn risk_level(&self) -> RiskLevel {
         RiskLevel::Low
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some(
+            "You can search curated organization knowledge with the `search_knowledge` tool \
+             (table docs, business rules, validated queries, runbooks). Consult it before \
+             answering data questions, and cite the entries you use by their kbe_ id.",
+        )
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        self.tools_with_config(&Value::Null)
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        let cfg: KnowledgeBaseConfig = serde_json::from_value(config.clone()).unwrap_or_default();
+        vec![Box::new(SearchKnowledgeTool::new(cfg))]
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -290,5 +442,98 @@ mod tests {
         for kind in consts {
             assert!(cap.validate_config(&json!({ "kinds": [kind] })).is_ok());
         }
+    }
+
+    // --- search_knowledge tool ---
+
+    use crate::traits::{KnowledgeSearchHit, KnowledgeStore, ToolContext};
+    use crate::typed_id::{DEFAULT_ORG_ID, SessionId};
+    use std::sync::Arc;
+
+    struct MockKnowledgeStore {
+        hits: Vec<KnowledgeSearchHit>,
+    }
+
+    #[async_trait]
+    impl KnowledgeStore for MockKnowledgeStore {
+        async fn search_knowledge(
+            &self,
+            _org_id: crate::typed_id::OrgId,
+            kb_public_ids: &[String],
+            _query: &str,
+            _kind: Option<&str>,
+            _tags: &[String],
+            _limit: usize,
+        ) -> crate::error::Result<Vec<KnowledgeSearchHit>> {
+            if kb_public_ids.is_empty() {
+                Ok(Vec::new())
+            } else {
+                Ok(self.hits.clone())
+            }
+        }
+    }
+
+    fn hit() -> KnowledgeSearchHit {
+        KnowledgeSearchHit {
+            id: "kbe_00000000000000000000000000000001".into(),
+            kb_id: "kb_00000000000000000000000000000001".into(),
+            title: "Orders".into(),
+            kind: "table".into(),
+            tags: vec!["sales".into()],
+            snippet: "One row per order.".into(),
+            resource: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn search_tool_returns_results_from_store() {
+        let tool = SearchKnowledgeTool::new(KnowledgeBaseConfig {
+            bases: vec!["kb_00000000000000000000000000000001".into()],
+            kinds: vec![],
+        });
+        let mut ctx = ToolContext::new(SessionId::new());
+        ctx.knowledge_store = Some(Arc::new(MockKnowledgeStore { hits: vec![hit()] }));
+        ctx.org_id = Some(DEFAULT_ORG_ID);
+
+        let result = tool
+            .execute_with_context(json!({ "query": "orders" }), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 1);
+                assert_eq!(
+                    v["results"][0]["id"],
+                    "kbe_00000000000000000000000000000001"
+                );
+            }
+            other => panic!("expected success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn search_tool_with_no_bases_returns_empty() {
+        let tool = SearchKnowledgeTool::new(KnowledgeBaseConfig::default());
+        let mut ctx = ToolContext::new(SessionId::new());
+        ctx.knowledge_store = Some(Arc::new(MockKnowledgeStore { hits: vec![hit()] }));
+        ctx.org_id = Some(DEFAULT_ORG_ID);
+
+        let result = tool
+            .execute_with_context(json!({ "query": "orders" }), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => assert_eq!(v["count"], 0),
+            other => panic!("expected success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn search_tool_requires_query() {
+        let tool = SearchKnowledgeTool::new(KnowledgeBaseConfig {
+            bases: vec!["kb_00000000000000000000000000000001".into()],
+            kinds: vec![],
+        });
+        let ctx = ToolContext::new(SessionId::new());
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        assert!(matches!(result, ToolExecutionResult::ToolError(_)));
     }
 }

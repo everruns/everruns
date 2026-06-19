@@ -564,6 +564,14 @@ pub trait Tool: Send + Sync {
         None
     }
 
+    /// Deferral policy for progressive tool-schema disclosure (tool search).
+    /// Hot-path or "consult-first" tools can return [`DeferrablePolicy::Never`]
+    /// to always keep their full schema directly callable. Defaults to
+    /// [`DeferrablePolicy::Automatic`].
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        DeferrablePolicy::default()
+    }
+
     /// Convert this tool to a ToolDefinition for the agent config.
     ///
     /// This is used by ToolRegistry to generate tool definitions
@@ -576,7 +584,7 @@ pub trait Tool: Send + Sync {
             parameters: self.parameters_schema(),
             policy: self.policy(),
             category: None,
-            deferrable: DeferrablePolicy::default(),
+            deferrable: self.deferrable_policy(),
             hints: self.hints(),
             full_parameters: None,
         })
