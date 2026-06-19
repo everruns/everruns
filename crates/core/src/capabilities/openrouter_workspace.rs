@@ -17,6 +17,7 @@
 // is called; no write operations against the workspace.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use crate::egress::{EgressError, EgressRequest, EgressRequestKind};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
@@ -264,55 +265,9 @@ impl Tool for InspectOpenRouterWorkspaceTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        const URL: &str = "https://openrouter.ai/api/v1/auth/key";
-        if let Some(acl) = context.network_access.as_ref()
-            && !acl.is_url_allowed(URL)
-        {
-            return ToolExecutionResult::tool_error(
-                "OpenRouter workspace API is blocked by session network access policy",
-            );
-        }
-
-        let api_key = match resolve_openrouter_key(context).await {
-            Ok(k) => k,
+        let body = match fetch_openrouter_key_info(context).await {
+            Ok(body) => body,
             Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to build HTTP client: {e}"
-                ));
-            }
-        };
-        let response = match client.get(URL).bearer_auth(&api_key).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to reach OpenRouter workspace API: {e}"
-                ));
-            }
-        };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return ToolExecutionResult::tool_error(format!(
-                "OpenRouter /auth/key returned HTTP {status}: {body}"
-            ));
-        }
-
-        let body: Value = match response.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to parse OpenRouter workspace response: {e}"
-                ));
-            }
         };
 
         let data = match body.get("data") {
@@ -395,55 +350,9 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
-        const URL: &str = "https://openrouter.ai/api/v1/auth/key";
-        if let Some(acl) = context.network_access.as_ref()
-            && !acl.is_url_allowed(URL)
-        {
-            return ToolExecutionResult::tool_error(
-                "OpenRouter workspace API is blocked by session network access policy",
-            );
-        }
-
-        let api_key = match resolve_openrouter_key(context).await {
-            Ok(k) => k,
+        let body = match fetch_openrouter_key_info(context).await {
+            Ok(body) => body,
             Err(e) => return ToolExecutionResult::tool_error(e),
-        };
-
-        let client = match reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-        {
-            Ok(c) => c,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to build HTTP client: {e}"
-                ));
-            }
-        };
-        let response = match client.get(URL).bearer_auth(&api_key).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to reach OpenRouter workspace API: {e}"
-                ));
-            }
-        };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return ToolExecutionResult::tool_error(format!(
-                "OpenRouter /auth/key returned HTTP {status}: {body}"
-            ));
-        }
-
-        let body: Value = match response.json().await {
-            Ok(v) => v,
-            Err(e) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Failed to parse OpenRouter workspace response: {e}"
-                ));
-            }
         };
 
         let data = match body.get("data") {
@@ -478,6 +387,49 @@ impl Tool for CheckOpenRouterPolicyCompatibilityTool {
 // Credential helper (shared with model_scout pattern)
 // ============================================================================
 
+const OPENROUTER_KEY_INFO_URL: &str = "https://openrouter.ai/api/v1/auth/key";
+
+async fn fetch_openrouter_key_info(context: &ToolContext) -> Result<Value, String> {
+    let api_key = resolve_openrouter_key(context).await?;
+    let egress = context
+        .egress_service
+        .as_ref()
+        .ok_or_else(|| "OpenRouter workspace API requires the host egress service".to_string())?;
+
+    let response = egress
+        .send(
+            EgressRequest::new(
+                "GET",
+                OPENROUTER_KEY_INFO_URL,
+                EgressRequestKind::Capability,
+            )
+            .header("authorization", format!("Bearer {api_key}"))
+            .network_access(context.network_access.clone())
+            .timeout_ms(15_000),
+        )
+        .await
+        .map_err(|e| match e {
+            // Distinguish a policy block from a transport failure so operators
+            // see "blocked by network access policy" rather than a generic
+            // "failed to reach" message.
+            EgressError::NetworkAccessDenied { .. } => {
+                format!("OpenRouter workspace API blocked by network access policy: {e}")
+            }
+            other => format!("Failed to reach OpenRouter workspace API: {other}"),
+        })?;
+
+    if !(200..300).contains(&response.status) {
+        let body = String::from_utf8_lossy(&response.body);
+        return Err(format!(
+            "OpenRouter /auth/key returned HTTP {}: {}",
+            response.status, body
+        ));
+    }
+
+    serde_json::from_slice(&response.body)
+        .map_err(|e| format!("Failed to parse OpenRouter workspace response: {e}"))
+}
+
 async fn resolve_openrouter_key(context: &ToolContext) -> Result<String, String> {
     let store = context
         .provider_credential_store
@@ -502,6 +454,54 @@ async fn resolve_openrouter_key(context: &ToolContext) -> Result<String, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::egress::{EgressResponse, EgressService, EgressStreamResponse};
+    use crate::error::Result as CoreResult;
+    use crate::network_access::NetworkAccessList;
+    use crate::traits::{ProviderCredentialStore, ProviderCredentials};
+    use std::sync::{Arc, Mutex};
+
+    struct StaticCredentialStore;
+
+    #[async_trait]
+    impl ProviderCredentialStore for StaticCredentialStore {
+        async fn get_default_provider_credentials(
+            &self,
+            provider_type: &str,
+        ) -> CoreResult<Option<ProviderCredentials>> {
+            assert_eq!(provider_type, "openrouter");
+            Ok(Some(ProviderCredentials {
+                api_key: "test-key".to_string(),
+                base_url: None,
+            }))
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingEgress {
+        requests: Mutex<Vec<EgressRequest>>,
+    }
+
+    #[async_trait]
+    impl EgressService for RecordingEgress {
+        async fn send(
+            &self,
+            request: EgressRequest,
+        ) -> crate::egress::EgressResult<EgressResponse> {
+            self.requests.lock().unwrap().push(request);
+            Ok(EgressResponse {
+                status: 200,
+                headers: Default::default(),
+                body: br#"{"data":{"label":"egress-key","usage":1000000,"limit":2000000,"is_free_tier":false}}"#.to_vec(),
+            })
+        }
+
+        async fn send_stream(
+            &self,
+            _request: EgressRequest,
+        ) -> crate::egress::EgressResult<EgressStreamResponse> {
+            unreachable!("OpenRouter workspace tools use non-streaming egress")
+        }
+    }
 
     fn unlimited_key() -> OpenRouterKeyInfo {
         OpenRouterKeyInfo {
@@ -540,6 +540,42 @@ mod tests {
                 interval: "1m".to_string(),
             }),
         }
+    }
+
+    #[tokio::test]
+    async fn fetch_openrouter_key_info_uses_context_egress_service() {
+        let egress = Arc::new(RecordingEgress::default());
+        // Bare host is the supported allow-list form (a `…/*` suffix is matched
+        // literally, not as a wildcard, and would deny the real URL against the
+        // production egress service).
+        let network_access = NetworkAccessList::allow_only(["openrouter.ai"]);
+        // Guard against a misleading ACL: the allow-list must actually permit
+        // the real request URL (RecordingEgress below ignores network_access,
+        // so this is the only check that catches an unmatched pattern).
+        assert!(
+            network_access.is_url_allowed(OPENROUTER_KEY_INFO_URL),
+            "network access list must allow the OpenRouter key-info URL"
+        );
+        let context = ToolContext::new(crate::SessionId::new())
+            .with_provider_credential_store(Arc::new(StaticCredentialStore))
+            .with_egress_service(egress.clone())
+            .with_network_access(Some(network_access.clone()));
+
+        let body = fetch_openrouter_key_info(&context).await.unwrap();
+
+        assert_eq!(body["data"]["label"], "egress-key");
+        let requests = egress.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        let request = &requests[0];
+        assert_eq!(request.method, "GET");
+        assert_eq!(request.url, OPENROUTER_KEY_INFO_URL);
+        assert_eq!(request.kind, EgressRequestKind::Capability);
+        assert_eq!(
+            request.headers.get("authorization").map(String::as_str),
+            Some("Bearer test-key")
+        );
+        assert_eq!(request.network_access, Some(network_access));
+        assert_eq!(request.timeout_ms, Some(15_000));
     }
 
     // -------------------------------------------------------------------------
