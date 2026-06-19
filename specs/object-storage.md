@@ -64,7 +64,7 @@ PostgreSQL metadata  ──────────────┐  workspace_fi
 A narrow byte-blob contract (`crates/server/src/storage/blob_store.rs`):
 `put(key, bytes)`, `get(key) -> Option<bytes>`, `delete(key)`. It is implemented
 over [`object_store`](https://docs.rs/object_store), so the same code path
-serves AWS S3, MinIO, Cloudflare R2, and any S3-compatible endpoint, plus an
+serves AWS S3, SeaweedFS, Cloudflare R2, and any S3-compatible endpoint, plus an
 in-memory backend used in tests to exercise the production offload path without
 a network dependency.
 
@@ -125,8 +125,8 @@ rebuild the `workspace_files` / `images` rows from the objects alone.
 
 Metadata is set through object_store's portable `Attribute::Metadata`, so the
 keys are backend-neutral (`everruns-kind`, `everruns-recovery`). On any
-S3-protocol backend — AWS S3 and every S3-compatible store (SeaweedFS, MinIO,
-R2, ...) — these surface on the wire as `x-amz-meta-<key>`; a native GCS/Azure
+S3-protocol backend — AWS S3 and every S3-compatible store (SeaweedFS, R2,
+...) — these surface on the wire as `x-amz-meta-<key>`; a native GCS/Azure
 backend would map them to that provider's convention. Nothing is AWS-specific.
 
 Each object sets:
@@ -216,12 +216,12 @@ counters; each pass also logs a summary (listed, deleted, bytes, live pointers).
 | `STORAGE_BLOB_BACKEND` | `db` | `db` keeps bytes inline (current behavior); `s3` offloads to object storage. |
 | `STORAGE_S3_BUCKET` | — | Required for `s3`. Target bucket. |
 | `STORAGE_S3_REGION` | — | Bucket region (or compatible region label). |
-| `STORAGE_S3_ENDPOINT` | — | Custom endpoint for S3-compatible stores (MinIO, R2). Unset for AWS. |
+| `STORAGE_S3_ENDPOINT` | — | Custom endpoint for S3-compatible stores (SeaweedFS, R2). Unset for AWS. |
 | `STORAGE_S3_ACCESS_KEY_ID` | — | Static access key. Omit to use the AWS credential chain (IAM role/instance). |
 | `STORAGE_S3_SECRET_ACCESS_KEY` | — | Static secret key. |
 | `STORAGE_S3_PREFIX` | (empty) | Key prefix isolating deployments within a bucket. |
-| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS/MinIO over HTTP). |
-| `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by MinIO; harmless on AWS). |
+| `STORAGE_S3_ALLOW_HTTP` | `false` | Allow plaintext HTTP (local/dev only — e.g. SeaweedFS over HTTP). |
+| `STORAGE_S3_FORCE_PATH_STYLE` | `true` | Path-style requests (required by SeaweedFS; harmless on AWS). |
 | `STORAGE_BLOB_GC_INTERVAL_SECONDS` | `21600` (6h) | Interval between GC sweeps. `0` disables GC. Only effective with the `s3` backend. |
 | `STORAGE_BLOB_GC_GRACE_SECONDS` | `86400` (24h) | Safety grace period; orphans younger than this are never deleted. |
 | `STORAGE_BLOB_GC_MAX_DELETES_PER_RUN` | `10000` | Per-sweep deletion cap to bound work (consumed per delete attempt). |
@@ -248,7 +248,7 @@ export STORAGE_S3_SECRET_ACCESS_KEY=everruns-secret
 export STORAGE_S3_ALLOW_HTTP=true
 ```
 
-Any S3-compatible store (AWS S3, SeaweedFS, MinIO, Cloudflare R2, ...) works
+Any S3-compatible store (AWS S3, SeaweedFS, Cloudflare R2, ...) works
 unchanged — only the endpoint and credentials differ.
 
 ## Testing
@@ -280,9 +280,9 @@ assertions** run against both backends:
 
 - **In-memory object_store backend** (default) in the `Integration Tests
   (PostgreSQL)` CI job — exercises the offload code path on every PostgreSQL PR
-  with no S3/MinIO container (it still uses the PostgreSQL service container).
+  with no S3/SeaweedFS container (it still uses the PostgreSQL service container).
 - **Real S3-compatible store** in the dedicated `Integration Tests (S3 Blob
-  Backend)` CI job, which starts MinIO via a `docker run` step alongside the
+  Backend)` CI job, which starts SeaweedFS via a `docker run` step alongside the
   PostgreSQL service container, sets `STORAGE_BLOB_BACKEND=s3` + `STORAGE_S3_*`
   (with `STORAGE_S3_ALLOW_HTTP` and path-style addressing for the local
   endpoint), and re-runs the identical suite against the AWS S3 client path. The

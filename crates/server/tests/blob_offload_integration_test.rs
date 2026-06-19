@@ -51,7 +51,7 @@ const TEST_ORG_ID: i64 = 1;
 ///
 /// `STORAGE_BLOB_BACKEND=s3` selects the real S3-compatible store via the same
 /// `STORAGE_S3_*` config the server reads in production (used by the dedicated
-/// S3 CI job against a MinIO service container). Anything else falls back to
+/// S3 CI job against a SeaweedFS container). Anything else falls back to
 /// object_store's in-memory backend, which exercises the identical offload code
 /// path with no network dependency. The same test body therefore validates both
 /// backends.

@@ -154,7 +154,7 @@ session IDs do not need to change.
 ### Decision 1: PostgreSQL-backed Storage
 **Chosen:** Store files in PostgreSQL BYTEA column
 **Alternatives considered:**
-- Object storage (S3, MinIO): Added complexity for MVP
+- Object storage (S3, SeaweedFS): Added complexity for MVP
 - Local filesystem: Not suitable for distributed deployments
 **Rationale:** PostgreSQL provides ACID transactions, simple deployment, and good performance for small-to-medium files. Can migrate to object storage later for large files.
 
