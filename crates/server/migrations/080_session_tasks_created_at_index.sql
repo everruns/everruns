@@ -5,5 +5,7 @@
 -- dashboards). The org boundary is a semijoin on `sessions(org_id)`; this index
 -- lets the recency ordering and the `created_at >= cutoff` age bound be served
 -- without a full-table sort as `session_tasks` grows. The existing
--- (session_id, state) index only helps the per-session path.
-CREATE INDEX session_tasks_created_at_idx ON session_tasks (created_at DESC);
+-- (session_id, state) index only helps the per-session path. The `id`
+-- tiebreaker matches the query's `ORDER BY created_at DESC, id DESC`, so rows
+-- sharing a `created_at` need no extra sort step.
+CREATE INDEX session_tasks_created_at_idx ON session_tasks (created_at DESC, id DESC);

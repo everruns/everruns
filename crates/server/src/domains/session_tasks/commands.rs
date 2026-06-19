@@ -142,13 +142,14 @@ impl Command for ListOrgTasks {
             None => None,
         };
         let limit = self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as i64;
+        let state = state.map(|s| s.to_string());
 
         let rows = ctx
             .db
             .list_org_session_tasks(
                 ctx.org_id(),
                 kind.as_deref(),
-                state.map(|s| s.to_string()).as_deref(),
+                state.as_deref(),
                 created_after,
                 limit,
             )
