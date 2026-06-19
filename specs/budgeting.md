@@ -109,11 +109,12 @@ Look up session → find active budgets in hierarchy
   (session → agent → user → org)
   │
   ▼ (for each matching budget)
-compute_debit(currency, tokens, model, provider, provider_cost_usd)
+compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
   │  "tokens" → raw count
   │  "usd"    → provider_cost_usd when the provider reports it
-  │            (e.g. OpenRouter usage.cost), else
-  │            tokens * LlmModelProfile cost-per-token, else raw count
+  │            (e.g. OpenRouter usage.cost), else the cache-aware
+  │            LlmModelProfile estimate (cached reads billed at the
+  │            cache_read rate, not the input rate), else raw count
   │  "credits" → tokens / 1000
   │
   ▼

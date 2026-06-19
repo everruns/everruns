@@ -187,6 +187,8 @@ fn test_compute_debit_tokens_currency() {
         1500,
         1000,
         500,
+        0,
+        0,
         Some("gpt-4o"),
         Some("openai"),
         None,
@@ -202,6 +204,8 @@ fn test_compute_debit_usd_with_known_model() {
         1_000_000 + 500_000,
         1_000_000,
         500_000,
+        0,
+        0,
         Some("gpt-4o"),
         Some("openai"),
         None,
@@ -220,6 +224,8 @@ fn test_compute_debit_usd_prefers_provider_cost() {
         1_500_000,
         1_000_000,
         500_000,
+        0,
+        0,
         Some("gpt-4o"),
         Some("openai"),
         Some(0.0123),
@@ -237,6 +243,8 @@ fn test_compute_debit_usd_provider_cost_covers_unknown_model() {
         1500,
         1000,
         500,
+        0,
+        0,
         Some("some/exotic-model"),
         Some("openai"),
         Some(0.0042),
@@ -253,6 +261,8 @@ fn test_compute_debit_usd_zero_provider_cost_falls_back() {
         1500,
         1000,
         500,
+        0,
+        0,
         Some("unknown-model"),
         Some("openai"),
         Some(0.0),
@@ -268,6 +278,8 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
         1500,
         1000,
         500,
+        0,
+        0,
         Some("unknown-model"),
         Some("openai"),
         None,
@@ -278,22 +290,54 @@ fn test_compute_debit_usd_with_unknown_model_falls_back_to_tokens() {
 #[test]
 fn test_compute_debit_credits_currency() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("credits", 5000, 3000, 2000, None, None, None);
+    let debit = svc.compute_debit("credits", 5000, 3000, 2000, 0, 0, None, None, None);
     assert_eq!(debit, 5.0);
 }
 
 #[test]
 fn test_compute_debit_custom_currency_uses_token_count() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, None, None, None);
+    let debit = svc.compute_debit("my_custom", 2000, 1500, 500, 0, 0, None, None, None);
     assert_eq!(debit, 2000.0);
 }
 
 #[test]
 fn test_compute_debit_zero_tokens() {
     let (svc, _) = make_service();
-    let debit = svc.compute_debit("tokens", 0, 0, 0, None, None, None);
+    let debit = svc.compute_debit("tokens", 0, 0, 0, 0, 0, None, None, None);
     assert_eq!(debit, 0.0);
+}
+
+#[test]
+fn test_compute_debit_usd_discounts_cached_tokens() {
+    let (svc, _) = make_service();
+    // OpenAI reports prompt tokens inclusive of cached reads. gpt-4o: input
+    // $2.50/M, cache_read $1.25/M. 800K of the 1M prompt tokens are cached.
+    let cached = svc.compute_debit(
+        "usd",
+        1_000_000,
+        1_000_000,
+        0,
+        800_000,
+        0,
+        Some("gpt-4o"),
+        Some("openai"),
+        None,
+    );
+    let naive = svc.compute_debit(
+        "usd",
+        1_000_000,
+        1_000_000,
+        0,
+        0,
+        0,
+        Some("gpt-4o"),
+        Some("openai"),
+        None,
+    );
+    // 200K * 2.50 + 800K * 1.25 = 0.50 + 1.00 = 1.50, well below the cache-blind 2.50.
+    assert!((cached - 1.50).abs() < 1e-9, "cached debit {cached}");
+    assert!((naive - 2.50).abs() < 1e-9, "naive debit {naive}");
 }
 
 // ========================================================================

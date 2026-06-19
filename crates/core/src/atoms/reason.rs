@@ -2399,6 +2399,8 @@ impl ReasonAtom {
                         &runtime_agent.model,
                         input,
                         output,
+                        meta.cache_read_tokens.unwrap_or(0),
+                        meta.cache_creation_tokens.unwrap_or(0),
                     );
                     Some(
                         TokenUsage::with_cache(
