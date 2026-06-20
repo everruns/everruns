@@ -8,6 +8,7 @@
 // It unifies the two worker implementations into one, eliminating code duplication
 // while preserving the different deployment models (in-process vs external).
 
+use crate::durable_worker;
 use anyhow::Result;
 use everruns_core::ActInput;
 use everruns_core::atoms::AtomContext;
@@ -48,10 +49,14 @@ pub struct TaskWorkerConfig {
     pub worker_id: String,
     /// Activity types this worker handles
     pub activity_types: Vec<String>,
-    /// Maximum concurrent tasks
+    /// Maximum concurrent tasks (execution concurrency / advertised capacity)
     pub max_concurrent_tasks: usize,
-    /// Poll interval when no tasks available
+    /// Maximum tasks claimed in a single request, regardless of available slots.
+    pub claim_batch_size: usize,
+    /// Base poll interval when no tasks available
     pub poll_interval: Duration,
+    /// Cap for the exponential poll backoff while the queue is empty.
+    pub poll_backoff_max: Duration,
     /// Heartbeat interval for worker registration
     pub heartbeat_interval: Duration,
     /// Worker group name (optional, for routing)
@@ -70,8 +75,10 @@ impl Default for TaskWorkerConfig {
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
             ],
-            max_concurrent_tasks: 1000,
-            poll_interval: Duration::from_millis(10),
+            max_concurrent_tasks: durable_worker::DEFAULT_MAX_CONCURRENT_TASKS,
+            claim_batch_size: durable_worker::DEFAULT_CLAIM_BATCH_SIZE,
+            poll_interval: durable_worker::DEFAULT_POLL_INTERVAL,
+            poll_backoff_max: durable_worker::DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
             worker_group: None,
         }
@@ -79,43 +86,59 @@ impl Default for TaskWorkerConfig {
 }
 
 impl TaskWorkerConfig {
-    /// Create dev mode configuration (faster polling, lower concurrency)
+    /// Create dev mode configuration (faster pickup, lower concurrency).
+    /// Keeps a short backoff cap so an idle dev queue still picks up new work
+    /// quickly.
     pub fn dev_mode() -> Self {
+        let max_concurrent_tasks = 10;
         Self {
             worker_id: format!("dev-worker-{}", Uuid::now_v7()),
             worker_group: Some("dev".to_string()),
-            max_concurrent_tasks: 10,
+            max_concurrent_tasks,
+            // Keep the claim batch within execution concurrency.
+            claim_batch_size: durable_worker::DEFAULT_CLAIM_BATCH_SIZE.min(max_concurrent_tasks),
             poll_interval: Duration::from_millis(10),
+            poll_backoff_max: Duration::from_millis(250),
             ..Default::default()
         }
     }
 
-    /// Create production configuration (higher concurrency)
+    /// Create a high-concurrency configuration. This is the explicit opt-in for
+    /// 1000-way execution; the claim batch stays bounded by `claim_batch_size`.
     pub fn production() -> Self {
         Self {
             max_concurrent_tasks: 1000,
-            poll_interval: Duration::from_millis(10),
             ..Default::default()
         }
     }
 
-    /// Create configuration from environment variables
+    /// Create configuration from environment variables.
+    ///
+    /// Execution concurrency (`MAX_CONCURRENT_TASKS`), claim batch size
+    /// (`CLAIM_BATCH_SIZE`), and the poll interval/backoff cap
+    /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are independent.
+    /// The claim batch is clamped to the execution concurrency.
     pub fn from_env() -> Self {
+        use everruns_config::{env_duration_ms, env_or};
+
         let worker_id =
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
-
-        let max_concurrent = std::env::var("MAX_CONCURRENT_TASKS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1000);
-
-        let worker_group = std::env::var("WORKER_GROUP").ok();
+        let defaults = Self::default();
+        let max_concurrent_tasks = env_or("MAX_CONCURRENT_TASKS", defaults.max_concurrent_tasks);
+        let claim_batch_size =
+            env_or("CLAIM_BATCH_SIZE", defaults.claim_batch_size).min(max_concurrent_tasks);
 
         Self {
             worker_id,
-            max_concurrent_tasks: max_concurrent,
-            worker_group,
-            ..Default::default()
+            max_concurrent_tasks,
+            claim_batch_size,
+            poll_interval: env_duration_ms("WORKER_POLL_INTERVAL_MS", defaults.poll_interval),
+            poll_backoff_max: env_duration_ms(
+                "WORKER_POLL_BACKOFF_MAX_MS",
+                defaults.poll_backoff_max,
+            ),
+            worker_group: std::env::var("WORKER_GROUP").ok(),
+            ..defaults
         }
     }
 }
@@ -153,7 +176,11 @@ where
 
         info!(
             worker_id = %config.worker_id,
-            max_concurrent = config.max_concurrent_tasks,
+            max_concurrent_tasks = config.max_concurrent_tasks,
+            claim_batch_size = config.claim_batch_size,
+            poll_interval_ms = config.poll_interval.as_millis(),
+            poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
+            heartbeat_interval_ms = config.heartbeat_interval.as_millis(),
             "Initialized unified worker"
         );
 
@@ -226,6 +253,11 @@ where
             }
         });
 
+        // Adaptive poll backoff: doubles from `poll_interval` up to
+        // `poll_backoff_max` while the queue is empty, so an idle worker stops
+        // issuing tight-loop `claim_task` requests. Reset to base on any work.
+        let mut poll_backoff = self.config.poll_interval.min(self.config.poll_backoff_max);
+
         // Main poll loop
         loop {
             if *self.shutdown_rx.borrow() {
@@ -237,13 +269,19 @@ where
                 Ok(executed) => {
                     if executed == 0 {
                         tokio::select! {
-                            _ = tokio::time::sleep(self.config.poll_interval) => {}
+                            _ = tokio::time::sleep(poll_backoff) => {}
                             _ = self.shutdown_rx.changed() => {
                                 info!("Shutdown during poll wait");
                                 break;
                             }
                         }
                     }
+                    poll_backoff = durable_worker::next_poll_backoff(
+                        poll_backoff,
+                        self.config.poll_interval,
+                        self.config.poll_backoff_max,
+                        executed > 0,
+                    );
                 }
                 Err(e) => {
                     error!("Error polling tasks: {}", e);
@@ -290,12 +328,15 @@ where
             return Ok(0);
         }
 
+        // Bound the claim by claim_batch_size so a single claim_task stays cheap
+        // even when execution concurrency is high.
+        let to_claim = durable_worker::claim_limit(available_slots, self.config.claim_batch_size);
         let tasks = self
             .store
             .claim_task(
                 &self.config.worker_id,
                 &self.config.activity_types,
-                available_slots,
+                to_claim,
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to claim tasks: {}", e))?;
@@ -904,7 +945,16 @@ mod tests {
     fn test_config_default() {
         let config = TaskWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
-        assert_eq!(config.max_concurrent_tasks, 1000);
+        // Safe-by-default concurrency; 1000-way is opt-in.
+        assert_eq!(
+            config.max_concurrent_tasks,
+            durable_worker::DEFAULT_MAX_CONCURRENT_TASKS
+        );
+        assert_eq!(
+            config.claim_batch_size,
+            durable_worker::DEFAULT_CLAIM_BATCH_SIZE
+        );
+        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
     }
 
     #[test]
@@ -912,11 +962,20 @@ mod tests {
         let config = TaskWorkerConfig::dev_mode();
         assert!(config.worker_id.starts_with("dev-worker-"));
         assert_eq!(config.worker_group, Some("dev".to_string()));
+        // Claim batch must stay within execution concurrency in every preset.
+        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
     }
 
     #[test]
     fn test_config_production() {
+        // production() is the explicit opt-in for high concurrency, but the claim
+        // batch stays bounded independently of execution concurrency.
         let config = TaskWorkerConfig::production();
         assert_eq!(config.max_concurrent_tasks, 1000);
+        assert_eq!(
+            config.claim_batch_size,
+            durable_worker::DEFAULT_CLAIM_BATCH_SIZE
+        );
+        assert!(config.claim_batch_size < config.max_concurrent_tasks);
     }
 }

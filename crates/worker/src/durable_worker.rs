@@ -197,16 +197,68 @@ async fn emit_cancellation_events(
 // =============================================================================
 
 /// Configuration for the durable worker
+/// Default execution concurrency for external/gRPC workers.
+///
+/// Historically 1000, which let a single worker advertise — and a single
+/// `claim_task` demand — up to 1000 tasks. With a few replicas that was enough to
+/// saturate a small managed Postgres once the system was already slow (EVE-606).
+/// 1000-way concurrency is now opt-in via `MAX_CONCURRENT_TASKS`; this default
+/// mirrors the server's default DB pool size (50).
+pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
+
+/// Upper bound on a single claim request, independent of execution concurrency.
+/// Keeps `claim_task max_tasks=...` bounded even when `MAX_CONCURRENT_TASKS` is
+/// raised, so a slow/contended claim query can never be asked for 1000 rows.
+pub const DEFAULT_CLAIM_BATCH_SIZE: usize = 50;
+
+/// Base fallback poll interval when push notifications are unavailable.
+pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Maximum fallback poll interval. While the queue stays empty the poll interval
+/// backs off exponentially from `poll_interval` up to this cap, so idle workers
+/// stop hammering the DB with `claim_task` requests.
+pub const DEFAULT_POLL_BACKOFF_MAX: Duration = Duration::from_secs(5);
+
+/// How many tasks to claim in one request, given currently-free execution slots
+/// and the configured claim batch size. Bounding by `claim_batch_size` keeps a
+/// single `claim_task` cheap and prevents `max_tasks=<execution concurrency>`
+/// requests (e.g. 1000) that amplify DB pressure (EVE-606).
+pub(crate) fn claim_limit(available_slots: usize, claim_batch_size: usize) -> usize {
+    available_slots.min(claim_batch_size)
+}
+
+/// Next fallback poll interval. Resets to `base` when work was found, otherwise
+/// doubles the current interval up to `max` — so an idle worker backs off
+/// aggressively instead of polling in a tight loop. The result is always clamped
+/// to `max`, and the doubling is overflow-safe (a misconfigured huge interval
+/// saturates at `max` rather than panicking).
+pub(crate) fn next_poll_backoff(
+    current: Duration,
+    base: Duration,
+    max: Duration,
+    found_work: bool,
+) -> Duration {
+    if found_work {
+        base.min(max)
+    } else {
+        current.checked_mul(2).unwrap_or(max).min(max)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DurableWorkerConfig {
     /// Worker ID (unique identifier for this worker instance)
     pub worker_id: String,
     /// Activity types this worker handles
     pub activity_types: Vec<String>,
-    /// Maximum concurrent tasks
+    /// Maximum concurrent tasks (execution concurrency / advertised capacity)
     pub max_concurrent_tasks: usize,
-    /// Poll interval when push notifications unavailable (fallback)
+    /// Maximum tasks claimed in a single request, regardless of available slots.
+    pub claim_batch_size: usize,
+    /// Base poll interval when push notifications unavailable (fallback)
     pub poll_interval: Duration,
+    /// Cap for the exponential poll backoff while the queue is empty.
+    pub poll_backoff_max: Duration,
     /// Heartbeat interval for claimed tasks
     pub heartbeat_interval: Duration,
     /// gRPC address for control-plane communication
@@ -229,8 +281,10 @@ impl Default for DurableWorkerConfig {
                 "session_task_reaper".to_string(),
                 "invoke_scheduled_app_channel".to_string(),
             ],
-            max_concurrent_tasks: 1000, // High default for massive workflow parallelism
-            poll_interval: Duration::from_millis(10), // Fallback when push notifications unavailable
+            max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
+            claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
+            poll_interval: DEFAULT_POLL_INTERVAL,
+            poll_backoff_max: DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),
@@ -239,11 +293,21 @@ impl Default for DurableWorkerConfig {
 }
 
 impl DurableWorkerConfig {
-    /// Create configuration from environment variables
+    /// Create configuration from environment variables.
+    ///
+    /// Execution concurrency (`MAX_CONCURRENT_TASKS`), claim batch size
+    /// (`CLAIM_BATCH_SIZE`), and the fallback poll interval/backoff cap
+    /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are configured
+    /// independently. The claim batch is additionally clamped to the execution
+    /// concurrency so a single `claim_task` never asks for more than a worker can
+    /// run.
     pub fn from_env() -> Self {
-        use everruns_config::{env_duration_secs, env_or, env_string_any};
+        use everruns_config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
 
         let defaults = Self::default();
+        let max_concurrent_tasks = env_or("MAX_CONCURRENT_TASKS", defaults.max_concurrent_tasks);
+        let claim_batch_size =
+            env_or("CLAIM_BATCH_SIZE", defaults.claim_batch_size).min(max_concurrent_tasks);
         Self {
             worker_id: std::env::var("WORKER_ID")
                 .unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7())),
@@ -251,7 +315,13 @@ impl DurableWorkerConfig {
                 &["SERVER_GRPC_ADDRESS", "WORKER_GRPC_ADDRESS"],
                 "127.0.0.1:9001",
             ),
-            max_concurrent_tasks: env_or("MAX_CONCURRENT_TASKS", 1000),
+            max_concurrent_tasks,
+            claim_batch_size,
+            poll_interval: env_duration_ms("WORKER_POLL_INTERVAL_MS", defaults.poll_interval),
+            poll_backoff_max: env_duration_ms(
+                "WORKER_POLL_BACKOFF_MAX_MS",
+                defaults.poll_backoff_max,
+            ),
             connect_timeout: env_duration_secs(
                 "WORKER_GRPC_CONNECT_TIMEOUT",
                 defaults.connect_timeout,
@@ -293,7 +363,11 @@ impl DurableWorker {
         info!(
             worker_id = %config.worker_id,
             grpc_address = %config.grpc_address,
-            max_concurrent = config.max_concurrent_tasks,
+            max_concurrent_tasks = config.max_concurrent_tasks,
+            claim_batch_size = config.claim_batch_size,
+            poll_interval_ms = config.poll_interval.as_millis(),
+            poll_backoff_max_ms = config.poll_backoff_max.as_millis(),
+            heartbeat_interval_ms = config.heartbeat_interval.as_millis(),
             "Initializing durable worker (gRPC mode)"
         );
 
@@ -398,6 +472,13 @@ impl DurableWorker {
         let mut reconnect_backoff = Duration::from_secs(1);
         let max_reconnect_backoff = Duration::from_secs(60);
 
+        // Adaptive fallback-poll backoff: starts at `poll_interval` and doubles
+        // up to `poll_backoff_max` each time a poll finds no work, so a worker in
+        // degraded (no-push) mode with an empty queue stops hammering the DB with
+        // `claim_task` requests. Reset to the base interval as soon as work is
+        // found or the push stream reconnects.
+        let mut poll_backoff = self.config.poll_interval.min(self.config.poll_backoff_max);
+
         // Main event loop with push notifications and polling fallback
         loop {
             // Check for shutdown
@@ -464,10 +545,10 @@ impl DurableWorker {
                     }
                 }
                 None => {
-                    // No notification stream - use regular polling with reconnect attempts
+                    // No notification stream - use adaptive backoff polling with
+                    // reconnect attempts.
                     tokio::select! {
-                        // Short poll interval when no notifications
-                        _ = tokio::time::sleep(self.config.poll_interval) => {
+                        _ = tokio::time::sleep(poll_backoff) => {
                             // Try to reconnect periodically
                             let mut store = self.store.lock().await;
                             match store
@@ -484,6 +565,7 @@ impl DurableWorker {
                                     );
                                     notification_stream = Some(stream);
                                     reconnect_backoff = Duration::from_secs(1);
+                                    poll_backoff = self.config.poll_interval;
                                 }
                                 Err(_) => {
                                     // Increase backoff, but still poll
@@ -516,6 +598,22 @@ impl DurableWorker {
                     if executed > 0 {
                         debug!(tasks_executed = executed, "Executed tasks");
                     }
+                    // Only grow the backoff in degraded (no-push) polling mode.
+                    // While the push stream is connected, the fallback poll fires
+                    // on a fixed 10s timer (not `poll_backoff`), so keep the
+                    // backoff parked at base — otherwise periodic empty fallback
+                    // polls would inflate it to the cap and delay the first pickup
+                    // if the stream later drops.
+                    poll_backoff = if notification_stream.is_some() {
+                        self.config.poll_interval.min(self.config.poll_backoff_max)
+                    } else {
+                        next_poll_backoff(
+                            poll_backoff,
+                            self.config.poll_interval,
+                            self.config.poll_backoff_max,
+                            executed > 0,
+                        )
+                    };
                 }
                 Err(e) => {
                     error!("Error polling tasks: {}", e);
@@ -619,14 +717,17 @@ impl DurableWorker {
             return Ok(0);
         }
 
-        // Claim only as many tasks as we have slots for
+        // Claim as many as we have slots for, but never more than the claim batch
+        // size — this keeps `claim_task max_tasks=...` bounded (and the claim query
+        // cheap) even when execution concurrency is configured high.
+        let to_claim = claim_limit(available_slots, self.config.claim_batch_size);
         let tasks = {
             let mut store = self.store.lock().await;
             store
                 .claim_tasks(
                     &self.config.worker_id,
                     &self.config.activity_types,
-                    available_slots,
+                    to_claim,
                 )
                 .await
                 .map_err(|e| anyhow::anyhow!("Failed to claim tasks: {}", e))?
@@ -1681,8 +1782,57 @@ mod tests {
     fn test_config_default() {
         let config = DurableWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
-        assert_eq!(config.max_concurrent_tasks, 1000);
+        // Safe-by-default concurrency; 1000-way is opt-in via MAX_CONCURRENT_TASKS.
+        assert_eq!(config.max_concurrent_tasks, DEFAULT_MAX_CONCURRENT_TASKS);
+        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
+        // The claim batch must never exceed execution concurrency.
+        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
         assert_eq!(config.grpc_address, "127.0.0.1:9001");
+    }
+
+    // EVE-606: a single claim must stay bounded by the claim batch size even when
+    // execution concurrency (available slots) is very high, so workers never issue
+    // `claim_task max_tasks=1000`-style requests.
+    #[test]
+    fn test_claim_limit_bounds_to_batch() {
+        // High concurrency, empty/idle worker: claim is capped at the batch size.
+        assert_eq!(
+            claim_limit(1000, DEFAULT_CLAIM_BATCH_SIZE),
+            DEFAULT_CLAIM_BATCH_SIZE
+        );
+        assert_eq!(claim_limit(1000, 50), 50);
+        // Fewer free slots than the batch: claim only what fits.
+        assert_eq!(claim_limit(10, 50), 10);
+        // No free slots: claim nothing.
+        assert_eq!(claim_limit(0, 50), 0);
+    }
+
+    // EVE-606: fallback polling must back off aggressively while the queue is
+    // empty and snap back to the base interval as soon as work appears.
+    #[test]
+    fn test_poll_backoff_grows_and_caps() {
+        let base = Duration::from_millis(100);
+        let max = Duration::from_secs(5);
+
+        // Empty polls double the interval up to the cap, then stay there.
+        let mut b = base;
+        b = next_poll_backoff(b, base, max, false);
+        assert_eq!(b, Duration::from_millis(200));
+        b = next_poll_backoff(b, base, max, false);
+        assert_eq!(b, Duration::from_millis(400));
+        for _ in 0..20 {
+            b = next_poll_backoff(b, base, max, false);
+        }
+        assert_eq!(b, max, "backoff must saturate at the cap");
+
+        // Finding work resets to the base interval.
+        let reset = next_poll_backoff(b, base, max, true);
+        assert_eq!(reset, base);
+
+        // Misconfiguration safety: base > max is clamped to max, and doubling a
+        // near-max duration saturates at max instead of overflowing/panicking.
+        assert_eq!(next_poll_backoff(base, max * 2, max, true), max);
+        assert_eq!(next_poll_backoff(Duration::MAX, base, max, false), max);
     }
 
     #[test]
