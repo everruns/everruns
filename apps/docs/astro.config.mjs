@@ -274,9 +274,38 @@ export default defineConfig({
               link: "/integrations/",
               icon: "laptop",
               items: [
+                { label: "Overview", slug: "integrations" },
+                // Grouped to mirror the category taxonomy in
+                // docs/integrations/index.md. Keep the two in sync when adding
+                // or recategorizing an integration. Sidebar glyphs for each
+                // entry live in src/styles/custom.css, keyed by href.
                 {
-                  label: "Integrations",
-                  items: [{ autogenerate: { directory: "integrations" } }],
+                  label: "Sandboxes & execution",
+                  items: [
+                    { label: "Daytona", slug: "integrations/daytona" },
+                    { label: "E2B", slug: "integrations/e2b" },
+                    { label: "Container Sandbox", slug: "integrations/container-sandbox" },
+                    { label: "Deno", slug: "integrations/deno" },
+                    { label: "Sprites", slug: "integrations/sprites" },
+                    { label: "Cursor", slug: "integrations/cursor" },
+                  ],
+                },
+                {
+                  label: "Browser & web",
+                  items: [
+                    { label: "Browserless", slug: "integrations/browserless" },
+                    { label: "Brave Search", slug: "integrations/brave-search" },
+                    { label: "DuckDuckGo", slug: "integrations/duckduckgo" },
+                    { label: "Parallel", slug: "integrations/parallel" },
+                  ],
+                },
+                {
+                  label: "Messaging",
+                  items: [{ label: "Slack", slug: "integrations/slack" }],
+                },
+                {
+                  label: "Discovery",
+                  items: [{ label: "ARD", slug: "integrations/ard" }],
                 },
                 {
                   label: "Providers",

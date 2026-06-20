@@ -5,6 +5,8 @@ sidebar:
   label: ARD Discovery
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><circle cx="12" cy="5" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="5" cy="18" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="19" cy="18" r="2.3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10.7 6.9L6.3 15.9M13.3 6.9L17.7 15.9M7.3 18h9.4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+
 Everruns integrates with [Agentic Resource Discovery (ARD)](https://agenticresourcediscovery.org/spec/)
 as a **client**: a running agent can search ARD registries for capabilities it
 was not pre-provisioned with — MCP servers and A2A agents — and attach them to

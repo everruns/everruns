@@ -5,6 +5,8 @@ sidebar:
   label: E2B
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><rect x="2.5" y="4" width="19" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M6.5 9.5l3 2.5-3 2.5M12.5 15h5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+
 Everruns integrates with [E2B](https://e2b.dev/docs) to provide cloud sandbox environments for secure, isolated code execution. Agents can create, pause, resume, delete, and interact with multiple isolated Linux sandboxes per session. You bring your own E2B API key — there is no platform-owned or environment-variable fallback, so sandbox costs and quotas stay scoped to your own E2B account.
 
 ## What You Get

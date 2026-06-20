@@ -3,6 +3,8 @@ title: Container Sandbox
 description: Self-hosted container sandboxes for secure, isolated code execution via Docker Engine. No external SaaS dependency.
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><rect x="3" y="13" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="11" y="13" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="7" y="5.5" width="6" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+
 Everruns provides self-hosted container sandboxes via Docker Engine for secure, isolated code execution. Agents can create, manage, and interact with multiple containers per session — each an isolated Linux environment with real filesystem, process execution, and network access.
 
 ## What You Get

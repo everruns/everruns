@@ -5,6 +5,8 @@ sidebar:
   label: Sprites
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M12 2.5c2.2 3 1.1 4.8-.5 6.2.9-3.2-2.6-3.7-2.6-3.7C7 8.3 6 10.2 6 12.7a6 6 0 0 0 12 0c0-2.1-1-4.2-2.6-5.7.3 2.1-1.2 3-1.2 3 .6-2.4-.8-5.5-2.2-7.5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+
 Everruns integrates with [Sprites](https://sprites.dev/) to provide persistent, hardware-isolated Linux microVMs powered by Firecracker. Unlike ephemeral sandboxes, Sprites maintain their filesystem across idle periods, support instant checkpoint/restore, and expose public HTTP endpoints.
 
 ## What You Get

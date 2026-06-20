@@ -5,6 +5,8 @@ sidebar:
   label: Cursor
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M5 3l14 7-6 2.2L10.5 19z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+
 Everruns integrates with [Cursor Cloud Agents](https://docs.cursor.com/en/background-agents) so agents can delegate asynchronous coding work to Cursor. A triage agent can inspect a request, split it into focused tasks, launch Cursor agents against GitHub repositories, send follow-ups, and summarize status or results.
 
 ## What You Get

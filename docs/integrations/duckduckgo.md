@@ -3,6 +3,8 @@ title: DuckDuckGo
 description: Give agents free instant answers, definitions, and topic summaries via DuckDuckGo. No API key required — lightweight search for general knowledge queries.
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9.4 9.1a2.6 2.6 0 0 1 5 .9c0 1.8-2.4 2.1-2.4 3.6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="17" r=".75" fill="currentColor"/></svg>
+
 Everruns integrates with [DuckDuckGo](https://duckduckgo.com/) to provide instant answers via the [DuckDuckGo Instant Answer API](https://api.duckduckgo.com/api). Agents can look up facts, definitions, topic summaries (from Wikipedia and other sources), and related topics — all without an API key.
 
 ## What You Get

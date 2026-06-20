@@ -7,6 +7,8 @@ sidebar:
 
 ![Daytona Integration](daytona.png)
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 2.5 21 7v10l-9 4.5L3 17V7z"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M3 7l9 4.5L21 7"/><path fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" d="M12 11.5V21.5"/></svg>
+
 Everruns integrates with [Daytona](https://www.daytona.io/) to provide cloud-based sandbox environments for secure, isolated code execution. Agents can create, manage, and interact with multiple sandboxes per session — each a fully isolated Linux environment with network access.
 
 ## What You Get
