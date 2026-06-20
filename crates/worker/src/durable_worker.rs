@@ -229,7 +229,9 @@ pub(crate) fn claim_limit(available_slots: usize, claim_batch_size: usize) -> us
 
 /// Next fallback poll interval. Resets to `base` when work was found, otherwise
 /// doubles the current interval up to `max` — so an idle worker backs off
-/// aggressively instead of polling in a tight loop.
+/// aggressively instead of polling in a tight loop. The result is always clamped
+/// to `max`, and the doubling is overflow-safe (a misconfigured huge interval
+/// saturates at `max` rather than panicking).
 pub(crate) fn next_poll_backoff(
     current: Duration,
     base: Duration,
@@ -237,9 +239,9 @@ pub(crate) fn next_poll_backoff(
     found_work: bool,
 ) -> Duration {
     if found_work {
-        base
+        base.min(max)
     } else {
-        (current * 2).min(max)
+        current.checked_mul(2).unwrap_or(max).min(max)
     }
 }
 
@@ -475,7 +477,7 @@ impl DurableWorker {
         // degraded (no-push) mode with an empty queue stops hammering the DB with
         // `claim_task` requests. Reset to the base interval as soon as work is
         // found or the push stream reconnects.
-        let mut poll_backoff = self.config.poll_interval;
+        let mut poll_backoff = self.config.poll_interval.min(self.config.poll_backoff_max);
 
         // Main event loop with push notifications and polling fallback
         loop {
@@ -596,12 +598,22 @@ impl DurableWorker {
                     if executed > 0 {
                         debug!(tasks_executed = executed, "Executed tasks");
                     }
-                    poll_backoff = next_poll_backoff(
-                        poll_backoff,
-                        self.config.poll_interval,
-                        self.config.poll_backoff_max,
-                        executed > 0,
-                    );
+                    // Only grow the backoff in degraded (no-push) polling mode.
+                    // While the push stream is connected, the fallback poll fires
+                    // on a fixed 10s timer (not `poll_backoff`), so keep the
+                    // backoff parked at base — otherwise periodic empty fallback
+                    // polls would inflate it to the cap and delay the first pickup
+                    // if the stream later drops.
+                    poll_backoff = if notification_stream.is_some() {
+                        self.config.poll_interval.min(self.config.poll_backoff_max)
+                    } else {
+                        next_poll_backoff(
+                            poll_backoff,
+                            self.config.poll_interval,
+                            self.config.poll_backoff_max,
+                            executed > 0,
+                        )
+                    };
                 }
                 Err(e) => {
                     error!("Error polling tasks: {}", e);
@@ -1816,6 +1828,11 @@ mod tests {
         // Finding work resets to the base interval.
         let reset = next_poll_backoff(b, base, max, true);
         assert_eq!(reset, base);
+
+        // Misconfiguration safety: base > max is clamped to max, and doubling a
+        // near-max duration saturates at max instead of overflowing/panicking.
+        assert_eq!(next_poll_backoff(base, max * 2, max, true), max);
+        assert_eq!(next_poll_backoff(Duration::MAX, base, max, false), max);
     }
 
     #[test]

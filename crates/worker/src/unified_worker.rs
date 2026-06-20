@@ -90,10 +90,13 @@ impl TaskWorkerConfig {
     /// Keeps a short backoff cap so an idle dev queue still picks up new work
     /// quickly.
     pub fn dev_mode() -> Self {
+        let max_concurrent_tasks = 10;
         Self {
             worker_id: format!("dev-worker-{}", Uuid::now_v7()),
             worker_group: Some("dev".to_string()),
-            max_concurrent_tasks: 10,
+            max_concurrent_tasks,
+            // Keep the claim batch within execution concurrency.
+            claim_batch_size: durable_worker::DEFAULT_CLAIM_BATCH_SIZE.min(max_concurrent_tasks),
             poll_interval: Duration::from_millis(10),
             poll_backoff_max: Duration::from_millis(250),
             ..Default::default()
@@ -253,7 +256,7 @@ where
         // Adaptive poll backoff: doubles from `poll_interval` up to
         // `poll_backoff_max` while the queue is empty, so an idle worker stops
         // issuing tight-loop `claim_task` requests. Reset to base on any work.
-        let mut poll_backoff = self.config.poll_interval;
+        let mut poll_backoff = self.config.poll_interval.min(self.config.poll_backoff_max);
 
         // Main poll loop
         loop {
@@ -959,6 +962,8 @@ mod tests {
         let config = TaskWorkerConfig::dev_mode();
         assert!(config.worker_id.starts_with("dev-worker-"));
         assert_eq!(config.worker_group, Some("dev".to_string()));
+        // Claim batch must stay within execution concurrency in every preset.
+        assert!(config.claim_batch_size <= config.max_concurrent_tasks);
     }
 
     #[test]
