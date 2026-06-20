@@ -106,6 +106,24 @@ Reasoning:
 - PostgreSQL `LISTEN/NOTIFY` through a pooler/proxy can fail intermittently and surface as protocol errors on unrelated query traffic
 - failing fast on an invalid listener URL is better than allowing a deployment that corrupts the control-plane's normal database interactions
 
+### Worker Concurrency & Sizing
+
+External/gRPC workers (`crates/worker/src/durable_worker.rs`) and the in-process worker (`crates/worker/src/unified_worker.rs`) expose three independent knobs so concurrency, claim batch size, and idle polling can be tuned separately:
+
+| Setting | Env var | Default | Purpose |
+| --- | --- | --- | --- |
+| Execution concurrency | `MAX_CONCURRENT_TASKS` | `50` | Tasks a worker runs at once / advertised capacity. |
+| Claim batch size | `CLAIM_BATCH_SIZE` | `50` (clamped to concurrency) | Upper bound on `claim_task max_tasks`, regardless of free slots. |
+| Fallback poll interval | `WORKER_POLL_INTERVAL_MS` | `100` | Base interval when push notifications are unavailable. |
+| Fallback poll backoff cap | `WORKER_POLL_BACKOFF_MAX_MS` | `5000` | Idle polling backs off exponentially from the base up to this cap. |
+
+Guidance:
+
+- **The default concurrency is intentionally modest (50, matching the default DB pool).** Historically it was `1000`, so a few replicas advertised thousands of slots and a single idle poll issued `claim_task max_tasks=1000`; when the DB was already slow this amplified pool pressure into acquire timeouts (EVE-606). 1000-way concurrency is now opt-in via `MAX_CONCURRENT_TASKS`.
+- **Raising concurrency does not raise claim cost:** the claim batch is bounded by `CLAIM_BATCH_SIZE` independently, so a high-concurrency worker still claims in modest batches.
+- **Pool sizing, not pool inflation, is the lever.** Size `DATABASE_POOL_MAX` to your managed Postgres `max_connections` (`pg_max_connections / replicas − margin`); do not raise it to mask worker over-claiming. Worker-side concurrency and claim batch should be tuned down first for small instances.
+- Effective worker settings (id, concurrency, claim batch, poll interval/backoff) are logged at worker init for troubleshooting.
+
 ### Generic Queue (Standalone Tasks)
 
 The task queue supports standalone tasks that run independently of any workflow. `TaskDefinition.workflow_id` is `Option<Uuid>` — when `None`, the task is a standalone queue entry.
