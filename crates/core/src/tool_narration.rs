@@ -900,6 +900,36 @@ mod tests {
     }
 
     #[test]
+    fn web_fetch_helper_falls_back_to_bare_verb_for_malformed_url() {
+        // When the URL cannot be parsed (no scheme) or has no host, narration
+        // must fall back to the bare verb rather than echoing any substring of
+        // the argument, which can carry credential-like or secret material.
+        for raw in [
+            "not a url with secret-token inside",
+            "javascript:alert('user:s3cret@host')",
+            "user:s3cret-pass@no-scheme/path",
+        ] {
+            let a = args(json!({ "url": raw }));
+            let started = narrate_web_fetch(&a, ToolNarrationPhase::Started, None);
+            let completed = narrate_web_fetch(&a, ToolNarrationPhase::Completed, None);
+            assert_eq!(started, "Fetch URL", "input: {raw}");
+            assert_eq!(completed, "Fetched URL", "input: {raw}");
+            assert!(
+                !started.contains("secret"),
+                "leaked secret for input: {raw}"
+            );
+            assert!(
+                !started.contains("s3cret"),
+                "leaked secret for input: {raw}"
+            );
+            assert!(
+                !completed.contains("s3cret"),
+                "leaked secret for input: {raw}"
+            );
+        }
+    }
+
+    #[test]
     fn provider_search_never_leaks_secret() {
         let a = args(json!({ "token": "super-secret" }));
         assert_eq!(
