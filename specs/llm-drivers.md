@@ -603,10 +603,45 @@ The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. Se
 
 ## Key Resolution Contract (Fail-Closed)
 
-### Server-Side Tenant Path
+This section is the single source of truth for **where provider credentials may
+come from**. Read it before touching any driver constructor, `DriverConfig`
+builder, provider store, or resolver. Violating it can silently fund tenant
+execution from platform credentials — a cost-runaway and trust boundary
+incident, not a cosmetic bug.
+
+### The one rule
+
+> **Driver code never reads the process environment.** No `std::env::var` in any
+> `crates/openai`, `crates/anthropic`, `crates/gemini`, `crates/openrouter`,
+> `crates/bedrock`, `crates/mai`, or the protocol drivers in `crates/core`
+> (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials only ever
+> arrive through a constructor argument or a `DriverConfig`.
+
+There are exactly **two** sanctioned ways credentials reach a driver. Every code
+path must be one of them; there is no third option and no fallback between them.
+
+| # | Path | Who uses it | Where credentials come from | Reads env? |
+|---|------|-------------|-----------------------------|------------|
+| 1 | **Server / tenant** | org-scoped agent + embedding execution | encrypted DB row, decrypted by the resolver | **Never** |
+| 2 | **Standalone / dev / CLI** | `just start-dev`, examples, CLI tools, embedders | a `CredentialProvider` the caller injects | only via `EnvCredentialProvider`, constructed explicitly by that caller |
+
+```
+                         credentials for a driver
+                                   │
+              ┌────────────────────┴────────────────────┐
+   org/tenant execution?                       standalone / dev / CLI?
+              │                                           │
+   resolve_provider_api_key()                  caller injects a CredentialProvider
+   (encrypted DB, fail-closed)                 (EnvCredentialProvider for env vars)
+              │                                           │
+        DriverConfig ─────────────► driver constructor ◄──────── DriverConfig
+              (no env reads anywhere on either path)
+```
+
+### Path 1 — Server-Side Tenant Path
 
 All API key resolution for tenant/org-scoped execution flows through
-`crates/server/src/services/llm_resolver.rs`. The contract is **fail-closed**:
+`crates/server/src/services/provider_resolver.rs`. The contract is **fail-closed**:
 
 1. If the provider has an encrypted key in the database and the encryption service
    is available, decrypt and return it. If decryption fails the call returns `Err`
@@ -621,30 +656,66 @@ All API key resolution for tenant/org-scoped execution flows through
 implicit env fallback silently funds tenant execution from platform credentials.
 Fail-closed prevents accidental cost-runaway under open signup.
 
-### Dev / CLI / Standalone Path
+### Path 2 — Dev / CLI / Standalone Path
 
-Driver crates **never read the process environment** for credentials. Reading a
-shared host env var (`OPENAI_API_KEY`, etc.) is unsafe in a multitenant server,
-and there is no longer a `Driver::from_env()` anywhere. Env-based credential
-loading is an explicit, injected concern routed through a single shared seam:
+Env-based credential loading is an explicit, injected concern routed through a
+single shared seam in `crates/core/src/credential_provider.rs`:
 
-- `CredentialProvider` (trait) + `ProviderCredentials` — the injectable source of
-  per-driver `api_key`/`base_url`, decoupled from where they came from.
-- `EnvCredentialProvider` — the **only** place that reads provider credential env
-  vars (`OPENAI_API_KEY`/`OPENAI_BASE_URL`, `OPENROUTER_API_KEY`/`OPENROUTER_BASE_URL`,
-  `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`, `GEMINI_API_KEY`/`GEMINI_BASE_URL`).
-  See `crates/core/src/credential_provider.rs`.
+- **`CredentialProvider`** (trait) — the injectable source. Its one method,
+  `resolve(&DriverId) -> Option<ProviderCredentials>`, returns the `api_key` and
+  optional `base_url` for a driver, decoupled from where they came from. Drivers
+  and dev stores depend on this trait, not on the environment.
+- **`ProviderCredentials`** — `{ api_key: Option<String>, base_url: Option<String> }`.
+- **`EnvCredentialProvider`** — the **only** type in the entire codebase that may
+  read provider credential env vars. Recognized variables:
+
+  | Driver | API key | Base URL |
+  |--------|---------|----------|
+  | `openai`, `openai_completions` | `OPENAI_API_KEY` | `OPENAI_BASE_URL` |
+  | `openrouter` | `OPENROUTER_API_KEY` | `OPENROUTER_BASE_URL` |
+  | `anthropic` | `ANTHROPIC_API_KEY` | `ANTHROPIC_BASE_URL` |
+  | `gemini` | `GEMINI_API_KEY` | `GEMINI_BASE_URL` |
+
+  Every other driver (Azure OpenAI, Bedrock, MAI, external) returns `None`; supply
+  its dev credentials explicitly.
 
 Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
-passing it where credentials are needed (e.g.
+passing it where credentials are needed — e.g.
 `InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
-in-memory dev store used by `just start-dev`). The server path never constructs an
-`EnvCredentialProvider`; it resolves credentials from the encrypted database. The
-`DEFAULT_*_API_KEY` env vars are a separate, deployment-gated mechanism
-materialized into the default org's seed rows at startup (see below) — not a
-driver-level read.
+in-memory dev store used by `just start-dev`. **The server path never constructs
+an `EnvCredentialProvider`.**
 
-These entrypoints must **never** be wired into org-scoped agent execution paths.
+Note: the `DEFAULT_*_API_KEY` env vars are a *separate* mechanism (Path 1 seed
+materialization, below), not this provider. They are read at startup and written
+into the DB, never read by a driver.
+
+### Do / Don't
+
+**Do**
+
+- Pass credentials into a driver via its constructor (`new`, `with_base_url`) or a
+  `DriverConfig`.
+- In a standalone/dev/CLI entrypoint, construct `EnvCredentialProvider` (or any
+  other `CredentialProvider`) and inject it.
+- Add a new env var mapping for an existing driver in `EnvCredentialProvider` —
+  that one file — if dev ergonomics need it.
+
+**Don't**
+
+- ❌ Add `std::env::var(...)` to any driver crate or protocol driver.
+- ❌ Reintroduce a `Driver::from_env()` / `*Store::from_env()` constructor. These
+  were removed deliberately; their name invites use on the server path.
+- ❌ Construct `EnvCredentialProvider` anywhere reachable from org-scoped
+  execution, or otherwise let a `None` from the resolver fall through to env.
+
+### Adding a new driver
+
+A new driver inherits the contract for free: implement only credential-taking
+constructors, never an env read. If the driver should be configurable from the
+environment for dev/CLI use, add its env var mapping to the `match` in
+`EnvCredentialProvider::resolve_with` (`crates/core/src/credential_provider.rs`)
+and a unit test beside the existing ones — do **not** add a `from_env` to the
+driver crate.
 
 ### Single-Tenant / Dev: Startup Materialization
 
@@ -680,8 +751,11 @@ Rules:
 > must fail with a clear error, regardless of which environment variables are set
 > on the host process.
 
-This invariant is verified by the unit test `resolve_provider_api_key_env_key_set_does_not_leak`
-in `crates/server/src/services/llm_resolver.rs`.
+This invariant is verified by the unit tests `resolve_provider_api_key_env_key_set_does_not_leak`
+and `resolve_provider_credentials_env_key_set_does_not_leak` in
+`crates/server/src/services/provider_resolver.rs`. The complementary rule — that
+drivers never read env — is anchored by `EnvCredentialProvider` being the sole
+env reader, with unit tests in `crates/core/src/credential_provider.rs`.
 
 ## Testing
 
