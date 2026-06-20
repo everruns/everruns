@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <defs>
+    <linearGradient id="a" gradientUnits="userSpaceOnUse" x1="256" y1="81.73" x2="256" y2="274.09">
+      <stop offset="0" stop-color="#0A1636"/><stop offset=".7" stop-color="#0A1636"/><stop offset="1" stop-color="#D4A43A"/>
+    </linearGradient>
+    <linearGradient id="b" gradientUnits="userSpaceOnUse" x1="89.41" y1="370.27" x2="256" y2="274.09">
+      <stop offset="0" stop-color="#081C3F"/><stop offset=".7" stop-color="#081C3F"/><stop offset="1" stop-color="#D4A43A"/>
+    </linearGradient>
+    <linearGradient id="c" gradientUnits="userSpaceOnUse" x1="422.59" y1="370.27" x2="256" y2="274.09">
+      <stop offset="0" stop-color="#0B1233"/><stop offset=".7" stop-color="#0B1233"/><stop offset="1" stop-color="#D4A43A"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round" transform="translate(12 12) scale(0.06) translate(-256 -256)">
+    <circle cx="256" cy="201.73" r="120" stroke="url(#a)"/>
+    <circle cx="193.33" cy="310.27" r="120" stroke="url(#b)"/>
+    <circle cx="318.67" cy="310.27" r="120" stroke="url(#c)"/>
+  </g>
+</svg>
