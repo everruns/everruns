@@ -188,7 +188,8 @@ impl MinimalEmailTemplate {
         validate_body(&self.text, &self.html)?;
         Ok(RenderedEmail {
             text: self.text.clone(),
-            html: wrap_email_html(None, &self.html, None),
+            // Neutral title keeps the minimal template free of any branding.
+            html: wrap_email_html("Notification", None, &self.html, None),
         })
     }
 }
@@ -216,7 +217,12 @@ impl BasicEmailTemplate {
                 "Everruns\n\n{}\n\n—\nSent by Everruns · {EVERRUNS_SITE_URL}",
                 self.text
             ),
-            html: wrap_email_html(Some(&branded_header()), &self.html, Some(&branded_footer())),
+            html: wrap_email_html(
+                "Everruns",
+                Some(&branded_header()),
+                &self.html,
+                Some(&branded_footer()),
+            ),
         })
     }
 }
@@ -429,10 +435,17 @@ const EMAIL_FONT_STACK: &str =
 const EVERRUNS_SITE_URL: &str = "https://everruns.com";
 const EVERRUNS_LOGO_URL: &str = "https://everruns.com/logo.png";
 
-// App-styled HTML shell shared by every template. `header` and `footer` are
-// optional pre-rendered table rows so branded templates can add a logo header
-// and a footer link while the minimal template stays bare.
-fn wrap_email_html(header: Option<&str>, inner_html: &str, footer: Option<&str>) -> String {
+// App-styled HTML shell shared by every template. `title` sets the document
+// `<title>` (kept neutral for the unbranded minimal template, since some clients
+// surface it in previews). `header` and `footer` are optional pre-rendered table
+// rows so branded templates can add a logo header and a footer link while the
+// minimal template stays bare.
+fn wrap_email_html(
+    title: &str,
+    header: Option<&str>,
+    inner_html: &str,
+    footer: Option<&str>,
+) -> String {
     let header = header.unwrap_or("");
     let footer = footer.unwrap_or("");
     format!(
@@ -441,7 +454,7 @@ fn wrap_email_html(header: Option<&str>, inner_html: &str, footer: Option<&str>)
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Everruns</title>
+  <title>{title}</title>
 </head>
 <body style="margin:0;background:{APP_BACKGROUND};color:{APP_FOREGROUND};font-family:{EMAIL_FONT_STACK};">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:{APP_BACKGROUND};padding:32px 16px;">
@@ -536,8 +549,9 @@ mod tests {
         // App styling: sharp corners and app surface/background colors.
         assert!(rendered.html.contains("border-radius:0"));
         assert!(rendered.html.contains(APP_BACKGROUND));
-        // No visible branding in the minimal template: no logo, no site link
-        // (header or footer), and no footer attribution line.
+        // No branding at all in the minimal template — not even the document
+        // <title>, which some clients surface in previews.
+        assert!(!rendered.html.contains("Everruns"));
         assert!(!rendered.html.contains(EVERRUNS_LOGO_URL));
         assert!(!rendered.html.contains(EVERRUNS_SITE_URL));
         assert!(!rendered.html.contains("Sent by"));
