@@ -3,11 +3,10 @@
 // Main app layout with sidebar, auth guard, and global command palette
 import { Suspense, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { CommandPalette } from "@/components/command-palette";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AuthUnavailableState } from "@/components/layout/auth-unavailable-state";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
 import {
   getLoginRedirectPath,
@@ -22,28 +21,6 @@ import { useZeroOrgRedirect } from "@/components/onboarding/use-zero-org-redirec
 
 interface MainLayoutProps {
   children: React.ReactNode;
-}
-
-function AuthUnavailableState() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <Card className="w-full max-w-lg">
-        <CardHeader className="items-center text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-            <AlertTriangle className="h-6 w-6 text-destructive" />
-          </div>
-          <CardTitle>Authentication unavailable</CardTitle>
-          <CardDescription>
-            We couldn&apos;t verify your authentication state. Protected routes stay blocked until
-            auth bootstrap succeeds.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-center">
-          <Button onClick={() => window.location.reload()}>Retry</Button>
-        </CardContent>
-      </Card>
-    </div>
-  );
 }
 
 function MainLayoutInner({ children }: MainLayoutProps) {

@@ -6,6 +6,7 @@
 import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
+import { AuthUnavailableState } from "@/components/layout/auth-unavailable-state";
 import { getLoginRedirectPath } from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
@@ -43,6 +44,12 @@ function OnboardingLayoutInner({ children }: { children: React.ReactNode }) {
 
   if (isLoading) {
     return <LoadingScreen />;
+  }
+
+  // Auth bootstrap failed — show the recoverable error instead of a blank
+  // screen (mirrors the main layout).
+  if (authUnavailable) {
+    return <AuthUnavailableState />;
   }
 
   // Will redirect to login; render nothing in the meantime.

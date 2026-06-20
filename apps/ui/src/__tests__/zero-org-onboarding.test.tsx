@@ -76,6 +76,19 @@ describe("ZeroOrgOnboarding", () => {
     expect(screen.getByText(/failed to create organization: boom/i)).toBeInTheDocument();
   });
 
+  it("swallows a create rejection without redirecting (no unhandled rejection)", async () => {
+    mockMutateAsync.mockRejectedValue(new Error("boom"));
+
+    render(<ZeroOrgOnboarding />);
+
+    fireEvent.change(screen.getByLabelText("Organization name"), { target: { value: "Acme" } });
+    fireEvent.click(screen.getByRole("button", { name: /create organization/i }));
+
+    await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({ name: "Acme" }));
+    expect(mockSetCurrentOrg).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it("renders a wrapper policy-blocked gate instead of the form", () => {
     const usePolicy: UseZeroOrgPolicy = () => ({
       status: "blocked",

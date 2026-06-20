@@ -66,9 +66,14 @@ export function ZeroOrgOnboarding({
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
-    const org = await createOrg.mutateAsync({ name: trimmed });
-    setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
-    router.push(`/orgs/${org.id}/setup`);
+    try {
+      const org = await createOrg.mutateAsync({ name: trimmed });
+      setCurrentOrg({ public_id: org.id, name: org.name, role: "owner" });
+      router.push(`/orgs/${org.id}/setup`);
+    } catch {
+      // Failure is surfaced via createOrg.isError / createOrg.error below;
+      // swallow the rejection so it isn't an unhandled promise rejection.
+    }
   };
 
   return (
