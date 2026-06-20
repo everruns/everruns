@@ -162,10 +162,10 @@ impl Capability for OpenRouterServerToolsCapability {
     /// THREAT[TM-AGENT-026]: enabling server tools grants the model
     /// provider-executed web reach (`web_search`/`web_fetch`). OpenRouter runs
     /// these, so Everruns' egress controls (TM-AGENT-018) do not apply — same
-    /// exfil class as web_fetch (TM-AGENT-013). Medium so assignment is logged
-    /// and admin-visible; the capability must be explicitly enabled per agent.
+    /// exfil class as web_fetch (TM-AGENT-013). High so assignment uses the
+    /// same admin-only trust gate as other outbound web egress capabilities.
     fn risk_level(&self) -> RiskLevel {
-        RiskLevel::Medium
+        RiskLevel::High
     }
 
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
@@ -264,7 +264,7 @@ mod tests {
         assert!(cap.config_schema().is_some());
         assert!(cap.config_ui_schema().is_some());
         // Grants the model provider-side web reach (TM-AGENT-026).
-        assert_eq!(cap.risk_level(), RiskLevel::Medium);
+        assert_eq!(cap.risk_level(), RiskLevel::High);
     }
 
     #[test]

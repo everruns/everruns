@@ -455,8 +455,10 @@ loop therefore never dispatches them; the only client-visible artifact is
 - **Runtime configuration**: the `openrouter_server_tools` capability exposes per-agent
   toggles (`config_schema`) and compiles the selection into
   `RuntimeAgent.openrouter_routing.server_tools` during capability collection — the same path
-  `prompt_caching` uses. It contributes *request intent only*, no executable tools. Enabling
-  it on a non-OpenRouter agent is a harmless no-op (the routing config is ignored).
+  `prompt_caching` uses. It contributes *request intent only*, no executable tools. Because
+  `web_search` and `web_fetch` run outside Everruns' egress boundary, the capability is
+  `RiskLevel::High` and uses the admin-only assignment gate. Enabling it on a
+  non-OpenRouter agent is a harmless no-op (the routing config is ignored).
 - **Usage accounting (follow-up)**: `usage.server_tool_use` is not yet surfaced in
   `LlmCompletionMetadata`; capturing it for cost tracking requires extending that shared
   cross-provider struct and is tracked separately.
