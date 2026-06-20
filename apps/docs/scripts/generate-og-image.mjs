@@ -33,21 +33,21 @@ const BG = `
 `;
 
 const LOGO_SMALL = `
-  <g transform="translate(60, 30) scale(0.22)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="translate(60, 34.69) scale(0.22)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
     <defs>
-      <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
+      <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="72.67" x2="256" y2="262.67">
         <stop offset="0.00" stop-color="#0A1636"/><stop offset="0.70" stop-color="#0A1636"/><stop offset="1.00" stop-color="#D4A43A"/>
       </linearGradient>
-      <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
+      <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="352.67" x2="256" y2="262.67">
         <stop offset="0.00" stop-color="#081C3F"/><stop offset="0.70" stop-color="#081C3F"/><stop offset="1.00" stop-color="#D4A43A"/>
       </linearGradient>
-      <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
+      <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="352.67" x2="256" y2="262.67">
         <stop offset="0.00" stop-color="#0B1233"/><stop offset="0.70" stop-color="#0B1233"/><stop offset="1.00" stop-color="#D4A43A"/>
       </linearGradient>
     </defs>
-    <circle cx="256" cy="214" r="120" stroke="url(#gTop)"/>
-    <circle cx="186" cy="309" r="120" stroke="url(#gLeft)"/>
-    <circle cx="326" cy="309" r="120" stroke="url(#gRight)"/>
+    <circle cx="256" cy="192.67" r="120" stroke="url(#gTop)"/>
+    <circle cx="186" cy="287.67" r="120" stroke="url(#gLeft)"/>
+    <circle cx="326" cy="287.67" r="120" stroke="url(#gRight)"/>
   </g>
 `;
 

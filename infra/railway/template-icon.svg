@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Everruns">
   <rect width="512" height="512" rx="112" fill="#0A1636"/>
   <g fill="none" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="256" cy="206" r="116" stroke="#F8FAFC"/>
-    <circle cx="188" cy="302" r="116" stroke="#D4A43A"/>
-    <circle cx="324" cy="302" r="116" stroke="#F8FAFC"/>
+    <circle cx="256" cy="192" r="116" stroke="#F8FAFC"/>
+    <circle cx="188" cy="288" r="116" stroke="#D4A43A"/>
+    <circle cx="324" cy="288" r="116" stroke="#F8FAFC"/>
   </g>
 </svg>
