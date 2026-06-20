@@ -20,6 +20,11 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Incremental compilation only helps when recompiling edited source on a
+  # persistent machine. CI runners are ephemeral (fresh checkout per job), so
+  # incremental artifacts are never reused — they just bloat the rust-cache
+  # save/restore. Dependency caching (Swatinem/rust-cache) is unaffected.
+  CARGO_INCREMENTAL: 0
   # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope: PR code
   # would inherit it and could exfiltrate the whole Doppler vault via
   # build.rs, proc-macros, or tests. Inject it per step under a push-only
@@ -123,6 +128,10 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+              # The prebuilt runtime image is assembled by the docker-build job
+              # (gated on `rust`); list it here so editing it alone still runs
+              # build-binaries + docker-build and validates the assembly.
+              - 'docker/Dockerfile.prebuilt'
             sdk_compat:
               - 'crates/**'
               - '.github/scripts/sdk-compat/**'
@@ -283,6 +292,11 @@ jobs:
       - name: Install Rust MSRV toolchain
         uses: dtolnay/rust-toolchain@1.94.0
 
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "msrv"
+
       - name: Check published crates against MSRV
         run: |
           cargo check --locked --all-features \
@@ -331,7 +345,11 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          # Distinct from the test jobs: clippy compiles --all-targets
+          # --all-features, a different feature set than the default-feature
+          # test builds. rust-cache keys ignore feature flags, so sharing one
+          # key would make the two profiles thrash each other's target/ cache.
+          shared-key: "clippy"
 
       - name: Run clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
@@ -353,7 +371,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run pure unit tests
         run: |
@@ -398,7 +416,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run worker library tests
         run: cargo test -p everruns-worker --lib -- --test-threads=1
@@ -460,7 +478,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run Daytona live integration tests
         run: doppler run -- cargo test -p everruns-integrations-daytona --features daytona-live-tests --test live_api_test -- --test-threads=1
@@ -487,7 +505,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run Browserless live integration tests
         run: doppler run -- cargo test -p everruns-integrations-browserless --features browserless-live-tests --test live_api -- --test-threads=1
@@ -514,7 +532,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run E2B live integration tests
         run: doppler run -- cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test -- --test-threads=1
@@ -542,7 +560,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Run Deno live integration tests
         run: doppler run -- cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
@@ -589,7 +607,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Cache cargo binaries
         uses: actions/cache@v4
@@ -747,7 +765,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Cache cargo binaries
         uses: actions/cache@v4
@@ -836,37 +854,40 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "release"
+          shared-key: "ci-bins"
 
-      - name: Build release binaries
-        run: cargo build --release -p everruns-server -p everruns-worker -p everruns-cli
+      # release-ci profile: opt-level=1, no LTO — these binaries only drive the
+      # e2e/workflow/openapi CI jobs, so we trade optimization for ~2x faster
+      # builds. Published binaries/images still use `release` (Dockerfile.unified).
+      - name: Build CI binaries
+        run: cargo build --profile release-ci -p everruns-server -p everruns-worker -p everruns-cli
 
       - name: Upload server binary
         uses: actions/upload-artifact@v4
         with:
           name: everruns-server
-          path: target/release/everruns-server
+          path: target/release-ci/everruns-server
           retention-days: 1
 
       - name: Upload worker binary
         uses: actions/upload-artifact@v4
         with:
           name: everruns-worker
-          path: target/release/everruns-worker
+          path: target/release-ci/everruns-worker
           retention-days: 1
 
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
           name: everruns-cli
-          path: target/release/everruns
+          path: target/release-ci/everruns
           retention-days: 1
 
       - name: Upload export-openapi binary
         uses: actions/upload-artifact@v4
         with:
           name: export-openapi
-          path: target/release/export-openapi
+          path: target/release-ci/export-openapi
           retention-days: 1
 
   # Gated to push events: this job launches PR-built `everruns-server` and
@@ -913,7 +934,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Cache cargo binaries
         uses: actions/cache@v4
@@ -1337,7 +1358,7 @@ jobs:
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: "debug"
+          shared-key: "test"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -1388,13 +1409,23 @@ jobs:
       - name: Build docs
         run: pnpm run build
 
-  # Docker builds — server and worker share builder-all stage, so build on
-  # one runner to compile shared dependencies once instead of 2x.
+  # Docker image validation for PRs. Instead of recompiling the whole workspace
+  # inside Docker (~28 min), this packages the binaries already built by
+  # `build-binaries` into the runtime images via docker/Dockerfile.prebuilt —
+  # validating the runtime layer (base image, COPY, ENV, CMD) in seconds.
+  #
+  # The full build-from-source, multi-arch images are produced at release time
+  # by docker-publish.yml (which also validates the Dockerfile.unified builder
+  # stage from-source on PRs that touch docker/** paths). This job therefore
+  # gates on `rust` (not the broader `docker` filter) so the build-binaries
+  # artifacts it consumes are guaranteed to exist.
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest
-    needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docker == 'true' && needs.changes.outputs.skip_docker != 'true'
+    needs:
+      - changes
+      - build-binaries
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_docker != 'true'
 
     steps:
       - uses: actions/checkout@v5
@@ -1402,27 +1433,37 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Download server binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-server
+          path: ./bin
+
+      - name: Download worker binary
+        uses: actions/download-artifact@v4
+        with:
+          name: everruns-worker
+          path: ./bin
+
+      # No host chmod needed: Dockerfile.prebuilt uses COPY --chmod, and the
+      # image is only built here (never run in CI).
       - name: Build server Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.unified
+          file: docker/Dockerfile.prebuilt
           target: server
           push: false
           tags: everruns-server:ci
-          cache-from: type=gha,scope=docker-rust
-          cache-to: type=gha,mode=max,scope=docker-rust
 
       - name: Build worker Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: docker/Dockerfile.unified
+          file: docker/Dockerfile.prebuilt
           target: worker
           push: false
           tags: everruns-worker:ci
-          cache-from: type=gha,scope=docker-rust
-          cache-to: type=gha,mode=max,scope=docker-rust
 
   ci-opt-out-policy:
     name: CI Opt-Out Policy

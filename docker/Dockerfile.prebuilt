@@ -1,0 +1,51 @@
+# syntax=docker/dockerfile:1.4
+#
+# Runtime-only images assembled from pre-built binaries.
+#
+# CI (`ci.yml` docker-build) uses this for fast PR validation: it packages the
+# server/worker binaries already compiled on the host by the `build-binaries`
+# job instead of recompiling the whole workspace inside Docker (~28 min). The
+# full multi-arch, build-from-source images for releases come from
+# docker/Dockerfile.unified via docker-publish.yml.
+#
+# Expects the binaries in the build context under ./bin/:
+#   docker build -f docker/Dockerfile.prebuilt --target server -t everruns-server:ci .
+#
+# NOTE: this Dockerfile is intentionally build-only in CI — the image is never
+# run there. The CI binaries are compiled on the GitHub runner (newer glibc)
+# while the distroless base ships an older glibc, so a `docker run` smoke test
+# would fail on a glibc mismatch. Production images avoid this by compiling
+# inside the matching bookworm base (Dockerfile.unified). Keep the base digest
+# identical to Dockerfile.unified so this validates the real runtime layer.
+
+# ============================================================================
+# Server runtime (distroless, matches Dockerfile.unified `server` stage)
+# ============================================================================
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS server
+
+WORKDIR /app
+
+# --chmod so the image doesn't depend on the host file mode (CI artifacts can
+# arrive as 0644). Requires BuildKit (enabled via the syntax directive above).
+COPY --chmod=0755 bin/everruns-server /app/everruns-server
+
+EXPOSE 9000
+EXPOSE 9001
+
+ENV RUST_LOG=info
+ENV HTTP_ADDR=0.0.0.0:9000
+
+CMD ["/app/everruns-server"]
+
+# ============================================================================
+# Worker runtime (distroless, matches Dockerfile.unified `worker` stage)
+# ============================================================================
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS worker
+
+WORKDIR /app
+
+COPY --chmod=0755 bin/everruns-worker /app/everruns-worker
+
+ENV RUST_LOG=info
+
+CMD ["/app/everruns-worker"]

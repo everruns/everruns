@@ -214,10 +214,19 @@ opt-level = 3
 lto = "thin"
 codegen-units = 16
 
-# CI-optimized profile: faster builds, still optimized
+# CI binary profile: builds the server/worker/cli binaries that only feed the
+# e2e/workflow/openapi CI jobs, where runtime performance is irrelevant. Trades
+# optimization for compile speed — opt-level=1 keeps codegen cheap, no LTO drops
+# the thin-LTO link step entirely, and codegen-units=256 maximizes parallelism.
+# Roughly ~2x faster to build than `release`. NOT for published artifacts:
+# release images/binaries use `release` (see docker/Dockerfile.unified).
 [profile.release-ci]
 inherits = "release"
-lto = "thin"
-codegen-units = 16
-debug = false
-strip = true
+opt-level = 1
+lto = false
+codegen-units = 256
+# Keep cheap line-number debug info and don't strip: these binaries are executed
+# by CI jobs (workflow/e2e/openapi) under RUST_BACKTRACE=1, so panic backtraces
+# must stay actionable. line-tables-only matches the dev profile — small and fast.
+debug = "line-tables-only"
+strip = false
