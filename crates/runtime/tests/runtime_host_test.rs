@@ -374,6 +374,138 @@ impl Capability for OverlayAliasCapability {
     }
 }
 
+/// Tool whose `Tool::narrate()` returns a distinctive line, so the act path
+/// must surface capability-owned narration rather than the generic
+/// `Running {display_name}` / `Ran {display_name}` fallback (EVE-601).
+struct NarratingTool;
+
+#[async_trait]
+impl Tool for NarratingTool {
+    fn name(&self) -> &str {
+        "narrating_tool"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        // Distinct from the narration so a generic fallback is detectable.
+        Some("Narrating Tool")
+    }
+
+    fn description(&self) -> &str {
+        "Returns the provided value with capability-owned narration."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {"value": {"type": "string"}},
+            "required": ["value"],
+            "additionalProperties": false
+        })
+    }
+
+    fn narrate(
+        &self,
+        _tool_call: &ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        use everruns_core::tool_narration::ToolNarrationPhase;
+        match phase {
+            ToolNarrationPhase::Started | ToolNarrationPhase::Waiting => {
+                Some("Narrating tool: starting work".to_string())
+            }
+            ToolNarrationPhase::Completed => Some("Narrating tool: finished work".to_string()),
+            ToolNarrationPhase::Failed => Some("Narrating tool: failed".to_string()),
+        }
+    }
+
+    async fn execute(&self, arguments: serde_json::Value) -> ToolExecutionResult {
+        ToolExecutionResult::success(json!({
+            "value": arguments["value"].as_str().unwrap_or_default(),
+        }))
+    }
+}
+
+/// Capability contributing `NarratingTool`. Relies on the default
+/// `Capability::narrate()` dispatch to the tool's `narrate()`, which the runtime
+/// act path must consult via the collected `CapabilityNarrationHook`.
+struct NarratingCapability;
+
+impl Capability for NarratingCapability {
+    fn id(&self) -> &str {
+        "narrating"
+    }
+
+    fn name(&self) -> &str {
+        "Narrating"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability whose tool owns its narration."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(NarratingTool)]
+    }
+}
+
+/// Explicit `ToolCallHook` whose narration must win over the default capability
+/// `Tool::narrate()` when both are present (AC #7: model-authored narration such
+/// as `human_intent` keeps precedence).
+struct ExplicitNarrationHook;
+
+impl everruns_core::capabilities::ToolCallHook for ExplicitNarrationHook {
+    fn narration(
+        &self,
+        _tool_def: Option<&everruns_core::ToolDefinition>,
+        tool_call: &ToolCall,
+        _phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_call.name == "narrating_tool" {
+            Some("Explicit hook narration wins".to_string())
+        } else {
+            None
+        }
+    }
+}
+
+/// Capability contributing both `NarratingTool` (which owns `Tool::narrate()`)
+/// and an explicit `tool_call_hooks()` entry. Collection orders the explicit
+/// hook before the generated `CapabilityNarrationHook`, so the explicit hook
+/// must take precedence on the act path.
+struct ExplicitNarrationCapability;
+
+impl Capability for ExplicitNarrationCapability {
+    fn id(&self) -> &str {
+        "explicit_narration"
+    }
+
+    fn name(&self) -> &str {
+        "Explicit Narration"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability with an explicit tool-call narration hook."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(NarratingTool)]
+    }
+
+    fn tool_call_hooks(&self) -> Vec<Arc<dyn everruns_core::capabilities::ToolCallHook>> {
+        vec![Arc::new(ExplicitNarrationHook)]
+    }
+}
+
 fn harness(harness_id: HarnessId) -> Harness {
     Harness {
         id: harness_id,
@@ -650,6 +782,164 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.error_count, 0);
     assert_eq!(result.results.len(), 1);
+}
+
+/// EVE-601: the runtime act path must surface capability-owned `Tool::narrate()`
+/// output (via the collected `CapabilityNarrationHook`) on `tool.started` /
+/// `tool.completed`, not the generic `Running {display_name}` fallback.
+#[tokio::test]
+async fn act_activity_uses_capability_tool_narration_on_act_path() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(NarratingCapability);
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("narrating")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let tool_definitions = build_registry(
+        &adapter.capability_registry,
+        session_id,
+        &[AgentCapabilityConfig::new("narrating")],
+    )
+    .await
+    .unwrap()
+    .tool_definitions();
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_narrate".into(),
+                name: "narrating_tool".into(),
+                arguments: json!({"value": "x"}),
+            }],
+            tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.success_count, 1);
+
+    let events = adapter.event_emitter.events().await;
+    let started = events
+        .iter()
+        .find_map(|event| match &event.data {
+            EventData::ToolStarted(data) => Some(data.narration.clone()),
+            _ => None,
+        })
+        .expect("tool.started event");
+    let completed = events
+        .iter()
+        .find_map(|event| match &event.data {
+            EventData::ToolCompleted(data) => Some(data.narration.clone()),
+            _ => None,
+        })
+        .expect("tool.completed event");
+    assert_eq!(
+        started.as_deref(),
+        Some("Narrating tool: starting work"),
+        "tool.started must use capability-owned narration, not the generic fallback"
+    );
+    assert_eq!(
+        completed.as_deref(),
+        Some("Narrating tool: finished work"),
+        "tool.completed must use capability-owned narration, not the generic fallback"
+    );
+}
+
+/// AC #7: an explicit `Capability::tool_call_hooks()` narration must win over the
+/// default capability `Tool::narrate()` when both are present, because collection
+/// orders explicit hooks before the generated `CapabilityNarrationHook`.
+#[tokio::test]
+async fn act_activity_explicit_tool_call_hook_wins_over_capability_narration() {
+    let mut adapter = mock_host();
+    adapter
+        .capability_registry
+        .register(ExplicitNarrationCapability);
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("explicit_narration")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let tool_definitions = build_registry(
+        &adapter.capability_registry,
+        session_id,
+        &[AgentCapabilityConfig::new("explicit_narration")],
+    )
+    .await
+    .unwrap()
+    .tool_definitions();
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_narrate".into(),
+                name: "narrating_tool".into(),
+                arguments: json!({"value": "x"}),
+            }],
+            tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(result.success_count, 1);
+
+    let events = adapter.event_emitter.events().await;
+    let started = events
+        .iter()
+        .find_map(|event| match &event.data {
+            EventData::ToolStarted(data) => Some(data.narration.clone()),
+            _ => None,
+        })
+        .expect("tool.started event");
+    assert_eq!(
+        started.as_deref(),
+        Some("Explicit hook narration wins"),
+        "explicit tool-call hook narration must take precedence over default Tool::narrate()"
+    );
 }
 
 #[tokio::test]
