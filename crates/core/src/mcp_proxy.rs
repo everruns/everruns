@@ -20,6 +20,7 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// Host-provided backend that executes an MCP tool call against the right
@@ -31,6 +32,44 @@ pub trait McpToolInvoker: Send + Sync {
     /// Execute a single MCP tool call (its `name` is the prefixed `mcp_*` name)
     /// and return the raw tool result.
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::tool_types::ToolResult>;
+}
+
+/// MCP invoker wrapper that only permits calls to MCP tools included in the
+/// current turn's tool definitions. Guardrails use this wrapper because their
+/// configured `server`/`tool` references are out-of-band; without this check a
+/// config edit could invoke an org MCP server that was not scoped to the
+/// current agent/session.
+pub struct ScopedMcpToolInvoker {
+    inner: Arc<dyn McpToolInvoker>,
+    allowed_tool_names: HashSet<String>,
+}
+
+impl ScopedMcpToolInvoker {
+    pub fn new(definitions: &[ToolDefinition], inner: Arc<dyn McpToolInvoker>) -> Self {
+        let allowed_tool_names = definitions
+            .iter()
+            .map(ToolDefinition::name)
+            .filter(|name| is_mcp_tool(name))
+            .map(str::to_string)
+            .collect();
+        Self {
+            inner,
+            allowed_tool_names,
+        }
+    }
+}
+
+#[async_trait]
+impl McpToolInvoker for ScopedMcpToolInvoker {
+    async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::tool_types::ToolResult> {
+        if !self.allowed_tool_names.contains(&tool_call.name) {
+            return Err(crate::AgentLoopError::tool(format!(
+                "MCP tool '{}' is not allowed in this session",
+                tool_call.name
+            )));
+        }
+        self.inner.invoke(tool_call).await
+    }
 }
 
 /// A registry [`Tool`] backed by an MCP server tool definition.
@@ -311,6 +350,43 @@ mod tests {
             ToolExecutionResult::ToolError(m) => assert!(m.contains("MCP server not found")),
             other => panic!("expected ToolError, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn scoped_invoker_allows_only_current_turn_mcp_tools() {
+        let inner = Arc::new(RecordingInvoker {
+            calls: Mutex::new(vec![]),
+            result: ok_result(serde_json::json!({ "ok": true })),
+        });
+        let scoped = ScopedMcpToolInvoker::new(&[mcp_def("mcp_docs__search")], inner.clone());
+
+        let allowed = ToolCall {
+            id: "call_1".to_string(),
+            name: "mcp_docs__search".to_string(),
+            arguments: serde_json::json!({ "q": "hello" }),
+        };
+        let result = scoped.invoke(&allowed).await.expect("allowed MCP tool");
+        assert_eq!(result.result, Some(serde_json::json!({ "ok": true })));
+
+        let denied = ToolCall {
+            id: "call_2".to_string(),
+            name: "mcp_secret__capture".to_string(),
+            arguments: serde_json::json!({ "content": "sensitive" }),
+        };
+        let error = scoped
+            .invoke(&denied)
+            .await
+            .expect_err("unlisted MCP tool must be denied");
+        assert!(
+            error
+                .to_string()
+                .contains("MCP tool 'mcp_secret__capture' is not allowed"),
+            "unexpected error: {error}"
+        );
+
+        let calls = inner.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1, "denied call must not reach backend");
+        assert_eq!(calls[0].name, "mcp_docs__search");
     }
 
     #[test]
