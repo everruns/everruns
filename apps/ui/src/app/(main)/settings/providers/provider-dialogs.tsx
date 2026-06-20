@@ -21,16 +21,19 @@ import {
 } from "@/components/providers/provider-icon";
 import type { Provider, DriverId, CreateProviderRequest } from "@/lib/api/types";
 
-const PROVIDER_TYPES: { value: DriverId; label: string }[] = [
-  { value: "openai", label: "OpenAI (Responses API)" },
-  { value: "openrouter", label: "OpenRouter" },
-  { value: "azure_openai", label: "Azure OpenAI" },
-  { value: "openai_completions", label: "OpenAI (Completions API)" },
-  { value: "anthropic", label: "Anthropic" },
-  { value: "gemini", label: "Google Gemini" },
-  { value: "bedrock", label: "AWS Bedrock" },
-  { value: "mai", label: "Microsoft MAI" },
-  { value: "fireworks", label: "Fireworks AI" },
+// Ordered list of provider types for the picker. Labels and descriptions come
+// from the centralized `getProviderLabel` / `getProviderDescription` mappings so
+// the dropdown and the selected-value trigger never diverge.
+const PROVIDER_TYPES: DriverId[] = [
+  "openai",
+  "openrouter",
+  "azure_openai",
+  "openai_completions",
+  "anthropic",
+  "gemini",
+  "bedrock",
+  "mai",
+  "fireworks",
 ];
 
 // Get API key placeholder based on provider type
@@ -140,13 +143,13 @@ export function AddProviderDialog({
               </SelectTrigger>
               <SelectContent>
                 {PROVIDER_TYPES.map((type) => (
-                  <SelectItem key={type.value} value={type.value}>
+                  <SelectItem key={type} value={type}>
                     <div className="flex items-center gap-2">
-                      <ProviderIcon providerType={type.value} size="sm" showBackground={false} />
+                      <ProviderIcon providerType={type} size="sm" showBackground={false} />
                       <div className="flex flex-col">
-                        <span>{type.label}</span>
+                        <span>{getProviderLabel(type)}</span>
                         <span className="text-xs text-muted-foreground">
-                          {getProviderDescription(type.value)}
+                          {getProviderDescription(type)}
                         </span>
                       </div>
                     </div>
