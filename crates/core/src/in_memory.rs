@@ -6,6 +6,7 @@
 // - Quick prototyping
 
 use crate::agent::Agent;
+use crate::credential_provider::CredentialProvider;
 use crate::harness::Harness;
 use crate::provider::DriverId;
 use crate::session::Session;
@@ -326,10 +327,10 @@ impl SessionStore for InMemorySessionStore {
 ///
 /// ```ignore
 /// use everruns_core::in_memory::InMemoryProviderStore;
-/// use everruns_core::DriverId;
+/// use everruns_core::EnvCredentialProvider;
 ///
-/// let store = InMemoryProviderStore::from_env().await;
-/// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY from environment
+/// let store = InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider).await;
+/// // Uses OPENAI_API_KEY or ANTHROPIC_API_KEY via the injected provider
 /// ```
 #[derive(Debug, Default, Clone)]
 pub struct InMemoryProviderStore {
@@ -346,32 +347,43 @@ impl InMemoryProviderStore {
         }
     }
 
-    /// Create a provider store from environment variables
+    /// Create a provider store from an injected [`CredentialProvider`].
     ///
-    /// Checks for OPENAI_API_KEY or ANTHROPIC_API_KEY and configures
-    /// a default model accordingly.
-    pub async fn from_env() -> Self {
+    /// Checks OpenAI first, then Anthropic, and configures a default model for
+    /// whichever the provider resolves credentials for. The store never reads
+    /// the process environment itself; standalone/dev callers pass
+    /// [`EnvCredentialProvider`](crate::credential_provider::EnvCredentialProvider)
+    /// to opt into env-based credentials.
+    pub async fn from_credential_provider(provider: &dyn CredentialProvider) -> Self {
         let store = Self::new();
 
-        // Check for OpenAI first
-        if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
-            let model = ResolvedModel {
-                model: "gpt-5.4".to_string(),
-                provider_type: DriverId::OpenAI,
-                api_key: Some(api_key),
-                base_url: std::env::var("OPENAI_BASE_URL").ok(),
-                provider_metadata: None,
-            };
-            store.set_default_model(model).await;
-        } else if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
-            let model = ResolvedModel {
-                model: "claude-sonnet-4-20250514".to_string(),
-                provider_type: DriverId::Anthropic,
-                api_key: Some(api_key),
-                base_url: std::env::var("ANTHROPIC_BASE_URL").ok(),
-                provider_metadata: None,
-            };
-            store.set_default_model(model).await;
+        // Check for OpenAI first, then Anthropic.
+        if let Some(creds) = provider
+            .resolve(&DriverId::OpenAI)
+            .filter(|c| c.api_key.is_some())
+        {
+            store
+                .set_default_model(ResolvedModel {
+                    model: "gpt-5.4".to_string(),
+                    provider_type: DriverId::OpenAI,
+                    api_key: creds.api_key,
+                    base_url: creds.base_url,
+                    provider_metadata: None,
+                })
+                .await;
+        } else if let Some(creds) = provider
+            .resolve(&DriverId::Anthropic)
+            .filter(|c| c.api_key.is_some())
+        {
+            store
+                .set_default_model(ResolvedModel {
+                    model: "claude-sonnet-4-20250514".to_string(),
+                    provider_type: DriverId::Anthropic,
+                    api_key: creds.api_key,
+                    base_url: creds.base_url,
+                    provider_metadata: None,
+                })
+                .await;
         }
 
         store

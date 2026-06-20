@@ -623,13 +623,28 @@ Fail-closed prevents accidental cost-runaway under open signup.
 
 ### Dev / CLI / Standalone Path
 
-Environment variable reads (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
-`DEFAULT_*_API_KEY`) remain valid only for explicit standalone/dev entrypoints:
+Driver crates **never read the process environment** for credentials. Reading a
+shared host env var (`OPENAI_API_KEY`, etc.) is unsafe in a multitenant server,
+and there is no longer a `Driver::from_env()` anywhere. Env-based credential
+loading is an explicit, injected concern routed through a single shared seam:
 
-- `InMemoryLlmProviderStore::from_env()` — in-memory dev store used by `just start-dev`
-- `AnthropicChatDriver::from_env()`, `OpenAIProtocolChatDriver::from_env()`, etc. — CLI tools
+- `CredentialProvider` (trait) + `ProviderCredentials` — the injectable source of
+  per-driver `api_key`/`base_url`, decoupled from where they came from.
+- `EnvCredentialProvider` — the **only** place that reads provider credential env
+  vars (`OPENAI_API_KEY`/`OPENAI_BASE_URL`, `OPENROUTER_API_KEY`/`OPENROUTER_BASE_URL`,
+  `ANTHROPIC_API_KEY`/`ANTHROPIC_BASE_URL`, `GEMINI_API_KEY`/`GEMINI_BASE_URL`).
+  See `crates/core/src/credential_provider.rs`.
 
-These constructors must **never** be called from org-scoped agent execution paths.
+Standalone/dev/CLI entrypoints opt in by constructing `EnvCredentialProvider` and
+passing it where credentials are needed (e.g.
+`InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider)`, the
+in-memory dev store used by `just start-dev`). The server path never constructs an
+`EnvCredentialProvider`; it resolves credentials from the encrypted database. The
+`DEFAULT_*_API_KEY` env vars are a separate, deployment-gated mechanism
+materialized into the default org's seed rows at startup (see below) — not a
+driver-level read.
+
+These entrypoints must **never** be wired into org-scoped agent execution paths.
 
 ### Single-Tenant / Dev: Startup Materialization
 

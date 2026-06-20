@@ -58,13 +58,6 @@ impl GeminiChatDriver {
         }
     }
 
-    /// Create a new driver from the GEMINI_API_KEY environment variable
-    pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("GEMINI_API_KEY")
-            .map_err(|_| AgentLoopError::llm("GEMINI_API_KEY environment variable not set"))?;
-        Ok(Self::new(api_key))
-    }
-
     /// Create a new driver with a custom base URL
     pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
