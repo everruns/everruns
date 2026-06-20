@@ -806,7 +806,11 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_active_org_invitation_by_email(
+    /// The outstanding (not accepted, not revoked) invitation for an email, if
+    /// any. Matches the `idx_org_invitations_pending_email` partial unique index
+    /// predicate exactly — including expired-but-unrevoked rows — so callers can
+    /// reconcile with the constraint before inserting.
+    pub async fn get_outstanding_org_invitation_by_email(
         &self,
         org_id: i64,
         email: &str,
@@ -816,7 +820,7 @@ impl Database {
             SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
             FROM org_invitations
             WHERE org_id = $1 AND email = $2
-              AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+              AND accepted_at IS NULL AND revoked_at IS NULL
             "#,
         )
         .bind(org_id)

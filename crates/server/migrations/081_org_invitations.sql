@@ -18,7 +18,8 @@ CREATE TABLE org_invitations (
     -- User who created the invite.
     invited_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     -- SHA-256 hash of the raw token. The raw token is never persisted.
-    token_hash TEXT NOT NULL UNIQUE,
+    -- Uniqueness is enforced by idx_org_invitations_token_hash below.
+    token_hash TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL,
     accepted_at TIMESTAMPTZ,
     -- User who accepted the invite (NULL until accepted).

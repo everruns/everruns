@@ -118,6 +118,23 @@ pub fn normalize_email(email: &str) -> String {
     email.trim().to_ascii_lowercase()
 }
 
+/// Escape a string for safe interpolation into HTML text or a double-quoted
+/// attribute value. Covers `& < > " '`.
+fn html_escape(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 /// Cheap structural email check. Full RFC validation happens in the email layer
 /// at send time; this only guards obviously invalid input at creation.
 fn is_plausible_email(email: &str) -> bool {
@@ -286,12 +303,17 @@ async fn deliver_invite_email(
     url: &str,
 ) -> EmailDelivery {
     let subject = format!("You're invited to join {org_name} on Everruns");
+    // Plain-text body is not markup; interpolate raw.
     let text = format!(
         "You've been invited to join {org_name} on Everruns.\n\nAccept your invitation:\n{url}\n\nThis link expires in {INVITE_TTL_DAYS} days."
     );
+    // HTML body: escape user-controlled values (org name) and the URL before
+    // interpolation to prevent HTML/attribute injection in email clients.
+    let org_name_html = html_escape(org_name);
+    let url_html = html_escape(url);
     let html = format!(
-        "<p>You've been invited to join <strong>{org_name}</strong> on Everruns.</p>\
-         <p><a href=\"{url}\">Accept your invitation</a></p>\
+        "<p>You've been invited to join <strong>{org_name_html}</strong> on Everruns.</p>\
+         <p><a href=\"{url_html}\">Accept your invitation</a></p>\
          <p>This link expires in {INVITE_TTL_DAYS} days.</p>"
     );
     let message = EmailMessage::generic(to, subject, text, html);
@@ -371,21 +393,31 @@ pub async fn create_invitation(
         ));
     }
 
-    // One outstanding invite per (org, email).
-    if db
-        .get_active_org_invitation_by_email(org_id, &email)
+    // At most one outstanding invite per (org, email), matching the partial
+    // unique index. An expired-but-unrevoked row still occupies that slot, so we
+    // supersede it (revoke) before reissuing — otherwise the INSERT below would
+    // hit the unique index and surface as a 500 instead of allowing reissue.
+    if let Some(existing) = db
+        .get_outstanding_org_invitation_by_email(org_id, &email)
         .await
         .map_err(|e| internal("dedup invite", e))?
-        .is_some()
     {
-        return Err(InviteError::new(
-            StatusCode::CONFLICT,
-            "invite_already_pending",
-            "An active invitation already exists for that email",
-        ));
+        if existing.expires_at > chrono::Utc::now() {
+            return Err(InviteError::new(
+                StatusCode::CONFLICT,
+                "invite_already_pending",
+                "An active invitation already exists for that email",
+            ));
+        }
+        db.revoke_org_invitation(org_id, &existing.public_id)
+            .await
+            .map_err(|e| internal("supersede expired invite", e))?;
     }
 
-    // Capacity guard: a pending invite is a reserved seat against the org limit.
+    // Soft capacity pre-check: reject creating invites once the org is already
+    // at its member limit. The hard cap is re-enforced at acceptance
+    // (`accept_invitation`), so outstanding invites are intentionally not
+    // counted here — accepts beyond the limit are blocked when they land.
     let member_count = db
         .count_organization_members(org_id)
         .await
@@ -424,6 +456,7 @@ pub async fn create_invitation(
 
 #[derive(Debug)]
 pub struct AcceptedInvitation {
+    pub org_id: i64,
     pub org_public_id: String,
     pub role: String,
 }
@@ -534,6 +567,7 @@ pub async fn accept_invitation(
         .ok_or_else(|| internal("get organization", anyhow::anyhow!("org missing")))?;
 
     Ok(AcceptedInvitation {
+        org_id: accepted.org_id,
         org_public_id: org.public_id,
         role: accepted.role,
     })
@@ -647,12 +681,9 @@ pub async fn accept_invite(
     )
     .await?;
 
-    let org_row = state
-        .db
-        .get_organization_by_public_id(&accepted.org_public_id)
-        .await
-        .log_internal_error_json("get organization")?;
-    let org_id = org_row.map(|o| o.org_id).unwrap_or_default();
+    // `accept_invitation` carries the real numeric org_id, so the audit event
+    // always records a valid org (no public-id re-lookup that could resolve to 0).
+    let org_id = accepted.org_id;
 
     let mut builder =
         AuditEvent::management(ManagementAction::InvitationAccepted, org_id, Some(user.id))
@@ -875,6 +906,59 @@ mod tests {
         .expect_err("duplicate rejected");
         assert_eq!(err.status, StatusCode::CONFLICT);
         assert_eq!(err.code, "invite_already_pending");
+    }
+
+    #[tokio::test]
+    async fn create_supersedes_expired_invite_for_same_email() {
+        let db = db();
+        let org_id = seed_org(&db).await;
+        let inviter = seed_user(&db, "admin@acme.test").await;
+
+        // Seed an already-expired, unrevoked invite directly (create_invitation
+        // always sets a future expiry, so insert the stale row at the storage
+        // layer to reproduce the post-expiry reissue path).
+        db.create_org_invitation(CreateOrgInvitation {
+            public_id: "orginv_000000000000000000000000000000ff".to_string(),
+            org_id,
+            email: "reissue@example.com".to_string(),
+            role: "member".to_string(),
+            invited_by: inviter,
+            token_hash: "stalehash".to_string(),
+            expires_at: chrono::Utc::now() - chrono::Duration::days(1),
+        })
+        .await
+        .expect("seed expired invite");
+
+        // Reissuing must succeed (supersede the expired row), not 500 on the
+        // partial unique index.
+        let created = create_invitation(
+            &db,
+            &NoopEmailSender,
+            "https://app.example.com",
+            org_id,
+            "Acme",
+            OrgRole::Owner,
+            inviter,
+            "reissue@example.com",
+            None,
+            50,
+        )
+        .await
+        .expect("reissue after expiry");
+
+        // Exactly one outstanding (pending) invite remains.
+        let pending = db.list_pending_org_invitations(org_id).await.unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].public_id, created.row.public_id);
+        assert_eq!(InvitationStatus::of(&pending[0]), InvitationStatus::Pending);
+    }
+
+    #[tokio::test]
+    async fn html_escape_neutralizes_markup() {
+        assert_eq!(
+            html_escape("<script>&\"'"),
+            "&lt;script&gt;&amp;&quot;&#39;"
+        );
     }
 
     #[tokio::test]

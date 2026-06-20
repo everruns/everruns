@@ -639,13 +639,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
-    /// Active (pending, not yet expired) invitation for an email in an org, if any.
-    pub async fn get_active_org_invitation_by_email(
+    /// The outstanding (not accepted, not revoked) invitation for an email in an
+    /// org, if any. Mirrors the Postgres `idx_org_invitations_pending_email`
+    /// partial unique index predicate — including expired-but-unrevoked rows.
+    pub async fn get_outstanding_org_invitation_by_email(
         &self,
         org_id: i64,
         email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        let now = Self::now();
         Ok(self
             .org_invitations
             .read()
@@ -655,7 +656,6 @@ impl InMemoryDatabase {
                     && i.email == email
                     && i.accepted_at.is_none()
                     && i.revoked_at.is_none()
-                    && i.expires_at > now
             })
             .cloned())
     }

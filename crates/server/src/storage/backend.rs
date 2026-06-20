@@ -2739,12 +2739,12 @@ impl StorageBackend {
         dispatch!(self, get_org_invitation_by_public_id, org_id, public_id)
     }
 
-    pub async fn get_active_org_invitation_by_email(
+    pub async fn get_outstanding_org_invitation_by_email(
         &self,
         org_id: i64,
         email: &str,
     ) -> Result<Option<OrgInvitationRow>> {
-        dispatch!(self, get_active_org_invitation_by_email, org_id, email)
+        dispatch!(self, get_outstanding_org_invitation_by_email, org_id, email)
     }
 
     pub async fn revoke_org_invitation(&self, org_id: i64, public_id: &str) -> Result<bool> {
