@@ -185,6 +185,7 @@ pub struct ServerAppBuilder {
     migrations: Vec<MigrationFn>,
     background_tasks: Vec<BackgroundTaskFn>,
     personal_access_token_routes_wrap: Option<PersonalAccessTokenRoutesWrapFn>,
+    org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
 }
 
 impl ServerAppBuilder {
@@ -200,6 +201,7 @@ impl ServerAppBuilder {
             migrations: Vec::new(),
             background_tasks: Vec::new(),
             personal_access_token_routes_wrap: None,
+            org_create_policy: None,
         }
     }
 
@@ -281,6 +283,25 @@ impl ServerAppBuilder {
         F: FnOnce(Router) -> Router + Send + 'static,
     {
         self.personal_access_token_routes_wrap = Some(Box::new(wrap));
+        self
+    }
+
+    /// Register a pre-create policy for organization creation (EVE-607).
+    ///
+    /// The policy runs inside the OSS `POST /v1/orgs` handler before any org or
+    /// membership row is written, with access to the authenticated user and the
+    /// requested org name. Returning a rejection fails creation closed with a
+    /// UI-facing status/body and persists nothing.
+    ///
+    /// This lets wrappers (e.g. SaaS) gate creation on product policy — verified
+    /// email, account/resource limits — without forking the create-org handler or
+    /// mounting a parallel `/v1/saas/orgs` route. When not set, default OSS
+    /// behavior is unchanged. See `specs/embedding.md`.
+    pub fn org_create_policy(
+        mut self,
+        policy: Arc<dyn api::organizations::OrgCreatePolicy>,
+    ) -> Self {
+        self.org_create_policy = Some(policy);
         self
     }
 
@@ -1128,6 +1149,7 @@ impl ServerAppBuilder {
             platform_definition.built_in_harnesses().to_vec(),
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
+        organizations_state.org_create_policy = self.org_create_policy;
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),

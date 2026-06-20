@@ -332,6 +332,51 @@ Some(my_auth_routes.merge(cli_auth_routes(cli_state)))
 
 See `crates/server/src/auth/cli_auth.rs` for the full implementation.
 
+## Org Creation Policy Extension Point
+
+OSS owns organization creation (`POST /v1/orgs`). Wrappers that must run product policy before a tenant exists — verified-email gates, account/resource limits — supply that policy through OSS instead of forking the route. This keeps OSS as the owning boundary: wrappers provide policy, not a parallel create-org handler or a `/v1/saas/orgs` shadow endpoint.
+
+`everruns-server` defines:
+
+- `OrgCreatePolicy` — async trait with `check(OrgCreateContext) -> Result<(), OrgCreateRejection>`
+- `OrgCreateContext` — borrows the authenticated `AuthUser` and the requested org name
+- `OrgCreateRejection` — `status` + user-facing `message`, with an `OrgCreateRejection::forbidden(..)` helper for the common `403` case
+
+`ServerAppBuilder::org_create_policy(Arc<dyn OrgCreatePolicy>)` installs the policy. When present, OSS runs `check` inside the create-org handler **before any org or membership row is written**. A rejection aborts creation with the rejection's status/body and persists nothing; the message is surfaced verbatim to the client, so it must be safe for UI display (e.g. `403 Please verify your email address before continuing.`). When no policy is registered, default OSS create-org behavior is unchanged.
+
+```rust,ignore
+use everruns_server::{OrgCreateContext, OrgCreatePolicy, OrgCreateRejection};
+use everruns_server::app_builder::ServerAppBuilder;
+use async_trait::async_trait;
+use std::sync::Arc;
+
+struct VerifiedEmailPolicy;
+
+#[async_trait]
+impl OrgCreatePolicy for VerifiedEmailPolicy {
+    async fn check(&self, ctx: OrgCreateContext<'_>) -> Result<(), OrgCreateRejection> {
+        // Wrapper-owned: consult the wrapper's identity provider for ctx.user.
+        if wrapper_email_is_verified(ctx.user) {
+            Ok(())
+        } else {
+            Err(OrgCreateRejection::forbidden(
+                "Please verify your email address before continuing.",
+            ))
+        }
+    }
+}
+
+ServerAppBuilder::new(config)
+    .org_create_policy(Arc::new(VerifiedEmailPolicy))
+    .run()
+    .await?;
+```
+
+- **OSS owns**: the `OrgCreatePolicy` trait, `OrgCreateContext` / `OrgCreateRejection` types, the single pre-write call-site in the create-org handler, and the builder hook.
+- **Wrappers own**: the concrete policy (verified-email checks, plan/resource limits), the data sources it consults, and the user-facing rejection copy.
+
+This is the org-creation counterpart to the invitation surface moved into OSS by EVE-602; member management and invitations use the OSS surfaces directly.
+
 ## Non-goals
 
 This spec does not require:
@@ -349,6 +394,7 @@ Those may be added later, but they are outside the current embedding contract.
 - `crates/core/src/error_reporter.rs`
 - `apps/ui/src/providers/error-reporter-provider.tsx`
 - `crates/server/src/auth/cli_auth.rs`
+- `crates/server/src/api/organizations.rs`
 - `crates/server/src/app_builder.rs`
 - `crates/server/src/platform.rs`
 - `crates/server/src/seed.rs`
