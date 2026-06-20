@@ -16,15 +16,18 @@ const mockUseSendTaskMessage = jest.fn(() => ({
 }));
 const mockUseSessionResources = jest.fn(() => ({ data: [], isLoading: false, error: null }));
 
+// Wrappers defer the reference (the mock factory is hoisted above the consts).
+// They take no args — the mocks return via mockReturnValue and the page uses the
+// real hook types — so callers passing args at runtime is harmless.
 jest.mock("@/hooks/use-session-tasks", () => ({
-  useSessionTasks: (...args: unknown[]) => mockUseSessionTasks(...args),
-  useSessionTask: (...args: unknown[]) => mockUseSessionTask(...args),
-  useCancelSessionTask: (...args: unknown[]) => mockUseCancelSessionTask(...args),
-  useSendTaskMessage: (...args: unknown[]) => mockUseSendTaskMessage(...args),
+  useSessionTasks: () => mockUseSessionTasks(),
+  useSessionTask: () => mockUseSessionTask(),
+  useCancelSessionTask: () => mockUseCancelSessionTask(),
+  useSendTaskMessage: () => mockUseSendTaskMessage(),
 }));
 
 jest.mock("@/hooks/use-session-resources", () => ({
-  useSessionResources: (...args: unknown[]) => mockUseSessionResources(...args),
+  useSessionResources: () => mockUseSessionResources(),
 }));
 
 jest.mock("../app/(main)/sessions/[sessionId]/session-context", () => ({
@@ -44,7 +47,7 @@ const baseTask: SessionTask = {
   wake_policy: "always",
   created_at: new Date().toISOString(),
   updated_at: new Date().toISOString(),
-} as SessionTask;
+} as unknown as SessionTask;
 
 const detail: SessionTaskDetail = {
   task: baseTask,

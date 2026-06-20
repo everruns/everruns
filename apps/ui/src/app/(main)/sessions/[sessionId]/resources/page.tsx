@@ -174,19 +174,22 @@ function TaskMessageRow({ message }: { message: TaskMessage }) {
 function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: string | undefined }) {
   const { data: detail, isLoading, error } = useSessionTask(sessionId, task.id);
   const messages = detail?.messages ?? [];
+  // Render the timeline from the freshly-fetched snapshot when available so the
+  // lifecycle and the thread stay consistent; fall back to the list snapshot.
+  const snapshot = detail?.task ?? task;
 
   return (
     <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
       <div className="grid gap-0.5 text-xs text-muted-foreground">
-        <div>Created {formatRelativeTime(task.created_at)}</div>
-        {task.started_at ? <div>Started {formatRelativeTime(task.started_at)}</div> : null}
-        {task.finished_at ? (
-          <div>Finished {formatRelativeTime(task.finished_at)}</div>
+        <div>Created {formatRelativeTime(snapshot.created_at)}</div>
+        {snapshot.started_at ? <div>Started {formatRelativeTime(snapshot.started_at)}</div> : null}
+        {snapshot.finished_at ? (
+          <div>Finished {formatRelativeTime(snapshot.finished_at)}</div>
         ) : (
-          <div>Last update {formatRelativeTime(task.updated_at)}</div>
+          <div>Last update {formatRelativeTime(snapshot.updated_at)}</div>
         )}
-        {task.state_detail ? <div>Detail: {task.state_detail}</div> : null}
-        {task.attempt > 1 ? <div>Attempt: {task.attempt}</div> : null}
+        {snapshot.state_detail ? <div>Detail: {snapshot.state_detail}</div> : null}
+        {snapshot.attempt > 1 ? <div>Attempt: {snapshot.attempt}</div> : null}
       </div>
 
       <div className="space-y-2">
