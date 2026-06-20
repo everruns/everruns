@@ -131,5 +131,3 @@ capabilities. Grant it only to agents you trust with outbound web access.
 - [Web Fetch](/capabilities/web-fetch/) — the client-executed equivalent
 - [Integrations overview](/integrations/) — search and web integrations as an alternative
 - [Capabilities Overview](/capabilities/)
-</content>
-</invoke>
