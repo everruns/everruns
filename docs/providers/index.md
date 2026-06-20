@@ -17,7 +17,8 @@ served by OpenAI, Claude, Gemini, or any OpenAI-compatible endpoint.
 
 | Provider | Driver | Notes |
 |---|---|---|
-| [OpenAI](/providers/openai/) | `openai`, `openai_completions` | Responses API (recommended) and Chat Completions. Also drives Azure OpenAI and OpenAI-compatible endpoints. |
+| [OpenAI](/providers/openai/) | `openai`, `openai_completions` | Responses API (recommended) and Chat Completions. Also drives OpenAI-compatible endpoints via a base URL. |
+| [Azure OpenAI](/providers/azure-openai/) | `azure_openai` | OpenAI models deployed in your Azure OpenAI resource. A dedicated provider type. |
 | [Anthropic](/providers/anthropic/) | `anthropic` | Claude models via the Messages API, with extended thinking. |
 | [Google Gemini](/providers/gemini/) | `gemini` | Gemini models, with implicit and explicit context caching. |
 | [AWS Bedrock](/providers/bedrock/) | `bedrock` | Models hosted on Amazon Bedrock via the `ConverseStream` API. |
@@ -25,8 +26,9 @@ served by OpenAI, Claude, Gemini, or any OpenAI-compatible endpoint.
 | [Microsoft MAI](/providers/mai/) | `mai` | Microsoft MAI models via Azure AI Foundry, with API-key or Entra ID (OAuth) auth. |
 
 Need a vendor that isn't listed? Any OpenAI-compatible endpoint works through the
-[OpenAI](/providers/openai/) provider with a custom base URL, and embedders can
-register additional drivers through the platform definition.
+[OpenAI](/providers/openai/) provider with a custom base URL (use the dedicated
+[Azure OpenAI](/providers/azure-openai/) provider for Azure deployments), and
+embedders can register additional drivers through the platform definition.
 
 ## Configure a provider
 
@@ -75,6 +77,10 @@ run an A/B comparison per session.
   database only. A turn with no configured provider fails with a clear error
   rather than silently falling back to a platform environment variable.
 
-For self-hosted and single-tenant deployments, `DEFAULT_*_API_KEY` environment
-variables can seed the default organization's provider credentials at startup.
-See the [environment variables reference](/sre/environment-variables/).
+For self-hosted and single-tenant deployments, provider credentials for the
+default organization can be seeded from environment variables at startup.
+Key-based providers use `DEFAULT_<PROVIDER>_API_KEY` (for example
+`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`); AWS Bedrock reads
+standard `AWS_*` (or `AWS_BEDROCK_*`) credentials instead. See the
+[environment variables reference](/sre/environment-variables/) for the exact
+names per provider.
