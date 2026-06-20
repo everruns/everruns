@@ -1487,6 +1487,8 @@ This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categorie
 
 ## References
 
+- `specs/security-testing.md` — Security testing process (threat-model tests, fail-rs failure injection, DeepSec scanning, supply-chain checks)
+- `SECURITY.md` — Vulnerability disclosure policy
 - `specs/authentication.md` — Authentication modes, JWT, personal access tokens, OAuth
 - `specs/encryption.md` — Envelope encryption design
 - `specs/multitenancy.md` — Org-based isolation model

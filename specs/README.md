@@ -121,6 +121,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/audit-logging.md` - Audit logging
 - `specs/threat-model.md` - Security threat model
+- `specs/security-testing.md` - Security testing process (threat-model tests, fail-rs, DeepSec, supply chain)
 - `specs/multitenancy.md` - Organization-based multitenancy
 - `specs/permissions.md` - Fine-grained permissions model
 - `specs/feature-flags.md` - Feature flags system

@@ -26,6 +26,8 @@ Maintenance work should optimize for these outcomes:
 Relevant references:
 - [`specs/release-process.md`](./release-process.md)
 - [`specs/threat-model.md`](./threat-model.md)
+- [`specs/security-testing.md`](./security-testing.md)
+- [`SECURITY.md`](../SECURITY.md)
 - [`specs/architecture.md`](./architecture.md)
 - [`specs/commands.md`](./commands.md)
 - [`specs/skills-registry.md`](./skills-registry.md)
@@ -83,6 +85,8 @@ Before a release, maintenance should cover:
 - the latest push-only integration live workflows on `main` plus the latest `.github/workflows/integration-live-sweep.yml` result; unresolved failures there block a "release ready" claim until triaged
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
+- threat model and security testing in sync per `specs/security-testing.md`: every `MITIGATED` threat has coverage where feasible, durable failpoint tests pass (`cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1`), and the `cargo deny check licenses` gate (`deny.toml`) passes; advisories are tracked via Dependabot alerts in the GitHub Security tab
+- DeepSec scan run for the changed surface: `cd .deepsec && pnpm deepsec scan --project-id everruns`, `pnpm deepsec process --project-id everruns`, then review `pnpm deepsec report --project-id everruns` and file issues for any deferred true-positive findings. The `.deepsec/` scanner is local dev-only tooling, exempt from the runtime seven-day dependency-maturity floor; when bumping it, update `.deepsec` in its own commit (`pnpm update deepsec@latest`) rather than as part of a product dependency bump
 - dependency versions across all packages (Cargo workspace crates, pnpm-managed UI/docs packages, CLI) checked for outdated major versions and deprecated crates
   - `cargo outdated --root-deps-only --workspace` currently fails with a `libsqlite3-sys` `links` conflict because its temporary solve combines the workspace `sqlx 0.8` pin with the latest `rusqlite`. The real lockfile builds, so treat that failure as a tooling artifact and inspect `Cargo.toml` plus `cargo tree -i sqlx` / `cargo tree -i rusqlite` instead until `sqlx` and `rusqlite` are upgraded together
   - pnpm-managed packages enforce the seven-day release-age floor with `minimumReleaseAge: 10080`; do not bypass that gate for routine dependency maintenance
