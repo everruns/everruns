@@ -54,9 +54,11 @@ use everruns_local::{LocalBackends, LocalProfile};
 use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
 
 # fn example() -> Result<(), Box<dyn std::error::Error>> {
-// A profile owns the local data dir; its SQLite file is derived from it.
-let profile = LocalProfile::new("~/.everruns/default")
-    .with_workspace_root("~/projects/agent-workspace");
+// LocalProfile stores plain filesystem paths and does not expand a leading
+// `~`, so pass an absolute path your application owns. Its SQLite file is
+// derived from the data dir.
+let profile = LocalProfile::new("/var/lib/everruns")
+    .with_workspace_root("/var/lib/everruns/workspace");
 
 // Layer the local, SQLite-backed stores over a set of runtime backends. The
 // event bus (and any other store) you pass on `RuntimeBackends` is preserved.
