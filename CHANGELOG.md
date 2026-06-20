@@ -9,10 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-### Added
+## [0.16.0] - 2026-06-20
 
-- **Fireworks AI provider** — first-class `fireworks` driver (`everruns-fireworks`) for Fireworks AI open models (Llama, Qwen, DeepSeek, GLM, Kimi, gpt-oss, ...) over the OpenAI-compatible Chat Completions API, with automatic model discovery (tools, vision, and context-window capabilities) and Settings → Providers UI support.
-- **everruns-local published to crates.io** — the SQLite-backed runtime backend stores (`LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, `LocalProfile`, `LocalBackends`, `LocalRuntimeBuilder`) are now a published crate, so external embedders can add durable, restart-survivable local persistence to an `everruns-runtime` host. Includes a crate README and a "Local backends" section in the runtime docs.
+### Highlights
+
+- **Tool-Call Repair** — New capability that automatically detects and repairs malformed tool calls from LLMs, improving reliability across providers ([#2364](https://github.com/everruns/everruns/pull/2364)).
+- **OAuth Connect Flow for Providers** — Connect model providers via OAuth, starting with OpenRouter ([#2353](https://github.com/everruns/everruns/pull/2353)).
+- **Organization Invitations** — OSS-owned org invitation system with optional email delivery ([#2350](https://github.com/everruns/everruns/pull/2350)).
+- **Fireworks AI Provider** — New built-in Fireworks AI provider for open models (Llama, Qwen, DeepSeek, and more) with automatic model discovery ([#2344](https://github.com/everruns/everruns/pull/2344)).
+- **Environment Credential Injection** — Inject provider credentials via `CredentialProvider` for zero-config deployments ([#2348](https://github.com/everruns/everruns/pull/2348)).
+
+### What's Changed
+
+- feat(capabilities): tool-call repair capability for malformed tool calls ([#2364](https://github.com/everruns/everruns/pull/2364)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): OAuth connect flow for drivers, starting with OpenRouter ([#2353](https://github.com/everruns/everruns/pull/2353)) by [@chaliy](https://github.com/chaliy)
+- feat(email): app-styled minimal template and branded basic template ([#2354](https://github.com/everruns/everruns/pull/2354)) by [@chaliy](https://github.com/chaliy)
+- feat(orgs): add OSS-owned organization invitations with optional email ([#2350](https://github.com/everruns/everruns/pull/2350)) by [@chaliy](https://github.com/chaliy)
+- feat(local): publish everruns-local crate to crates.io ([#2351](https://github.com/everruns/everruns/pull/2351)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): inject env credentials via CredentialProvider ([#2348](https://github.com/everruns/everruns/pull/2348)) by [@chaliy](https://github.com/chaliy)
+- feat(fireworks): add Fireworks AI provider with model sync ([#2344](https://github.com/everruns/everruns/pull/2344)) by [@chaliy](https://github.com/chaliy)
+- fix(email): point basic template logo at hosted 64px PNG ([#2367](https://github.com/everruns/everruns/pull/2367)) by [@chaliy](https://github.com/chaliy)
+- fix(context): make infinity anchor opt-in ([#2360](https://github.com/everruns/everruns/pull/2360)) by [@chaliy](https://github.com/chaliy)
+- fix(events): allow transcript repair filters ([#2362](https://github.com/everruns/everruns/pull/2362)) by [@chaliy](https://github.com/chaliy)
+- fix(core): sanitize narrated fetch URLs ([#2358](https://github.com/everruns/everruns/pull/2358)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): scope mcp guardrail invoker ([#2357](https://github.com/everruns/everruns/pull/2357)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve capability narration hooks in act execution ([#2363](https://github.com/everruns/everruns/pull/2363)) by [@chaliy](https://github.com/chaliy)
+- fix(infinity-context): cap anchored head messages ([#2359](https://github.com/everruns/everruns/pull/2359)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve legacy agent run records ([#2361](https://github.com/everruns/everruns/pull/2361)) by [@chaliy](https://github.com/chaliy)
+- fix(openrouter): admin-gate server web tools ([#2356](https://github.com/everruns/everruns/pull/2356)) by [@chaliy](https://github.com/chaliy)
+- chore(security): adopt security policy, testing spec, and process wiring ([#2368](https://github.com/everruns/everruns/pull/2368)) by [@chaliy](https://github.com/chaliy)
+- docs,ui: use official OpenRouter logo ([#2355](https://github.com/everruns/everruns/pull/2355)) by [@chaliy](https://github.com/chaliy)
+- docs,ui: fix OpenRouter icon and add provider sidebar icons ([#2352](https://github.com/everruns/everruns/pull/2352)) by [@chaliy](https://github.com/chaliy)
+- docs(fireworks): provider guide, publishable README, UI taglines ([#2349](https://github.com/everruns/everruns/pull/2349)) by [@chaliy](https://github.com/chaliy)
+- docs: add model providers section under integrations ([#2343](https://github.com/everruns/everruns/pull/2343)) by [@chaliy](https://github.com/chaliy)
+- docs: point README links to docs.everruns.com and fill doc gaps ([#2341](https://github.com/everruns/everruns/pull/2341)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.15.0] - 2026-06-19
 
