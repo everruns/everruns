@@ -141,6 +141,41 @@ pub struct CreateOrganizationMemberRow {
     pub user_id: Uuid,
 }
 
+/// Organization invitation row from database (EVE-602).
+///
+/// The raw invite token is never stored; only `token_hash` (SHA-256) is kept.
+/// Status is derived from the timestamp columns (`accepted_at`, `revoked_at`,
+/// `expires_at`) rather than a separate enum so the row is the single source of
+/// truth.
+#[derive(Debug, Clone, FromRow)]
+pub struct OrgInvitationRow {
+    pub id: i64,
+    pub public_id: String,
+    pub org_id: i64,
+    pub email: String,
+    pub role: String,
+    pub invited_by: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub accepted_at: Option<DateTime<Utc>>,
+    pub accepted_by: Option<Uuid>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an organization invitation.
+#[derive(Debug, Clone)]
+pub struct CreateOrgInvitation {
+    pub public_id: String,
+    pub org_id: i64,
+    pub email: String,
+    pub role: String,
+    pub invited_by: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 // ============================================
 // Auth models
 // ============================================

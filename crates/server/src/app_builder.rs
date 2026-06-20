@@ -1128,6 +1128,12 @@ impl ServerAppBuilder {
             platform_definition.built_in_harnesses().to_vec(),
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
+        let org_invitations_state = api::org_invitations::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            platform_definition.email_sender(),
+            auth_config.frontend_url.clone(),
+        );
         let memory_state = api::memory::AppState::new(db.clone(), auth_state.clone());
         let workspaces_state = api::workspaces::AppState::new(db.clone(), auth_state.clone());
         let workspace_files_state =
@@ -1282,6 +1288,7 @@ impl ServerAppBuilder {
             })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::org_invitations::routes(org_invitations_state))
             .merge(api::task_webhooks::routes(
                 api::task_webhooks::AppState::new(db.clone(), auth_state.clone()),
             ))

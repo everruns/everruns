@@ -188,6 +188,8 @@ pub struct InMemoryDatabase {
     plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
     // Organization task webhooks (outbound HTTP on terminal task transitions)
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
+    // OSS-owned organization invitations (EVE-602)
+    org_invitations: RwLock<Vec<OrgInvitationRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -305,6 +307,7 @@ impl Default for InMemoryDatabase {
             plugin_marketplaces: RwLock::new(plugin_marketplaces),
             plugin_installs: RwLock::new(HashMap::new()),
             org_task_webhooks: RwLock::new(Vec::new()),
+            org_invitations: RwLock::new(Vec::new()),
         }
     }
 }

@@ -106,7 +106,72 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 **Constraints:**
 - Primary key: `(org_id, user_id)`
 - User can belong to multiple organizations
-- No roles for now (all members have equal access)
+- Role (`owner` > `admin` > `member`) governs management permissions
+
+### Organization Invitations
+
+Everruns owns the full org membership lifecycle — including pending invites and
+acceptance — so a deployment never has to mirror organizations into an external
+identity provider. **Membership is local-DB authoritative and does not depend on
+any external identity-provider org claims.** Wrappers (e.g. SaaS) may keep an
+external IdP for login/identity/JWT only; org creation, membership, roles, and
+invites stay in OSS.
+
+Invitations live in an `org_invitations` table (migration `081`):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `public_id` | TEXT | Stable public invite id (`orginv_<32-hex>`) |
+| `org_id` | BIGINT | Organization reference |
+| `email` | TEXT | Invited email, normalized (trim + lowercase) for comparison |
+| `role` | TEXT | Role granted on acceptance (`owner`/`admin`/`member`) |
+| `invited_by` | UUID | Creator user id |
+| `token_hash` | TEXT | SHA-256 of the raw token; the raw token is never stored |
+| `expires_at` / `accepted_at` / `accepted_by` / `revoked_at` | TIMESTAMPTZ/UUID | Lifecycle |
+
+Status is derived from the timestamp columns (pending / accepted / revoked /
+expired). A partial unique index enforces at most one outstanding invite per
+`(org_id, email)`.
+
+**API** (org-scoped routes require admin/owner; only owners may invite owners,
+mirroring member management):
+
+- `POST /v1/orgs/{org}/invites` — create a pending invite; returns metadata, the
+  one-time `invite_url`, and an `email_delivery` status.
+- `GET /v1/orgs/{org}/invites` — list outstanding (pending/expired) invites.
+- `DELETE /v1/orgs/{org}/invites/{invite_id}` — revoke a pending invite.
+- `POST /v1/invites/{token}/accept` — authenticated; validates token hash,
+  status, expiry, and email match, then creates local membership.
+
+**Security:**
+- Token material is generated securely and only the SHA-256 hash is persisted.
+  The raw token is returned **once** as `invite_url` and is never logged or
+  stored, so listing cannot re-expose a link (rotation, not recovery, is the
+  future path for re-sharing).
+- Acceptance requires an authenticated principal whose normalized email matches
+  the invited email under the same normalization used at creation.
+- Expired, revoked, already-accepted, malformed, and wrong-email tokens return
+  distinct, safe error codes (`invite_expired`, `invite_revoked`,
+  `invite_already_accepted`, `invite_invalid`, `invite_email_mismatch`) without
+  leaking token secrets.
+
+**Optional email delivery.** Email is never hard-required. The platform's
+`EmailSender` (specs/email.md) is consulted at creation and the outcome is
+classified, leaving the invite pending regardless:
+
+| Sender outcome | `email_delivery` | UX |
+|----------------|------------------|----|
+| `Ok` | `sent` | Email delivered; link also available |
+| `Err(Configuration)` (disabled/unconfigured) | `not_configured` | Copy-link only |
+| `Err(_)` (transport/provider) | `failed` | Copy-link; invite still pending |
+
+Concrete email providers are deployment-owned (`EMAIL_PROVIDER`), not hardcoded
+into org logic. With no provider configured, invite creation still succeeds and
+returns a copyable `invite_url`.
+
+The accept UI route (`/invite/{token}`) works for authenticated and
+unauthenticated users: unauthenticated links preserve the target through
+login/signup via `return_to` (specs/authentication.md) and resume acceptance.
 
 ### Resource Scoping
 

@@ -434,6 +434,12 @@ impl TestServer {
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
         );
+        let org_invitations_state = api::org_invitations::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            platform_definition.email_sender(),
+            auth_config.frontend_url.clone(),
+        );
         let session_schedules_state = api::session_schedules::AppState::new(
             Arc::new(
                 everruns_server::domains::session_schedules::SessionScheduleService::new(
@@ -585,6 +591,7 @@ impl TestServer {
             .merge(api::plugins::routes(plugins_state))
             .merge(api::images::routes(images_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::org_invitations::routes(org_invitations_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::org_feature_flags::routes(org_feature_flags_state))
