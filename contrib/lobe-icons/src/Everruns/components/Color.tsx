@@ -63,7 +63,7 @@ const Icon: IconType = memo(({ size = '1em', style, ...rest }) => {
         strokeLinecap="round"
         strokeLinejoin="round"
         strokeWidth={18}
-        transform="translate(12 12) scale(0.06) translate(-256 -256)"
+        transform="translate(12 12) scale(0.0546) translate(-256 -274.09)"
       >
         <circle cx="256" cy="201.73" r="120" stroke={ids[0].fill} />
         <circle cx="193.33" cy="310.27" r="120" stroke={ids[1].fill} />
