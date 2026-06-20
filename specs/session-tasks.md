@@ -445,8 +445,40 @@ No backward compatibility is required; data migrates forward once:
 - `LLMSIM_DEMO=tasks` drives the full lifecycle end-to-end without an LLM
   key (see `crates/core/src/llmsim_driver.rs`).
 
+## Recurrence and task definitions (decision: defer — EVE-584)
+
+**Question:** does the system need a first-class `TaskDefinition` (a reusable
+*template* + *recurrence* primitive that instantiates fresh task instances on a
+cadence), or is the existing schedule + monitor composition sufficient?
+
+**Decision: no dedicated primitive in v1 — recurrence is expressed by
+composition.** Two existing primitives already cover recurring background work:
+
+- A recurring **session schedule** (`cron_expression`, via the `session_schedule`
+  capability — `docs/capabilities/session-schedules.md`) fires on a cadence.
+- A **monitor** task (`spawn_background` with a `schedule` arg) binds that
+  schedule to a long-lived task: each fire runs the probe tool and records the
+  result on the task thread (recurring monitors stay `running`; one-shot ones go
+  `succeeded`). A bare recurring schedule without a monitor simply delivers a
+  scheduled turn to the session.
+
+A separate `TaskDefinition` primitive would add a parallel concept plus
+schema/API/UI surface. Its only capability beyond the monitor model is
+"**each fire yields a distinct task instance** with its own lifecycle, result,
+and retention" (versus one long-lived monitor that accumulates messages), plus
+reusable templates instantiated across sessions. There is no concrete demand for
+either today, so building it now would be speculative surface area.
+
+**Revisit if** any of these appear: (1) a need for each recurrence to produce an
+independent task instance (own result/retention/success-history) rather than a
+single long-lived monitor; (2) reusable, parameterized task templates
+instantiated across sessions or agents; (3) a need to define the cadence
+independently of a specific session's monitor wiring. Until then, recurrence
+stays as `schedule + monitor` composition.
+
 ## Out of scope (v1)
 
 - Webhooks / push notifications on task transitions.
 - Per-org retention TTL overrides (global TTL ships first; see Retention).
-- Task definitions / recurrence (monitors ship as long-lived tasks first).
+- A dedicated task-definition / recurrence primitive — see the decision above;
+  recurrence ships as schedule + monitor composition.
