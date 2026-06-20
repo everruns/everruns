@@ -77,6 +77,7 @@ use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facin
 ///
 /// Extracted as a free function (like `repair_dangling_tool_calls`) so it can be
 /// exercised by capability-level tests without constructing a full `ReasonAtom`.
+#[allow(clippy::too_many_arguments)] // all inputs are the per-turn repair context
 async fn apply_tool_call_repair(
     capability_registry: &CapabilityRegistry,
     event_emitter: &dyn EventEmitter,
@@ -85,6 +86,7 @@ async fn apply_tool_call_repair(
     resolved_capability_configs: &[crate::AgentCapabilityConfig],
     tool_definitions: &[ToolDefinition],
     tool_calls: &mut [ToolCall],
+    iteration: u32,
 ) {
     use crate::capabilities::{
         RepairOutcome, SalvageResult, TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairConfig,
@@ -114,11 +116,15 @@ async fn apply_tool_call_repair(
                 call.arguments = fixed;
                 RepairOutcome::LocalSalvage
             }
-            // Local salvage failed. No re-prompt has happened for this call yet
-            // (prior_attempts = 0): the bounded decision is Reprompt while
-            // attempts remain, else GaveUp. Either way the call is left unchanged
-            // and flows to the existing error path.
-            SalvageResult::Unsalvageable => repair_config.outcome_after_failed_salvage(0),
+            // Local salvage failed. The corrective re-prompt is realized by the
+            // outer agent loop retrying on the next reason iteration, so the
+            // per-turn `iteration` (1-based) is the count of attempts already
+            // spent on this turn: prior_attempts = iteration - 1. The bounded
+            // decision is Reprompt while attempts remain, else GaveUp. Either way
+            // the call is left unchanged and flows to the existing error path.
+            SalvageResult::Unsalvageable => {
+                repair_config.outcome_after_failed_salvage(iteration.saturating_sub(1))
+            }
         };
 
         tracing::info!(
@@ -880,6 +886,7 @@ impl ReasonAtom {
         resolved_capability_configs: &[crate::AgentCapabilityConfig],
         tool_definitions: &[ToolDefinition],
         tool_calls: &mut [ToolCall],
+        iteration: u32,
     ) {
         apply_tool_call_repair(
             &self.capability_registry,
@@ -889,6 +896,7 @@ impl ReasonAtom {
             resolved_capability_configs,
             tool_definitions,
             tool_calls,
+            iteration,
         )
         .await;
     }
@@ -2514,6 +2522,7 @@ impl ReasonAtom {
                 &resolved_capability_configs,
                 &runtime_agent.tools,
                 &mut tool_calls,
+                iteration,
             )
             .await;
         }
@@ -3715,6 +3724,16 @@ mod tests {
             calls: &mut [ToolCall],
             emitter: &RecordingEmitter,
         ) {
+            run_at(configs, tools, calls, emitter, 1).await;
+        }
+
+        async fn run_at(
+            configs: &[crate::AgentCapabilityConfig],
+            tools: &[ToolDefinition],
+            calls: &mut [ToolCall],
+            emitter: &RecordingEmitter,
+            iteration: u32,
+        ) {
             let registry = CapabilityRegistry::with_builtins();
             apply_tool_call_repair(
                 &registry,
@@ -3724,6 +3743,7 @@ mod tests {
                 configs,
                 tools,
                 calls,
+                iteration,
             )
             .await;
         }
@@ -3797,6 +3817,40 @@ mod tests {
             assert_eq!(
                 emitter.repaired_events(),
                 vec![("call_3".to_string(), "re-prompt".to_string())]
+            );
+        }
+
+        #[tokio::test]
+        async fn attempt_cap_transitions_to_gave_up_on_later_iteration() {
+            // The bounded re-prompt is driven by the per-turn reason iteration
+            // (prior_attempts = iteration - 1). With the default cap of 1, an
+            // unsalvageable call is `re-prompt` on iteration 1 but `gave-up` once
+            // the turn has already spent an iteration, so the cap actually engages.
+            let tools = vec![read_file_tool()];
+            let garbage = json!("no json here");
+
+            let first = RecordingEmitter::default();
+            let mut calls1 = vec![ToolCall {
+                id: "call_a".to_string(),
+                name: "read_file".to_string(),
+                arguments: garbage.clone(),
+            }];
+            run_at(&enabled_configs(), &tools, &mut calls1, &first, 1).await;
+            assert_eq!(
+                first.repaired_events(),
+                vec![("call_a".to_string(), "re-prompt".to_string())]
+            );
+
+            let later = RecordingEmitter::default();
+            let mut calls2 = vec![ToolCall {
+                id: "call_a".to_string(),
+                name: "read_file".to_string(),
+                arguments: garbage,
+            }];
+            run_at(&enabled_configs(), &tools, &mut calls2, &later, 2).await;
+            assert_eq!(
+                later.repaired_events(),
+                vec![("call_a".to_string(), "gave-up".to_string())]
             );
         }
 

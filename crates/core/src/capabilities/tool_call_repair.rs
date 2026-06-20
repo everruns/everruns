@@ -114,6 +114,16 @@ pub fn salvage_tool_arguments(raw: &Value, schema: Option<&Value>) -> SalvageRes
     // valid as-is and the call is a no-op.
     if let Value::Object(_) = raw {
         let coerced = coerce_known_keys(raw.clone(), schema);
+        // A call that still violates the schema after coercion (a missing
+        // `required` key, or a value whose type cannot be coerced to the declared
+        // primitive) is malformed-vs-schema even though it is syntactically valid
+        // JSON. Treat it as unsalvageable so it flows to the bounded re-prompt /
+        // error path and is observable, rather than being silently AlreadyValid.
+        if let Value::Object(ref m) = coerced
+            && violates_schema(m, schema)
+        {
+            return SalvageResult::Unsalvageable;
+        }
         if coerced == *raw {
             return SalvageResult::AlreadyValid;
         }
@@ -135,17 +145,83 @@ pub fn salvage_tool_arguments(raw: &Value, schema: Option<&Value>) -> SalvageRes
 
     let trimmed = raw_str.trim();
     if trimmed.is_empty() {
-        // An empty argument string is conventionally an empty object.
-        return SalvageResult::Repaired(Value::Object(serde_json::Map::new()));
+        // An empty argument string is conventionally an empty object — unless the
+        // schema requires keys we cannot supply, in which case `{}` would just
+        // fail downstream, so route it to the re-prompt / error path instead.
+        let empty = serde_json::Map::new();
+        if violates_schema(&empty, schema) {
+            return SalvageResult::Unsalvageable;
+        }
+        return SalvageResult::Repaired(Value::Object(empty));
     }
 
     match extract_json_object(trimmed) {
         Some(obj) => {
             let coerced = coerce_known_keys(obj, schema);
+            // A recovered object that still violates the schema does not actually
+            // recover the turn (the tool would reject it downstream), so surface
+            // it as unsalvageable for the bounded re-prompt path.
+            if let Value::Object(ref m) = coerced
+                && violates_schema(m, schema)
+            {
+                return SalvageResult::Unsalvageable;
+            }
             SalvageResult::Repaired(coerced)
         }
         None => SalvageResult::Unsalvageable,
     }
+}
+
+/// Conservative schema check used to decide whether a syntactically-valid object
+/// is still malformed *relative to the tool's schema*. Returns true only on
+/// unambiguous violations: a declared `required` key is absent, or a present
+/// (non-null) value's JSON type does not match a declared primitive `type`.
+///
+/// Intentionally shallow and non-recursive: it does not validate nested objects,
+/// enums, formats, or unknown keys, so it never flags a call the downstream tool
+/// would accept. With no schema (or no `type`/`required` info) nothing is flagged.
+fn violates_schema(obj: &serde_json::Map<String, Value>, schema: Option<&Value>) -> bool {
+    let Some(schema) = schema else {
+        return false;
+    };
+
+    if let Some(required) = schema.get("required").and_then(Value::as_array) {
+        for key in required.iter().filter_map(Value::as_str) {
+            if !obj.contains_key(key) {
+                return true;
+            }
+        }
+    }
+
+    if let Some(props) = schema.get("properties").and_then(Value::as_object) {
+        for (key, prop_schema) in props {
+            let Some(declared) = prop_schema.get("type").and_then(Value::as_str) else {
+                continue;
+            };
+            let Some(val) = obj.get(key) else {
+                continue;
+            };
+            // Null is left to the downstream tool (fields are often nullable).
+            if val.is_null() {
+                continue;
+            }
+            let matches = match declared {
+                "integer" => val.is_i64() || val.is_u64(),
+                "number" => val.is_number(),
+                "boolean" => val.is_boolean(),
+                "string" => val.is_string(),
+                "array" => val.is_array(),
+                "object" => val.is_object(),
+                // Unknown/compound declared type: do not flag.
+                _ => true,
+            };
+            if !matches {
+                return true;
+            }
+        }
+    }
+
+    false
 }
 
 /// Extract the first balanced JSON object from a blob that may be wrapped in
@@ -518,6 +594,60 @@ mod tests {
         assert_eq!(
             salvage_tool_arguments(&raw, None),
             SalvageResult::Repaired(json!({}))
+        );
+    }
+
+    #[test]
+    fn empty_string_with_required_schema_is_unsalvageable() {
+        // `{}` would just fail downstream when the schema requires `path`, so
+        // route it to the bounded re-prompt / error path instead.
+        let raw = json!("");
+        assert_eq!(
+            salvage_tool_arguments(&raw, Some(&schema())),
+            SalvageResult::Unsalvageable
+        );
+    }
+
+    #[test]
+    fn object_missing_required_key_is_unsalvageable() {
+        // Syntactically valid JSON, but missing the required `path` key — this is
+        // malformed vs the schema and cannot be locally repaired.
+        let raw = json!({ "limit": 3 });
+        assert_eq!(
+            salvage_tool_arguments(&raw, Some(&schema())),
+            SalvageResult::Unsalvageable
+        );
+    }
+
+    #[test]
+    fn object_with_uncoercible_type_is_unsalvageable() {
+        // `limit` is an integer property; "abc" cannot be coerced, so after the
+        // coercion pass the type still mismatches.
+        let raw = json!({ "path": "/foo", "limit": "abc" });
+        assert_eq!(
+            salvage_tool_arguments(&raw, Some(&schema())),
+            SalvageResult::Unsalvageable
+        );
+    }
+
+    #[test]
+    fn extracted_object_missing_required_is_unsalvageable() {
+        // Recovered from prose but still missing the required key: not a usable
+        // repair, so surface it for the re-prompt path.
+        let raw = json!("here you go: {\"limit\": 3}");
+        assert_eq!(
+            salvage_tool_arguments(&raw, Some(&schema())),
+            SalvageResult::Unsalvageable
+        );
+    }
+
+    #[test]
+    fn object_missing_required_key_without_schema_is_noop() {
+        // With no schema we cannot know a key is required, so do not flag it.
+        let raw = json!({ "limit": 3 });
+        assert_eq!(
+            salvage_tool_arguments(&raw, None),
+            SalvageResult::AlreadyValid
         );
     }
 
