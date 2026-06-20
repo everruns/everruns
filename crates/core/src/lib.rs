@@ -260,8 +260,8 @@ pub use system_allowlist::{AllowGroup, SYSTEM_ALLOWLIST_ENABLED_ENV, SystemAllow
 
 // System email re-exports
 pub use email::{
-    DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult, EmailSender,
-    EmailTag, EmailTemplate, GenericEmailTemplate, NoopEmailSender, RenderedEmail,
+    BasicEmailTemplate, DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult,
+    EmailSender, EmailTag, EmailTemplate, MinimalEmailTemplate, NoopEmailSender, RenderedEmail,
     ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
     system_email_from,
 };

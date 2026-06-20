@@ -232,7 +232,7 @@ mod tests {
         let sender = ResendEmailSender::new(test_config(server.uri()));
         let sent = sender
             .send_email(
-                EmailMessage::generic("delivered@example.com", "Welcome", "hello", "<p>hello</p>")
+                EmailMessage::minimal("delivered@example.com", "Welcome", "hello", "<p>hello</p>")
                     .with_idempotency_key("welcome/user_123")
                     .with_tag("kind", "welcome"),
             )
@@ -247,7 +247,7 @@ mod tests {
         assert_eq!(body["from"], "Everruns <no-replay@everruns.com>");
         assert_eq!(body["to"], json!(["delivered@example.com"]));
         assert_eq!(body["subject"], "Welcome");
-        assert_eq!(body["text"], "Everruns\n\nhello");
+        assert_eq!(body["text"], "hello");
         assert!(body["html"].as_str().unwrap().contains("<p>hello</p>"));
         assert_eq!(
             body["tags"],
