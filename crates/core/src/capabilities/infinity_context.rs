@@ -95,7 +95,7 @@ impl Capability for InfinityContextCapability {
                 "keep_first_messages": {
                     "type": "integer",
                     "title": "Anchored first messages",
-                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages. The anchor is fetched as a bounded head+tail load, so it is guaranteed even for histories far longer than the candidate load window. Keep it small (the default 1 anchors the original task) and raise it only when more leading context is genuinely needed.",
+                    "description": "Optional leading messages kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages. The anchor is fetched as a bounded head+tail load (capped at 16), so it is guaranteed even for histories far longer than the candidate load window. Defaults to 0 so untrusted first messages cannot bypass the configured token budget or recent-message cap; raise it only for trusted sessions where anchoring leading context is worth the extra prompt cost.",
                     "minimum": 0,
                     "maximum": MAX_KEEP_FIRST_MESSAGES,
                     "default": default_keep_first_messages()
@@ -195,10 +195,10 @@ struct InfinityContextConfig {
     #[serde(default)]
     max_recent_messages: Option<usize>,
 
-    /// Number of leading messages always kept as an anchor (the original task /
-    /// goal), regardless of token budget. Defaults to 1 so the model never loses
-    /// what it is doing when the window slides. The anchor is additional to
-    /// `max_recent_messages`.
+    /// Optional leading messages kept as an anchor (the original task / goal),
+    /// regardless of token budget. Defaults to 0 so untrusted first messages
+    /// cannot bypass the configured token budget or recent-message cap. The
+    /// anchor is additional to `max_recent_messages` when explicitly enabled.
     #[serde(default = "default_keep_first_messages")]
     keep_first_messages: usize,
 
@@ -219,7 +219,7 @@ fn default_min_recent_messages() -> usize {
 }
 
 fn default_keep_first_messages() -> usize {
-    1
+    0
 }
 
 impl Default for InfinityContextConfig {
@@ -247,10 +247,13 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
             serde_json::from_value(config.clone()).unwrap_or_default();
 
         query.limit = Some(resolve_candidate_load_limit(&config) as i64);
-        // Always fetch the first `keep_first_messages` alongside the latest-N tail
-        // so the task/goal anchor survives even when the history is far longer than
-        // the candidate load window (the tail-only LIMIT would otherwise never
-        // fetch the genuine first message).
+        // When explicitly configured (`keep_first_messages > 0`), fetch the first
+        // messages alongside the latest-N tail so the task/goal anchor survives
+        // even when history is far longer than the candidate load window (the
+        // tail-only LIMIT would otherwise never fetch the genuine first message).
+        // The default is 0 so an untrusted first message cannot bypass the token
+        // budget or recent-message cap, and the value is clamped to
+        // `MAX_KEEP_FIRST_MESSAGES` to bound the extra head load.
         let keep_first_messages = resolve_keep_first_messages(&config);
         if keep_first_messages > 0 {
             query.keep_head = Some(keep_first_messages);
@@ -811,9 +814,9 @@ mod tests {
 
         assert_eq!(query.limit, Some(16));
         assert!(query.prepend_transform.is_some());
-        // Default keep_first_messages (1) is loaded as a head anchor so the task
-        // goal survives even for histories longer than the candidate window.
-        assert_eq!(query.keep_head, Some(1));
+        // The safe default omits the head anchor so a large untrusted first
+        // message cannot bypass the configured budget or recent-message cap.
+        assert_eq!(query.keep_head, None);
     }
 
     #[test]
@@ -931,16 +934,20 @@ mod tests {
             &json!({"context_budget_tokens": 1, "min_recent_messages": 2}),
         );
 
-        // Layout: [task anchor] -> [N hidden notice] -> [recent window].
-        // The original task survives even under a 1-token budget.
-        assert_eq!(messages.len(), 4);
-        assert_eq!(extract_text_content(&messages[0]), "the original task");
+        // Default configuration has no head anchor: a first user message must not
+        // bypass the configured token budget or recent-message cap.
+        assert_eq!(messages.len(), 3);
         assert!(
-            extract_text_content(&messages[1])
-                .contains("1 earlier messages are NOT visible in this context")
+            extract_text_content(&messages[0])
+                .contains("2 earlier messages are NOT visible in this context")
         );
-        assert_eq!(extract_text_content(&messages[2]), "recent one");
-        assert_eq!(extract_text_content(&messages[3]), "recent two");
+        assert_eq!(extract_text_content(&messages[1]), "recent one");
+        assert_eq!(extract_text_content(&messages[2]), "recent two");
+        assert!(
+            !messages
+                .iter()
+                .any(|m| extract_text_content(m) == "the original task")
+        );
     }
 
     #[test]
@@ -963,15 +970,14 @@ mod tests {
             }),
         );
 
-        // Hard cap keeps 2 recent; the head anchor ("one") is additional to it.
-        assert_eq!(messages.len(), 4);
-        assert_eq!(extract_text_content(&messages[0]), "one");
+        // Hard cap keeps only the 2 recent messages by default.
+        assert_eq!(messages.len(), 3);
         assert!(
-            extract_text_content(&messages[1])
-                .contains("2 earlier messages are NOT visible in this context")
+            extract_text_content(&messages[0])
+                .contains("3 earlier messages are NOT visible in this context")
         );
-        assert_eq!(extract_text_content(&messages[2]), "four");
-        assert_eq!(extract_text_content(&messages[3]), "five");
+        assert_eq!(extract_text_content(&messages[1]), "four");
+        assert_eq!(extract_text_content(&messages[2]), "five");
     }
 
     #[test]
@@ -981,7 +987,8 @@ mod tests {
         // small enough that the big middle turns are dropped by token budget.
         let config = json!({
             "context_budget_tokens": 600,
-            "min_recent_messages": 2
+            "min_recent_messages": 2,
+            "keep_first_messages": 1
         });
         let mut query = MessageQuery::new(SessionId::new());
         provider.apply_filters(&mut query, &config);
@@ -1064,6 +1071,39 @@ mod tests {
         );
         assert!(extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES]).contains("NOT visible"));
         assert_eq!(extract_text_content(messages.last().unwrap()), "message 19");
+    }
+
+    #[test]
+    fn test_filter_provider_default_drops_oversized_first_message() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("attacker ".repeat(20_000)),
+            Message::assistant("middle"),
+            Message::user("recent one"),
+            Message::assistant("recent two"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &json!({
+                "context_budget_tokens": 10,
+                "min_recent_messages": 2,
+                "max_recent_messages": 2
+            }),
+        );
+
+        assert_eq!(messages.len(), 3);
+        assert!(
+            extract_text_content(&messages[0])
+                .contains("2 earlier messages are NOT visible in this context")
+        );
+        assert_eq!(extract_text_content(&messages[1]), "recent one");
+        assert_eq!(extract_text_content(&messages[2]), "recent two");
+        assert!(
+            !messages
+                .iter()
+                .any(|m| extract_text_content(m).starts_with("attacker"))
+        );
     }
 
     #[test]
