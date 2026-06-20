@@ -186,8 +186,9 @@ let model = ResolvedModel {
 Notes:
 
 - **Built-in vs custom ids.** Use the built-in ids (`openai`, `openrouter`,
-  `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`, and
-  `llmsim` for the test simulator) for the providers everruns ships. Reach for a
+  `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `bedrock`, `mai`,
+  `fireworks`, and `llmsim` for the test simulator) for the providers everruns
+  ships. Reach for a
   custom `External` id only when adding a provider that is not in core — that
   keeps your driver from colliding with a built-in slot, and non-empty unknown
   ids round-trip cleanly through the database and the worker boundary instead of

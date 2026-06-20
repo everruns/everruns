@@ -1753,6 +1753,7 @@ fn default_display_name(id: &DriverId) -> String {
         DriverId::Gemini => "Google Gemini".to_string(),
         DriverId::Bedrock => "AWS Bedrock".to_string(),
         DriverId::Mai => "Microsoft MAI".to_string(),
+        DriverId::Fireworks => "Fireworks AI".to_string(),
         DriverId::LlmSim => "LLM Simulator".to_string(),
         DriverId::External(id) => id.to_string(),
     }

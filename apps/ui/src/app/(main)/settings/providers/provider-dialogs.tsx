@@ -26,6 +26,7 @@ const PROVIDER_TYPES: { value: DriverId; label: string }[] = [
   { value: "gemini", label: "Google Gemini" },
   { value: "bedrock", label: "AWS Bedrock" },
   { value: "mai", label: "Microsoft MAI" },
+  { value: "fireworks", label: "Fireworks AI" },
 ];
 
 // Get API key placeholder based on provider type
@@ -44,6 +45,8 @@ function getApiKeyPlaceholder(providerType: DriverId): string {
       return '{"access_key_id":"...","secret_access_key":"...","region":"us-east-1"}';
     case "mai":
       return 'Foundry key, or {"tenant_id":"...","client_id":"...","client_secret":"..."}';
+    case "fireworks":
+      return "fw_...";
     default:
       return "your-api-key";
   }
@@ -65,6 +68,8 @@ function getBaseUrlPlaceholder(providerType: DriverId): string {
       return "https://generativelanguage.googleapis.com";
     case "mai":
       return "https://your-resource.services.ai.azure.com";
+    case "fireworks":
+      return "https://api.fireworks.ai/inference/v1";
     default:
       return "https://api.example.com";
   }

@@ -37,6 +37,7 @@ use everruns_core::traits::ResolvedModel;
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
+#[case::fireworks_kimi(FIREWORKS_KIMI)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {
@@ -72,6 +73,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
+#[case::fireworks_kimi(FIREWORKS_KIMI)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
     let Some(model) = config.model() else {

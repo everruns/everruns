@@ -54,6 +54,7 @@ where
         "azure_openai" => env_lookup("DEFAULT_AZURE_OPENAI_API_KEY").filter(|s| !s.is_empty()),
         "anthropic" => env_lookup("DEFAULT_ANTHROPIC_API_KEY").filter(|s| !s.is_empty()),
         "gemini" => env_lookup("DEFAULT_GEMINI_API_KEY").filter(|s| !s.is_empty()),
+        "fireworks" => env_lookup("DEFAULT_FIREWORKS_API_KEY").filter(|s| !s.is_empty()),
         "bedrock" => {
             // Construct JSON credentials from Bedrock-specific or generic AWS env vars.
             let access_key_id = env_lookup("AWS_BEDROCK_ACCESS_KEY_ID")

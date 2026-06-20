@@ -12,6 +12,7 @@ members = [
     "crates/openai",
     "crates/openrouter",
     "crates/mai",
+    "crates/fireworks",
     "crates/anthropic",
     "crates/gemini",
     "crates/turbopuffer",

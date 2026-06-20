@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### Added
+
+- **Fireworks AI provider** — first-class `fireworks` driver (`everruns-fireworks`) for Fireworks AI open models (Llama, Qwen, DeepSeek, GLM, Kimi, gpt-oss, ...) over the OpenAI-compatible Chat Completions API, with automatic model discovery (tools, vision, and context-window capabilities) and Settings → Providers UI support.
+
 ## [0.15.0] - 2026-06-19
 
 ### Highlights

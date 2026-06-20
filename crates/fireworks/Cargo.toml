@@ -1,0 +1,42 @@
+# Fireworks AI Provider Implementation
+# Decision: Fireworks AI serves open models (Llama, Qwen, DeepSeek, GLM, Kimi,
+# gpt-oss, ...) behind an OpenAI-compatible Chat Completions API. This crate
+# wraps the core Chat Completions protocol driver and adds Fireworks-specific
+# model discovery, which advertises rich capability metadata (supports_chat,
+# supports_tools, supports_image_input, context_length).
+
+[package]
+name = "everruns-fireworks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-fireworks"
+description = "Fireworks AI provider implementation for Everruns"
+readme = "README.md"
+
+[dependencies]
+async-trait.workspace = true
+
+# HTTP client (model discovery)
+reqwest.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Date/time (model `created` timestamps)
+chrono.workspace = true
+
+# Internal dependencies
+everruns-core.workspace = true
+
+[dev-dependencies]
+# tokio powers `#[tokio::test]`; wiremock captures discovery requests;
+# futures drains the chat stream.
+tokio = { workspace = true, features = ["full", "test-util"] }
+futures.workspace = true
+wiremock = "0.6"

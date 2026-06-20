@@ -2500,6 +2500,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-fireworks"
+version = "0.15.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "futures",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-gemini"
 version = "0.15.0"
 dependencies = [
@@ -2752,6 +2767,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-bedrock",
  "everruns-core",
+ "everruns-fireworks",
  "everruns-gemini",
  "everruns-openai",
  "everruns-openrouter",
@@ -3033,6 +3049,7 @@ dependencies = [
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
+ "everruns-fireworks",
  "everruns-gemini",
  "everruns-integrations-ard",
  "everruns-integrations-brave-search",

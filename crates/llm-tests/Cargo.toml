@@ -20,6 +20,7 @@ llm-tests = []
 everruns-core = { path = "../core" }
 everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }
+everruns-fireworks = { path = "../fireworks" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }

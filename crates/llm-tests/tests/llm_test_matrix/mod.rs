@@ -134,6 +134,15 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
     "OPENROUTER_API_KEY",
 );
 
+// Fireworks AI serves open models via an OpenAI-compatible Chat Completions
+// API. kimi-k2p5 is a chat + tool-calling model. Exercises the Chat Completions
+// streaming path against a third (non-OpenAI/Azure) host.
+pub const FIREWORKS_KIMI: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Fireworks,
+    "accounts/fireworks/models/kimi-k2p5",
+    "FIREWORKS_API_KEY",
+);
+
 // Bedrock: credentials are JSON in the env var, not a plain API key.
 // Set AWS_BEDROCK_CREDENTIALS to the JSON credential object.
 pub const BEDROCK_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
@@ -244,6 +253,7 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_anthropic::register_driver(&mut registry);
     everruns_openai::register_driver(&mut registry);
     everruns_openrouter::register_driver(&mut registry);
+    everruns_fireworks::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
     registry

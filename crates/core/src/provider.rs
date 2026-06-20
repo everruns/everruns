@@ -40,6 +40,9 @@ pub enum DriverId {
     /// Uses an OpenAI-compatible Chat Completions API and supports either an
     /// Azure AI Foundry API key or Microsoft Entra ID (OAuth) authentication.
     Mai,
+    /// Fireworks AI — open-model inference (Llama, Qwen, DeepSeek, GLM, ...)
+    /// served via an OpenAI-compatible Chat Completions API.
+    Fireworks,
     /// Embedder-defined provider not compiled into everruns-core. The inner id
     /// is the canonical wire string (e.g. `"openai-codex"`).
     External(std::sync::Arc<str>),
@@ -78,6 +81,7 @@ impl DriverId {
             DriverId::LlmSim => "llmsim",
             DriverId::Bedrock => "bedrock",
             DriverId::Mai => "mai",
+            DriverId::Fireworks => "fireworks",
             DriverId::External(id) => id.as_ref(),
         }
     }
@@ -101,6 +105,7 @@ impl std::str::FromStr for DriverId {
             "llmsim" => DriverId::LlmSim,
             "bedrock" => DriverId::Bedrock,
             "mai" => DriverId::Mai,
+            "fireworks" => DriverId::Fireworks,
             _ => DriverId::External(std::sync::Arc::from(lower.as_str())),
         })
     }
@@ -138,7 +143,7 @@ impl utoipa::PartialSchema for DriverId {
             ))
             .description(Some(
                 "LLM provider type. Built-in: openai, openrouter, azure_openai, \
-                 openai_completions, anthropic, gemini, llmsim, bedrock, mai. \
+                 openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks. \
                  Any other string is treated as an embedder-defined external provider.",
             ))
             .build()

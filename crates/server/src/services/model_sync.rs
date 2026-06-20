@@ -278,6 +278,9 @@ fn supports_sync_with_base_url(provider_type: &DriverId) -> bool {
             // resource endpoint); the driver gates discovery to recognized
             // Foundry hosts internally.
             | DriverId::Mai
+            // Fireworks providers may carry a custom base URL (proxy); the
+            // driver gates discovery to the recognized Fireworks host internally.
+            | DriverId::Fireworks
             // External providers are custom by nature: a configured base URL is
             // the embedder's endpoint, so do not skip discovery for them.
             | DriverId::External(_)
