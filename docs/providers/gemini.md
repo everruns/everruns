@@ -5,6 +5,8 @@ sidebar:
   label: Google Gemini
 ---
 
+<svg role="img" aria-label="Google Gemini logo" width="56" height="56" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="float: right; margin-left: 16px;"><path d="M12 0C12 6.627 6.627 12 0 12c6.627 0 12 5.373 12 12 0-6.627 5.373-12 12-12-6.627 0-12-5.373-12-12z"/></svg>
+
 Everruns runs agents on [Google Gemini](https://ai.google.dev/) models,
 implementing the provider-neutral driver contract over the Gemini API.
 

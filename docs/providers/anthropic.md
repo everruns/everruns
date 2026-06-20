@@ -5,6 +5,8 @@ sidebar:
   label: Anthropic
 ---
 
+<svg role="img" aria-label="Anthropic logo" width="56" height="56" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="float: right; margin-left: 16px;"><path d="M17.304 3h-3.437l5.73 18h3.437L17.304 3zM6.696 3l-5.73 18H4.43l1.307-4.26h5.905L12.95 21h3.466L10.696 3H6.696zm.64 10.74L9.2 7.895l1.864 5.845H7.336z"/></svg>
+
 Everruns runs agents on [Anthropic](https://www.anthropic.com/) Claude models
 through the Claude Messages API, mapping its provider-neutral messages, tools,
 and reasoning onto the Anthropic wire format.
