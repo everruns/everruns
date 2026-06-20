@@ -155,6 +155,8 @@ Simple drivers declare a one-field schema (`api_key`); Bedrock declares `access_
 
 Env-var fallbacks for dev (`DEFAULT_*_API_KEY`, startup materialization into the default org) keep their existing semantics, mapped onto the credential document.
 
+Driver crates do **not** read the process environment for credentials. Credentials reach a driver through its constructor or `DriverConfig` (resolved from the encrypted database on the server path). Env-based loading for standalone/dev/CLI use is the single, injectable `CredentialProvider`/`EnvCredentialProvider` seam in `crates/core/src/credential_provider.rs`; the server never constructs an `EnvCredentialProvider`. See the Key Resolution Contract in [llm-drivers.md](llm-drivers.md).
+
 ## Providers vs Connections
 
 Two deliberately separate front doors over shared plumbing:

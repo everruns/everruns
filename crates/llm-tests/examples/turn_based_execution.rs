@@ -24,7 +24,7 @@
 
 use chrono::Utc;
 use everruns_core::{
-    Harness, HarnessStatus, InputMessage, MessageRetriever,
+    EnvCredentialProvider, Harness, HarnessStatus, InputMessage, MessageRetriever,
     agent::{Agent, AgentStatus},
     atoms::{
         ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
@@ -105,7 +105,8 @@ async fn main() -> anyhow::Result<()> {
     let agent_store = InMemoryAgentStore::new();
     let session_store = InMemorySessionStore::new();
     let message_retriever = InMemoryMessageRetriever::new();
-    let provider_store = InMemoryProviderStore::from_env().await;
+    let provider_store =
+        InMemoryProviderStore::from_credential_provider(&EnvCredentialProvider).await;
     let tools: ToolRegistry = ToolRegistryBuilder::new().tool(GetWeatherTool).build();
 
     // Create a harness in the store

@@ -74,14 +74,6 @@ impl OpenAIChatDriver {
         }
     }
 
-    /// Create a new driver from the OPENAI_API_KEY environment variable
-    pub fn from_env() -> Result<Self> {
-        Ok(Self {
-            inner: OpenResponsesProtocolChatDriver::from_env()?,
-            uses_custom_url: false,
-        })
-    }
-
     /// Create a new driver with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         let api_url = normalize_api_url(&api_url.into(), "/responses");
@@ -207,14 +199,6 @@ impl OpenAICompletionsChatDriver {
             inner: OpenAIProtocolChatDriver::new(api_key),
             uses_custom_url: false,
         }
-    }
-
-    /// Create a new driver from the OPENAI_API_KEY environment variable
-    pub fn from_env() -> Result<Self> {
-        Ok(Self {
-            inner: OpenAIProtocolChatDriver::from_env()?,
-            uses_custom_url: false,
-        })
     }
 
     /// Create a new driver with a custom API URL

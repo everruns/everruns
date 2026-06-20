@@ -55,8 +55,6 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// ```ignore
 /// use everruns_anthropic::AnthropicChatDriver;
 ///
-/// let driver = AnthropicChatDriver::from_env()?;
-/// // or
 /// let driver = AnthropicChatDriver::new("your-api-key");
 /// // or with custom endpoint
 /// let driver = AnthropicChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/messages");
@@ -85,13 +83,6 @@ impl AnthropicChatDriver {
             uses_custom_url: false,
             retry_config: LlmRetryConfig::default(),
         }
-    }
-
-    /// Create a new provider from the ANTHROPIC_API_KEY environment variable
-    pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("ANTHROPIC_API_KEY")
-            .map_err(|_| AgentLoopError::llm("ANTHROPIC_API_KEY environment variable not set"))?;
-        Ok(Self::new(api_key))
     }
 
     /// Create a new provider with a custom API URL

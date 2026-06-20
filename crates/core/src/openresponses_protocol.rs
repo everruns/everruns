@@ -68,8 +68,6 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 /// ```ignore
 /// use everruns_core::OpenResponsesProtocolChatDriver;
 ///
-/// let driver = OpenResponsesProtocolChatDriver::from_env()?;
-/// // or
 /// let driver = OpenResponsesProtocolChatDriver::new("your-api-key");
 /// // or with custom endpoint
 /// let driver = OpenResponsesProtocolChatDriver::with_base_url("your-api-key", "https://api.example.com/v1/responses");
@@ -126,13 +124,6 @@ impl OpenResponsesProtocolChatDriver {
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
         }
-    }
-
-    /// Create a new driver from the OPENAI_API_KEY environment variable
-    pub fn from_env() -> Result<Self> {
-        let api_key = std::env::var("OPENAI_API_KEY")
-            .map_err(|_| AgentLoopError::llm("OPENAI_API_KEY environment variable not set"))?;
-        Ok(Self::new(api_key))
     }
 
     /// Create a new driver with a custom API URL

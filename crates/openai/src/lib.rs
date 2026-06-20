@@ -25,12 +25,19 @@
 //!
 //! ```ignore
 //! use everruns_core::{
-//!     CapabilityRegistry, DriverRegistry, DriverId, ResolvedModel, PlatformDefinition,
+//!     CapabilityRegistry, CredentialProvider, DriverRegistry, DriverId, EnvCredentialProvider,
+//!     ResolvedModel, PlatformDefinition,
 //! };
 //! use everruns_runtime::InProcessRuntimeBuilder;
 //!
 //! let mut drivers = DriverRegistry::new();
 //! everruns_openai::register_driver(&mut drivers);
+//!
+//! // Standalone/dev: resolve credentials through the injectable env provider.
+//! // Driver code never reads the environment itself (see specs/llm-drivers.md).
+//! let creds = EnvCredentialProvider
+//!     .resolve(&DriverId::OpenAI)
+//!     .expect("OPENAI_API_KEY not set");
 //!
 //! let platform = PlatformDefinition::new(CapabilityRegistry::new(), drivers);
 //! let runtime = InProcessRuntimeBuilder::new()
@@ -38,8 +45,8 @@
 //!     .default_model(ResolvedModel {
 //!         model: "gpt-5.4-mini".into(),
 //!         provider_type: DriverId::OpenAI,
-//!         api_key: Some(std::env::var("OPENAI_API_KEY")?),
-//!         base_url: None,
+//!         api_key: creds.api_key,
+//!         base_url: creds.base_url,
 //!     })
 //!     .single_session(|s| {
 //!         s.harness("assistant", "You are a helpful assistant.")

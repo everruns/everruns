@@ -86,6 +86,7 @@ pub mod app;
 pub mod ard_attachment;
 pub mod capability_dto;
 pub mod connector;
+pub mod credential_provider;
 pub mod credential_schema;
 pub mod eval;
 pub mod events;
@@ -301,6 +302,9 @@ pub use tools::{
 
 // Shared credential form schema (provider drivers + connection providers)
 pub use credential_schema::CredentialFormSchema;
+
+// Pluggable provider credential source (drivers never read env directly).
+pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
 
 // Connector plugin system (user-scoped API key / OAuth connections)
 pub use connector::{
