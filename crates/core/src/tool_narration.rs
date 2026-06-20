@@ -123,32 +123,31 @@ pub fn truncate(value: &str, max_len: usize) -> String {
 /// credentials, query string, and fragment stripped (any of which can carry
 /// secrets). Truncated.
 pub fn url_display(url: &str) -> String {
-    let without_scheme = url.split_once("://").map(|(_, rest)| rest).unwrap_or(url);
-    // Drop query string and fragment.
-    let host_path = without_scheme
-        .split(['?', '#'])
-        .next()
-        .unwrap_or(without_scheme);
-    // Split authority from path, then strip `user:pass@` userinfo from the
-    // authority (it precedes the first '/').
-    let (authority, path) = match host_path.split_once('/') {
-        Some((authority, path)) => (authority, Some(path)),
-        None => (host_path, None),
+    let trimmed = url.trim();
+    let parseable = trimmed
+        .strip_prefix("//")
+        .map(|rest| format!("https://{rest}"))
+        .unwrap_or_else(|| trimmed.to_string());
+    let Ok(parsed) = url::Url::parse(&parseable) else {
+        return String::new();
     };
-    let host = authority
-        .rsplit_once('@')
-        .map(|(_, host)| host)
-        .unwrap_or(authority);
-    let rebuilt = match path {
-        Some(path) => format!("{host}/{path}"),
-        None => host.to_string(),
+
+    let Some(host) = parsed.host().map(|host| host.to_string()) else {
+        return String::new();
     };
-    let cleaned = rebuilt.trim_end_matches('/');
-    let cleaned = if cleaned.is_empty() {
-        without_scheme
+
+    let authority = match parsed.port() {
+        Some(port) => format!("{host}:{port}"),
+        None => host,
+    };
+    let cleaned_path = parsed.path().trim_end_matches('/');
+    let display = if cleaned_path.is_empty() {
+        authority
     } else {
-        cleaned
+        format!("{authority}{cleaned_path}")
     };
+
+    let cleaned = display.trim_end_matches('/');
     truncate(cleaned, 48)
 }
 
@@ -890,6 +889,44 @@ mod tests {
             "example.com/path"
         );
         assert_eq!(url_display("https://user:pass@example.com"), "example.com");
+        assert_eq!(
+            url_display("//user:pass@example.com/path?token=abc#frag"),
+            "example.com/path"
+        );
+        assert_eq!(
+            url_display("https:///user:pass@example.com/path?token=abc#frag"),
+            "example.com/path"
+        );
+    }
+
+    #[test]
+    fn web_fetch_helper_falls_back_to_bare_verb_for_malformed_url() {
+        // When the URL cannot be parsed (no scheme) or has no host, narration
+        // must fall back to the bare verb rather than echoing any substring of
+        // the argument, which can carry credential-like or secret material.
+        for raw in [
+            "not a url with secret-token inside",
+            "javascript:alert('user:s3cret@host')",
+            "user:s3cret-pass@no-scheme/path",
+        ] {
+            let a = args(json!({ "url": raw }));
+            let started = narrate_web_fetch(&a, ToolNarrationPhase::Started, None);
+            let completed = narrate_web_fetch(&a, ToolNarrationPhase::Completed, None);
+            assert_eq!(started, "Fetch URL", "input: {raw}");
+            assert_eq!(completed, "Fetched URL", "input: {raw}");
+            assert!(
+                !started.contains("secret"),
+                "leaked secret for input: {raw}"
+            );
+            assert!(
+                !started.contains("s3cret"),
+                "leaked secret for input: {raw}"
+            );
+            assert!(
+                !completed.contains("s3cret"),
+                "leaked secret for input: {raw}"
+            );
+        }
     }
 
     #[test]
