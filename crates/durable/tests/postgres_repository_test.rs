@@ -1152,9 +1152,9 @@ async fn test_health_query_constant_time_with_large_history() {
             .await
             .unwrap();
 
-    // Bulk-insert N completed+claimed tasks. The per-row triggers absorb them
-    // into the counters, growing the table to a size that used to force a heap
-    // scan on every health call.
+    // Bulk-insert N completed+claimed tasks. The statement-level triggers absorb
+    // them into the counters in one aggregated delta, growing the table to a size
+    // that used to force a heap scan on every health call.
     sqlx::query(
         r#"
         INSERT INTO durable_task_queue
@@ -1184,21 +1184,22 @@ async fn test_health_query_constant_time_with_large_history() {
         "triggers must increment tasks_completed by exactly N on bulk insert"
     );
 
-    // The health read reflects the large history and stays fast.
-    let start = std::time::Instant::now();
+    // The health read reflects the large history.
     let health = store.get_system_health().await.unwrap();
-    let elapsed = start.elapsed();
     assert!(health.completed_tasks >= N as usize);
     assert!(health.started_tasks >= N as usize);
-    assert!(
-        elapsed < Duration::from_secs(1),
-        "get_system_health took {elapsed:?} with {N}+ historical tasks; must be ~O(1)"
-    );
 
-    // Structural proof: the durable_task_queue access in the health path (the
-    // live pending/claimed gauges) uses indexes, never a sequential scan over
-    // the now-large table. A revert to COUNT(*) over completed/started would
-    // reintroduce a Seq Scan here.
+    // Structural proof that the read is O(1): the durable_task_queue access in the
+    // health path (the live pending/claimed gauges) uses indexes, never a
+    // sequential scan over the now-large table. A revert to COUNT(*) over
+    // completed/started would reintroduce a Seq Scan here. This is a plan/predicate
+    // check rather than a wall-clock assertion so it stays stable on slow/contended
+    // CI runners. ANALYZE first so the planner's row estimates reflect the bulk
+    // insert and reliably prefer the partial indexes.
+    sqlx::query("ANALYZE durable_task_queue")
+        .execute(&pool)
+        .await
+        .unwrap();
     let plan: Vec<String> = sqlx::query_scalar(
         r#"
         EXPLAIN

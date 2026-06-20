@@ -24,7 +24,11 @@
 
 CREATE TABLE durable_stat_counters (
     name TEXT PRIMARY KEY,
-    value BIGINT NOT NULL DEFAULT 0
+    -- Counters track a count of rows and must never go negative. Delta
+    -- accounting keeps them exactly equal to the COUNT(*) they replace, so this
+    -- CHECK only ever fires if a trigger bug introduced drift — failing loudly is
+    -- preferable to casting a negative value to usize in Rust.
+    value BIGINT NOT NULL DEFAULT 0 CHECK (value >= 0)
 );
 
 -- ============================================
@@ -121,6 +125,13 @@ $$ LANGUAGE plpgsql;
 -- ============================================
 -- Triggers (statement-level, transition tables)
 -- ============================================
+-- These are statement-level triggers with transition tables. PostgreSQL forbids
+-- combining transition tables with a column list (`UPDATE OF <cols>`), so the
+-- UPDATE triggers fire on every update; the function then computes a net delta of
+-- zero for updates that don't touch a counted predicate (e.g. heartbeat-only
+-- writes) and skips the counter UPDATE. Because the trigger is per-statement, not
+-- per-row, even a hot heartbeat UPDATE costs one trivial aggregate over a
+-- single-row transition table.
 CREATE TRIGGER durable_task_stat_counters_insert
     AFTER INSERT ON durable_task_queue
     REFERENCING NEW TABLE AS new_rows
@@ -154,10 +165,10 @@ CREATE TRIGGER durable_workflow_stat_counters_delete
 -- ============================================
 -- Backfill
 -- ============================================
--- The CREATE TRIGGER statements above take ACCESS EXCLUSIVE locks on both tables
--- for the remainder of this migration's transaction, so no concurrent writes can
--- slip between these COUNT(*)s and commit. After commit the counters and the
--- triggers stay in lockstep.
+-- The CREATE TRIGGER statements above take SHARE ROW EXCLUSIVE locks on both
+-- tables, held until this migration's transaction commits. That lock blocks all
+-- concurrent INSERT/UPDATE/DELETE, so no write can slip between these COUNT(*)s
+-- and commit. After commit the counters and the triggers stay in lockstep.
 INSERT INTO durable_stat_counters (name, value) VALUES
     ('tasks_completed',     (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed')),
     ('tasks_failed',        (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead'))),
