@@ -128,14 +128,14 @@ Parent Agent                          System                           Child Ses
      │                                  │─────────────────────────────────>│
      │                                  │  send instructions as message    │
      │                                  │─────────────────────────────────>│
-     │                                  │  emit subagent.spawned           │
+     │                                  │  emit task.created               │
      │                                  │                                  │
      │          (blocked)               │         agentic loop             │
      │          wait_for_idle           │<────────────────────────────────>│
      │                                  │                                  │
      │                                  │  child idles                     │
      │                                  │<─────────────────────────────────│
-     │                                  │  emit subagent.completed         │
+     │                                  │  emit task.updated (succeeded)   │
      │  return last assistant message   │                                  │
      │<─────────────────────────────────│                                  │
      │                                  │                                  │

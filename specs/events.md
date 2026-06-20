@@ -1064,10 +1064,13 @@ event types and `SubagentEventData` were removed from `crates/core/src/events.rs
 Retirement is deliberate even though event types are otherwise a stability
 contract: the events had no in-repo consumer left after the CLI moved to `task.*`
 (#2177), and `task.*` carries the replacement information. Historical `subagent.*`
-rows in older session logs remain stored and are still returned by the events
-API, but deserialize through the generic unsupported-type fallback rather than a
-typed variant. The `error_count` aggregate still counts historical
-`subagent.failed` rows by type string. New integrations should consume `task.*`.
+rows in older session logs remain in storage, but — now that the typed variants
+are gone — they deserialize as `EventData::Unsupported` and are therefore
+**filtered out of the events list and SSE responses** like any unknown type (see
+Server Responsibilities above); they are not surfaced as typed or untyped event
+payloads. They are still counted by aggregate fields such as `error_count`, which
+match `subagent.failed` by type string at the query level. New integrations
+should consume `task.*`.
 
 ### Session Task Events
 

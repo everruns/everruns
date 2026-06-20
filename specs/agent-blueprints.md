@@ -201,7 +201,7 @@ Blueprint sessions emit the same events as any session:
 - `output.message.*` (LLM output)
 - `tool.started`, `tool.completed` (tool execution)
 
-No new event types needed. The `subagent.spawned` event gains an optional `blueprint_id` field so the UI can display the blueprint name/icon.
+No new event types needed. The subagent task's snapshot (carried on the `task.created`/`task.updated` events) includes `spec.blueprint_id`, so the UI can display the blueprint name/icon.
 
 ### Statefulness and Follow-ups
 
@@ -392,9 +392,11 @@ Branch on `session.blueprint_id`:
 - If set: load tools from blueprint
 - If not: existing path (harness + agent capabilities)
 
-### Subagent Events
+### Subagent Task Snapshot
 
-`subagent.spawned` event gains optional `blueprint_id` field.
+The subagent task snapshot (on `task.created`/`task.updated`) carries
+`spec.blueprint_id` so consumers can resolve the blueprint name/icon. (The
+legacy `subagent.*` events were retired — see `specs/events.md`.)
 
 ## Implementation Path
 
