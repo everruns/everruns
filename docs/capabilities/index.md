@@ -69,6 +69,14 @@ Image generation and editing workflows.
 |---|---|---|
 | [OpenAI Image Generation](/capabilities/openai-image-generation/) | `gpt_image_gen` | 2 |
 
+### Tools
+
+Provider-executed and built-in tool capabilities.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [OpenRouter Server Tools](/capabilities/openrouter-server-tools/) | `openrouter_server_tools` | 0 |
+
 ### Integrations
 
 External-service capabilities and blueprint-backed workflows.
