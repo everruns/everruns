@@ -41,6 +41,12 @@ let driver = MaiChatDriver::new(
 );
 ```
 
+## Documentation
+
+- [Microsoft MAI provider guide](https://docs.everruns.com/providers/mai/)
+- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [Everruns documentation](https://docs.everruns.com)
+
 ## License
 
 MIT

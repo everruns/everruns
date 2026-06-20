@@ -41,6 +41,7 @@ Register the driver into a platform and drive a full turn with `everruns-runtime
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-gemini)
+- [Google Gemini provider guide](https://docs.everruns.com/providers/gemini/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

@@ -79,6 +79,7 @@ assert!(!driver.uses_custom_url());
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-openai)
+- [OpenAI provider guide](https://docs.everruns.com/providers/openai/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

@@ -38,6 +38,7 @@ assert!(!driver.uses_custom_url());
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-openrouter)
+- [OpenRouter provider guide](https://docs.everruns.com/providers/openrouter/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 

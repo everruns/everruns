@@ -47,6 +47,7 @@ end-to-end shape with a different provider.
 ## Documentation
 
 - [API reference (docs.rs)](https://docs.rs/everruns-anthropic)
+- [Anthropic provider guide](https://docs.everruns.com/providers/anthropic/)
 - [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
 - [Everruns documentation](https://docs.everruns.com)
 
