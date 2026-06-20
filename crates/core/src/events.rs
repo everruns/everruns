@@ -72,6 +72,10 @@ pub const TOOL_PROGRESS: &str = "tool.progress";
 pub const TOOL_OUTPUT_DELTA: &str = "tool.output.delta";
 pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
 pub const TRANSCRIPT_REPAIRED: &str = "transcript.repaired";
+/// A malformed tool call was repaired (or repair was attempted) by the opt-in
+/// `tool_call_repair` capability (EVE-600). Carries an outcome label
+/// (`local-salvage` | `re-prompt` | `gave-up`).
+pub const TOOL_CALL_REPAIRED: &str = "tool.call_repaired";
 
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
@@ -170,6 +174,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_OUTPUT_DELTA,
     TOOL_CALL_REQUESTED,
     TRANSCRIPT_REPAIRED,
+    TOOL_CALL_REPAIRED,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -1336,6 +1341,28 @@ pub struct TranscriptRepairedData {
     pub action: TranscriptRepairAction,
 }
 
+/// Data for the `tool.call_repaired` event (EVE-600).
+///
+/// Emitted once per malformed tool call handled by the opt-in
+/// `tool_call_repair` capability. `outcome` is the stable label
+/// (`local-salvage` | `re-prompt` | `gave-up`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ToolCallRepairedData {
+    /// Turn this repair belongs to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// The tool call ID that was inspected/repaired.
+    pub tool_call_id: String,
+
+    /// The tool name the malformed call targeted.
+    pub tool_name: String,
+
+    /// Stable outcome label: `local-salvage`, `re-prompt`, or `gave-up`.
+    pub outcome: String,
+}
+
 /// Data for tool.call_requested event
 ///
 /// Emitted when the agent needs client-side tool calls executed.
@@ -2422,6 +2449,7 @@ pub enum EventData {
 
     // Recovery / repair events
     TranscriptRepaired(TranscriptRepairedData),
+    ToolCallRepaired(ToolCallRepairedData),
 
     // LLM events
     LlmGeneration(LlmGenerationData),
@@ -2531,6 +2559,7 @@ impl EventData {
             EventData::ToolOutputDelta(_) => TOOL_OUTPUT_DELTA,
             EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
             EventData::TranscriptRepaired(_) => TRANSCRIPT_REPAIRED,
+            EventData::ToolCallRepaired(_) => TOOL_CALL_REPAIRED,
             EventData::LlmGeneration(_) => LLM_GENERATION,
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
@@ -2653,6 +2682,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ToolCallRequested),
             TRANSCRIPT_REPAIRED => serde_json::from_value::<TranscriptRepairedData>(data.clone())
                 .map(EventData::TranscriptRepaired),
+            TOOL_CALL_REPAIRED => serde_json::from_value::<ToolCallRepairedData>(data.clone())
+                .map(EventData::ToolCallRepaired),
             LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
                 .map(EventData::LlmGeneration),
             REASON_THINKING_STARTED => {
@@ -2791,6 +2822,7 @@ impl_from_event_data! {
     ToolOutputDeltaData => ToolOutputDelta,
     ToolCallRequestedData => ToolCallRequested,
     TranscriptRepairedData => TranscriptRepaired,
+    ToolCallRepairedData => ToolCallRepaired,
     LlmGenerationData => LlmGeneration,
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,

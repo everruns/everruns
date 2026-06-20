@@ -725,6 +725,16 @@ Following the agentskills.io specification:
 - **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
+#### ToolCallRepair
+
+- **ID**: `tool_call_repair`
+- **Purpose**: Detects and repairs malformed tool-call arguments from the model, recovering the turn instead of surfacing a raw parse error
+- **Status**: Opt-in. Registered but **disabled by default** — contributes nothing unless an agent explicitly enables it; with it off, behavior is byte-for-byte unchanged.
+- **Tools**: None (intercepts in the `reason` atom, after tool calls are finalized and before the assistant message is built)
+- **Config**: `{"max_reprompts": N}` — corrective re-prompt attempts allowed per malformed call before falling through to the existing error path (default 1, range 0–5)
+- **Source**: `crates/core/src/capabilities/tool_call_repair.rs`
+- **Behavior**: Runs a pure, table-tested `salvage_tool_arguments` over each call's `arguments`: unwraps fenced ```json blocks and surrounding prose, strips trailing commas, normalizes single quotes, and coerces string-typed known keys against the tool's JSON schema (`"42"` → `42`). The already-valid case is a no-op. When local salvage fails the bounded re-prompt path applies (capped by `max_reprompts`), then falls through to today's exact error. Emits one `tool.call_repaired` event per malformed call with an outcome label (`local-salvage` | `re-prompt` | `gave-up`). Salvage parses untrusted model output and is bounded: inputs over 256 KiB are rejected and all scanning is linear and non-recursive.
+
 #### MessageMetadata
 
 - **ID**: `message_metadata`

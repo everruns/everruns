@@ -106,6 +106,7 @@ Streaming-output guardrails and runtime safety nets.
 | Capability | ID | Tools |
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
+| [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
 | Guardrails | `guardrails` | 0 |
 
 The `guardrails` capability runs config-driven deterministic checks (regex,
