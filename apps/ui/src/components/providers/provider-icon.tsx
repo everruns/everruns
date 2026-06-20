@@ -102,6 +102,25 @@ function MicrosoftIcon({ size }: { size: number }) {
   );
 }
 
+function FireworksIcon({ size }: { size: number }) {
+  // Stylized firework burst rendered monochrome.
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={size}
+      height={size}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
+      <path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.2 5.2l2.5 2.5M16.3 16.3l2.5 2.5M18.8 5.2l-2.5 2.5M7.7 16.3l-2.5 2.5" />
+    </svg>
+  );
+}
+
 const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: number }>> = {
   openai: OpenAiIcon,
   openrouter: Server,
@@ -111,6 +130,7 @@ const PROVIDER_ICON_COMPONENTS: Record<DriverId, React.ComponentType<{ size: num
   gemini: GeminiIcon,
   bedrock: AwsBedrockIcon,
   mai: MicrosoftIcon,
+  fireworks: FireworksIcon,
 };
 
 const PROVIDER_LABELS: Record<DriverId, string> = {
@@ -122,6 +142,7 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   gemini: "Google Gemini",
   bedrock: "AWS Bedrock",
   mai: "Microsoft MAI",
+  fireworks: "Fireworks AI",
 };
 
 interface ProviderIconProps {

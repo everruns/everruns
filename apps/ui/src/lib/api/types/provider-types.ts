@@ -12,7 +12,8 @@ export type DriverId =
   | "anthropic"
   | "gemini"
   | "bedrock"
-  | "mai";
+  | "mai"
+  | "fireworks";
 
 export type ProviderStatus = "active" | "disabled";
 

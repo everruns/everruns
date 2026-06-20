@@ -57,7 +57,7 @@ graph TD
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
 
-3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `LlmSim` (testing).
+3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `LlmSim` (testing).
 
 ### Error Types (Contract)
 
@@ -285,6 +285,7 @@ sequenceDiagram
 | Gemini driver | `crates/gemini/src/driver.rs` |
 | Bedrock driver | `crates/bedrock/src/driver.rs` |
 | Microsoft MAI driver | `crates/mai/src/driver.rs` |
+| Fireworks AI driver | `crates/fireworks/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants

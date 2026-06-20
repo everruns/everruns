@@ -44,6 +44,7 @@ mod seed_ids {
     pub const BEDROCK_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000005);
     pub const OPENROUTER_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000006);
     pub const MAI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000007);
+    pub const FIREWORKS_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000008);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -1463,6 +1464,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         id: seed_ids::MAI_PROVIDER,
         name: "Microsoft MAI",
         provider_type: "mai",
+    },
+    SeedProvider {
+        id: seed_ids::FIREWORKS_PROVIDER,
+        name: "Fireworks AI",
+        provider_type: "fireworks",
     },
 ];
 
