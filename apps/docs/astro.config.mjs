@@ -278,6 +278,10 @@ export default defineConfig({
                   items: [{ autogenerate: { directory: "integrations" } }],
                 },
                 {
+                  label: "Providers",
+                  items: [{ autogenerate: { directory: "providers" } }],
+                },
+                {
                   label: "Observability",
                   items: [{ autogenerate: { directory: "observability" } }],
                 },

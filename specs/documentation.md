@@ -30,6 +30,9 @@ docs/
 │   └── capabilities.md
 ├── integrations/
 │   └── daytona.md
+├── providers/
+│   ├── index.md          # Model providers overview
+│   └── *.md              # Per-provider pages (openai, anthropic, bedrock, ...)
 ├── observability/
 │   └── braintrust.md
 ├── sre/
@@ -50,7 +53,7 @@ rendered as horizontal tabs below the header on desktop:
 | Tab | Content |
 |-----|---------|
 | Get Started | Getting Started guides + Features |
-| Integrations | Integrations + Observability + Ecosystem |
+| Integrations | Integrations + Providers + Observability + Ecosystem |
 | Capabilities | Per-capability reference pages (tools, examples, use cases) |
 | Operations | SRE Guide + Runbooks |
 | Reference | Event Reference + API Reference (OpenAPI) |
