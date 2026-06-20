@@ -225,5 +225,8 @@ inherits = "release"
 opt-level = 1
 lto = false
 codegen-units = 256
-debug = false
-strip = true
+# Keep cheap line-number debug info and don't strip: these binaries are executed
+# by CI jobs (workflow/e2e/openapi) under RUST_BACKTRACE=1, so panic backtraces
+# must stay actionable. line-tables-only matches the dev profile — small and fast.
+debug = "line-tables-only"
+strip = false

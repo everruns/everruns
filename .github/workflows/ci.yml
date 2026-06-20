@@ -128,6 +128,10 @@ jobs:
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
               - '.github/workflows/ci.yml'
+              # The prebuilt runtime image is assembled by the docker-build job
+              # (gated on `rust`); list it here so editing it alone still runs
+              # build-binaries + docker-build and validates the assembly.
+              - 'docker/Dockerfile.prebuilt'
             sdk_compat:
               - 'crates/**'
               - '.github/scripts/sdk-compat/**'
@@ -1441,9 +1445,8 @@ jobs:
           name: everruns-worker
           path: ./bin
 
-      - name: Make binaries executable
-        run: chmod +x ./bin/*
-
+      # No host chmod needed: Dockerfile.prebuilt uses COPY --chmod, and the
+      # image is only built here (never run in CI).
       - name: Build server Docker image
         uses: docker/build-push-action@v5
         with:

@@ -25,7 +25,9 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be5
 
 WORKDIR /app
 
-COPY bin/everruns-server /app/everruns-server
+# --chmod so the image doesn't depend on the host file mode (CI artifacts can
+# arrive as 0644). Requires BuildKit (enabled via the syntax directive above).
+COPY --chmod=0755 bin/everruns-server /app/everruns-server
 
 EXPOSE 9000
 EXPOSE 9001
@@ -42,7 +44,7 @@ FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be5
 
 WORKDIR /app
 
-COPY bin/everruns-worker /app/everruns-worker
+COPY --chmod=0755 bin/everruns-worker /app/everruns-worker
 
 ENV RUST_LOG=info
 
