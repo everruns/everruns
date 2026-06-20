@@ -47,10 +47,15 @@ pub trait CredentialProvider: Send + Sync {
 
 /// A [`CredentialProvider`] that reads credentials from the process environment.
 ///
-/// This is the **only** place in the codebase that reads provider credential env
-/// vars for driver construction. It is intended for standalone/CLI/dev use and
-/// MUST NOT be constructed on org-scoped server execution paths — doing so would
-/// reopen the env fallback the Key Resolution Contract forbids.
+/// This is the shared library implementation for env-based credentials and the
+/// sanctioned pattern for any caller that wants them: driver/library code never
+/// reads credential env vars itself, so new env-credential logic belongs here.
+/// (Some standalone examples and `#[ignore]` live tests still read `*_API_KEY`
+/// directly to gate themselves; that caller-side code should prefer this type.)
+///
+/// It is intended for standalone/CLI/dev use and MUST NOT be constructed on
+/// org-scoped server execution paths — doing so would reopen the env fallback the
+/// Key Resolution Contract forbids.
 ///
 /// Recognized variables (per driver):
 ///

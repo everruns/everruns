@@ -611,11 +611,16 @@ incident, not a cosmetic bug.
 
 ### The one rule
 
-> **Driver code never reads the process environment.** No `std::env::var` in any
-> `crates/openai`, `crates/anthropic`, `crates/gemini`, `crates/openrouter`,
-> `crates/bedrock`, `crates/mai`, or the protocol drivers in `crates/core`
-> (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials only ever
-> arrive through a constructor argument or a `DriverConfig`.
+> **Driver code never reads provider *credentials* from the process
+> environment.** No `std::env::var` for an API key, secret, or endpoint base URL
+> in any `crates/openai`, `crates/anthropic`, `crates/gemini`,
+> `crates/openrouter`, `crates/bedrock`, `crates/mai`, or the protocol drivers in
+> `crates/core` (`openai_protocol.rs`, `openresponses_protocol.rs`). Credentials
+> only ever arrive through a constructor argument or a `DriverConfig`.
+>
+> Scope: this bans reading *credentials* from env, not all environment access. A
+> driver may still read a non-credential tuning knob from env (e.g.
+> `OPENAI_IMAGE_TIMEOUT_SECS` in `crates/openai/src/images.rs`).
 
 There are exactly **two** sanctioned ways credentials reach a driver. Every code
 path must be one of them; there is no third option and no fallback between them.
@@ -666,8 +671,14 @@ single shared seam in `crates/core/src/credential_provider.rs`:
   optional `base_url` for a driver, decoupled from where they came from. Drivers
   and dev stores depend on this trait, not on the environment.
 - **`ProviderCredentials`** — `{ api_key: Option<String>, base_url: Option<String> }`.
-- **`EnvCredentialProvider`** — the **only** type in the entire codebase that may
-  read provider credential env vars. Recognized variables:
+- **`EnvCredentialProvider`** — the shared library implementation of the
+  env-based source, and the **sanctioned pattern** for any caller that wants
+  env-driven credentials. It is the only *library/shared* component that reads
+  provider credential env vars; new env-credential code belongs here, not in a
+  driver. (Some standalone examples and `#[ignore]` live integration tests still
+  read `*_API_KEY` directly to gate themselves; those are caller-side and should
+  prefer this provider, but they are not part of the driver/library surface this
+  contract governs.) Recognized variables:
 
   | Driver | API key | Base URL |
   |--------|---------|----------|
@@ -702,7 +713,9 @@ into the DB, never read by a driver.
 
 **Don't**
 
-- ❌ Add `std::env::var(...)` to any driver crate or protocol driver.
+- ❌ Read a credential (`*_API_KEY`, secret, or endpoint base URL) from
+  `std::env::var(...)` in any driver crate or protocol driver. (Non-credential
+  knobs are fine.)
 - ❌ Reintroduce a `Driver::from_env()` / `*Store::from_env()` constructor. These
   were removed deliberately; their name invites use on the server path.
 - ❌ Construct `EnvCredentialProvider` anywhere reachable from org-scoped
