@@ -215,6 +215,13 @@ export default defineConfig({
                       ],
                     },
                     {
+                      label: "Tools",
+                      collapsed: true,
+                      items: [
+                        { label: "OpenRouter Server Tools", slug: "capabilities/openrouter-server-tools" },
+                      ],
+                    },
+                    {
                       label: "Integrations",
                       collapsed: true,
                       items: [
