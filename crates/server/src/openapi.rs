@@ -7,7 +7,7 @@
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
-use everruns_core::provider::Provider;
+use everruns_core::provider::{Provider, ProviderTraceConfig};
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, DriverId,
     Event, EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource,
@@ -381,7 +381,7 @@ use utoipa::OpenApi;
             ListResponse<api::messages::Message>,
             ListResponse<Event>,
             domains::events::EventsSummaryResult, domains::events::EventTypeCountOut,
-            Provider, DriverId, ProviderStatus,
+            Provider, ProviderTraceConfig, DriverId, ProviderStatus,
             Model, ModelWithProvider,
             api::providers::CreateProviderRequest,
             api::providers::UpdateProviderRequest,

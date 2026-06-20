@@ -21,7 +21,10 @@ import type {
 } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { getEventData, isImageFilePart } from "@/lib/api/types";
+import { useProviders } from "@/hooks";
+import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { TraceLink } from "@/components/chat/trace-link";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
@@ -180,6 +183,8 @@ function renderTurnDivider(
   eventId: string,
   turnDurationByEventId: Map<string, number>,
   workedForText: string | null,
+  traceUrl: string | null,
+  traceLabel: string,
 ) {
   const durationMs = turnDurationByEventId.get(eventId);
   if (durationMs == null || !workedForText) return null;
@@ -187,7 +192,10 @@ function renderTurnDivider(
   return (
     <div className="flex items-center gap-4 pt-3 text-xs font-medium text-muted-foreground sm:text-sm">
       <div className="h-px flex-1 bg-border" />
-      <span className="whitespace-nowrap">{workedForText}</span>
+      <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+        {workedForText}
+        {traceUrl && <TraceLink href={traceUrl} label={traceLabel} />}
+      </span>
       <div className="h-px flex-1 bg-border" />
     </div>
   );
@@ -207,6 +215,8 @@ export const ChatMessageList = memo(function ChatMessageList({
   getToolCalls,
 }: ChatMessageListProps) {
   const { locale, t } = useLocale();
+  const { data: providers } = useProviders();
+  const traceConfigByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -475,6 +485,11 @@ export const ChatMessageList = memo(function ChatMessageList({
               )
             : [];
         const images = data.message?.content ? getMessageImages(data.message.content) : [];
+        // Deep link to this generation's trace on the provider (assistant
+        // messages only; user messages carry no provider response id).
+        const genTraceUrl = outputData
+          ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver)
+          : null;
         const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
         const isToolOnlyMessage =
           !isUser && toolCalls.length > 0 && !textContent && images.length === 0;
@@ -545,6 +560,9 @@ export const ChatMessageList = memo(function ChatMessageList({
                         )}
                       </div>
                       <MessageInfoIcon event={event} />
+                      {genTraceUrl && (
+                        <TraceLink href={genTraceUrl} label={t("trace_view_message")} />
+                      )}
                     </div>
                   </div>
                 )}
@@ -571,6 +589,8 @@ export const ChatMessageList = memo(function ChatMessageList({
                 t("worked_for", {
                   duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
                 }),
+                genTraceUrl,
+                t("trace_view_turn"),
               );
             })()}
           </div>

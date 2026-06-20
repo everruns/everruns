@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -27,6 +28,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUpdateSession } from "@/hooks/use-sessions";
+import { useProviders } from "@/hooks";
+import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
+import { useLocale } from "@/providers/locale-provider";
 import {
   getDisplayName,
   getEntityReferenceClassName,
@@ -41,6 +45,7 @@ import {
   Check,
   ChevronDown,
   Database,
+  ExternalLink,
   Folder,
   GitBranch,
   Activity,
@@ -187,6 +192,42 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
+  );
+}
+
+/**
+ * Link to the session's grouped trace on its provider's observability dashboard
+ * (e.g. OpenRouter Logs). Rendered only when the session's provider has trace
+ * links enabled (see ProviderTraceConfig). Uses the session id forwarded to the
+ * provider for grouping.
+ */
+function SessionTraceBadge({
+  sessionId,
+  llmModel,
+}: {
+  sessionId: string;
+  llmModel?: ModelWithProvider;
+}) {
+  const { t } = useLocale();
+  const { data: providers } = useProviders();
+  const traceByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
+  const url = resolveSessionTraceUrl(llmModel?.provider_type, sessionId, traceByDriver);
+  if (!url) return null;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        buttonVariants({ variant: "outline", size: "sm" }),
+        "gap-1 text-muted-foreground",
+      )}
+      title={t("trace_view_session")}
+    >
+      <ExternalLink className="icon-sharp h-3 w-3" />
+      {t("trace_label")}
+    </a>
   );
 }
 
@@ -394,6 +435,8 @@ export function SessionHeader({
               {llmModel.display_name}
             </Badge>
           )}
+
+          <SessionTraceBadge sessionId={sessionId} llmModel={llmModel} />
 
           <SessionStatusBadge status={effectiveStatus} />
 

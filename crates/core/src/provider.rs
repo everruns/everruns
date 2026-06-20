@@ -85,6 +85,32 @@ impl DriverId {
             DriverId::External(id) => id.as_ref(),
         }
     }
+
+    /// Default trace-link URL templates for this driver, as
+    /// `(generation_url_template, session_url_template)`.
+    ///
+    /// These are best-effort defaults for vendors that expose an observability
+    /// dashboard. They are only *defaults*: an org overrides them per provider
+    /// (`ProviderTraceConfig`) and must opt in via `enabled`, since most vendors
+    /// retain prompt/completion content only when logging is explicitly turned
+    /// on. Templates support the `{response_id}`, `{session_id}`, `{turn_id}`
+    /// and `{model}` placeholders.
+    ///
+    /// OpenRouter stores logged generations on its **Logs** page
+    /// (<https://openrouter.ai/logs>, gated behind the account's
+    /// "Input & Output Logging" Observability setting). OpenRouter does not
+    /// document a public deep-link by generation id, so the generation template
+    /// passes the id best-effort; worst case it lands on the Logs page where the
+    /// generation can be found by recency.
+    pub fn default_trace_templates(&self) -> (Option<String>, Option<String>) {
+        match self {
+            DriverId::OpenRouter => (
+                Some("https://openrouter.ai/logs?id={response_id}".to_string()),
+                Some("https://openrouter.ai/logs".to_string()),
+            ),
+            _ => (None, None),
+        }
+    }
 }
 
 impl std::str::FromStr for DriverId {
@@ -160,6 +186,33 @@ pub enum ProviderStatus {
     Disabled,
 }
 
+/// Configuration for linking from the chat UI to a provider's observability
+/// dashboard ("trace"/"logs").
+///
+/// This is provider-agnostic: any driver with a dashboard can supply default
+/// templates (see [`DriverId::default_trace_templates`]), and an org enables
+/// links per provider once it has confirmed logging is on for that account.
+/// URL templates support the `{response_id}`, `{session_id}`, `{turn_id}` and
+/// `{model}` placeholders, so the same mechanism works for OpenRouter today and
+/// for third-party observability backends (Langfuse, Helicone, ...) via an
+/// override.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ProviderTraceConfig {
+    /// Whether trace links should be shown for this provider. Defaults to
+    /// `false`: vendors typically do not retain trace content unless logging is
+    /// explicitly enabled, so the org opts in once that is set up.
+    pub enabled: bool,
+    /// URL template for a single generation's trace, e.g.
+    /// `"https://openrouter.ai/logs?id={response_id}"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_url_template: Option<String>,
+    /// URL template for a session's grouped trace, e.g.
+    /// `"https://openrouter.ai/logs"`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_url_template: Option<String>,
+}
+
 /// LLM Provider entity (API keys never exposed)
 /// Note: This is the entity struct, separate from the Provider trait in llm.rs
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -186,4 +239,9 @@ pub struct Provider {
     pub created_at: DateTime<Utc>,
     /// Timestamp when this provider was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
+    /// Resolved trace/observability link configuration: the driver's default
+    /// templates overlaid with this provider's stored overrides. `None` when the
+    /// driver exposes no dashboard and the org configured nothing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<ProviderTraceConfig>,
 }

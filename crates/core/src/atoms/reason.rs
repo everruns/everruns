@@ -2645,6 +2645,21 @@ impl ReasonAtom {
                 serde_json::Value::String(effort.clone()),
             );
         }
+        // Stamp the driver id and provider response id so the chat UI can build
+        // a deep link to the provider's trace/logs for this message (see
+        // ProviderTraceConfig). `response_id` is the provider's generation id
+        // (e.g. OpenRouter's "gen-..."); absent for providers that do not return
+        // one.
+        metadata.insert(
+            "provider".to_string(),
+            serde_json::Value::String(model_with_provider.provider_type.to_string()),
+        );
+        if let Some(ref rid) = response_id {
+            metadata.insert(
+                "response_id".to_string(),
+                serde_json::Value::String(rid.clone()),
+            );
+        }
 
         // 18. Store and emit output.message.completed event with metadata and usage
         let has_tool_calls = !tool_calls.is_empty();
