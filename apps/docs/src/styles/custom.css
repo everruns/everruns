@@ -529,8 +529,9 @@ h6 {
 
 /* Integration sidebar icons: same monochrome CSS-mask treatment as the
    provider glyphs above, keyed by href. Brand logos are used where the
-   provider distributes one; the rest use functional category glyphs. Keep
-   this list in sync with docs/integrations/*.md and the floated page icons. */
+   integration's vendor distributes one; the rest use functional category
+   glyphs. Keep this list in sync with docs/integrations/*.md and the floated
+   page icons. */
 .sidebar-content a[href="/integrations/daytona/"]::before,
 .sidebar-content a[href="/integrations/e2b/"]::before,
 .sidebar-content a[href="/integrations/container-sandbox/"]::before,
