@@ -97,7 +97,12 @@ async fn session_sandbox_prompt_within_budget() {
 #[tokio::test]
 async fn mounted_data_prompts_within_budget() {
     assert_contribution_under(&SampleDataCapability, 250).await;
-    assert_contribution_under(&DataKnowledgeCapability, 300).await;
+    // Bumped 300 → 350: the Open Knowledge Format (OKF) adoption (#2321) added a
+    // short description of the mounted bundle layout (markdown + YAML frontmatter,
+    // index.md navigation) to the system-prompt contribution, taking it to 342
+    // bytes. The content is intentional first-turn guidance, so ratchet the cap up
+    // per this file's policy rather than trimming it.
+    assert_contribution_under(&DataKnowledgeCapability, 350).await;
 }
 
 #[tokio::test]
