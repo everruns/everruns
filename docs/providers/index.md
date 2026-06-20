@@ -73,14 +73,6 @@ run an A/B comparison per session.
 - Credentials are encrypted at rest with AES-256-GCM envelope encryption.
 - Credential values are never returned by the API — only a "configured" flag is
   exposed.
-- Resolution is **fail-closed**: tenant agent turns resolve keys from the
-  database only. A turn with no configured provider fails with a clear error
-  rather than silently falling back to a platform environment variable.
-
-For self-hosted and single-tenant deployments, provider credentials for the
-default organization can be seeded from environment variables at startup.
-Key-based providers use `DEFAULT_<PROVIDER>_API_KEY` (for example
-`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`); AWS Bedrock reads
-standard `AWS_*` (or `AWS_BEDROCK_*`) credentials instead. See the
-[environment variables reference](/sre/environment-variables/) for the exact
-names per provider.
+- Resolution is **fail-closed**: each organization resolves its own configured
+  credentials. A turn with no configured provider fails with a clear error
+  rather than running on another organization's credentials.
