@@ -727,4 +727,140 @@ impl Database {
         .await?;
         Ok(result.rows_affected() > 0)
     }
+
+    // ============================================
+    // Organization Invitations (EVE-602)
+    // ============================================
+
+    pub async fn create_org_invitation(
+        &self,
+        input: CreateOrgInvitation,
+    ) -> Result<OrgInvitationRow> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            INSERT INTO org_invitations (public_id, org_id, email, role, invited_by, token_hash, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            "#,
+        )
+        .bind(&input.public_id)
+        .bind(input.org_id)
+        .bind(&input.email)
+        .bind(&input.role)
+        .bind(input.invited_by)
+        .bind(&input.token_hash)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn list_pending_org_invitations(&self, org_id: i64) -> Result<Vec<OrgInvitationRow>> {
+        let rows = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE org_id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    pub async fn get_org_invitation_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE token_hash = $1
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_org_invitation_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE org_id = $1 AND public_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_active_org_invitation_by_email(
+        &self,
+        org_id: i64,
+        email: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            SELECT id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            FROM org_invitations
+            WHERE org_id = $1 AND email = $2
+              AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+            "#,
+        )
+        .bind(org_id)
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn revoke_org_invitation(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE org_invitations
+            SET revoked_at = NOW()
+            WHERE org_id = $1 AND public_id = $2
+              AND accepted_at IS NULL AND revoked_at IS NULL
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Atomically mark an invitation accepted. The `WHERE` guard ensures only a
+    /// still-pending invite transitions, so concurrent accepts cannot both win.
+    pub async fn accept_org_invitation(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let row = sqlx::query_as::<_, OrgInvitationRow>(
+            r#"
+            UPDATE org_invitations
+            SET accepted_at = NOW(), accepted_by = $2
+            WHERE id = $1 AND accepted_at IS NULL AND revoked_at IS NULL
+            RETURNING id, public_id, org_id, email, role, invited_by, token_hash, expires_at, accepted_at, accepted_by, revoked_at, created_at, updated_at
+            "#,
+        )
+        .bind(invitation_id)
+        .bind(accepted_by)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
 }

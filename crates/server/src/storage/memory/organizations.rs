@@ -568,4 +568,134 @@ impl InMemoryDatabase {
         webhooks.retain(|w| !(w.org_id == org_id && w.public_id == public_id));
         Ok(webhooks.len() < before)
     }
+
+    // ============================================
+    // Organization Invitations (EVE-602)
+    // ============================================
+
+    pub async fn create_org_invitation(
+        &self,
+        input: CreateOrgInvitation,
+    ) -> Result<OrgInvitationRow> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        let id = invitations.iter().map(|i| i.id).max().unwrap_or(0) + 1;
+        let row = OrgInvitationRow {
+            id,
+            public_id: input.public_id,
+            org_id: input.org_id,
+            email: input.email,
+            role: input.role,
+            invited_by: input.invited_by,
+            token_hash: input.token_hash,
+            expires_at: input.expires_at,
+            accepted_at: None,
+            accepted_by: None,
+            revoked_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        invitations.push(row.clone());
+        Ok(row)
+    }
+
+    /// List invitations that are still outstanding (not accepted, not revoked),
+    /// newest first. Expired-but-unresolved invites are included so callers can
+    /// present them distinctly; callers derive status from the timestamps.
+    pub async fn list_pending_org_invitations(&self, org_id: i64) -> Result<Vec<OrgInvitationRow>> {
+        let mut rows: Vec<_> = self
+            .org_invitations
+            .read()
+            .iter()
+            .filter(|i| i.org_id == org_id && i.accepted_at.is_none() && i.revoked_at.is_none())
+            .cloned()
+            .collect();
+        rows.sort_by_key(|i| std::cmp::Reverse(i.created_at));
+        Ok(rows)
+    }
+
+    pub async fn get_org_invitation_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        Ok(self
+            .org_invitations
+            .read()
+            .iter()
+            .find(|i| i.token_hash == token_hash)
+            .cloned())
+    }
+
+    pub async fn get_org_invitation_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        Ok(self
+            .org_invitations
+            .read()
+            .iter()
+            .find(|i| i.org_id == org_id && i.public_id == public_id)
+            .cloned())
+    }
+
+    /// Active (pending, not yet expired) invitation for an email in an org, if any.
+    pub async fn get_active_org_invitation_by_email(
+        &self,
+        org_id: i64,
+        email: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let now = Self::now();
+        Ok(self
+            .org_invitations
+            .read()
+            .iter()
+            .find(|i| {
+                i.org_id == org_id
+                    && i.email == email
+                    && i.accepted_at.is_none()
+                    && i.revoked_at.is_none()
+                    && i.expires_at > now
+            })
+            .cloned())
+    }
+
+    /// Mark a pending invitation revoked. Returns false if it was missing or no
+    /// longer pending.
+    pub async fn revoke_org_invitation(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        if let Some(inv) = invitations.iter_mut().find(|i| {
+            i.org_id == org_id
+                && i.public_id == public_id
+                && i.accepted_at.is_none()
+                && i.revoked_at.is_none()
+        }) {
+            inv.revoked_at = Some(now);
+            inv.updated_at = now;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Atomically mark an invitation accepted. Returns the updated row only when
+    /// it was still pending, so concurrent accepts cannot both win.
+    pub async fn accept_org_invitation(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+    ) -> Result<Option<OrgInvitationRow>> {
+        let now = Self::now();
+        let mut invitations = self.org_invitations.write();
+        if let Some(inv) = invitations
+            .iter_mut()
+            .find(|i| i.id == invitation_id && i.accepted_at.is_none() && i.revoked_at.is_none())
+        {
+            inv.accepted_at = Some(now);
+            inv.accepted_by = Some(accepted_by);
+            inv.updated_at = now;
+            return Ok(Some(inv.clone()));
+        }
+        Ok(None)
+    }
 }

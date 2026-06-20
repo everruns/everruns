@@ -2710,6 +2710,56 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Organization Invitations (EVE-602)
+    // ============================================
+
+    pub async fn create_org_invitation(
+        &self,
+        input: CreateOrgInvitation,
+    ) -> Result<OrgInvitationRow> {
+        dispatch!(self, create_org_invitation, input)
+    }
+
+    pub async fn list_pending_org_invitations(&self, org_id: i64) -> Result<Vec<OrgInvitationRow>> {
+        dispatch!(self, list_pending_org_invitations, org_id)
+    }
+
+    pub async fn get_org_invitation_by_token_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, get_org_invitation_by_token_hash, token_hash)
+    }
+
+    pub async fn get_org_invitation_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, get_org_invitation_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_active_org_invitation_by_email(
+        &self,
+        org_id: i64,
+        email: &str,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, get_active_org_invitation_by_email, org_id, email)
+    }
+
+    pub async fn revoke_org_invitation(&self, org_id: i64, public_id: &str) -> Result<bool> {
+        dispatch!(self, revoke_org_invitation, org_id, public_id)
+    }
+
+    pub async fn accept_org_invitation(
+        &self,
+        invitation_id: i64,
+        accepted_by: Uuid,
+    ) -> Result<Option<OrgInvitationRow>> {
+        dispatch!(self, accept_org_invitation, invitation_id, accepted_by)
+    }
+
+    // ============================================
     // Session Storage (Key-Value & Secrets)
     // ============================================
 

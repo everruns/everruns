@@ -17,10 +17,24 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useMembers, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-members";
+import { useInvitations, useRevokeInvite } from "@/hooks/use-invitations";
 import { usePageTitle } from "@/hooks";
-import { Users, Shield, ShieldCheck, Crown, UserMinus, Loader2 } from "lucide-react";
+import {
+  Users,
+  Shield,
+  ShieldCheck,
+  Crown,
+  UserMinus,
+  Loader2,
+  UserPlus,
+  Mail,
+  Clock,
+  X,
+} from "lucide-react";
 import type { OrgMember } from "@/lib/api/members";
+import type { Invitation, InvitationStatus } from "@/lib/api/invitations";
 import type { OrgRole } from "@/lib/api/types";
+import { InviteMemberDialog } from "@/components/invitations/invite-member-dialog";
 
 function getInitials(name: string): string {
   return name
@@ -182,11 +196,88 @@ function MemberCardSkeleton() {
   );
 }
 
+const INVITE_STATUS_LABEL: Record<InvitationStatus, string> = {
+  pending: "Pending",
+  expired: "Expired",
+  accepted: "Accepted",
+  revoked: "Revoked",
+};
+
+function InviteRow({ invite, canManage }: { invite: Invitation; canManage: boolean }) {
+  const revokeInvite = useRevokeInvite();
+  const isExpired = invite.status === "expired";
+
+  const handleRevoke = async () => {
+    if (!confirm(`Revoke the invitation for ${invite.email}?`)) return;
+    try {
+      await revokeInvite.mutateAsync(invite.id);
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between p-4 border">
+      <div className="flex items-center gap-4">
+        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
+          <Mail className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div>
+          <div className="font-medium">{invite.email}</div>
+          <div className="text-sm text-muted-foreground capitalize">{invite.role}</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <Badge variant={isExpired ? "outline" : "secondary"} className="gap-1">
+          <Clock className="h-3 w-3" />
+          {INVITE_STATUS_LABEL[invite.status]}
+        </Badge>
+        {canManage && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleRevoke}
+            disabled={revokeInvite.isPending}
+            title="Revoke invitation"
+          >
+            {revokeInvite.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <X className="h-4 w-4 text-muted-foreground" />
+            )}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PendingInvitesSection({ canManage }: { canManage: boolean }) {
+  const { data: invites, isLoading } = useInvitations();
+
+  if (isLoading || !invites || invites.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-xl font-semibold mb-1">Pending invitations</h2>
+      <p className="text-sm text-muted-foreground mb-4">
+        Invitations that haven&apos;t been accepted yet.
+      </p>
+      <div className="space-y-2">
+        {invites.map((invite) => (
+          <InviteRow key={invite.id} invite={invite} canManage={canManage} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function MembersPage() {
   usePageTitle("Members", "Settings");
   const { user } = useAuth();
   const { currentOrg, hasRole } = useOrg();
   const { data: members, isLoading, error } = useMembers();
+  const [inviteOpen, setInviteOpen] = useState(false);
 
   const canManage = hasRole("admin");
   const isOwner = hasRole("owner");
@@ -203,6 +294,12 @@ export default function MembersPage() {
               <span className="font-medium">{currentOrg?.name ?? "your organization"}</span>.
             </p>
           </div>
+          {canManage && (
+            <Button onClick={() => setInviteOpen(true)} className="gap-2">
+              <UserPlus className="h-4 w-4" />
+              Invite member
+            </Button>
+          )}
         </div>
 
         <QueryStateWrapper
@@ -245,6 +342,10 @@ export default function MembersPage() {
           )}
         </QueryStateWrapper>
       </section>
+
+      <PendingInvitesSection canManage={canManage} />
+
+      <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} canInviteOwner={isOwner} />
     </div>
   );
 }
