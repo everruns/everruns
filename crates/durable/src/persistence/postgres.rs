@@ -2571,6 +2571,13 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let heartbeat_threshold =
             Utc::now() - chrono::Duration::seconds(WORKER_HEARTBEAT_TIMEOUT_SECS);
 
+        // Live gauges (pending/claimed tasks, running/pending workflows, workers,
+        // DLQ) are bounded by current work and backed by partial indexes, so they
+        // stay as direct queries. The cumulative totals (completed/failed/started
+        // for tasks and workflows) are read from `durable_stat_counters`, which is
+        // maintained incrementally by triggers (migration 082). This keeps the
+        // health path O(1) instead of scanning the unbounded historical tables on
+        // every 10s metrics sample. See EVE-605.
         let row = sqlx::query(
             r#"
             SELECT
@@ -2581,14 +2588,14 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 (SELECT COALESCE(SUM(current_load), 0) FROM durable_workers WHERE status = 'active' AND last_heartbeat_at > $1) as current_load,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'pending') as pending_tasks,
                 (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed') as claimed_tasks,
-                (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed') as completed_tasks,
-                (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead')) as failed_tasks,
-                (SELECT COUNT(*) FROM durable_task_queue WHERE claimed_at IS NOT NULL) as started_tasks,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0) as completed_tasks,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_failed'), 0) as failed_tasks,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_started'), 0) as started_tasks,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'running') as running_workflows,
                 (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'pending') as pending_workflows,
-                (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed') as completed_workflows,
-                (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled')) as failed_workflows,
-                (SELECT COUNT(*) FROM durable_workflow_instances WHERE started_at IS NOT NULL) as started_workflows,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_completed'), 0) as completed_workflows,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_failed'), 0) as failed_workflows,
+                COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_started'), 0) as started_workflows,
                 (SELECT COUNT(*) FROM durable_dead_letter_queue WHERE requeued_at IS NULL) as dlq_size
             "#,
         )

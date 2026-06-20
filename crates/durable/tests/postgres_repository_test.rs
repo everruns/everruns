@@ -944,3 +944,291 @@ fn test_worker_heartbeat_timeout_constant() {
     use everruns_durable::persistence::WORKER_HEARTBEAT_TIMEOUT_SECS;
     assert_eq!(WORKER_HEARTBEAT_TIMEOUT_SECS, 60);
 }
+
+// ============================================
+// EVE-605: maintained durable health counters
+// ============================================
+//
+// `get_system_health` reads the cumulative task/workflow totals from
+// `durable_stat_counters` (maintained by triggers, migration 082) instead of
+// scanning the unbounded history tables. These tests pin the two guarantees the
+// fix depends on: the counters always equal a live COUNT(*) of the rows they
+// replace, and the health read stays O(1) as the task table grows.
+
+/// Register a minimal active worker for tests that need to claim tasks.
+async fn register_health_test_worker(
+    store: &PostgresWorkflowEventStore,
+    id: &str,
+    types: Vec<String>,
+) {
+    store
+        .register_worker(WorkerInfo {
+            id: id.to_string(),
+            worker_group: Some("default".to_string()),
+            activity_types: types,
+            max_concurrency: 10,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+}
+
+/// The maintained counters must always equal a live COUNT(*) of the matching
+/// rows. Because the counters are global (not scoped to one workflow), this
+/// invariant holds regardless of other rows in the shared test DB, so it is a
+/// robust check of both the migration backfill and every trigger branch.
+async fn assert_health_counters_match_counts(pool: &PgPool) {
+    let row = sqlx::query(
+        r#"
+        SELECT
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0) AS c_tc,
+            (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'completed') AS a_tc,
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_failed'), 0) AS c_tf,
+            (SELECT COUNT(*) FROM durable_task_queue WHERE status IN ('failed', 'dead')) AS a_tf,
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_started'), 0) AS c_ts,
+            (SELECT COUNT(*) FROM durable_task_queue WHERE claimed_at IS NOT NULL) AS a_ts,
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_completed'), 0) AS c_wc,
+            (SELECT COUNT(*) FROM durable_workflow_instances WHERE status = 'completed') AS a_wc,
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_failed'), 0) AS c_wf,
+            (SELECT COUNT(*) FROM durable_workflow_instances WHERE status IN ('failed', 'cancelled')) AS a_wf,
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'workflows_started'), 0) AS c_ws,
+            (SELECT COUNT(*) FROM durable_workflow_instances WHERE started_at IS NOT NULL) AS a_ws
+        "#,
+    )
+    .fetch_one(pool)
+    .await
+    .unwrap();
+
+    for (name, counter, actual) in [
+        (
+            "tasks_completed",
+            row.get::<i64, _>("c_tc"),
+            row.get::<i64, _>("a_tc"),
+        ),
+        (
+            "tasks_failed",
+            row.get::<i64, _>("c_tf"),
+            row.get::<i64, _>("a_tf"),
+        ),
+        (
+            "tasks_started",
+            row.get::<i64, _>("c_ts"),
+            row.get::<i64, _>("a_ts"),
+        ),
+        (
+            "workflows_completed",
+            row.get::<i64, _>("c_wc"),
+            row.get::<i64, _>("a_wc"),
+        ),
+        (
+            "workflows_failed",
+            row.get::<i64, _>("c_wf"),
+            row.get::<i64, _>("a_wf"),
+        ),
+        (
+            "workflows_started",
+            row.get::<i64, _>("c_ws"),
+            row.get::<i64, _>("a_ws"),
+        ),
+    ] {
+        assert_eq!(
+            counter, actual,
+            "counter `{name}` ({counter}) drifted from live COUNT(*) ({actual})"
+        );
+    }
+}
+
+/// Drive a task and a workflow through their state transitions (claim, complete,
+/// dead, run, complete) plus a delete, asserting the counter==COUNT invariant
+/// after every mutation. This exercises every trigger branch.
+#[tokio::test]
+async fn test_health_counters_stay_consistent_through_transitions() {
+    let store = create_test_store().await;
+    let pool = store.pool().clone();
+    let workflow_id = Uuid::now_v7();
+    let worker = format!("eve605_{}", Uuid::now_v7());
+    let atype = format!("eve605_{}", Uuid::now_v7());
+
+    assert_health_counters_match_counts(&pool).await;
+
+    register_health_test_worker(&store, &worker, vec![atype.clone()]).await;
+    store
+        .create_workflow(workflow_id, "eve605_wf", json!({}), None)
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+
+    // Enqueue -> claim (started+1) -> complete (completed+1).
+    let t1 = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "a1".to_string(),
+            activity_type: atype.clone(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+    store
+        .claim_task(&worker, std::slice::from_ref(&atype), 1)
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+    store.complete_task(t1, &worker, json!({})).await.unwrap();
+    assert_health_counters_match_counts(&pool).await;
+
+    // Second task -> claim -> drive to terminal 'dead' (failed bucket).
+    let t2 = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "a2".to_string(),
+            activity_type: atype.clone(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+    store
+        .claim_task(&worker, std::slice::from_ref(&atype), 1)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE durable_task_queue SET status = 'dead' WHERE id = $1")
+        .bind(t2)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+
+    // Workflow: pending -> running (started+1) -> completed (completed+1).
+    sqlx::query("UPDATE durable_workflow_instances SET status = 'running', started_at = NOW() WHERE id = $1")
+        .bind(workflow_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+    sqlx::query("UPDATE durable_workflow_instances SET status = 'completed', completed_at = NOW() WHERE id = $1")
+        .bind(workflow_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_health_counters_match_counts(&pool).await;
+
+    // Deletes must decrement the counters back in lockstep.
+    cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, &worker).await;
+    assert_health_counters_match_counts(&pool).await;
+}
+
+/// With a large historical task table, the health read must stay fast (it reads
+/// O(1) counters, not a scan) and reflect the history. Regression for EVE-605,
+/// where COUNT(*) over ~156k rows produced multi-second SQL and pool timeouts.
+#[tokio::test]
+async fn test_health_query_constant_time_with_large_history() {
+    const N: i64 = 150_000;
+
+    let store = create_test_store().await;
+    let pool = store.pool().clone();
+    let workflow_id = Uuid::now_v7();
+    store
+        .create_workflow(workflow_id, "eve605_scale", json!({}), None)
+        .await
+        .unwrap();
+
+    let before: i64 =
+        sqlx::query_scalar("SELECT COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0)")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+
+    // Bulk-insert N completed+claimed tasks. The statement-level triggers absorb
+    // them into the counters in one aggregated delta, growing the table to a size
+    // that used to force a heap scan on every health call.
+    sqlx::query(
+        r#"
+        INSERT INTO durable_task_queue
+            (workflow_id, activity_id, activity_type, input, options, status,
+             max_attempts, schedule_to_start_timeout_ms, start_to_close_timeout_ms,
+             claimed_at, created_at)
+        SELECT $1, 'scale_' || g, 'eve605_scale', '{}'::jsonb, '{}'::jsonb, 'completed',
+               3, 60000, 60000, NOW(), NOW()
+        FROM generate_series(1, $2) AS g
+        "#,
+    )
+    .bind(workflow_id)
+    .bind(N)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let after: i64 = sqlx::query_scalar(
+        "SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        after - before,
+        N,
+        "triggers must increment tasks_completed by exactly N on bulk insert"
+    );
+
+    // The health read reflects the large history.
+    let health = store.get_system_health().await.unwrap();
+    assert!(health.completed_tasks >= N as usize);
+    assert!(health.started_tasks >= N as usize);
+
+    // Structural proof that the read is O(1): the durable_task_queue access in the
+    // health path (the live pending/claimed gauges) uses indexes, never a
+    // sequential scan over the now-large table. A revert to COUNT(*) over
+    // completed/started would reintroduce a Seq Scan here. This is a plan/predicate
+    // check rather than a wall-clock assertion so it stays stable on slow/contended
+    // CI runners. ANALYZE first so the planner's row estimates reflect the bulk
+    // insert and reliably prefer the partial indexes.
+    sqlx::query("ANALYZE durable_task_queue")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let plan: Vec<String> = sqlx::query_scalar(
+        r#"
+        EXPLAIN
+        SELECT
+            (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'pending'),
+            (SELECT COUNT(*) FROM durable_task_queue WHERE status = 'claimed'),
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'), 0),
+            COALESCE((SELECT value FROM durable_stat_counters WHERE name = 'tasks_started'), 0)
+        "#,
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let plan_text = plan.join("\n");
+    assert!(
+        !plan_text.contains("Seq Scan on durable_task_queue"),
+        "health durable_task_queue access must not sequentially scan; plan was:\n{plan_text}"
+    );
+
+    // Cleanup (cascades to the N tasks; delete triggers restore the counter).
+    cleanup_workflow(&store, workflow_id).await;
+    let restored: i64 = sqlx::query_scalar(
+        "SELECT value FROM durable_stat_counters WHERE name = 'tasks_completed'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(
+        restored, before,
+        "delete must restore the completed counter"
+    );
+}
