@@ -196,7 +196,7 @@ This is where tool privacy is enforced. Blueprint tools are instantiated only in
 ### Event Stream
 
 Blueprint sessions emit the same events as any session:
-- `subagent.spawned`, `subagent.completed`, `subagent.failed`, `subagent.cancelled` (lifecycle)
+- `task.created`, `task.updated`, `task.message.sent`, `task.message.received` (Session Task lifecycle; replaced the retired `subagent.*` events — see `specs/events.md`)
 - `turn.started`, `turn.completed` (agentic loop)
 - `output.message.*` (LLM output)
 - `tool.started`, `tool.completed` (tool execution)

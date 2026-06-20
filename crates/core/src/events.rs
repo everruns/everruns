@@ -115,11 +115,10 @@ pub const SESSION_IDLED: &str = "session.idled";
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
 
-// Subagent lifecycle events
-pub const SUBAGENT_SPAWNED: &str = "subagent.spawned";
-pub const SUBAGENT_COMPLETED: &str = "subagent.completed";
-pub const SUBAGENT_FAILED: &str = "subagent.failed";
-pub const SUBAGENT_CANCELLED: &str = "subagent.cancelled";
+// Subagent lifecycle events (`subagent.*`) were retired (EVE-585): the subagent
+// flow became Session Tasks and now emits `task.*` events. The legacy types are
+// no longer emitted or parsed; historical `subagent.*` rows in old session logs
+// deserialize via the generic unsupported-type fallback. See specs/events.md.
 
 // Session task lifecycle events (specs/session-tasks.md)
 pub const TASK_CREATED: &str = "task.created";
@@ -184,10 +183,6 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_ACTIVATED,
     SESSION_IDLED,
     SCHEDULE_TRIGGERED,
-    SUBAGENT_SPAWNED,
-    SUBAGENT_COMPLETED,
-    SUBAGENT_FAILED,
-    SUBAGENT_CANCELLED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
     BUDGET_WARNING,
@@ -2102,38 +2097,6 @@ pub struct SessionIdledData {
 // Subagent event data
 // ============================================================================
 
-/// Data for subagent lifecycle events (spawned, completed, failed, cancelled).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-pub struct SubagentEventData {
-    /// The subagent's child session ID
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
-    pub subagent_session_id: SessionId,
-    /// Human-readable subagent name
-    pub subagent_name: String,
-    /// Task description
-    pub task: String,
-    /// Subagent status (spawning, running, completed, failed, cancelled)
-    pub status: String,
-    /// Result summary (only for completed/failed)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub result: Option<String>,
-    /// Error message (only for failed)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error: Option<String>,
-}
-
-impl From<SubagentEventData> for EventData {
-    fn from(data: SubagentEventData) -> Self {
-        match data.status.as_str() {
-            "completed" => EventData::SubagentCompleted(data),
-            "failed" => EventData::SubagentFailed(data),
-            "cancelled" => EventData::SubagentCancelled(data),
-            _ => EventData::SubagentSpawned(data),
-        }
-    }
-}
-
 // ============================================================================
 // Session task event data
 // ============================================================================
@@ -2399,10 +2362,6 @@ pub struct VoiceSessionFailedData {
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
-/// - `subagent.spawned` → SubagentEventData
-/// - `subagent.completed` → SubagentEventData
-/// - `subagent.failed` → SubagentEventData
-/// - `subagent.cancelled` → SubagentEventData
 /// - `file.written` → FileWrittenData
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
@@ -2486,12 +2445,6 @@ pub enum EventData {
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
 
-    // Subagent lifecycle events
-    SubagentSpawned(SubagentEventData),
-    SubagentCompleted(SubagentEventData),
-    SubagentFailed(SubagentEventData),
-    SubagentCancelled(SubagentEventData),
-
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
     TaskUpdated(SessionTaskEventData),
@@ -2568,10 +2521,6 @@ impl EventData {
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
-            EventData::SubagentSpawned(_) => SUBAGENT_SPAWNED,
-            EventData::SubagentCompleted(_) => SUBAGENT_COMPLETED,
-            EventData::SubagentFailed(_) => SUBAGENT_FAILED,
-            EventData::SubagentCancelled(_) => SUBAGENT_CANCELLED,
             EventData::TaskCreated(_) => TASK_CREATED,
             EventData::TaskUpdated(_) => TASK_UPDATED,
             EventData::TaskMessageSent(_) => TASK_MESSAGE_SENT,
@@ -2747,14 +2696,6 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::VoiceSessionEnded),
             VOICE_SESSION_FAILED => serde_json::from_value::<VoiceSessionFailedData>(data.clone())
                 .map(EventData::VoiceSessionFailed),
-            SUBAGENT_SPAWNED => serde_json::from_value::<SubagentEventData>(data.clone())
-                .map(EventData::SubagentSpawned),
-            SUBAGENT_COMPLETED => serde_json::from_value::<SubagentEventData>(data.clone())
-                .map(EventData::SubagentCompleted),
-            SUBAGENT_FAILED => serde_json::from_value::<SubagentEventData>(data.clone())
-                .map(EventData::SubagentFailed),
-            SUBAGENT_CANCELLED => serde_json::from_value::<SubagentEventData>(data.clone())
-                .map(EventData::SubagentCancelled),
             TASK_CREATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
                 .map(EventData::TaskCreated),
             TASK_UPDATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
@@ -3722,35 +3663,6 @@ mod tests {
                 assert_eq!(data.item_id, "rs_request");
             }
             other => panic!("expected reason.item data, got {}", other.event_type()),
-        }
-    }
-
-    #[test]
-    fn test_event_deserialize_subagent_uses_event_type_dispatch() {
-        let subagent_session_id = SessionId::from_uuid(Uuid::now_v7());
-        let payload = serde_json::json!({
-            "id": EventId::new().to_string(),
-            "type": SUBAGENT_COMPLETED,
-            "ts": Utc::now().to_rfc3339(),
-            "session_id": SessionId::from_uuid(Uuid::now_v7()).to_string(),
-            "context": {"trace_id": "t", "span_id": "s", "parent_span_id": null},
-            "data": {
-                "subagent_session_id": subagent_session_id.to_string(),
-                "subagent_name": "researcher",
-                "task": "summarize docs",
-                "status": "completed",
-                "result": "done"
-            }
-        });
-
-        let event: Event = serde_json::from_value(payload).expect("event deserializes");
-        match event.data {
-            EventData::SubagentCompleted(data) => {
-                assert_eq!(data.subagent_session_id, subagent_session_id);
-                assert_eq!(data.subagent_name, "researcher");
-                assert_eq!(data.status, "completed");
-            }
-            other => panic!("expected subagent.completed, got {}", other.event_type()),
         }
     }
 

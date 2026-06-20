@@ -1053,40 +1053,21 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 **Usage Field:** Contains cumulative session token usage at this point.
 
-### Subagent Events
+### Subagent Events (retired — superseded by Session Task Events)
 
-Subagent lifecycle events are emitted on the **parent session** when a subagent is spawned, completes, fails, or is cancelled. See `crates/core/src/events.rs` for `SubagentEventData`.
+The `subagent.spawned`, `subagent.completed`, `subagent.failed`, and
+`subagent.cancelled` events have been **retired** (EVE-585). The subagent flow
+became Session Tasks, which model the same lifecycle with the `task.*` events
+below. As of the Session Tasks migration nothing emits `subagent.*`, and the
+event types and `SubagentEventData` were removed from `crates/core/src/events.rs`.
 
-#### `subagent.spawned`
-
-Emitted when `spawn_subagent` creates a child session.
-
-```json
-{
-  "type": "subagent.spawned",
-  "session_id": "...",
-  "data": {
-    "subagent_session_id": "...",
-    "subagent_name": "Test Runner",
-    "task": "Run the test suite",
-    "status": "spawning"
-  }
-}
-```
-
-#### `subagent.completed`
-
-Emitted when a subagent session idles after completing its task.
-
-#### `subagent.failed`
-
-Emitted when a subagent encounters an error.
-
-#### `subagent.cancelled`
-
-Emitted when a subagent is cancelled (via `cancel_task` or the `SubagentTaskExecutor` cancel path).
-
-All four events share the same `SubagentEventData` shape: `subagent_session_id`, `subagent_name`, `task`, `status`, and optional `result`/`error` fields.
+Retirement is deliberate even though event types are otherwise a stability
+contract: the events had no in-repo consumer left after the CLI moved to `task.*`
+(#2177), and `task.*` carries the replacement information. Historical `subagent.*`
+rows in older session logs remain stored and are still returned by the events
+API, but deserialize through the generic unsupported-type fallback rather than a
+typed variant. The `error_count` aggregate still counts historical
+`subagent.failed` rows by type string. New integrations should consume `task.*`.
 
 ### Session Task Events
 
