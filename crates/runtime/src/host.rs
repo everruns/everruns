@@ -1197,7 +1197,10 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker.clone()) {
             tool_registry.register_boxed(tool);
         }
-        mcp_invoker = Some(invoker);
+        mcp_invoker = Some(Arc::new(everruns_core::ScopedMcpToolInvoker::new(
+            &input.tool_definitions,
+            invoker,
+        )));
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());

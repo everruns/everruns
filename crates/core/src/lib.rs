@@ -435,7 +435,7 @@ pub use harness::{Harness, HarnessStatus, merge_harness, merge_harness_chain};
 pub use leased_resource::{
     LEASED_RESOURCES_FEATURE, LeasedResource, LeasedResourceStatus, UpsertLeasedResource,
 };
-pub use mcp_proxy::{McpProxyTool, McpToolInvoker, build_mcp_proxy_tools};
+pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
     McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
