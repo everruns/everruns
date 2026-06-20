@@ -483,17 +483,17 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         ));
     }
 
-    let tool_call_hooks = resolved
-        .resolved_capability_configs
-        .iter()
-        .flat_map(|config| {
-            capability_registry
-                .get(config.capability_id())
-                .filter(|capability| capability.status() == CapabilityStatus::Available)
-                .map(|capability| capability.tool_call_hooks())
-                .unwrap_or_default()
-        })
-        .collect();
+    // Use the hook list assembled by `collect_capabilities_with_configs` as the
+    // single source of truth. It already contains every explicit capability
+    // `tool_call_hooks()` followed by the generated `CapabilityNarrationHook`
+    // adapters — one per collected capability plus any auto-activated
+    // cross-cutting capability such as `background_execution`. Re-deriving only
+    // the explicit subset here dropped capability-owned narration, so tools fell
+    // back to generic `Ran {display_name}` lines (EVE-601). Explicit hooks stay
+    // first in this list, so model-authored narration (`human_intent`) keeps its
+    // precedence over default `Tool::narrate()`, and only available capabilities
+    // contributed because collection skips non-available ones.
+    let tool_call_hooks = collected.tool_call_hooks;
 
     Ok(RuntimeExecutionCapabilities {
         tool_registry: registry,
