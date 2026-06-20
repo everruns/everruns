@@ -14,7 +14,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useCreateProvider, useUpdateProvider } from "@/hooks/use-providers";
-import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
+import {
+  ProviderIcon,
+  getProviderLabel,
+  getProviderDescription,
+} from "@/components/providers/provider-icon";
 import type { Provider, DriverId, CreateProviderRequest } from "@/lib/api/types";
 
 const PROVIDER_TYPES: { value: DriverId; label: string }[] = [
@@ -139,12 +143,18 @@ export function AddProviderDialog({
                   <SelectItem key={type.value} value={type.value}>
                     <div className="flex items-center gap-2">
                       <ProviderIcon providerType={type.value} size="sm" showBackground={false} />
-                      <span>{type.label}</span>
+                      <div className="flex flex-col">
+                        <span>{type.label}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {getProviderDescription(type.value)}
+                        </span>
+                      </div>
                     </div>
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-sm text-muted-foreground">{getProviderDescription(providerType)}</p>
           </div>
           <div className="space-y-2">
             <Label htmlFor="base-url">Base URL (optional)</Label>

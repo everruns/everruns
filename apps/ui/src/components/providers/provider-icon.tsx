@@ -145,6 +145,19 @@ const PROVIDER_LABELS: Record<DriverId, string> = {
   fireworks: "Fireworks AI",
 };
 
+// Short, accurate one-line taglines shown next to each provider in pickers.
+const PROVIDER_DESCRIPTIONS: Record<DriverId, string> = {
+  openai: "GPT and o-series models via the Responses API.",
+  openrouter: "One key for a large multi-vendor model catalog.",
+  azure_openai: "OpenAI models deployed in your Azure resource.",
+  openai_completions: "OpenAI-compatible Chat Completions endpoints.",
+  anthropic: "Claude models with extended thinking.",
+  gemini: "Google Gemini models with context caching.",
+  bedrock: "Models hosted on Amazon Bedrock.",
+  mai: "Microsoft MAI models via Azure AI Foundry.",
+  fireworks: "Fast, low-cost inference for open models.",
+};
+
 interface ProviderIconProps {
   providerType: DriverId;
   size?: "sm" | "md" | "lg";
@@ -185,4 +198,8 @@ export function ProviderIcon({
 
 export function getProviderLabel(providerType: DriverId): string {
   return PROVIDER_LABELS[providerType] || providerType;
+}
+
+export function getProviderDescription(providerType: DriverId): string {
+  return PROVIDER_DESCRIPTIONS[providerType] || "";
 }

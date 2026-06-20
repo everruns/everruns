@@ -1,32 +1,52 @@
 # everruns-fireworks
 
-Fireworks AI provider driver for [Everruns](https://everruns.com).
+> Fireworks AI LLM provider for Everruns agents.
 
-[Fireworks AI](https://fireworks.ai) serves open models (Llama, Qwen, DeepSeek,
-GLM, Kimi, gpt-oss, ...) behind an OpenAI-compatible Chat Completions API. This
-crate implements the `ChatDriver` contract from `everruns-core` by wrapping the
-core `OpenAIProtocolChatDriver` and tagging it with `DriverId::Fireworks`.
+[![Crates.io](https://img.shields.io/crates/v/everruns-fireworks.svg)](https://crates.io/crates/everruns-fireworks)
+[![Documentation](https://docs.rs/everruns-fireworks/badge.svg)](https://docs.rs/everruns-fireworks)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-## Capabilities
+`everruns-fireworks` registers the Fireworks AI driver with
+[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+agent loop can run against [Fireworks AI](https://fireworks.ai/)'s open-model
+catalog (Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, ...). Fireworks exposes an
+OpenAI-compatible Chat Completions API, so the driver wraps the core Chat
+Completions protocol driver and parses Fireworks' richer `/models` metadata
+(chat, tools, image input, context window) into capability profiles.
 
-- **Chat completions** — streaming, tool calling, vision, and structured output,
-  via the OpenAI-compatible Chat Completions API.
-- **Model discovery** — Fireworks' `/models` endpoint advertises rich metadata
-  (`supports_chat`, `supports_tools`, `supports_image_input`, `context_length`),
-  which this crate parses into capability profiles at sync time.
+Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
+harness engine for building unstoppable agents. Providers are swappable: see
+[`everruns-openai`](https://crates.io/crates/everruns-openai) for OpenAI models,
+or [`everruns-anthropic`](https://crates.io/crates/everruns-anthropic) for Claude
+models.
 
-## Authentication
-
-Fireworks authenticates with a single API key, sent as a bearer token. Create a
-key at <https://fireworks.ai> under **Account → API Keys**.
-
-## Usage
+## Driver-Only Example
 
 ```rust
-use everruns_core::DriverRegistry;
-use everruns_fireworks::register_driver;
+use everruns_fireworks::FireworksChatDriver;
 
-let mut registry = DriverRegistry::new();
-register_driver(&mut registry);
-assert!(registry.has_driver(&everruns_core::DriverId::Fireworks));
+let driver = FireworksChatDriver::new("your-api-key");
+assert_eq!(
+    driver.api_url(),
+    "https://api.fireworks.ai/inference/v1/chat/completions",
+);
 ```
+
+## What It Provides
+
+- A Fireworks AI Chat Completions driver wrapping the Everruns core protocol driver
+- Registration into the Everruns `DriverRegistry` via `register_driver`
+- `base_url` override for Fireworks-compatible / proxy endpoints
+- Capability profiling derived from Fireworks' `/models` metadata, gated to the
+  Fireworks host
+
+## Documentation
+
+- [API reference (docs.rs)](https://docs.rs/everruns-fireworks)
+- [Fireworks AI provider guide](https://docs.everruns.com/providers/fireworks/)
+- [Migrate between LLM providers](https://docs.everruns.com/how-to/migrate-providers/)
+- [Everruns documentation](https://docs.everruns.com)
+
+## License
+
+Licensed under the [MIT License](https://github.com/everruns/everruns/blob/main/LICENSE).
