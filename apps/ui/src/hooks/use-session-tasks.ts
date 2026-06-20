@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   cancelSessionTask,
+  getSessionTask,
   listSessionTasks,
   postSessionTaskMessage,
 } from "@/lib/api/session-tasks";
@@ -148,6 +149,21 @@ export function useSessionTasks(sessionId: string | undefined) {
     ...query,
     isLoading: orgLoading || query.isLoading,
   };
+}
+
+/** Fetch one task's snapshot plus its message thread.
+ *
+ * Live updates arrive through the list hook's SSE stream, which invalidates this
+ * detail key on `task.message.*` events — so mount `useSessionTasks` on the same
+ * view (the Tasks tab does) for the thread to stay current. */
+export function useSessionTask(sessionId: string | undefined, taskId: string | undefined) {
+  const { currentOrg } = useOrg();
+  const org = currentOrg?.public_id;
+  return useQuery({
+    queryKey: queryKeys.sessionTasks.detail(sessionId!, taskId!),
+    queryFn: () => getSessionTask(sessionId!, taskId!),
+    enabled: !!org && !!sessionId && !!taskId,
+  });
 }
 
 /** Request cooperative cancellation of a task; patches the returned snapshot into the list cache. */

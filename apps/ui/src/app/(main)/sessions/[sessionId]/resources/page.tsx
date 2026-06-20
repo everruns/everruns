@@ -11,8 +11,11 @@ import {
   AlertCircle,
   Bot,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Clock3,
   ListTodo,
+  MessageSquare,
   ServerCrash,
   Wrench,
   XCircle,
@@ -21,6 +24,7 @@ import { useSessionResources } from "@/hooks/use-session-resources";
 import {
   useCancelSessionTask,
   useSendTaskMessage,
+  useSessionTask,
   useSessionTasks,
 } from "@/hooks/use-session-tasks";
 import { useSessionContext } from "../session-context";
@@ -31,7 +35,12 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatRelativeTime } from "@/lib/formatting";
 import { isTerminalTaskState } from "@/lib/api/types";
-import type { SessionResourceEntry, SessionTask, SessionTaskState } from "@/lib/api/types";
+import type {
+  SessionResourceEntry,
+  SessionTask,
+  SessionTaskState,
+  TaskMessage,
+} from "@/lib/api/types";
 
 // ============================================
 // Tasks
@@ -127,8 +136,91 @@ function TaskInputPrompt({
   );
 }
 
+/** One message in a task's bidirectional thread. */
+function TaskMessageRow({ message }: { message: TaskMessage }) {
+  const inbound = message.direction === "inbound";
+  return (
+    <div className={`flex ${inbound ? "justify-end" : "justify-start"}`}>
+      <div
+        className={`max-w-[85%] rounded-lg px-3 py-1.5 ${
+          inbound ? "bg-primary/10 text-foreground" : "bg-muted text-foreground"
+        }`}
+      >
+        <div className="mb-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+          {inbound ? "Session → task" : "Task → session"} · {formatRelativeTime(message.created_at)}
+        </div>
+        {message.content.map((part, index) =>
+          part.type === "text" ? (
+            <div key={index} className="whitespace-pre-wrap break-words text-sm">
+              {part.text}
+            </div>
+          ) : (
+            <pre
+              key={index}
+              className="overflow-x-auto whitespace-pre-wrap break-words text-xs text-muted-foreground"
+            >
+              {JSON.stringify(part.data, null, 2)}
+            </pre>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Per-task drill-down: lifecycle timeline + the live message thread.
+ *  Fetched lazily when the card is expanded; the list hook's SSE stream keeps
+ *  the thread fresh by invalidating this task's detail key on task.message.*. */
+function TaskDrilldown({ task, sessionId }: { task: SessionTask; sessionId: string | undefined }) {
+  const { data: detail, isLoading, error } = useSessionTask(sessionId, task.id);
+  const messages = detail?.messages ?? [];
+  // Render the timeline from the freshly-fetched snapshot when available so the
+  // lifecycle and the thread stay consistent; fall back to the list snapshot.
+  const snapshot = detail?.task ?? task;
+
+  return (
+    <div className="mt-3 space-y-3 border-t border-border/60 pt-3">
+      <div className="grid gap-0.5 text-xs text-muted-foreground">
+        <div>Created {formatRelativeTime(snapshot.created_at)}</div>
+        {snapshot.started_at ? <div>Started {formatRelativeTime(snapshot.started_at)}</div> : null}
+        {snapshot.finished_at ? (
+          <div>Finished {formatRelativeTime(snapshot.finished_at)}</div>
+        ) : (
+          <div>Last update {formatRelativeTime(snapshot.updated_at)}</div>
+        )}
+        {snapshot.state_detail ? <div>Detail: {snapshot.state_detail}</div> : null}
+        {snapshot.attempt > 1 ? <div>Attempt: {snapshot.attempt}</div> : null}
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <MessageSquare className="h-3.5 w-3.5" /> Message thread
+        </div>
+        {isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : error ? (
+          <div className="text-xs text-destructive">
+            {error instanceof Error ? error.message : "Failed to load thread"}
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="text-xs text-muted-foreground">
+            No messages exchanged with this task yet.
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {messages.map((message) => (
+              <TaskMessageRow key={message.id} message={message} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TaskCard({ task, sessionId }: { task: SessionTask; sessionId: string | undefined }) {
   const cancelTask = useCancelSessionTask(sessionId);
+  const [expanded, setExpanded] = useState(false);
   const terminal = isTerminalTaskState(task.state);
   const artifacts = task.artifacts ?? [];
   const childSessionId = task.links?.child_session_id;
@@ -160,6 +252,20 @@ function TaskCard({ task, sessionId }: { task: SessionTask; sessionId: string | 
                 Cancel
               </Button>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              aria-label={expanded ? "Hide task details" : "Show task details"}
+            >
+              {expanded ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              Details
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -240,6 +346,7 @@ function TaskCard({ task, sessionId }: { task: SessionTask; sessionId: string | 
           </div>
         ) : null}
         <TaskInputPrompt task={task} sessionId={sessionId} />
+        {expanded ? <TaskDrilldown task={task} sessionId={sessionId} /> : null}
       </CardContent>
     </Card>
   );
