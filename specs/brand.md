@@ -16,20 +16,67 @@ Brand guidelines for the Everruns project ensuring visual and verbal consistency
 
 Three interlocking rings (Borromean rings pattern) representing **Durability × Scalability × Reliability**.
 
-**Centering:** all logo assets are centered on the rings' **centroid** (the 3-fold
-symmetry center / gold convergence point), not the bounding box. The centroid is
-placed at the canvas center so the mark stays balanced in circular and square
-crops (favicon, avatar, app icon). For the standard 512 artwork the centroid was
-shifted up 18.09 (from 274.09 to 256). Keep every variant centroid-centered when
-editing.
+#### Centering invariant (mathematically correct)
 
-| File | Description | Location |
-|------|-------------|----------|
-| `logo.svg` | Color version with navy-to-gold gradients | repo root, `apps/ui/public/`, `apps/docs/src/assets/` |
-| `logo-mono.svg` | Black & white version | repo root; plugins as `everruns-small.svg` |
-| `favicon.svg` / `icon.svg` | Color mark for favicons / app icon | `apps/docs/public/`, `apps/ui/src/app/` |
-| `template-icon.svg` | Navy rounded-square avatar (Railway) | `infra/railway/` |
-| `og-image.svg` | Social card embedding the mark | `apps/docs/src/assets/` |
+**Every logo asset is centered on the rings' centroid** — the 3-fold rotational
+symmetry center, which is also the gold convergence point — **not** the bounding
+box. The centroid is placed at the exact center of its frame so the mark stays
+balanced in circular and square crops (favicon, avatar, app icon, GitHub org
+avatar). Bounding-box ("optical") centering is **wrong** here: because two rings
+sit low and one sits high, it leaves the centroid ~3.5% below center.
+
+For three equal circles whose centers form an equilateral triangle, the centroid
+is the mean of the three centers. The horizontal centroid is already on the
+center line; only a vertical shift is needed.
+
+#### Canonical geometry (512 viewBox, centroid at 256, 256)
+
+| Ring | center (cx, cy) | r | stroke |
+|------|-----------------|---|--------|
+| Top | `256, 183.64` | 120 | 18 |
+| Bottom-left | `193.33, 292.18` | 120 | 18 |
+| Bottom-right | `318.67, 292.18` | 120 | 18 |
+
+Round caps/joins, `fill: none`. Equilateral triangle of centers: side `d = 125.34`,
+circumradius `R = 72.36`. (Pre-centering the centroid was `274.09`; it was shifted
+up `18.09` to reach `256`. Exact gradient/stop values live in the source SVGs.)
+
+- **Color** (`logo.svg`): three `userSpaceOnUse` linear gradients, base navy →
+  gold (`#D4A43A`), converging at the canvas center.
+- **Mono** (`logo-mono.svg`): single stroke `#0A0A0A`.
+
+#### Variants (each centroid-centered in its own canvas)
+
+| Variant | Canvas | Notes |
+|---------|--------|-------|
+| Standard color / mono | 512, transparent | canonical geometry above |
+| Railway avatar (`template-icon.svg`) | 512, navy `#0A1636` rounded square (rx 112) | rings `r=116` stroke `28`, white `#F8FAFC` + gold; centers `256,192` / `188,288` / `324,288` |
+| OG banner (`og-image.svg`, `generate-og-image.mjs`) | 1200×630 social card | logo placed via group transform; rings centroid-centered internally, transform compensates so banner layout is unchanged |
+
+#### Source files (edit these)
+
+| File(s) | Variant |
+|---------|---------|
+| `logo.svg`, `apps/ui/public/logo.svg`, `apps/docs/src/assets/logo.svg`, `apps/docs/public/favicon.svg`, `apps/ui/src/app/icon.svg` | color (identical) |
+| `logo-mono.svg`, `plugins/everruns/assets/everruns-small.svg`, `plugins/everruns-dev/assets/everruns-small.svg` | mono (identical) |
+| `infra/railway/template-icon.svg` | Railway avatar |
+| `apps/docs/src/assets/og-image.svg`, `apps/docs/scripts/generate-og-image.mjs` (`LOGO_SMALL`) | OG banner |
+
+#### Derived rasters (regenerate after editing source)
+
+| Raster | Source | Regenerate |
+|--------|--------|-----------|
+| `logo-1024.png` | `logo.svg` | render `logo.svg` at 1024×1024 (sharp) |
+| `apps/docs/public/og-image.png` | `og-image.svg` | `cd apps/docs && node scripts/generate-og-image.mjs` (also runs in `prebuild`) |
+| `apps/ui/src/app/favicon.ico` | `icon.svg` | render at 16/32/48 → ICO |
+| GitHub org avatar | `logo-1024.png` | upload manually in org settings |
+
+#### Rule for new logo derivations
+
+Any new logo instance must be **centroid-centered**: place the centroid at the
+center of its frame (or, in a composed layout, at the center of the intended
+area). When in doubt, copy `logo.svg` / `logo-mono.svg` and only adjust the
+surrounding canvas — never re-derive ring coordinates by bounding box.
 
 ### Color Palette
 
