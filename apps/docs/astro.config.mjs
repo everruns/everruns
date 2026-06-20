@@ -246,6 +246,7 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
+                        { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                       ],
                     },
                     {

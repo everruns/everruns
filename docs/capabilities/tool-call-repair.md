@@ -14,8 +14,8 @@ sidebar:
 | **Risk** | Low |
 
 Opt-in recovery net for malformed tool calls. Models occasionally emit
-tool-call arguments that are not clean JSON — wrapped in a ```json fence,
-surrounded by prose, with trailing commas or single quotes, or with values
+tool-call arguments that are not clean JSON — wrapped in a Markdown code
+fence, surrounded by prose, with trailing commas or single quotes, or with values
 typed as strings where the schema wants numbers. Without repair, such a call
 either surfaces a parse error or silently collapses to empty arguments and
 fails downstream. This capability salvages the call so the turn proceeds.
@@ -32,7 +32,7 @@ tool calls are finalized and before the assistant message is built.
 ## How It Works
 
 1. **Deterministic local salvage** — A pure function runs over each call's
-   `arguments`: it unwraps fenced ```json blocks and strips surrounding prose,
+   `arguments`: it unwraps fenced code blocks and strips surrounding prose,
    removes trailing commas, normalizes single quotes to double quotes, and
    coerces string-typed known keys to the type declared by the tool's JSON
    schema (e.g. `"42"` → `42` for an integer property). An already-valid call
