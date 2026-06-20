@@ -87,9 +87,9 @@ When searching history:
     "keep_first_messages": 1
   }
   ```
-- `keep_first_messages` (default 1) is the number of leading messages always kept
-  as an anchor — the original task/goal. The anchor is **additional** to
-  `max_recent_messages` (which caps only the recent tail).
+- `keep_first_messages` (default 1, maximum 16) is the number of leading messages
+  always kept as an anchor — the original task/goal. The anchor is **additional**
+  to `max_recent_messages` (which caps only the recent tail).
 
 ## Design
 
@@ -177,9 +177,8 @@ addition to** the latest `limit` tail, de-duplicated when the windows overlap
 and returned in chronological order. So the genuine first message is always
 fetched, and the anchor never silently degrades to a mid-conversation message —
 even for conversations far longer than the candidate window or when
-`max_recent_messages` is set very low. `keep_first_messages` is therefore
-meaningful at any size relative to the candidate window; it does not need to be
-clamped to it.
+`max_recent_messages` is set very low. `keep_first_messages` is capped at 16 to
+bound the extra head fetch and the always-preserved prompt anchor.
 
 ### History Notice Format
 

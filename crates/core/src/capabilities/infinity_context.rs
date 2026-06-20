@@ -95,8 +95,9 @@ impl Capability for InfinityContextCapability {
                 "keep_first_messages": {
                     "type": "integer",
                     "title": "Anchored first messages",
-                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages. The anchor is fetched as a head+tail load, so it is guaranteed even for histories far longer than the candidate load window — any value is honored, independent of max_recent_messages. Larger values are not free: every load fetches keep_first_messages extra rows and includes them in the prompt, so keep it small (the default 1 anchors the original task) and raise it only when more leading context is genuinely needed.",
+                    "description": "Leading messages always kept as an anchor (the original task), even under a tight budget. Additional to the maximum recent messages. The anchor is fetched as a bounded head+tail load, so it is guaranteed even for histories far longer than the candidate load window. Keep it small (the default 1 anchors the original task) and raise it only when more leading context is genuinely needed.",
                     "minimum": 0,
+                    "maximum": MAX_KEEP_FIRST_MESSAGES,
                     "default": default_keep_first_messages()
                 }
             }
@@ -117,6 +118,11 @@ impl Capability for InfinityContextCapability {
         }
         if typed.max_recent_messages == Some(0) {
             return Err("max_recent_messages must be >= 1".to_string());
+        }
+        if typed.keep_first_messages > MAX_KEEP_FIRST_MESSAGES {
+            return Err(format!(
+                "keep_first_messages must be <= {MAX_KEEP_FIRST_MESSAGES}"
+            ));
         }
         Ok(())
     }
@@ -231,6 +237,7 @@ impl Default for InfinityContextConfig {
 const CANDIDATE_AVG_TOKENS_PER_MESSAGE: usize = 250;
 const CANDIDATE_OVERFETCH_FACTOR: usize = 4;
 const CANDIDATE_MAX_MESSAGES: usize = 2_000;
+const MAX_KEEP_FIRST_MESSAGES: usize = 16;
 
 struct InfinityContextFilterProvider;
 
@@ -244,8 +251,9 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         // so the task/goal anchor survives even when the history is far longer than
         // the candidate load window (the tail-only LIMIT would otherwise never
         // fetch the genuine first message).
-        if config.keep_first_messages > 0 {
-            query.keep_head = Some(config.keep_first_messages);
+        let keep_first_messages = resolve_keep_first_messages(&config);
+        if keep_first_messages > 0 {
+            query.keep_head = Some(keep_first_messages);
         }
         query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
@@ -260,7 +268,11 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         // overflow notice (messages the DB load could not fetch).
         if config.compaction_active {
             if existing_notice_count > 0 {
-                insert_excluded_notice(messages, config.keep_first_messages, existing_notice_count);
+                insert_excluded_notice(
+                    messages,
+                    resolve_keep_first_messages(&config),
+                    existing_notice_count,
+                );
             }
             return;
         }
@@ -277,6 +289,12 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
     fn priority(&self) -> i32 {
         100
     }
+}
+
+fn resolve_keep_first_messages(config: &InfinityContextConfig) -> usize {
+    // Bound the always-preserved head anchor independently of validation: filters
+    // can run over configs loaded before the cap existed or provided by tests.
+    config.keep_first_messages.min(MAX_KEEP_FIRST_MESSAGES)
 }
 
 fn resolve_candidate_load_limit(config: &InfinityContextConfig) -> usize {
@@ -400,7 +418,7 @@ fn trim_messages_to_token_budget(
     let costs: Vec<usize> = messages.iter().map(estimate_message_tokens).collect();
     let window = anchored_window(
         &costs,
-        config.keep_first_messages,
+        resolve_keep_first_messages(config),
         config.min_recent_messages,
         config.max_recent_messages,
         config.context_budget_tokens,
@@ -729,6 +747,10 @@ mod tests {
         assert!(schema["properties"]["context_budget_tokens"].is_object());
         assert!(schema["properties"]["min_recent_messages"].is_object());
         assert!(schema["properties"]["max_recent_messages"].is_object());
+        assert_eq!(
+            schema["properties"]["keep_first_messages"]["maximum"],
+            MAX_KEEP_FIRST_MESSAGES
+        );
 
         // Null, empty, and valid configs are accepted.
         assert!(capability.validate_config(&Value::Null).is_ok());
@@ -757,6 +779,13 @@ mod tests {
         assert!(
             capability
                 .validate_config(&json!({"max_recent_messages": 0}))
+                .is_err()
+        );
+        assert!(
+            capability
+                .validate_config(&json!({
+                    "keep_first_messages": MAX_KEEP_FIRST_MESSAGES + 1
+                }))
                 .is_err()
         );
     }
@@ -807,6 +836,21 @@ mod tests {
             &json!({"context_budget_tokens": 1_000, "keep_first_messages": 0}),
         );
         assert_eq!(query.keep_head, None);
+    }
+
+    #[test]
+    fn test_filter_provider_caps_keep_head_for_unvalidated_config() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({
+                "context_budget_tokens": 1_000,
+                "keep_first_messages": usize::MAX
+            }),
+        );
+
+        assert_eq!(query.keep_head, Some(MAX_KEEP_FIRST_MESSAGES));
     }
 
     #[test]
@@ -995,6 +1039,31 @@ mod tests {
                 .iter()
                 .all(|m| !extract_text_content(m).contains("NOT visible"))
         );
+    }
+
+    #[test]
+    fn test_filter_provider_caps_keep_first_messages_during_post_load() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages: Vec<Message> = (0..20)
+            .map(|idx| Message::user(format!("message {idx}")))
+            .collect();
+
+        provider.post_load(
+            &mut messages,
+            &json!({
+                "context_budget_tokens": 1,
+                "min_recent_messages": 1,
+                "keep_first_messages": usize::MAX
+            }),
+        );
+
+        assert_eq!(extract_text_content(&messages[0]), "message 0");
+        assert_eq!(
+            extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES - 1]),
+            format!("message {}", MAX_KEEP_FIRST_MESSAGES - 1)
+        );
+        assert!(extract_text_content(&messages[MAX_KEEP_FIRST_MESSAGES]).contains("NOT visible"));
+        assert_eq!(extract_text_content(messages.last().unwrap()), "message 19");
     }
 
     #[test]
