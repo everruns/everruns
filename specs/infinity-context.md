@@ -84,12 +84,14 @@ When searching history:
     "context_budget_tokens": 100000,
     "min_recent_messages": 10,
     "max_recent_messages": null,
-    "keep_first_messages": 1
+    "keep_first_messages": 0
   }
   ```
-- `keep_first_messages` (default 1, maximum 16) is the number of leading messages
-  always kept as an anchor — the original task/goal. The anchor is **additional**
-  to `max_recent_messages` (which caps only the recent tail).
+- `keep_first_messages` (default 0, maximum 16) is the number of leading messages
+  kept as an anchor — the original task/goal. It is opt-in because the anchor is
+  **additional** to `max_recent_messages` (which caps only the recent tail) and is
+  preserved outside the token budget when configured. The value is capped at 16 to
+  bound the extra head fetch and the always-preserved prompt anchor.
 
 ## Design
 
@@ -131,8 +133,9 @@ More accurate estimation can use tiktoken for OpenAI or anthropic-tokenizer for 
 
 Selection is "protect the head + tail, drop the middle" (see
 `anchored_window` in `crates/core/src/message_filter.rs`). The agent system
-prompt is assembled separately and is never part of this list, so the head
-anchor here protects the **first conversation message — the original task/goal**.
+prompt is assembled separately and is never part of this list. When
+`keep_first_messages` is explicitly configured, the head anchor protects the
+**first conversation message — the original task/goal**.
 
 ```python
 def select_messages(all_messages, budget, keep_head, min_tail, max_tail=None):
@@ -165,20 +168,24 @@ The notice is inserted between the anchor and the recent block, so the live
 prompt reads `[task anchor] -> [N earlier messages hidden] -> [recent window]`.
 
 `max_recent_messages` is a hard cap for constrained surfaces such as public
-support chat; it bounds only the recent tail (the head anchor is additional).
+support chat; it bounds only the recent tail (any explicitly configured head
+anchor is additional).
 Message limits always mean the latest N messages, returned in chronological
 order; older excluded messages remain available through `query_history`.
 
 **Head+tail load.** The candidate set is fetched as a head+tail window, not a
 tail-only "latest N". `apply_filters` sets `MessageQuery::keep_head =
-keep_first_messages` alongside the candidate `limit`, and every storage backend
-honors it: the first `keep_head` messages (the task anchor) are loaded **in
-addition to** the latest `limit` tail, de-duplicated when the windows overlap
-and returned in chronological order. So the genuine first message is always
-fetched, and the anchor never silently degrades to a mid-conversation message —
-even for conversations far longer than the candidate window or when
-`max_recent_messages` is set very low. `keep_first_messages` is capped at 16 to
-bound the extra head fetch and the always-preserved prompt anchor.
+keep_first_messages` alongside the candidate `limit` when the value is greater
+than zero, and every storage backend honors it: the first `keep_head` messages
+(the task anchor) are loaded **in addition to** the latest `limit` tail,
+de-duplicated when the windows overlap and returned in chronological order. When
+enabled, the genuine first message is always fetched, and the anchor never
+silently degrades to a mid-conversation message — even for conversations far
+longer than the candidate window or when `max_recent_messages` is set very low.
+The default is 0 so public or multi-user endpoints do not keep an
+attacker-controlled first message beyond configured prompt resource limits, and
+the value is capped at 16 to bound the extra head fetch and the always-preserved
+prompt anchor.
 
 ### History Notice Format
 
