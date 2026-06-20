@@ -176,7 +176,7 @@ Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
 
 ## Security
 
-Everruns runs untrusted agent and tool code for multiple tenants, so security is a core design goal. Threats are tracked with stable IDs across categories — authentication, tenant isolation, permissions, tool execution, LLM integration, the bash and SQLite sandboxes, durable execution, and channel integrations — each with a documented mitigation and test coverage.
+Everruns runs untrusted agent and tool code for multiple tenants, so security is a core design goal. Threats are tracked with stable IDs across categories — authentication, tenant isolation, permissions, tool execution, LLM integration, the bash and SQLite sandboxes, durable execution, and channel integrations — each with a documented mitigation and, where feasible, test coverage.
 
 - [Threat model](./specs/threat-model.md) — full analysis, mitigation status, and accepted risks
 - [Security testing](./specs/security-testing.md) — threat-model tests, fail-rs failure injection, DeepSec scanning, and supply-chain checks

@@ -27,29 +27,16 @@ Tests for these live alongside the code they protect (for example
 ### 2. Failure injection (fail-rs)
 
 The durable execution engine uses [fail-rs](https://github.com/tikv/fail-rs)
-for fault injection against persistence and resilience paths. Fail points are
-compiled out unless the `failpoints` feature is enabled, so there is zero
-runtime overhead in normal builds.
+for fault injection against persistence and resilience paths. From a security
+standpoint this verifies the engine degrades safely — no task hijack,
+double-completion, or stuck state — when the database fails mid-operation
+(TM-DURABLE, TM-DOS). Fail points are compiled out unless the `failpoints`
+feature is enabled, so there is zero runtime overhead in normal builds.
 
-```bash
-cargo test -p everruns-durable --test failure_injection_test \
-  --features "failpoints,postgres-tests" -- --test-threads=1
-```
-
-Requires PostgreSQL with `DATABASE_URL` set. CI runs this on every PR.
-
-Current fail points cluster around Postgres task/event persistence
-(`postgres_append_events_*`, `postgres_claim_task_*`, `postgres_complete_task_*`,
-`postgres_heartbeat_update`, `postgres_reclaim_stale_*`) and the distributed
-circuit breaker (`circuit_breaker_*`). They verify the engine degrades safely —
-no task hijack, double-completion, or stuck state — when the database fails
-mid-operation (TM-DURABLE, TM-DOS).
-
-Conventions:
-- Single-threaded (`--test-threads=1`) — fail points are global state.
-- Always reset with `fail::cfg("name", "off")` after a test.
-- Add `fail_point!("module::function", ...)` under `#[cfg(feature = "failpoints")]`
-  at the critical location, then add a test in `failure_injection_test.rs`.
+The fail-point catalog, naming convention, test patterns, and the run command
+live in [`specs/fail-rs-testing.md`](./fail-rs-testing.md) — this spec does not
+restate them. When adding a security-relevant failure path, add the fail point
+and test there and reference the threat ID it guards.
 
 ### 3. AI-assisted code scanning (DeepSec)
 
@@ -62,25 +49,27 @@ triages findings against the project context in `.deepsec/data/everruns/INFO.md`
 ```bash
 cd .deepsec
 pnpm install
-pnpm update deepsec@latest
 pnpm deepsec scan       --project-id everruns
 pnpm deepsec process    --project-id everruns --concurrency 5
 pnpm deepsec revalidate --project-id everruns --concurrency 5   # cuts false positives
 pnpm deepsec report     --project-id everruns
 ```
 
-Generated scan output is gitignored; the curated `INFO.md` and config are
-checked in so context is shared. File real true positives as Linear/GitHub
+`.deepsec/` is local dev-only scanning tooling, not a shipped dependency, so it
+is exempt from the runtime seven-day dependency-maturity floor; bump it
+(`pnpm update deepsec@latest`) in its own commit. Generated scan output is
+gitignored; the curated `INFO.md` and config are checked in so context is shared. File real true positives as Linear/GitHub
 issues with a `TM-` reference where one applies. See `.deepsec/README.md` for
 setup and `.deepsec/AGENTS.md` for agent usage.
 
 ### 4. Supply chain and platform scanning
 
-- **Licenses / advisories** — `cargo deny check licenses` (config in
-  `deny.toml`), enforced by `.github/workflows/licenses.yml` on PRs that touch
-  Cargo or crate files.
-- **Dependabot** — automated dependency and security updates; review alerts in
-  the GitHub Security tab.
+- **Licenses** — `cargo deny check licenses` (config in `deny.toml`), enforced
+  by `.github/workflows/licenses.yml` on PRs that touch Cargo or crate files.
+  This is a license allowlist check only; it does not run advisory checks.
+- **Advisories / dependency updates** — handled by Dependabot (`.github/dependabot.yml`),
+  with alerts reviewed in the GitHub Security tab. `cargo deny check advisories`
+  can be run locally for an ad-hoc audit but is not wired into CI.
 - **Secret scanning** — GitHub push-protection and open-alert review.
 - **CI secret scoping** — fork-PR jobs never receive repository secrets
   (TM-CI-001..005); see `specs/threat-model.md`.
