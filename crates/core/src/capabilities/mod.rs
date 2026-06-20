@@ -142,6 +142,7 @@ mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
+mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
@@ -317,6 +318,11 @@ pub use test_math::{
 };
 pub use test_weather::{
     GetForecastTool, GetWeatherTool, TEST_WEATHER_CAPABILITY_ID, TestWeatherCapability,
+};
+pub use tool_call_repair::{
+    DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
+    TOOL_CALL_REPAIR_CAPABILITY_ID, ToolCallRepairCapability, ToolCallRepairConfig,
+    salvage_tool_arguments, tool_call_repair_capability,
 };
 pub use tool_output_distillation::{
     DistillOutputHook, TOOL_OUTPUT_DISTILLATION_CAPABILITY_ID, ToolOutputDistillationCapability,
@@ -1277,6 +1283,11 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
+        // arguments. Disabled by default — registered so agents can enable it,
+        // but contributes nothing unless explicitly selected.
+        registry.register(ToolCallRepairCapability);
 
         // Prompt canary guardrail: replace assistant output if it leaks the
         // first sentence of the system prompt. Streaming-output guardrail.
@@ -2618,6 +2629,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
             "guardrails",

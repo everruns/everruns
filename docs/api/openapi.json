@@ -17685,6 +17685,9 @@
             "$ref": "#/components/schemas/TranscriptRepairedData"
           },
           {
+            "$ref": "#/components/schemas/ToolCallRepairedData"
+          },
+          {
             "$ref": "#/components/schemas/LlmGenerationData"
           },
           {
@@ -31245,6 +31248,35 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "ToolCallRepairedData": {
+        "type": "object",
+        "description": "Data for the `tool.call_repaired` event (EVE-600).\n\nEmitted once per malformed tool call handled by the opt-in\n`tool_call_repair` capability. `outcome` is the stable label\n(`local-salvage` | `re-prompt` | `gave-up`).",
+        "required": [
+          "turn_id",
+          "tool_call_id",
+          "tool_name",
+          "outcome"
+        ],
+        "properties": {
+          "outcome": {
+            "type": "string",
+            "description": "Stable outcome label: `local-salvage`, `re-prompt`, or `gave-up`."
+          },
+          "tool_call_id": {
+            "type": "string",
+            "description": "The tool call ID that was inspected/repaired."
+          },
+          "tool_name": {
+            "type": "string",
+            "description": "The tool name the malformed call targeted."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn this repair belongs to.",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },
