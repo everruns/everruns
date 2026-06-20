@@ -1,14 +1,12 @@
-//! End-to-end demo of the prototype against the real `everruns-runtime`.
+//! Demo eval **server**: defines evals in code and serves them over the
+//! protocol. This is the shape a user's eval program takes — define evals, call
+//! [`mira::serve`]. It does no orchestration; the `mira` CLI host drives it.
 //!
-//! Runs offline with `llmsim` (no API key). The Anthropic/OpenAI matrix cells
-//! are skipped automatically unless `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` are
-//! set, so this always runs green out of the box:
+//! Run it directly and it waits for protocol JSON on stdin. Normally you let
+//! the host launch it:
 //!
 //! ```bash
-//! cargo run --example coding_eval                 # all evals, sim cell
-//! cargo run --example coding_eval -- greet        # selective: substring filter
-//! cargo run --example coding_eval -- --tag smoke  # selective: by tag
-//! cargo run --example coding_eval -- --json out.json
+//! cargo run --bin mira -- --bin demo_evals run
 //! ```
 
 #![allow(clippy::type_complexity)]
@@ -16,29 +14,14 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use clap::Parser;
-
-use evals::scorer::{JudgeFn, contains, model_graded, succeeded, turns_within};
-use evals::subject::{RuntimeFactory, RuntimeHandle};
-use evals::{Eval, ModelSpec, Runner, RuntimeSubject, Sample, Score, Transcript, report};
+use mira::scorer::{JudgeFn, contains, model_graded, succeeded, turns_within};
+use mira::subject::{RuntimeFactory, RuntimeHandle};
+use mira::{Eval, ModelSpec, RuntimeSubject, Sample, Score, Transcript};
 
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{CapabilityRegistry, PlatformDefinition};
 use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
-
-#[derive(Parser)]
-#[command(about = "Prototype eval framework demo")]
-struct Args {
-    /// Substring filter on the case key `eval/sample@model` (like `cargo test PAT`).
-    filter: Option<String>,
-    /// Only run samples carrying this tag.
-    #[arg(long)]
-    tag: Option<String>,
-    /// Write the JSON report to this path.
-    #[arg(long)]
-    json: Option<String>,
-}
 
 /// Builds a fresh, minimal runtime per matrix cell. Embedders own this wiring;
 /// the framework only needs the resulting `(runtime, session_id)`.
@@ -83,9 +66,8 @@ fn runtime_factory() -> RuntimeFactory {
     )
 }
 
-/// A trivial async judge to demonstrate the LLM-as-judge seam without spending
-/// tokens: passes when the response is non-empty. A real judge would call a
-/// cheaper model via its own runtime.
+/// A trivial async judge: passes when the response is non-empty. A real judge
+/// would call a cheaper model via its own runtime.
 fn nonempty_judge() -> JudgeFn {
     Box::new(
         |rubric: String, t: Transcript| -> Pin<Box<dyn Future<Output = Score> + Send>> {
@@ -100,7 +82,8 @@ fn nonempty_judge() -> JudgeFn {
     )
 }
 
-/// The model matrix: sim always runs; the real cells skip without API keys.
+/// The model matrix: sim always runs; the real cells advertise as unavailable
+/// (and are skipped) unless their API keys are present.
 fn matrix() -> Vec<ModelSpec> {
     vec![
         ModelSpec::sim(),
@@ -130,22 +113,6 @@ fn evals() -> Vec<Eval> {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Args::parse();
-
-    let mut runner = Runner::new().filter(args.filter).tag(args.tag);
-    for eval in evals() {
-        runner = runner.add(eval);
-    }
-
-    let report = runner.run().await;
-    report::print_summary(&report);
-
-    if let Some(path) = args.json {
-        let json = report::to_json(&report);
-        std::fs::write(&path, serde_json::to_string_pretty(&json)?)?;
-        println!("\nwrote {path}");
-    }
-
-    std::process::exit(if report.all_passed() { 0 } else { 1 });
+async fn main() -> std::io::Result<()> {
+    mira::serve(evals()).await
 }

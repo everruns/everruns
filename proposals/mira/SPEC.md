@@ -1,8 +1,8 @@
-# Spec: a Rust-first, code-first evaluation framework
+# Spec: mira — a Rust-first, code-first evaluation framework
 
 Status: **proposal / prototype**. This directory is a standalone workspace,
 excluded from the everruns build. It is meant to be reviewed, refined, then
-handed over to its own repository. The crate name `evals` is a placeholder.
+handed over to its own repository (`mira`).
 
 ## 1. Problem
 
@@ -86,29 +86,67 @@ cross-product; only the model axis is in the prototype.
 ### Selective evaluation
 
 Mirrors `cargo test`: a substring `filter` on the case key and a `--tag`
-narrow. In the macro design (below) this is delegated to the test harness.
+narrow. The **host** owns selection (it plans the grid from `list` before
+running anything), so it is independent of how evals are authored.
 
-## 4. Developer experience — the headline
+## 4. Execution model: two processes, one protocol
 
-Evals should feel like the unit-test runner the team already uses.
+Eval *definitions* and the *runner* are split across a process boundary, talking
+newline-delimited JSON over stdio, MCP-style (`src/protocol.rs`). This is the
+core architectural decision.
 
-**Prototype (today):** an explicit builder + `Runner`.
+- **server** — *your* eval program. Defines evals in Rust and calls
+  `mira::serve(evals)`. Owns runtime construction and scoring; knows nothing
+  about selection, matrices, aggregation, checkpoints, or rendering. Provider
+  API keys live only here and never cross the wire.
+- **host** — the `mira` CLI. Compiles + spawns the server, enumerates evals
+  (`initialize` + `list`), plans the run (selection × matrix), drives execution
+  cell-by-cell (`run`), then aggregates / saves / checkpoints / visualizes.
 
-```rust
-Eval::new("greet")
-    .case("hi", "Say hi and tell me the answer.")   // inline; no dataset file
-    .subject(RuntimeSubject::new(runtime_factory()))
-    .scorer(succeeded())
-    .scorer(contains("42"))
-    .scorer(model_graded("Is it responsive?", judge))
-    .models([ModelSpec::sim(), ModelSpec::anthropic("claude-haiku-4-5")])
-    .build()
+```
+mira run greet --models sim --checkpoint ck.json
+  │  spawn `cargo run --bin <server>`  → stdout = protocol, stderr = build logs
+  ├─ initialize                        → { protocol_version, server, evals }
+  ├─ list                              → evals[]{ samples[], scorers[], models[]{label,available} }
+  │  (host plans grid, applies filter/tag/models, subtracts checkpoint)
+  ├─ run {eval,sample,model}           → { passed, scores[], transcript } (+ event notifications)
+  └─ aggregate → matrix + JSON + checkpoint
 ```
 
-**Target polish:** an `#[eval]` attribute that registers a function returning
-`Eval` and runs it under a `libtest-mimic` harness (`[[test]] harness = false`),
-so evals inherit `cargo test`-style discovery, `--list`, filtering, and
-parallelism — and a `models = [...]` arg expands the matrix like `rstest`'s
+Three methods (`initialize`, `list`, `run`) plus fire-and-forget `event`
+notifications for live progress. Models are addressed by **label**; a cell
+whose key is absent reports `available: false` and is skipped. The boundary is
+also the natural seam for **polyglot servers** — any program in any language
+that speaks the protocol is a valid server (the spiritual successor to yolop's
+multi-agent CLI adapters).
+
+## 5. Developer experience
+
+Two layers: authoring evals (the server) and running them (the host CLI).
+
+**Authoring (today):** an explicit builder; `serve` exposes the list.
+
+```rust
+fn evals() -> Vec<Eval> {
+    vec![
+        Eval::new("greet")
+            .case("hi", "Say hi and tell me the answer.")   // inline; no dataset file
+            .subject(RuntimeSubject::new(runtime_factory()))
+            .scorer(succeeded())
+            .scorer(contains("42"))
+            .scorer(model_graded("Is it responsive?", judge))
+            .models([ModelSpec::sim(), ModelSpec::anthropic("claude-haiku-4-5")])
+            .build(),
+    ]
+}
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> { mira::serve(evals()).await }
+```
+
+**Authoring polish:** an `#[eval]` attribute (inventory-registered) so a server
+is just annotated functions and a one-line `mira::serve_registered()` — no
+hand-built `Vec`, and a `models = [...]` arg expands the matrix like `rstest`'s
 `#[case]`:
 
 ```rust
@@ -116,31 +154,39 @@ parallelism — and a `models = [...]` arg expands the matrix like `rstest`'s
 fn file_operations() -> Eval { /* same builder */ }
 ```
 
+**Running (today):** the `mira` CLI.
+
 ```bash
-cargo eval                       # all evals, default matrix
-cargo eval file_ops              # selective (substring), like cargo test
-cargo eval --tag smoke           # selective by tag
-cargo eval --models sim          # restrict the matrix
+mira --bin my_evals list                 # advertised evals/samples/scorers/models
+mira --bin my_evals run                  # all cells, default matrix
+mira --bin my_evals run file_ops         # selective (substring), like cargo test
+mira --bin my_evals run --tag smoke      # selective by tag
+mira --bin my_evals run --models sim     # restrict the matrix
+mira --bin my_evals run --checkpoint ck.json --out report.json
 ```
 
 YAML/JSONL stays the *secondary* on-ramp (`Dataset::jsonl`, a future
 `Eval::from_yaml`) — a thin loader over the same core, not a second engine.
 
-## 5. Reporting & visualization
+## 6. Reporting, checkpoints & visualization
 
-- **Canonical JSON record** — adopt yolop's proven schema (per-scorer results,
-  tokens, cost, per-tool breakdown, timing, stop reason). The prototype emits a
-  lean version (`report::to_json`).
-- **CI-native**: `--format json|md|junit|tap`. JUnit/TAP surfaces evals in any
-  CI test UI; markdown for PR job summaries.
-- **Built-in viewer**: a self-contained single-file `report.html` (JSON
-  embedded, small bundled JS) for transcript drill-down and a model×eval
-  heatmap — the Inspect View / braintrust experience at zero infra. `eval report
-  --open`. The prototype prints the matrix grid to the terminal as a stand-in.
-- **History**: generalize bashkit's `/benches` aggregation to consume this
-  record for trend lines.
+The host owns all of this; the server only returns per-cell results.
 
-## 6. Why build on `everruns-runtime`
+- **Checkpoints (today)** — `--checkpoint <file>` persists each completed cell
+  as it finishes; a re-run loads it and skips done cells (`--fresh` ignores it).
+  Resumable long matrix runs fall out of the host owning the plan.
+- **Canonical JSON record** — `--out <file>` (`report::results_json`). Extend
+  toward yolop's richer schema (per-tool breakdown, timing, stop reason).
+- **CI-native** *(deferred)*: `--format json|md|junit|tap`. JUnit/TAP surfaces
+  evals in any CI test UI; markdown for PR job summaries.
+- **Built-in viewer** *(deferred)*: a self-contained single-file `report.html`
+  (JSON embedded, small bundled JS) for transcript drill-down and a model×eval
+  heatmap — the Inspect View / braintrust experience at zero infra
+  (`mira report --open`). The prototype prints the matrix grid to the terminal.
+- **History** *(deferred)*: generalize bashkit's `/benches` aggregation to
+  consume this record for trend lines.
+
+## 7. Why build on `everruns-runtime`
 
 It already provides what a harness needs and is published: `InProcessRuntime`
 turn execution, `DriverRegistry` (Anthropic/OpenAI/Gemini/OpenRouter/Bedrock/
@@ -149,7 +195,7 @@ and the serialized `Event` transcript. `RuntimeSubject` is ~90 lines over it.
 The prototype builds and runs against the **real** runtime (path deps); for
 handover, swap to `everruns-runtime = "0.15"`.
 
-## 7. Migration
+## 8. Migration
 
 - **everruns** — collapse the `llm-tests` matrix into evals; keep the product
   eval subsystem separate but factor `Scorer` into a small shared crate.
@@ -159,14 +205,20 @@ handover, swap to `everruns-runtime = "0.15"`.
   the Docker harness. The Python harness can run *as* a `CliSubject` during
   transition, proving the polyglot path immediately.
 
-## 8. Prototype scope (this directory)
+## 9. Prototype scope (this directory)
 
-Implemented and runnable offline (`cargo run --example coding_eval`):
-`Sample`/`Dataset`/`Transcript`/`Score`/`Usage`, the `Subject` and `Scorer`
-traits, `RuntimeSubject` over real `everruns-runtime`, all deterministic scorers
-+ `model_graded`, the model matrix with key-based skipping, `cargo test`-style
-filter + tag selection, terminal matrix report + JSON export.
+Implemented and runnable offline (`cargo build --bins`, then
+`mira --cmd ./target/debug/demo_evals run`):
 
-Deferred to implementation: the `#[eval]` proc-macro + `libtest-mimic` harness,
-`ToolSubject` and `CliSubject`, the HTML viewer, JUnit/TAP, cost caps, and
-arbitrary matrix axes. Each has a defined seam above.
+- core: `Sample`/`Dataset`/`Transcript`/`Score`/`Usage`, the `Subject` and
+  `Scorer` traits, `RuntimeSubject` over the **real** `everruns-runtime`, all
+  deterministic scorers + `model_graded`, the `Eval` builder.
+- the **protocol** (`initialize`/`list`/`run` + `event` notifications), the
+  **server** (`serve`), the **host** (`Host`), and the **`mira` CLI**.
+- model matrix with availability-based skipping, `cargo test`-style filter +
+  `--tag` + `--models` selection, terminal matrix report, `--out` JSON, and
+  resumable `--checkpoint`.
+
+Deferred to implementation: the `#[eval]` attribute + inventory registration,
+`ToolSubject` and `CliSubject`, the `report.html` viewer, JUnit/TAP, markdown
+summaries, cost caps, and arbitrary matrix axes. Each has a defined seam above.

@@ -1,14 +1,13 @@
 # Standalone workspace: this proposal is intentionally NOT a member of the
 # everruns workspace (it is in the root `exclude` list). It depends on the
 # in-repo runtime via path so it compiles against the exact API. For handover
-# to its own repo, swap the three path deps for the published crates, e.g.
-#   everruns-runtime = "0.15"
-#   everruns-core    = "0.15"
-#   everruns-anthropic = "0.15"  # optional, only for the real-provider matrix
+# to its own repo, swap the everruns path deps below for the published crates,
+# e.g. everruns-runtime = "0.15", everruns-core = "0.15". The anthropic/openai
+# crates are only needed by eval servers that register those providers.
 [workspace]
 
 [package]
-name = "evals"            # PLACEHOLDER name — final crate/repo name TBD
+name = "mira"
 version = "0.0.0"
 edition = "2024"
 publish = false
@@ -18,19 +17,14 @@ description = "Prototype: a Rust-first, code-first evaluation framework for agen
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "process"] }
 regex = "1"
 clap = { version = "4", features = ["derive"] }
 
 everruns-core = { path = "../../crates/core" }
 everruns-runtime = { path = "../../crates/runtime" }
 
-[dev-dependencies]
-# Real-provider matrix in the example is gated on API keys at runtime; the
-# driver crates are only needed to register those providers.
+# The demo server (`src/bin/demo_evals.rs`) registers real providers; their
+# matrix cells are gated on API keys at runtime, so a key-free run stays green.
 everruns-anthropic = { path = "../../crates/anthropic" }
 everruns-openai = { path = "../../crates/openai" }
-
-[[example]]
-name = "coding_eval"
-path = "examples/coding_eval.rs"

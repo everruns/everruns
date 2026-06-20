@@ -44,7 +44,7 @@ exclude = [
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
     # Design proposal with its own workspace; not built by everruns CI.
-    "proposals/eval-framework",
+    "proposals/mira",
 ]
 
 [workspace.package]

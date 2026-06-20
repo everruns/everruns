@@ -8,7 +8,41 @@
 //! is explicit so the prototype is self-contained.
 
 use crate::eval::Eval;
-use crate::{RunCx, Score, Transcript};
+use crate::subject::ModelSpec;
+use crate::{RunCx, Sample, Score, Transcript};
+
+/// Run a single matrix cell: one sample, one model. Shared by the in-process
+/// [`Runner`] and the protocol [`server`](crate::server) so both paths score
+/// identically.
+pub async fn run_cell(eval: &Eval, sample: &Sample, model: &ModelSpec) -> CaseOutcome {
+    let cx = RunCx {
+        model: model.clone(),
+        max_turns: eval.max_turns,
+    };
+    let transcript = eval.subject.run(sample, &cx).await;
+
+    let mut scores = Vec::with_capacity(eval.scorers.len());
+    for scorer in &eval.scorers {
+        scores.push(scorer.score(sample, &transcript).await);
+    }
+
+    let passed = !scores.is_empty() && scores.iter().all(|s| s.pass);
+    let aggregate = if scores.is_empty() {
+        0.0
+    } else {
+        scores.iter().map(|s| s.value).sum::<f64>() / scores.len() as f64
+    };
+
+    CaseOutcome {
+        eval: eval.name.clone(),
+        sample_id: sample.id.clone(),
+        model: model.label.clone(),
+        scores,
+        passed,
+        aggregate,
+        transcript,
+    }
+}
 
 /// The result of one matrix cell: one sample, one model.
 #[derive(Clone, Debug)]
@@ -104,33 +138,7 @@ impl Runner {
                         continue;
                     }
 
-                    let cx = RunCx {
-                        model: model.clone(),
-                        max_turns: eval.max_turns,
-                    };
-                    let transcript = eval.subject.run(sample, &cx).await;
-
-                    let mut scores = Vec::with_capacity(eval.scorers.len());
-                    for scorer in &eval.scorers {
-                        scores.push(scorer.score(sample, &transcript).await);
-                    }
-
-                    let passed = !scores.is_empty() && scores.iter().all(|s| s.pass);
-                    let aggregate = if scores.is_empty() {
-                        0.0
-                    } else {
-                        scores.iter().map(|s| s.value).sum::<f64>() / scores.len() as f64
-                    };
-
-                    report.outcomes.push(CaseOutcome {
-                        eval: eval.name.clone(),
-                        sample_id: sample.id.clone(),
-                        model: model.label.clone(),
-                        scores,
-                        passed,
-                        aggregate,
-                        transcript,
-                    });
+                    report.outcomes.push(run_cell(eval, sample, model).await);
                 }
             }
         }

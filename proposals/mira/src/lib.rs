@@ -1,8 +1,10 @@
-//! A Rust-first, code-first evaluation framework for agents and tools.
+//! Mira — a Rust-first, code-first evaluation framework for agents and tools.
 //!
 //! This is a **prototype** that demonstrates the design proposed in `SPEC.md`.
-//! The shape to internalize is three composable pieces, mirroring Inspect AI's
-//! `dataset + solver + scorer` but Rust-native:
+//!
+//! ## Authoring model
+//! Three composable pieces, mirroring Inspect AI's `dataset + solver + scorer`
+//! but Rust-native:
 //!
 //! * [`Subject`] — the thing under evaluation (a runtime session, a `Tool`, or
 //!   an external CLI). One adapter per "shape"; this is what unifies the three
@@ -12,27 +14,46 @@
 //!   model-graded, or arbitrary closures, freely composed.
 //!
 //! An [`Eval`](eval::Eval) bundles those, plus a **matrix** of models to run
-//! against. The [`Runner`](runner::Runner) expands the matrix, supports
-//! `cargo test`-style selective filtering, and emits a report.
+//! against.
 //!
-//! See `examples/coding_eval.rs` for an end-to-end run against the real
-//! `everruns-runtime` using the offline `llmsim` provider (no API key needed).
+//! ## Execution model: two processes, one protocol
+//! Evals are defined in *your* program (the **server**); a generic CLI (the
+//! **host**, `src/bin/mira.rs`) drives them over newline-delimited JSON on
+//! stdio, MCP-style (see [`protocol`]):
+//!
+//! * Your program calls [`serve`] with its evals and does nothing else — the
+//!   host owns selection, the matrix, aggregation, checkpoints, and rendering.
+//! * The [`Host`] compiles/spawns the server, enumerates evals, plans the run,
+//!   and executes each cell. Provider API keys live only in the server's
+//!   environment and never cross the wire — models are addressed by *label*.
+//!
+//! [`Runner`](runner::Runner) is the same core run loop exposed for in-process
+//! use (and reused by [`serve`]).
+//!
+//! See `src/bin/demo_evals.rs` (a server) and `src/bin/mira.rs` (the host) for
+//! an end-to-end run against the real `everruns-runtime` using the offline
+//! `llmsim` provider (no API key needed).
 
 // Boxed `Fn -> Pin<Box<dyn Future>>` aliases (subject factory, judge) are the
 // idiomatic way to express async callbacks behind trait objects here.
 #![allow(clippy::type_complexity)]
 
 pub mod eval;
+pub mod host;
+pub mod protocol;
 pub mod report;
 pub mod runner;
 pub mod scorer;
+pub mod server;
 pub mod subject;
 
 use serde::{Deserialize, Serialize};
 
 pub use eval::{Case, Eval};
+pub use host::Host;
 pub use runner::{CaseOutcome, RunReport, Runner};
 pub use scorer::Scorer;
+pub use server::serve;
 pub use subject::{ModelSpec, RuntimeSubject, Subject};
 
 /// One dataset row: an input conversation plus optional target/metadata.
