@@ -109,16 +109,13 @@ Use the generic `session_tasks` tools after spawning. The `task_id` is returned 
 
 ## Events
 
-Four SSE event types follow the existing event naming patterns (see [events.md](events.md)):
-
-| Event Type | Category | Description |
-|------------|----------|-------------|
-| `subagent.spawned` | Subagent | Child session created and task sent |
-| `subagent.completed` | Subagent | Child session finished task successfully |
-| `subagent.failed` | Subagent | Child session failed |
-| `subagent.cancelled` | Subagent | Child session cancelled by parent |
-
-All subagent events are emitted on the **parent** session's event stream. Event data includes `subagent_name`, `subagent_session_id`, and status-specific fields (e.g., `error` for failed).
+> **Retired:** the dedicated `subagent.*` SSE events (`subagent.spawned`,
+> `subagent.completed`, `subagent.failed`, `subagent.cancelled`) were removed in
+> EVE-585. Subagents are modeled as Session Tasks, so their lifecycle now surfaces
+> through the `task.*` events on the **parent** session's event stream
+> (`task.created`, `task.updated`, `task.message.sent`, `task.message.received`).
+> See [events.md](events.md). The flow below predates the migration and is kept
+> for the orchestration shape; the emitted event names are now `task.*`.
 
 ## Execution Flow
 
@@ -131,14 +128,14 @@ Parent Agent                          System                           Child Ses
      │                                  │─────────────────────────────────>│
      │                                  │  send instructions as message    │
      │                                  │─────────────────────────────────>│
-     │                                  │  emit subagent.spawned           │
+     │                                  │  emit task.created               │
      │                                  │                                  │
      │          (blocked)               │         agentic loop             │
      │          wait_for_idle           │<────────────────────────────────>│
      │                                  │                                  │
      │                                  │  child idles                     │
      │                                  │<─────────────────────────────────│
-     │                                  │  emit subagent.completed         │
+     │                                  │  emit task.updated (succeeded)   │
      │  return last assistant message   │                                  │
      │<─────────────────────────────────│                                  │
      │                                  │                                  │

@@ -88,10 +88,6 @@ Closed `event:` vocabulary on this endpoint:
 | `session.started`               | `Event` (`data` = `SessionStartedData`)                                    |
 | `session.activated`             | `Event` (`data` = `SessionActivatedData`)                                  |
 | `session.idled`                 | `Event` (`data` = `SessionIdledData`)                                      |
-| `subagent.spawned`              | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.completed`            | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.failed`               | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.cancelled`            | `Event` (`data` = `SubagentEventData`)                                     |
 | `context.compacting`            | `Event` (`data` = `ContextCompactingData`)                                 |
 | `context.compacted`             | `Event` (`data` = `ContextCompactedData`)                                  |
 | `file.written`                  | `Event` (`data` = `FileWrittenData`)                                       |

@@ -17718,18 +17718,6 @@
             "$ref": "#/components/schemas/SessionIdledData"
           },
           {
-            "$ref": "#/components/schemas/SubagentEventData"
-          },
-          {
-            "$ref": "#/components/schemas/SubagentEventData"
-          },
-          {
-            "$ref": "#/components/schemas/SubagentEventData"
-          },
-          {
-            "$ref": "#/components/schemas/SubagentEventData"
-          },
-          {
             "$ref": "#/components/schemas/SessionTaskEventData"
           },
           {
@@ -30590,48 +30578,6 @@
         "properties": {
           "path": {
             "type": "string"
-          }
-        }
-      },
-      "SubagentEventData": {
-        "type": "object",
-        "description": "Data for subagent lifecycle events (spawned, completed, failed, cancelled).",
-        "required": [
-          "subagent_session_id",
-          "subagent_name",
-          "task",
-          "status"
-        ],
-        "properties": {
-          "error": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Error message (only for failed)"
-          },
-          "result": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Result summary (only for completed/failed)"
-          },
-          "status": {
-            "type": "string",
-            "description": "Subagent status (spawning, running, completed, failed, cancelled)"
-          },
-          "subagent_name": {
-            "type": "string",
-            "description": "Human-readable subagent name"
-          },
-          "subagent_session_id": {
-            "type": "string",
-            "description": "The subagent's child session ID"
-          },
-          "task": {
-            "type": "string",
-            "description": "Task description"
           }
         }
       },
