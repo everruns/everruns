@@ -1,0 +1,105 @@
+# Security Testing
+
+How Everruns verifies the mitigations claimed in `specs/threat-model.md`. Every
+`MITIGATED` threat should be backed by at least one of the layers below, and new
+features that touch a trust boundary must add coverage before they ship.
+
+## Layers
+
+### 1. Threat-model tests
+
+Threats carry stable `TM-<CATEGORY>-<NNN>` IDs (see `specs/threat-model.md`).
+Mitigations are exercised by integration and unit tests that assert the
+boundary holds — cross-org isolation, auth rejection, permission enforcement,
+input validation, error sanitization, channel signature verification, and so
+on. Reference the threat ID in a code comment at the mitigation point using the
+format in `specs/threat-model.md`:
+
+```rust
+// THREAT[TM-XXX-NNN]: Brief description of the threat being mitigated
+// Mitigation: What this code does to prevent the attack
+```
+
+Tests for these live alongside the code they protect (for example
+`crates/server/tests/auth_integration_test.rs`,
+`crates/server/tests/mcp_endpoint_test.rs`, and the channel integration tests).
+
+### 2. Failure injection (fail-rs)
+
+The durable execution engine uses [fail-rs](https://github.com/tikv/fail-rs)
+for fault injection against persistence and resilience paths. Fail points are
+compiled out unless the `failpoints` feature is enabled, so there is zero
+runtime overhead in normal builds.
+
+```bash
+cargo test -p everruns-durable --test failure_injection_test \
+  --features "failpoints,postgres-tests" -- --test-threads=1
+```
+
+Requires PostgreSQL with `DATABASE_URL` set. CI runs this on every PR.
+
+Current fail points cluster around Postgres task/event persistence
+(`postgres_append_events_*`, `postgres_claim_task_*`, `postgres_complete_task_*`,
+`postgres_heartbeat_update`, `postgres_reclaim_stale_*`) and the distributed
+circuit breaker (`circuit_breaker_*`). They verify the engine degrades safely —
+no task hijack, double-completion, or stuck state — when the database fails
+mid-operation (TM-DURABLE, TM-DOS).
+
+Conventions:
+- Single-threaded (`--test-threads=1`) — fail points are global state.
+- Always reset with `fail::cfg("name", "off")` after a test.
+- Add `fail_point!("module::function", ...)` under `#[cfg(feature = "failpoints")]`
+  at the critical location, then add a test in `failure_injection_test.rs`.
+
+### 3. AI-assisted code scanning (DeepSec)
+
+`.deepsec/` holds a [deepsec](https://www.npmjs.com/package/deepsec) workspace
+configured for the `everruns` project (priority paths: `apps/ui/`,
+`crates/server/`, `crates/core/`, `crates/worker/`, `crates/runtime/`,
+`integrations/`). It pairs a free regex `scan` with an AI `process` stage that
+triages findings against the project context in `.deepsec/data/everruns/INFO.md`.
+
+```bash
+cd .deepsec
+pnpm install
+pnpm update deepsec@latest
+pnpm deepsec scan       --project-id everruns
+pnpm deepsec process    --project-id everruns --concurrency 5
+pnpm deepsec revalidate --project-id everruns --concurrency 5   # cuts false positives
+pnpm deepsec report     --project-id everruns
+```
+
+Generated scan output is gitignored; the curated `INFO.md` and config are
+checked in so context is shared. File real true positives as Linear/GitHub
+issues with a `TM-` reference where one applies. See `.deepsec/README.md` for
+setup and `.deepsec/AGENTS.md` for agent usage.
+
+### 4. Supply chain and platform scanning
+
+- **Licenses / advisories** — `cargo deny check licenses` (config in
+  `deny.toml`), enforced by `.github/workflows/licenses.yml` on PRs that touch
+  Cargo or crate files.
+- **Dependabot** — automated dependency and security updates; review alerts in
+  the GitHub Security tab.
+- **Secret scanning** — GitHub push-protection and open-alert review.
+- **CI secret scoping** — fork-PR jobs never receive repository secrets
+  (TM-CI-001..005); see `specs/threat-model.md`.
+
+## When to add coverage
+
+| Change | Required coverage |
+|--------|-------------------|
+| New trust boundary or auth/permission path | Threat-model entry + test |
+| New persistence or task-lifecycle path | Fail point + failure injection test |
+| New external channel/integration | Signature/replay/isolation tests |
+| New dependency | Passes `cargo deny`; respects release-age floor |
+
+## Related Files
+
+- `specs/threat-model.md` — Threat catalog and mitigation status
+- `specs/maintenance.md` — Security review cadence and release readiness
+- `SECURITY.md` — Vulnerability disclosure policy
+- `crates/durable/tests/failure_injection_test.rs` — Fail-point tests
+- `deny.toml` — License and advisory policy
+- `.deepsec/` — DeepSec scanning workspace
+- `.github/workflows/licenses.yml` — Dependency license CI

@@ -174,6 +174,14 @@ Full documentation lives at **[docs.everruns.com](https://docs.everruns.com)**.
 - [API Reference](https://docs.everruns.com/api/) — OpenAPI 3.0
 - [SDKs](https://docs.everruns.com/features/sdk/) — Rust, Python, and TypeScript clients
 
+## Security
+
+Everruns runs untrusted agent and tool code for multiple tenants, so security is a core design goal. Threats are tracked with stable IDs across categories — authentication, tenant isolation, permissions, tool execution, LLM integration, the bash and SQLite sandboxes, durable execution, and channel integrations — each with a documented mitigation and test coverage.
+
+- [Threat model](./specs/threat-model.md) — full analysis, mitigation status, and accepted risks
+- [Security testing](./specs/security-testing.md) — threat-model tests, fail-rs failure injection, DeepSec scanning, and supply-chain checks
+- [Security policy](./SECURITY.md) — how to report a vulnerability
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and [AGENTS.md](./AGENTS.md) for the conventions used by both human and AI contributors.
