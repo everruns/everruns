@@ -11,16 +11,23 @@ use crate::services::{ModelSyncService, ProviderResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
+    response::Redirect,
     routing::{get, post},
 };
+use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use everruns_core::provider::Provider;
+use everruns_core::typed_id::ProviderId;
+use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{
-    Caller, DriverId, DriverRegistry, ProviderStatus, ResourceConfigResponse,
-    evaluate_policies_with,
+    Caller, DriverId, DriverOAuthFlow, DriverRegistry, Policy, ProviderStatus,
+    ResourceConfigResponse, evaluate_policies_with,
 };
+use rand::Rng;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -35,6 +42,11 @@ pub struct AppState {
     pub service: Arc<ProviderService>,
     pub sync_service: Arc<ModelSyncService>,
     pub auth: AuthState,
+    /// Driver registry, used to discover whether a provider's driver declares an
+    /// interactive OAuth connect flow.
+    pub driver_registry: Arc<DriverRegistry>,
+    /// Encryption service for storing the credential obtained via OAuth.
+    pub encryption: Option<Arc<EncryptionService>>,
 }
 
 impl AppState {
@@ -53,8 +65,14 @@ impl AppState {
         Self {
             db: db.clone(),
             service: Arc::new(service),
-            sync_service: Arc::new(ModelSyncService::new(db, driver_registry, encryption)),
+            sync_service: Arc::new(ModelSyncService::new(
+                db,
+                driver_registry.clone(),
+                encryption.clone(),
+            )),
             auth,
+            driver_registry,
+            encryption,
         }
     }
 
@@ -311,6 +329,346 @@ pub async fn provider_config(
     Json(ResourceConfigResponse { policies })
 }
 
+// ============================================================================
+// OAuth provider connection (e.g. "Connect with OpenRouter")
+//
+// Some drivers declare an interactive OAuth flow (DriverDescriptor::oauth) so an
+// admin can connect a provider by authorizing in the browser instead of pasting
+// an API key. The flow yields a long-lived credential that is stored in the same
+// encrypted credentials field a hand-typed key would use, so model resolution is
+// unchanged and non-admin users are unaffected. The pattern is driver-agnostic:
+// adding OAuth to another driver only requires a DriverOAuthConfig on its
+// descriptor, not new endpoints.
+// ============================================================================
+
+/// HttpOnly, browser-bound state persisted across the OAuth round-trip. Binds
+/// the callback to the provider, org, and the PKCE verifier this browser
+/// generated, so a forged callback cannot inject an attacker's credential.
+///
+/// THREAT[TM-API-021]: this binding plus the `provider.manage` re-check in the
+/// callback is the CSRF/forgery mitigation; do not relax it without updating
+/// `specs/threat-model.md`.
+#[derive(Debug, Serialize, Deserialize)]
+struct PendingProviderOAuth {
+    /// CSRF token echoed via the callback URL and matched here.
+    state: String,
+    /// Prefixed public provider id this flow targets.
+    provider_id: String,
+    /// Org the provider belongs to.
+    org_id: i64,
+    /// PKCE code verifier exchanged for the credential.
+    code_verifier: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProviderOAuthCallbackQuery {
+    pub code: String,
+    pub state: Option<String>,
+}
+
+/// OpenRouter's token-exchange response: the `key` is a user-controlled API key.
+#[derive(Debug, Deserialize)]
+struct OpenRouterKeyResponse {
+    key: String,
+}
+
+/// GET /v1/providers/{id}/oauth/authorize — begin the driver's OAuth connect flow.
+///
+/// Looks up the provider's driver, and if it declares an OAuth flow, redirects
+/// the admin's browser to the provider's authorization endpoint with PKCE.
+pub async fn oauth_authorize(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    let caller = require_provider_manage(&state, &org)?;
+    let (provider, oauth) = resolve_oauth_provider(&state, &caller, &id).await?;
+    // Fail fast: the callback can only store the obtained key when encryption is
+    // configured. Surface the same message here so an admin does not complete an
+    // OAuth consent only to hit a 500 on the callback.
+    require_encryption_configured(&state)?;
+    // Defense-in-depth: the authorize URL is driver-declared, but validate it so
+    // a future misconfigured driver cannot redirect into the internal network.
+    validate_safe_url(&oauth.authorize_url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Authorization endpoint blocked: {e}"),
+        )
+    })?;
+
+    let csrf_state = random_hex();
+    let code_verifier = generate_pkce_verifier();
+    let code_challenge = pkce_challenge(&code_verifier);
+
+    let pending = PendingProviderOAuth {
+        state: csrf_state.clone(),
+        provider_id: id.clone(),
+        org_id: org.org_id,
+        code_verifier,
+    };
+    let cookie = Cookie::build((
+        oauth_state_cookie_name(&id),
+        URL_SAFE_NO_PAD.encode(
+            serde_json::to_vec(&pending).map_err(|e| internal("OAuth provider connection", &e))?,
+        ),
+    ))
+    .path("/")
+    .http_only(true)
+    .secure(true)
+    .same_site(SameSite::Lax)
+    .max_age(time::Duration::minutes(10))
+    .build();
+
+    // The CSRF token rides in the callback URL so it round-trips regardless of
+    // whether the provider echoes a `state` parameter of its own.
+    let callback_url = format!(
+        "{}/v1/providers/{}/oauth/callback?state={}",
+        state.auth.config.base_url.trim_end_matches('/'),
+        urlencoding::encode(&id),
+        urlencoding::encode(&csrf_state),
+    );
+
+    let redirect_url = match oauth.flow {
+        DriverOAuthFlow::OpenRouterPkce => {
+            let mut url = reqwest::Url::parse(&oauth.authorize_url)
+                .map_err(|e| internal("OAuth provider connection", &e))?;
+            url.query_pairs_mut()
+                .append_pair("callback_url", &callback_url)
+                .append_pair("code_challenge", &code_challenge)
+                .append_pair("code_challenge_method", "S256");
+            url.to_string()
+        }
+    };
+
+    tracing::info!(
+        org_id = org.org_id,
+        provider = %provider.provider_type,
+        "Starting OAuth provider connection"
+    );
+    Ok((jar.add(cookie), Redirect::to(&redirect_url)))
+}
+
+/// GET /v1/providers/{id}/oauth/callback — finish the OAuth connect flow.
+///
+/// Validates the browser-bound state, exchanges the authorization code for a
+/// credential, and stores it on the provider (encrypted at rest).
+pub async fn oauth_callback(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    jar: CookieJar,
+    Path(id): Path<String>,
+    Query(query): Query<ProviderOAuthCallbackQuery>,
+) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
+    let caller = require_provider_manage(&state, &org)?;
+    let pending = validate_pending_oauth(&jar, &id, org.org_id, query.state.as_deref())?;
+    let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&id)));
+
+    let (provider, oauth) = resolve_oauth_provider(&state, &caller, &id).await?;
+    // Storing the obtained key requires encryption; fail fast with the canonical
+    // message rather than letting the update surface a generic 500.
+    require_encryption_configured(&state)?;
+
+    let api_key = match oauth.flow {
+        DriverOAuthFlow::OpenRouterPkce => {
+            exchange_openrouter_code(&oauth.token_url, &query.code, &pending.code_verifier).await?
+        }
+    };
+
+    // Store the obtained key exactly like a hand-entered one: encrypted at rest,
+    // resolver cache invalidated. No backward-compat path needed.
+    state
+        .service
+        .update(
+            &caller,
+            provider.id.uuid(),
+            UpdateProviderRequest {
+                name: None,
+                provider_type: None,
+                base_url: None,
+                api_key: Some(api_key),
+                status: None,
+            },
+        )
+        .await
+        .map_err(|e| internal("OAuth provider connection", &e))?
+        .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+
+    tracing::info!(
+        org_id = org.org_id,
+        provider = %provider.provider_type,
+        "Stored credential from OAuth provider connection"
+    );
+
+    let redirect = format!(
+        "{}/settings/providers?connected={}",
+        state.auth.config.frontend_url.trim_end_matches('/'),
+        urlencoding::encode(provider.provider_type.as_str()),
+    );
+    Ok((clear_cookie, Redirect::to(&redirect)))
+}
+
+/// Resolve the provider and its driver's declared OAuth flow, or a client error
+/// if the provider is missing or its driver does not support OAuth.
+async fn resolve_oauth_provider(
+    state: &AppState,
+    caller: &Caller,
+    id: &str,
+) -> Result<(Provider, everruns_core::DriverOAuthConfig), (StatusCode, String)> {
+    let provider_id = id
+        .parse::<ProviderId>()
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid provider ID: {e}")))?;
+    let provider = state
+        .service
+        .get(caller, provider_id.uuid())
+        .await
+        .map_err(|e| internal("OAuth provider connection", &e))?
+        .ok_or((StatusCode::NOT_FOUND, "Provider not found".to_string()))?;
+    let oauth = state
+        .driver_registry
+        .descriptor(&provider.provider_type)
+        .and_then(|d| d.oauth.clone())
+        .ok_or((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Provider driver '{}' does not support OAuth connection",
+                provider.provider_type
+            ),
+        ))?;
+    Ok((provider, oauth))
+}
+
+/// Exchange an OpenRouter PKCE authorization code for a user-controlled API key.
+async fn exchange_openrouter_code(
+    token_url: &str,
+    code: &str,
+    code_verifier: &str,
+) -> Result<String, (StatusCode, String)> {
+    // token_url is driver-declared (openrouter.ai), not user input; validate
+    // anyway as defense-in-depth against future misconfiguration.
+    validate_safe_url(token_url).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Token endpoint blocked: {e}"),
+        )
+    })?;
+    let response = reqwest::Client::new()
+        .post(token_url)
+        .json(&serde_json::json!({
+            "code": code,
+            "code_verifier": code_verifier,
+            "code_challenge_method": "S256",
+        }))
+        .send()
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "OAuth token exchange request failed");
+            (StatusCode::BAD_GATEWAY, "Token exchange failed".to_string())
+        })?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        tracing::error!(%status, body_len = body.len(), "OAuth token exchange returned error");
+        return Err((StatusCode::BAD_GATEWAY, "Token exchange failed".to_string()));
+    }
+    let parsed: OpenRouterKeyResponse = response.json().await.map_err(|e| {
+        tracing::error!(error = %e, "Failed to parse OAuth token exchange response");
+        (StatusCode::BAD_GATEWAY, "Token exchange failed".to_string())
+    })?;
+    Ok(parsed.key)
+}
+
+/// Require server-side encryption to be configured. The OAuth flow always ends
+/// by storing a credential, so without encryption it cannot succeed — surface
+/// the same message `ProviderService` uses, before the external round-trip.
+fn require_encryption_configured(state: &AppState) -> Result<(), (StatusCode, String)> {
+    if state.encryption.is_none() {
+        return Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Encryption not configured. Cannot store API key.".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+/// Require the caller to hold the provider-manage permission for this org.
+fn require_provider_manage(
+    state: &AppState,
+    org: &ResolvedOrg,
+) -> Result<Caller, (StatusCode, String)> {
+    let caller = Caller::from(org);
+    Policy::evaluate_with(
+        &LLM_PROVIDER_MANAGE,
+        state.auth.permission_resolver.as_ref(),
+        &caller,
+    )
+    .map_err(|_| {
+        (
+            StatusCode::FORBIDDEN,
+            "You do not have permission to manage providers".to_string(),
+        )
+    })?;
+    Ok(caller)
+}
+
+fn validate_pending_oauth(
+    jar: &CookieJar,
+    provider_id: &str,
+    org_id: i64,
+    query_state: Option<&str>,
+) -> Result<PendingProviderOAuth, (StatusCode, String)> {
+    let cookie = jar.get(&oauth_state_cookie_name(provider_id)).ok_or((
+        StatusCode::BAD_REQUEST,
+        "Invalid or expired OAuth state".to_string(),
+    ))?;
+    let decoded = URL_SAFE_NO_PAD
+        .decode(cookie.value())
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let pending: PendingProviderOAuth = serde_json::from_slice(&decoded)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let callback_state = query_state.ok_or((
+        StatusCode::BAD_REQUEST,
+        "Missing state parameter".to_string(),
+    ))?;
+    if pending.state != callback_state
+        || pending.provider_id != provider_id
+        || pending.org_id != org_id
+    {
+        return Err((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()));
+    }
+    Ok(pending)
+}
+
+fn oauth_state_cookie_name(provider_id: &str) -> String {
+    format!(
+        "provider_oauth_state_{}",
+        provider_id.replace([':', '/'], "_")
+    )
+}
+
+fn random_hex() -> String {
+    let bytes: [u8; 16] = rand::rng().random();
+    hex::encode(bytes)
+}
+
+fn generate_pkce_verifier() -> String {
+    let bytes: [u8; 32] = rand::rng().random();
+    URL_SAFE_NO_PAD.encode(bytes)
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    let digest = Sha256::digest(verifier.as_bytes());
+    URL_SAFE_NO_PAD.encode(digest)
+}
+
+fn internal(context: &str, err: &impl std::fmt::Display) -> (StatusCode, String) {
+    tracing::error!("{context} error: {err}");
+    (
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal server error".to_string(),
+    )
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/providers/config", get(provider_config))
@@ -322,7 +680,103 @@ pub fn routes(state: AppState) -> Router {
                 .delete(delete_provider),
         )
         .route("/v1/providers/{id}/sync-models", post(sync_models))
+        .route("/v1/providers/{id}/oauth/authorize", get(oauth_authorize))
+        .route("/v1/providers/{id}/oauth/callback", get(oauth_callback))
         .with_state(state)
+}
+
+#[cfg(test)]
+mod oauth_tests {
+    use super::*;
+
+    fn jar_with_pending(pending: &PendingProviderOAuth) -> CookieJar {
+        let value = URL_SAFE_NO_PAD.encode(serde_json::to_vec(pending).unwrap());
+        CookieJar::new().add(Cookie::new(
+            oauth_state_cookie_name(&pending.provider_id),
+            value,
+        ))
+    }
+
+    fn sample_pending() -> PendingProviderOAuth {
+        PendingProviderOAuth {
+            state: "csrf-token".to_string(),
+            provider_id: "provider_abc".to_string(),
+            org_id: 42,
+            code_verifier: "verifier".to_string(),
+        }
+    }
+
+    #[test]
+    fn pkce_challenge_is_base64url_sha256() {
+        // RFC 7636 worked example.
+        let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
+        assert_eq!(
+            pkce_challenge(verifier),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
+    #[test]
+    fn cookie_name_sanitizes_separators() {
+        assert_eq!(
+            oauth_state_cookie_name("mcp:oauth/id"),
+            "provider_oauth_state_mcp_oauth_id"
+        );
+    }
+
+    #[test]
+    fn validate_pending_accepts_matching_state() {
+        let pending = sample_pending();
+        let jar = jar_with_pending(&pending);
+        let result = validate_pending_oauth(&jar, "provider_abc", 42, Some("csrf-token")).unwrap();
+        assert_eq!(result.code_verifier, "verifier");
+    }
+
+    #[test]
+    fn validate_pending_rejects_state_mismatch() {
+        let jar = jar_with_pending(&sample_pending());
+        let err = validate_pending_oauth(&jar, "provider_abc", 42, Some("wrong")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_rejects_org_mismatch() {
+        // A cookie minted for another org must not authorize this org's provider.
+        let jar = jar_with_pending(&sample_pending());
+        let err = validate_pending_oauth(&jar, "provider_abc", 99, Some("csrf-token")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_rejects_provider_mismatch() {
+        let jar = jar_with_pending(&sample_pending());
+        // Cookie name is per-provider, so a different provider id finds no cookie.
+        let err =
+            validate_pending_oauth(&jar, "provider_other", 42, Some("csrf-token")).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_requires_query_state() {
+        let jar = jar_with_pending(&sample_pending());
+        let err = validate_pending_oauth(&jar, "provider_abc", 42, None).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_rejects_missing_cookie() {
+        let err = validate_pending_oauth(&CookieJar::new(), "provider_abc", 42, Some("csrf-token"))
+            .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn openrouter_key_response_deserializes() {
+        // OpenRouter returns the user-controlled key plus a user id we ignore.
+        let resp: OpenRouterKeyResponse =
+            serde_json::from_str(r#"{"key":"sk-or-v1-abc","user_id":"usr_1"}"#).unwrap();
+        assert_eq!(resp.key, "sk-or-v1-abc");
+    }
 }
 
 #[cfg(test)]

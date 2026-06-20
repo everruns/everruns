@@ -104,6 +104,8 @@ jest.mock("@/hooks/use-organizations", () => ({
 
 jest.mock("@/lib/api/providers", () => ({
   updateModel: jest.fn(),
+  providerSupportsOAuth: jest.fn(() => false),
+  providerOAuthAuthorizeUrl: jest.fn((id: string) => `/api/v1/providers/${id}/oauth/authorize`),
 }));
 
 jest.mock("@/lib/query-keys", () => ({

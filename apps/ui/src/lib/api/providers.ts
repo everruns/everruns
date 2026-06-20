@@ -1,7 +1,7 @@
 // LLM Provider and Model API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
+import { api, getBackendUrl } from "./client";
 import type {
   Provider,
   Model,
@@ -45,6 +45,27 @@ export async function deleteProvider(providerId: string): Promise<void> {
 export async function syncProviderModels(providerId: string): Promise<SyncModelsResponse> {
   const response = await api.post<SyncModelsResponse>(`/v1/providers/${providerId}/sync-models`);
   return response.data;
+}
+
+// Driver ids whose backend driver declares an interactive OAuth connect flow.
+// This mirrors `DriverDescriptor::oauth` on the server, which stays the source
+// of truth: `authorize` rejects drivers that do not declare it. It is kept
+// client-side deliberately — the whole driver list, key placeholders, and base
+// URLs are already hardcoded here, and the Add-Provider hint needs per-driver
+// capability before any provider row exists. Folding all of this onto a backend
+// driver-capability catalog endpoint is a separate, larger change (tracked as a
+// follow-up); until then this single-entry set is the smallest consistent shim.
+const OAUTH_PROVIDER_TYPES = new Set<string>(["openrouter"]);
+
+export function providerSupportsOAuth(providerType: string): boolean {
+  return OAUTH_PROVIDER_TYPES.has(providerType);
+}
+
+// Browser-navigation URL that begins the provider's OAuth connect flow. This is
+// a server redirect (sets a state cookie), so it must hit the backend directly
+// rather than going through the API client.
+export function providerOAuthAuthorizeUrl(providerId: string): string {
+  return `${getBackendUrl()}/v1/providers/${providerId}/oauth/authorize`;
 }
 
 // Model CRUD
