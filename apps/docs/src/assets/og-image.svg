@@ -11,18 +11,18 @@
       <circle cx="12" cy="12" r="1" fill="#D4A43A" opacity="0.10"/>
     </pattern>
 
-    <!-- Logo gradients (from logo.svg) -->
-    <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="94" x2="256" y2="284">
+    <!-- Logo gradients (from logo.svg, centroid-centered) -->
+    <linearGradient id="gTop" gradientUnits="userSpaceOnUse" x1="256" y1="72.67" x2="256" y2="262.67">
       <stop offset="0.00" stop-color="#0A1636"/>
       <stop offset="0.70" stop-color="#0A1636"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
     </linearGradient>
-    <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="374" x2="256" y2="284">
+    <linearGradient id="gLeft" gradientUnits="userSpaceOnUse" x1="70" y1="352.67" x2="256" y2="262.67">
       <stop offset="0.00" stop-color="#081C3F"/>
       <stop offset="0.70" stop-color="#081C3F"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
     </linearGradient>
-    <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="374" x2="256" y2="284">
+    <linearGradient id="gRight" gradientUnits="userSpaceOnUse" x1="442" y1="352.67" x2="256" y2="262.67">
       <stop offset="0.00" stop-color="#0B1233"/>
       <stop offset="0.70" stop-color="#0B1233"/>
       <stop offset="1.00" stop-color="#D4A43A"/>
@@ -33,11 +33,11 @@
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect width="1200" height="630" fill="url(#dots)"/>
 
-  <!-- Logo rings (scaled and positioned left-center) -->
-  <g transform="translate(100, 115) scale(0.78)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="256" cy="214" r="120" stroke="url(#gTop)"/>
-    <circle cx="186" cy="309" r="120" stroke="url(#gLeft)"/>
-    <circle cx="326" cy="309" r="120" stroke="url(#gRight)"/>
+  <!-- Logo rings (centroid-centered; translate compensates so banner position is unchanged) -->
+  <g transform="translate(100, 131.64) scale(0.78)" fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="256" cy="192.67" r="120" stroke="url(#gTop)"/>
+    <circle cx="186" cy="287.67" r="120" stroke="url(#gLeft)"/>
+    <circle cx="326" cy="287.67" r="120" stroke="url(#gRight)"/>
   </g>
 
   <!-- Title -->
