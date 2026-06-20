@@ -22,9 +22,69 @@ use everruns_durable::UpdateField;
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, impl_auth_state,
 };
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;
+
+// ============================================================================
+// Org creation policy extension point (EVE-607)
+// ============================================================================
+
+/// Context handed to an [`OrgCreatePolicy`] before any org or membership row is
+/// written.
+///
+/// Wrappers (e.g. the SaaS distribution) use this to gate org creation on product
+/// policy — verified email, account/resource limits — without forking the OSS
+/// create-org handler or mounting a parallel `/v1/saas/orgs` endpoint. OSS remains
+/// the owner of org creation; wrappers only supply policy. See `specs/embedding.md`.
+pub struct OrgCreateContext<'a> {
+    /// The authenticated user requesting creation.
+    pub user: &'a AuthUser,
+    /// The requested organization display name (already validated non-empty and
+    /// ≤255 chars by the handler).
+    pub org_name: &'a str,
+}
+
+/// Fail-closed rejection returned by an [`OrgCreatePolicy`].
+///
+/// The `status` and `message` are surfaced directly to the API client, so the
+/// message must be safe and suitable for UI display — for example
+/// `403 Please verify your email address before continuing.`
+pub struct OrgCreateRejection {
+    /// HTTP status returned to the client (e.g. `StatusCode::FORBIDDEN`).
+    pub status: StatusCode,
+    /// User-facing message rendered by the UI.
+    pub message: String,
+}
+
+impl OrgCreateRejection {
+    /// Reject with an explicit status and user-facing message.
+    pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
+        Self {
+            status,
+            message: message.into(),
+        }
+    }
+
+    /// Reject with `403 Forbidden` — the common case for policy gating.
+    pub fn forbidden(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::FORBIDDEN, message)
+    }
+}
+
+/// Pre-create policy hook for organization creation.
+///
+/// Registered via [`ServerAppBuilder::org_create_policy`](crate::ServerAppBuilder::org_create_policy).
+/// When a policy is present, OSS runs [`check`](OrgCreatePolicy::check) before
+/// persisting any org or membership row; returning `Err` aborts creation with the
+/// rejection's status and body and writes nothing. When no policy is registered,
+/// default OSS create-org behavior is unchanged.
+#[async_trait]
+pub trait OrgCreatePolicy: Send + Sync {
+    /// Decide whether the given user may create the requested organization.
+    async fn check(&self, ctx: OrgCreateContext<'_>) -> Result<(), OrgCreateRejection>;
+}
 
 /// App state for organization routes
 #[derive(Clone)]
@@ -34,6 +94,9 @@ pub struct AppState {
     pub built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     pub resource_limits: crate::server::ResourceLimitsConfig,
     pub org_rate_limiter: OrgRateLimiter,
+    /// Optional wrapper-supplied pre-create policy (EVE-607). Runs before any
+    /// org/membership row is written; `None` keeps default OSS behavior.
+    pub org_create_policy: Option<Arc<dyn OrgCreatePolicy>>,
 }
 
 impl AppState {
@@ -44,6 +107,7 @@ impl AppState {
             built_in_harnesses: crate::platform::oss_built_in_harnesses(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             org_rate_limiter: OrgRateLimiter::default(),
+            org_create_policy: None,
         }
     }
 
@@ -58,6 +122,7 @@ impl AppState {
             built_in_harnesses,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             org_rate_limiter: OrgRateLimiter::default(),
+            org_create_policy: None,
         }
     }
 }
@@ -246,6 +311,20 @@ pub async fn create_organization(
             ErrorResponse::new("Organization name cannot exceed 255 characters")
                 .into_response(StatusCode::BAD_REQUEST),
         );
+    }
+
+    // Pre-create policy hook (EVE-607). Wrappers gate creation here — before any
+    // org or membership row is written — and may fail closed with a UI-facing
+    // status/body. No-op when no policy is registered (default OSS behavior).
+    if let Some(policy) = &state.org_create_policy
+        && let Err(rejection) = policy
+            .check(OrgCreateContext {
+                user: &user,
+                org_name: &req.name,
+            })
+            .await
+    {
+        return Err(ErrorResponse::new(rejection.message).into_response(rejection.status));
     }
 
     // Enforce org-per-user limit (counts orgs created by this user, not memberships)
@@ -935,6 +1014,166 @@ pub async fn remove_member(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::backend::AuthBackend;
+    use crate::auth::config::{AuthConfig, AuthMode, JwtConfig};
+    use crate::auth::middleware::{AuthError, AuthMethod};
+    use crate::auth::routes::AuthConfigResponse;
+    use axum::body::Body;
+    use axum::http::Request;
+    use everruns_core::OrgMembership;
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+    use uuid::Uuid;
+
+    // ---- Org create policy extension point (EVE-607) ----
+
+    /// Minimal auth backend that authenticates every request as one fixed user.
+    #[derive(Clone)]
+    struct MockAuthBackend {
+        user_id: Uuid,
+    }
+
+    #[async_trait]
+    impl AuthBackend for MockAuthBackend {
+        async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
+            Ok(AuthUser {
+                id: self.user_id,
+                email: "test@example.com".to_string(),
+                name: "Test User".to_string(),
+                roles: vec!["user".to_string()],
+                is_platform_user: true,
+                auth_method: AuthMethod::Jwt,
+                organizations: vec![OrgMembership {
+                    org_id: DEFAULT_ORG_ID,
+                    public_id: "org_00000000000000000000000000000001".to_string(),
+                    name: "Default Organization".to_string(),
+                    role: OrgRole::Owner,
+                }],
+            })
+        }
+
+        async fn validate_personal_access_token(
+            &self,
+            _token: &str,
+        ) -> Result<AuthUser, AuthError> {
+            Err(AuthError::unauthorized("not supported"))
+        }
+
+        fn auth_routes(&self) -> Option<Router> {
+            None
+        }
+
+        fn auth_config_response(&self) -> AuthConfigResponse {
+            AuthConfigResponse {
+                mode: "full".to_string(),
+                password_auth_enabled: false,
+                signup_enabled: false,
+                oauth_providers: vec![],
+            }
+        }
+    }
+
+    /// Policy that always rejects with `403` and a UI-facing message.
+    struct RejectAllPolicy {
+        message: &'static str,
+    }
+
+    #[async_trait]
+    impl OrgCreatePolicy for RejectAllPolicy {
+        async fn check(&self, _ctx: OrgCreateContext<'_>) -> Result<(), OrgCreateRejection> {
+            Err(OrgCreateRejection::forbidden(self.message))
+        }
+    }
+
+    /// Build a create-org router over an in-memory DB, optionally with a policy.
+    fn create_org_app(
+        policy: Option<Arc<dyn OrgCreatePolicy>>,
+    ) -> (Router, Arc<StorageBackend>, Uuid) {
+        let user_id = Uuid::now_v7();
+        let db = Arc::new(StorageBackend::in_memory());
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            jwt: JwtConfig {
+                secret: "test-secret-for-unit-tests-only".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let auth = AuthState::new(config, Arc::new(MockAuthBackend { user_id }));
+        let mut state = AppState::new(db.clone(), auth);
+        state.org_create_policy = policy;
+        (routes(state), db, user_id)
+    }
+
+    fn create_org_request(name: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/v1/orgs")
+            .header("Authorization", "Bearer test-token")
+            .header("content-type", "application/json")
+            .body(Body::from(format!(r#"{{"name":"{name}"}}"#)))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn create_organization_succeeds_without_policy() {
+        // Default OSS behavior: no policy registered, creation proceeds.
+        let (app, db, user_id) = create_org_app(None);
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        // The org row and owner membership were persisted.
+        let count = db.count_user_created_organizations(user_id).await.unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[tokio::test]
+    async fn org_create_policy_rejects_before_db_write() {
+        let policy: Arc<dyn OrgCreatePolicy> = Arc::new(RejectAllPolicy {
+            message: "Please verify your email address before continuing.",
+        });
+        let (app, db, user_id) = create_org_app(Some(policy));
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json["detail"],
+            "Please verify your email address before continuing."
+        );
+
+        // Fail-closed: no org or membership row was written.
+        let count = db.count_user_created_organizations(user_id).await.unwrap();
+        assert_eq!(count, 0);
+        assert!(
+            db.list_user_organizations(user_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn org_create_policy_allows_creation() {
+        // A policy that returns Ok must not change default behavior.
+        struct AllowPolicy;
+        #[async_trait]
+        impl OrgCreatePolicy for AllowPolicy {
+            async fn check(&self, _ctx: OrgCreateContext<'_>) -> Result<(), OrgCreateRejection> {
+                Ok(())
+            }
+        }
+        let policy: Arc<dyn OrgCreatePolicy> = Arc::new(AllowPolicy);
+        let (app, db, user_id) = create_org_app(Some(policy));
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        let count = db.count_user_created_organizations(user_id).await.unwrap();
+        assert_eq!(count, 1);
+    }
 
     #[test]
     fn test_organization_response_fields() {
