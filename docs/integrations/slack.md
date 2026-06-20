@@ -3,6 +3,8 @@ title: Slack
 description: Deploy Everruns agents as Slack bots that respond to messages, threads, and mentions. Configure OAuth, event subscriptions, and channel routing for your workspace.
 ---
 
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M9 3.5L7 20.5M17 3.5l-2 17M4 8.5h16M3.2 15.5h16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+
 Everruns integrates with [Slack](https://slack.com) to deploy agents as bots that respond to messages in channels and threads. Messages are received via Slack's Events API, processed by the agent, and responses are posted back to the conversation.
 
 ## What You Get
