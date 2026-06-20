@@ -454,8 +454,8 @@ cadence), or is the existing schedule + monitor composition sufficient?
 **Decision: no dedicated primitive in v1 — recurrence is expressed by
 composition.** Two existing primitives already cover recurring background work:
 
-- A recurring **session schedule** (`cron_expression`, see
-  `specs/scheduled-tasks.md` / the `session_schedule` capability) fires on a cadence.
+- A recurring **session schedule** (`cron_expression`, via the `session_schedule`
+  capability — `docs/capabilities/session-schedules.md`) fires on a cadence.
 - A **monitor** task (`spawn_background` with a `schedule` arg) binds that
   schedule to a long-lived task: each fire runs the probe tool and records the
   result on the task thread (recurring monitors stay `running`; one-shot ones go

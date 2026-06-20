@@ -45,7 +45,7 @@ configure. A recurring (`cron_expression`) schedule either delivers a scheduled
 turn to the session, or, when paired with a background **monitor** task, runs a
 probe on each fire and records the result on the task's thread. This composition
 (recurring schedule + monitor) is the supported way to run periodic background
-work; see the Session Tasks documentation for monitors.
+work — there is no separate recurring-task primitive to configure.
 
 ## Notes
 
