@@ -38,6 +38,15 @@ Cancel an active schedule.
 
 List all schedules for the current session.
 
+## Recurring background tasks
+
+Recurrence is built on schedules — there is no separate "recurring task" object to
+configure. A recurring (`cron_expression`) schedule either delivers a scheduled
+turn to the session, or, when paired with a background **monitor** task, runs a
+probe on each fire and records the result on the task's thread. This composition
+(recurring schedule + monitor) is the supported way to run periodic background
+work; see the Session Tasks documentation for monitors.
+
 ## Notes
 
 - Maximum 5 active schedules per session
