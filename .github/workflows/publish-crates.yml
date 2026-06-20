@@ -142,6 +142,10 @@ jobs:
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
               ],
+              "crates/local/Cargo.toml": [
+                  "everruns-core",
+                  "everruns-runtime",
+              ],
               "crates/openai/Cargo.toml": [
                   "everruns-core",
               ],
@@ -242,6 +246,7 @@ jobs:
             everruns-integrations-docker
             everruns-integrations-sprites
             everruns-runtime
+            everruns-local
           )
 
           publish_status() {

@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Fireworks AI provider** — first-class `fireworks` driver (`everruns-fireworks`) for Fireworks AI open models (Llama, Qwen, DeepSeek, GLM, Kimi, gpt-oss, ...) over the OpenAI-compatible Chat Completions API, with automatic model discovery (tools, vision, and context-window capabilities) and Settings → Providers UI support.
+- **everruns-local published to crates.io** — the SQLite-backed runtime backend stores (`LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore`, `LocalProfile`, `LocalBackends`, `LocalRuntimeBuilder`) are now a published crate, so external embedders can add durable, restart-survivable local persistence to an `everruns-runtime` host. Includes a crate README and a "Local backends" section in the runtime docs.
 
 ## [0.15.0] - 2026-06-19
 

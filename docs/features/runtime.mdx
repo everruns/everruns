@@ -172,6 +172,47 @@ let runtime = InProcessRuntimeBuilder::new()
 
 The default in-memory `EventBus` retains emitted events for `InProcessRuntime::events()`; production buses inherit the default `collected_events` and return an empty `Vec`.
 
+## Local backends
+
+In-memory stores vanish when the process exits. For an embedded, single-process host that should **survive restarts** — a terminal coding agent, a personal agent, a long-lived CLI — the companion [`everruns-local`](https://crates.io/crates/everruns-local) crate provides SQLite-backed, file-persisted implementations of the optional host-backend slots:
+
+| Type | Backs |
+|---|---|
+| `LocalSessionTaskRegistry` | Session tasks and their message channel |
+| `LocalScheduleStore` | Session schedules (with a local `metadata` JSON bag) |
+| `LocalPlatformStore` | Subagent-critical platform store core |
+| `LocalProfile` | Local data dir, workspace, and identity defaults |
+| `LocalBackends` | Composes the above into `RuntimeBackends` |
+
+Task and message state persists to a SQLite file, so a freshly-spawned process can read, continue, and inspect work an earlier process started.
+
+```bash
+cargo add everruns-local
+```
+
+```rust
+use everruns_local::{LocalBackends, LocalProfile};
+use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
+
+// LocalProfile stores plain filesystem paths and does not expand a leading
+// `~`; pass an absolute path your application owns. Its SQLite file is derived
+// from the data dir.
+let profile = LocalProfile::new("/var/lib/everruns")
+    .with_workspace_root("/var/lib/everruns/workspace");
+
+// Layer the local stores over a set of runtime backends. Any store (or event
+// bus) you set on `RuntimeBackends` is preserved.
+let local = LocalBackends::new(profile, RuntimeBackends::in_memory())?;
+
+let runtime = InProcessRuntimeBuilder::new()
+    .platform_definition(platform)
+    .backends(local.runtime_backends.clone())
+    .build()
+    .await?;
+```
+
+`LocalBackends` only adds the local stores — it preserves a caller-supplied event bus (via `RuntimeBackends`) and session file-system factory (via the platform's `PlatformDefinition`), so it composes with the [custom backends](#custom-backends) above rather than replacing them. See [docs.rs/everruns-local](https://docs.rs/everruns-local) for the full API.
+
 ## Local MCP servers
 
 MCP server tools are first-class runtime tools. Local-process (stdio) MCP servers are gated behind the `mcp-stdio` feature, off by default so the hosted server/worker never compile stdio in:

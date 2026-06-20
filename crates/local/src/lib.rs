@@ -17,8 +17,9 @@
 //!   and file system factory (via the embedder's `PlatformDefinition`).
 //! - [`LocalRuntimeBuilder`] — optional sugar over `InProcessRuntimeBuilder`.
 //!
-//! It is part of the [Everruns](https://everruns.com) ecosystem and is
-//! `publish = false` (local-only).
+//! It is part of the [Everruns](https://everruns.com) ecosystem and pairs with
+//! [`everruns-runtime`](https://crates.io/crates/everruns-runtime), which owns
+//! the optional host-backend slots these stores populate.
 
 mod backends;
 mod db;

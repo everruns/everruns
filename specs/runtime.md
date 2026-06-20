@@ -267,7 +267,8 @@ can be added without further runtime changes.
 host-backend slots with local, file-backed implementations for embedded,
 single-process hosts (where Yolop and miy would otherwise each reinvent them).
 The runtime stays generic and owns only the seams; durable local storage choices
-live in this separate opt-in crate.
+live in this separate opt-in crate. It ships on crates.io alongside
+`everruns-runtime` so external embedders can depend on it directly.
 
 It provides SQLite-backed, restart-survivable stores —
 `LocalSessionTaskRegistry`, `LocalScheduleStore`, `LocalPlatformStore` — plus a
