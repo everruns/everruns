@@ -16,11 +16,20 @@ Brand guidelines for the Everruns project ensuring visual and verbal consistency
 
 Three interlocking rings (Borromean rings pattern) representing **Durability × Scalability × Reliability**.
 
+**Centering:** all logo assets are centered on the rings' **centroid** (the 3-fold
+symmetry center / gold convergence point), not the bounding box. The centroid is
+placed at the canvas center so the mark stays balanced in circular and square
+crops (favicon, avatar, app icon). For the standard 512 artwork the centroid was
+shifted up 18.09 (from 274.09 to 256). Keep every variant centroid-centered when
+editing.
+
 | File | Description | Location |
 |------|-------------|----------|
-| `logo.svg` | Color version with navy-to-gold gradients | `apps/ui/public/logo.svg` |
-| `logo-mono.svg` | Black & white version | Future |
-| `favicon.svg` | Use logo or logo-mono | Future |
+| `logo.svg` | Color version with navy-to-gold gradients | repo root, `apps/ui/public/`, `apps/docs/src/assets/` |
+| `logo-mono.svg` | Black & white version | repo root; plugins as `everruns-small.svg` |
+| `favicon.svg` / `icon.svg` | Color mark for favicons / app icon | `apps/docs/public/`, `apps/ui/src/app/` |
+| `template-icon.svg` | Navy rounded-square avatar (Railway) | `infra/railway/` |
+| `og-image.svg` | Social card embedding the mark | `apps/docs/src/assets/` |
 
 ### Color Palette
 
