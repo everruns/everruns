@@ -1072,6 +1072,7 @@ impl ServerAppBuilder {
             db: db.clone(),
             auth: auth_state.clone(),
         };
+        let projects_state = api::projects::AppState::new(db.clone(), auth_state.clone());
         let resolver_state = api::resolver::AppState {
             db: db.clone(),
             auth: auth_state.clone(),
@@ -1266,6 +1267,7 @@ impl ServerAppBuilder {
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))
+            .merge(api::projects::routes(projects_state))
             .merge(api::resolver::routes(resolver_state))
             .merge(api::durable::routes(durable_state))
             .merge(schedules_state)

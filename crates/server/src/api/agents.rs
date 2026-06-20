@@ -822,7 +822,8 @@ pub async fn upsert_agent(
             }) => {
                 let existing = crate::domains::agents::queries::get_by_name(
                     &state.db,
-                    state.ctx(&org).org_id(),
+                    org.org_id,
+                    Some(org.project_id),
                     &req.name,
                 )
                 .await
@@ -1537,6 +1538,7 @@ mod high_risk_admin_gate_tests {
             role,
             is_platform_user: false,
             feature_flags: everruns_core::FeatureFlags::default(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
         }
     }
 

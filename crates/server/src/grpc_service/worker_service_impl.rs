@@ -116,6 +116,7 @@ impl WorkerService for WorkerServiceImpl {
             crate::domains::agents::queries::get_by_public_id(
                 &self.db,
                 req.org_id,
+                None,
                 &agent_id.to_string(),
             )
             .await
@@ -357,10 +358,11 @@ impl WorkerService for WorkerServiceImpl {
 
         // Get agent with capabilities via domain query
         let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
-        let agent =
-            crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
-                .await
-                .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
+        let agent = crate::domains::agents::queries::get_by_public_id(
+            &self.db, req.org_id, None, &public_id,
+        )
+        .await
+        .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?;
 
         let proto_agent = agent.map(|a| schema_agent_to_proto(&a));
 
@@ -2194,6 +2196,7 @@ impl WorkerService for WorkerServiceImpl {
                     crate::domains::agents::queries::get_by_public_id(
                         &self.db,
                         req.org_id,
+                        None,
                         &agent_id.to_string(),
                     )
                     .await
@@ -3593,7 +3596,7 @@ impl WorkerService for WorkerServiceImpl {
         let pagination = crate::api::common::Pagination::new(0, 1000);
         let (rows, _total) = self
             .db
-            .list_agents(req.org_id, None, false, pagination)
+            .list_agents(req.org_id, None, None, false, pagination)
             .await
             .map_err(|e| Status::internal(format!("Failed to list agents: {}", e)))?;
         let agents = crate::domains::agents::queries::load_agents_list(&self.db, rows)
@@ -3748,11 +3751,12 @@ impl WorkerService for WorkerServiceImpl {
         // Look up agent public_id if agent_uuid is provided
         let agent_public_id = if let Some(aid) = agent_uuid {
             let public_id = everruns_core::typed_id::AgentId::from_uuid(aid).to_string();
-            let agent =
-                crate::domains::agents::queries::get_by_public_id(&self.db, req.org_id, &public_id)
-                    .await
-                    .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
-                    .ok_or_else(|| Status::not_found("Agent not found"))?;
+            let agent = crate::domains::agents::queries::get_by_public_id(
+                &self.db, req.org_id, None, &public_id,
+            )
+            .await
+            .map_err(|e| Status::internal(format!("Failed to get agent: {}", e)))?
+            .ok_or_else(|| Status::not_found("Agent not found"))?;
             Some(agent.public_id)
         } else {
             None

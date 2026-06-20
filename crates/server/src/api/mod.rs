@@ -45,6 +45,7 @@ pub mod org_invitations;
 pub mod organizations;
 pub mod payments;
 pub mod plugins;
+pub mod projects;
 pub mod prometheus;
 pub mod providers;
 pub mod public;

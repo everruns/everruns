@@ -965,6 +965,17 @@ async fn resolve_org_by_id(
         )
     });
 
+    // MCP endpoints don't carry a project selection; scope to the org's
+    // default project.
+    let project_id = state
+        .db
+        .get_default_project(org_row.org_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|p| p.project_id)
+        .unwrap_or(everruns_core::DEFAULT_PROJECT_ID);
+
     Ok(ResolvedOrg {
         org_id: org_row.org_id,
         public_id: org_row.public_id.clone(),
@@ -973,6 +984,7 @@ async fn resolve_org_by_id(
         role,
         is_platform_user: auth_user.is_platform_user,
         feature_flags,
+        project_id,
     })
 }
 
@@ -1589,6 +1601,7 @@ mod org_override_scope_tests {
             role: OrgRole::Member,
             is_platform_user: false,
             feature_flags: everruns_core::FeatureFlags::default(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
         }
     }
 
@@ -1770,6 +1783,7 @@ mod resources_read_policy_tests {
         Caller {
             org_id: 1,
             org_public_id: "org_test".to_string(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             user_id: None,
             // Member-level, so role rules don't accidentally pass in isolation.
             role: OrgRole::Member,

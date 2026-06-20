@@ -82,6 +82,7 @@ impl ScheduleAppState {
         let caller = Caller {
             org_id: DEFAULT_ORG_ID,
             org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             user_id: Some(auth.0.id),
             role: OrgRole::Owner,
             is_platform_user: auth.0.is_platform_user,

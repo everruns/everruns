@@ -27,6 +27,7 @@ mod organizations;
 mod payments;
 mod plugins;
 mod principals;
+mod projects;
 mod providers;
 mod reporting;
 mod schedules;

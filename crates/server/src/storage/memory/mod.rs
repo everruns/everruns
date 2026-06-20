@@ -32,6 +32,7 @@ mod organizations;
 mod payments;
 mod plugins;
 mod principals;
+mod projects;
 mod providers;
 mod schedules;
 mod session_files;
@@ -51,9 +52,10 @@ mod tests;
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
-    HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
-    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID,
+    DEFAULT_PROJECT_ID, DEFAULT_PROJECT_PUBLIC_ID, EventId, HarnessId, ImageId, LeasedResourceId,
+    McpServerId, MessageId, ModelId, NotificationId, PluginMarketplaceId, PrincipalId, ProviderId,
+    ScheduleId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -190,6 +192,8 @@ pub struct InMemoryDatabase {
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
     // OSS-owned organization invitations (EVE-602)
     org_invitations: RwLock<Vec<OrgInvitationRow>>,
+    // Projects (grouping layer nested inside an org)
+    projects: RwLock<HashMap<i64, ProjectRow>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -235,8 +239,25 @@ impl Default for InMemoryDatabase {
             },
         );
 
+        // Pre-create the default project for the default org.
+        let mut projects = HashMap::new();
+        projects.insert(
+            DEFAULT_PROJECT_ID,
+            ProjectRow {
+                project_id: DEFAULT_PROJECT_ID,
+                public_id: DEFAULT_PROJECT_PUBLIC_ID.to_string(),
+                org_id: DEFAULT_ORG_ID,
+                name: "Default".to_string(),
+                description: None,
+                is_default: true,
+                created_at: now,
+                updated_at: now,
+            },
+        );
+
         Self {
             organizations: RwLock::new(organizations),
+            projects: RwLock::new(projects),
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),
             personal_access_tokens: RwLock::new(HashMap::new()),

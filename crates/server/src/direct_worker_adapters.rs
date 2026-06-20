@@ -482,11 +482,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
     }
 
     async fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<Agent>> {
-        // Look up by public_id, then fetch capabilities using internal id from the row.
-        let public_id = AgentId::from_uuid(agent_id).to_string();
+        // Internal worker resolution by internal id — org-scoped and
+        // project-agnostic (the agent is uniquely identified by org + id; the
+        // session already carries the project scope).
         let row = self
             .db
-            .get_agent_by_public_id(org_id, &public_id)
+            .get_agent(org_id, AgentId::from_uuid(agent_id))
             .await
             .map_err(|e| {
                 tracing::error!("Failed to get agent: {}", e);
@@ -3535,6 +3536,7 @@ mod tests {
         let public_id = id.to_string();
         let create = CreateAgentRow {
             public_id,
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             name: "test-agent".to_string(),
             display_name: Some("Test Agent".to_string()),
             description: None,

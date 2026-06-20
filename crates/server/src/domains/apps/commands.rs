@@ -69,7 +69,7 @@ async fn validate_harness(ctx: &Ctx, harness_id: HarnessId) -> Result<Uuid, Comm
 async fn validate_agent(ctx: &Ctx, agent_id: &AgentId) -> Result<Uuid, CommandError> {
     let row = ctx
         .db
-        .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+        .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| classify_anyhow(ResourceNotFoundError::new("Agent").into()))?;

@@ -263,13 +263,14 @@ pub async fn get_capabilities(
 pub async fn resolve(
     db: &StorageBackend,
     org_id: i64,
+    project_id: Option<i64>,
     id_or_name: &str,
 ) -> anyhow::Result<Option<Agent>> {
     let row = if let Ok(agent_id) = id_or_name.parse::<AgentId>() {
-        db.get_agent_by_public_id(org_id, &agent_id.to_string())
+        db.get_agent_by_public_id(org_id, project_id, &agent_id.to_string())
             .await?
     } else {
-        db.get_agent_by_name(org_id, id_or_name).await?
+        db.get_agent_by_name(org_id, project_id, id_or_name).await?
     };
     match row {
         Some(row) if row.status != "deleted" => {
@@ -284,9 +285,12 @@ pub async fn resolve(
 pub async fn get_by_public_id(
     db: &StorageBackend,
     org_id: i64,
+    project_id: Option<i64>,
     public_id: &str,
 ) -> anyhow::Result<Option<Agent>> {
-    let row = db.get_agent_by_public_id(org_id, public_id).await?;
+    let row = db
+        .get_agent_by_public_id(org_id, project_id, public_id)
+        .await?;
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
@@ -300,9 +304,10 @@ pub async fn get_by_public_id(
 pub async fn get_by_name(
     db: &StorageBackend,
     org_id: i64,
+    project_id: Option<i64>,
     name: &str,
 ) -> anyhow::Result<Option<Agent>> {
-    let row = db.get_agent_by_name(org_id, name).await?;
+    let row = db.get_agent_by_name(org_id, project_id, name).await?;
     match row {
         Some(row) if row.status != "deleted" => {
             let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
@@ -320,10 +325,11 @@ pub async fn get_by_name(
 pub async fn ensure_name_available(
     db: &StorageBackend,
     org_id: i64,
+    project_id: i64,
     name: &str,
     exclude_id: Option<AgentId>,
 ) -> Result<(), CommandError> {
-    if let Some(existing) = db.get_agent_by_name(org_id, name).await?
+    if let Some(existing) = db.get_agent_by_name(org_id, Some(project_id), name).await?
         && exclude_id != Some(existing.id)
     {
         return Err(CommandError::conflict(format!(
@@ -337,14 +343,23 @@ pub async fn ensure_name_available(
 pub async fn find_unique_name(
     db: &StorageBackend,
     org_id: i64,
+    project_id: i64,
     base_name: &str,
 ) -> anyhow::Result<String> {
-    if db.get_agent_by_name(org_id, base_name).await?.is_none() {
+    if db
+        .get_agent_by_name(org_id, Some(project_id), base_name)
+        .await?
+        .is_none()
+    {
         return Ok(base_name.to_string());
     }
     for n in 2..=100 {
         let candidate = format!("{base_name}-{n}");
-        if db.get_agent_by_name(org_id, &candidate).await?.is_none() {
+        if db
+            .get_agent_by_name(org_id, Some(project_id), &candidate)
+            .await?
+            .is_none()
+        {
             return Ok(candidate);
         }
     }

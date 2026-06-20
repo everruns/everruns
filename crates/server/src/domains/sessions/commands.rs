@@ -130,7 +130,7 @@ impl Command for CreateSession {
         let (agent_internal_id, agent_public_id) = if let Some(agent_id) = req.agent_id {
             let row = ctx
                 .db
-                .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
                 .await
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::not_found("Agent"))?;
@@ -213,7 +213,7 @@ impl Command for ListSessions {
         let agent_internal_id = if let Some(agent_id) = self.agent_id {
             let row = ctx
                 .db
-                .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                .get_agent_by_public_id(ctx.org_id(), Some(ctx.project_id()), &agent_id.to_string())
                 .await
                 .map_err(classify_anyhow)?;
             match row {

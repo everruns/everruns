@@ -121,6 +121,7 @@ async fn test_agent_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("repo-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Repo Test Agent".to_string()),
@@ -168,7 +169,7 @@ async fn test_agent_crud() {
     // List agents
     let pagination = everruns_server::api::common::Pagination::new(0, 1000);
     let (agents, _total) = backend
-        .list_agents(TEST_ORG_ID, None, false, pagination)
+        .list_agents(TEST_ORG_ID, None, None, false, pagination)
         .await
         .expect("Failed to list agents");
     assert!(agents.iter().any(|a| a.id == agent.id));
@@ -200,6 +201,7 @@ async fn test_agent_upsert_initial_files() {
         .upsert_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: public_id.clone(),
                 name: format!("upsert-files-{}", &public_id[..12]),
                 display_name: Some("Upsert Files Agent".to_string()),
@@ -228,6 +230,7 @@ async fn test_agent_upsert_initial_files() {
         .upsert_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: public_id.clone(),
                 name: format!("upsert-files-{}", &public_id[..12]),
                 display_name: Some("Upsert Files Agent".to_string()),
@@ -378,6 +381,7 @@ async fn test_agent_get_by_name() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: unique_name.clone(),
                 display_name: Some(unique_name.clone()),
@@ -398,7 +402,7 @@ async fn test_agent_get_by_name() {
 
     // Find by name
     let found = backend
-        .get_agent_by_name(TEST_ORG_ID, &unique_name)
+        .get_agent_by_name(TEST_ORG_ID, None, &unique_name)
         .await
         .expect("Failed to get agent by name")
         .expect("Agent not found");
@@ -593,6 +597,7 @@ async fn test_session_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
@@ -792,6 +797,7 @@ async fn test_event_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("event-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Test Agent".to_string()),
@@ -887,6 +893,7 @@ async fn test_event_exclude_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("event-excl-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Exclude Test Agent".to_string()),
@@ -990,6 +997,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("event-window-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Window Test Agent".to_string()),
@@ -1087,6 +1095,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("event-anchor-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Anchor Test Agent".to_string()),
@@ -1200,6 +1209,7 @@ async fn test_event_filter_types() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Event Filter Types Agent".to_string()),
@@ -1506,6 +1516,7 @@ async fn test_session_file_crud() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("file-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("File Test Agent".to_string()),
@@ -1702,6 +1713,7 @@ async fn test_agent_capabilities() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("cap-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Capability Test Agent".to_string()),
@@ -1973,6 +1985,7 @@ async fn test_session_usage_tracking() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("usage-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Usage Test Agent".to_string()),
@@ -2077,6 +2090,7 @@ async fn test_session_previews() {
         .create_agent(
             TEST_ORG_ID,
             CreateAgentRow {
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 public_id: everruns_core::AgentId::new().to_string(),
                 name: format!("preview-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
                 display_name: Some("Preview Test Agent".to_string()),

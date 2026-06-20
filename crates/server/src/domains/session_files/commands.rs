@@ -639,6 +639,7 @@ mod tests {
         Caller {
             org_id: DEFAULT_ORG_ID,
             org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             user_id: Some(Uuid::nil()),
             role: OrgRole::Owner,
             is_platform_user: false,

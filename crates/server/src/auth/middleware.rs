@@ -10,8 +10,8 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, Caller, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags, OrgMembership, OrgRole,
-    PermissionResolver, validate_org_public_id,
+    DEFAULT_ORG_PUBLIC_ID, DEFAULT_PROJECT_ID, DefaultPermissionResolver, FeatureFlags,
+    OrgMembership, OrgRole, PermissionResolver, validate_org_public_id, validate_project_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -625,6 +625,10 @@ pub struct ResolvedOrg {
     pub is_platform_user: bool,
     /// Effective API-visible feature flags for this org (system gate + org opt-in).
     pub feature_flags: FeatureFlags,
+    /// Active project scope within this org, resolved from the
+    /// `everruns_project` cookie / `X-Project-Id` header (defaults to the org's
+    /// default project). Threaded into `Caller.project_id`.
+    pub project_id: i64,
 }
 
 impl ResolvedOrg {
@@ -660,6 +664,7 @@ impl From<&ResolvedOrg> for Caller {
         Caller {
             org_id: org.org_id,
             org_public_id: org.public_id.clone(),
+            project_id: org.project_id,
             user_id: org.user_id,
             role: org.role,
             is_platform_user: org.is_platform_user,
@@ -679,7 +684,53 @@ where
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
         let auth_state = AuthState::from_ref(state);
-        resolve_org_for_user(user, parts, &auth_state).await
+        let mut org = resolve_org_for_user(user, parts, &auth_state).await?;
+        // Resolve the active project once (cookie/header), so every org-scoped
+        // handler also gets correct project scope without per-handler changes.
+        org.project_id =
+            resolve_active_project_id(auth_state.db.as_ref(), &parts.headers, org.org_id).await;
+        Ok(org)
+    }
+}
+
+/// Cookie name for project selection in session auth. Resolved within the
+/// active org; falls back to the org's default project when absent/invalid.
+pub const PROJECT_COOKIE_NAME: &str = "everruns_project";
+
+/// Header name for project selection in API-key auth.
+pub const PROJECT_HEADER_NAME: &str = "x-project-id";
+
+/// Resolve the active project for an org from the request.
+///
+/// Reads the selection from the `X-Project-Id` header (API key) or the
+/// `everruns_project` cookie (session), validates it belongs to the org, and
+/// falls back to the org's default project. Read-only — never creates a project
+/// on the request hot path.
+async fn resolve_active_project_id(
+    db: Option<&std::sync::Arc<StorageBackend>>,
+    headers: &axum::http::HeaderMap,
+    org_id: i64,
+) -> i64 {
+    let Some(db) = db else {
+        return DEFAULT_PROJECT_ID;
+    };
+
+    let jar = CookieJar::from_headers(headers);
+    let selected = headers
+        .get(PROJECT_HEADER_NAME)
+        .and_then(|v| v.to_str().ok())
+        .map(String::from)
+        .or_else(|| jar.get(PROJECT_COOKIE_NAME).map(|c| c.value().to_string()));
+
+    if let Some(public_id) = selected.filter(|p| validate_project_public_id(p))
+        && let Ok(Some(project)) = db.get_project_by_public_id(org_id, &public_id).await
+    {
+        return project.project_id;
+    }
+
+    match db.get_default_project(org_id).await {
+        Ok(Some(project)) => project.project_id,
+        _ => DEFAULT_PROJECT_ID,
     }
 }
 
@@ -726,6 +777,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        project_id: DEFAULT_PROJECT_ID,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -742,6 +794,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        project_id: DEFAULT_PROJECT_ID,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -775,6 +828,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: OrgRole::Owner, // Anonymous user is owner of all orgs
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        project_id: DEFAULT_PROJECT_ID,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -793,6 +847,7 @@ pub(crate) async fn resolve_org_for_user(
                     role: org.role,
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
+                    project_id: DEFAULT_PROJECT_ID,
                 }
                 .with_effective_feature_flags(auth_state)
                 .await)
@@ -822,6 +877,7 @@ pub(crate) async fn resolve_org_for_user(
                         role: org.role,
                         is_platform_user: user.is_platform_user,
                         feature_flags: FeatureFlags::default(),
+                        project_id: DEFAULT_PROJECT_ID,
                     }
                     .with_effective_feature_flags(auth_state)
                     .await);
@@ -853,6 +909,7 @@ pub(crate) async fn resolve_org_for_user(
                             role,
                             is_platform_user: user.is_platform_user,
                             feature_flags: FeatureFlags::default(),
+                            project_id: DEFAULT_PROJECT_ID,
                         }
                         .with_effective_feature_flags(auth_state)
                         .await);
@@ -881,6 +938,7 @@ pub(crate) async fn resolve_org_for_user(
                     role: org.role,
                     is_platform_user: user.is_platform_user,
                     feature_flags: FeatureFlags::default(),
+                    project_id: DEFAULT_PROJECT_ID,
                 }
                 .with_effective_feature_flags(auth_state)
                 .await)

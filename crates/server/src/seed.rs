@@ -3458,6 +3458,7 @@ mod tests {
             .list_agents(
                 DEFAULT_ORG_ID,
                 None,
+                None,
                 false,
                 crate::api::common::Pagination::new(0, 100),
             )

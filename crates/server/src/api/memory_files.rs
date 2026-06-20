@@ -635,6 +635,7 @@ mod tests {
             role,
             is_platform_user: false,
             feature_flags: FeatureFlags::default(),
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
         }
     }
 

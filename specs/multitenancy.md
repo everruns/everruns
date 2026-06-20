@@ -742,6 +742,53 @@ If you add a new top-level entity with a dedicated UI detail route
 (`apps/ui/src/app/(main)/<entity>/[id]/...`), add it to the resolver
 registry. Entities without a detail route do not need to register.
 
+## Projects (nested grouping inside an organization)
+
+Direction F ("Projects on top"): an Organization is the billing/team wrapper
+(switched rarely); a **Project** is the day-to-day work scope (switched
+constantly). Project-scoped resources belong to exactly one project via a hard
+FK. Every org has exactly one `default` project.
+
+### Model
+
+- `projects` table: `project_id BIGINT` (internal) + `public_id TEXT`
+  (`proj_<32hex>`), `org_id` FK, `name` (unique per org, case-insensitive),
+  `description`, `is_default`. The default org seeds `project_id = 1`
+  (`DEFAULT_PROJECT_PUBLIC_ID = proj_00…01`), mirroring the default org.
+- Project-scoped resource tables carry `project_id BIGINT NOT NULL REFERENCES
+  projects DEFAULT 1`. Migration `045_projects.sql` adds the column and
+  reparents existing rows onto each org's default project.
+- Workspace-shared resources (models, agent identities, harnesses, volumes,
+  …) stay **org-scoped** and ignore project.
+
+### Resolution (mirrors org)
+
+- Active project derived from auth context: `everruns_project` cookie (session)
+  or `X-Project-Id` header (API key), validated to belong to the active org,
+  falling back to the org's default project. Resolved once by the `ResolvedOrg`
+  extractor and threaded into `Caller.project_id` (read-only on the hot path).
+- `POST /v1/users/me/switch-project` sets the cookie (like `switch-org`).
+- `/v1/projects` CRUD. The default project cannot be deleted; a project with
+  resources still attached cannot be deleted (DB FK rejects it).
+
+### Onboarding
+
+A default project is created when an org is created (`POST /v1/orgs`) and
+reconciled at startup for every org, so the project switcher is never empty and
+every project-scoped resource always has a home.
+
+### Scoping rollout
+
+Hard isolation is threaded at the client-facing boundaries (create, list,
+resolve-by-public-id, resolve-by-name). Operations by internal UUID stay
+org-scoped because the UUID is only ever obtained through a project-scoped
+resolution (internal UUIDs are never client-supplied). Threaded resources:
+**agents**. Remaining project-scoped tables (skills, apps, capabilities,
+mcp_servers, memory_stores, sessions) have the `project_id` column and default
+to the org's default project; their query-scoping is a mechanical follow-up
+that copies the agents pattern (repository + in-memory filter + domain
+`ctx.project_id()`).
+
 ## Future Considerations
 
 **Not in scope for v1:**

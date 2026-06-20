@@ -789,6 +789,7 @@ mod tests {
             Caller {
                 org_id,
                 org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 user_id: None,
                 role: OrgRole::Owner,
                 is_platform_user: false,
@@ -804,6 +805,7 @@ mod tests {
             Caller {
                 org_id,
                 org_public_id: everruns_core::organization::org_public_id_from_internal(org_id),
+                project_id: everruns_core::DEFAULT_PROJECT_ID,
                 user_id: None,
                 role: OrgRole::Owner,
                 is_platform_user: false,

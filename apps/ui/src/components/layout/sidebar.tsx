@@ -50,8 +50,9 @@ import { useAuth } from "@/providers/auth-provider";
 import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import type { FeatureFlags } from "@/lib/api/types";
 import { SidebarNavigation } from "./sidebar-navigation";
-import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
+import { SidebarProjectMenu } from "./sidebar-project-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
+import { SidebarUserOrgSection } from "./sidebar-user-org-section";
 import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
 
 const { version } = packageJson;
@@ -138,13 +139,7 @@ function isDurableSection(section: NavigationSection) {
 
 export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const pathname = usePathname();
-  const {
-    user,
-    requiresAuth,
-    logout,
-    logoutPending,
-    createOrganization: createOrgOverride,
-  } = useAuth();
+  const { user, requiresAuth, logout, logoutPending } = useAuth();
   const featureFlags = useFeatureFlags();
   const { data: providers, isLoading: providersLoading, isError: providersError } = useProviders();
   const durablePolicies = usePolicies("durable");
@@ -173,9 +168,6 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
     : baseSections;
   const allSections = config?.extraSections ? [...sections, ...config.extraSections] : sections;
 
-  const handleCreateOrg = config?.orgActions?.createOrg ?? createOrgOverride ?? (() => {});
-  const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
-
   return (
     <div className="flex h-full w-60 flex-col border-r border-border/70 bg-background">
       <div className="flex h-14 items-center justify-between border-b border-border/70 bg-card px-4">
@@ -185,10 +177,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
         </Link>
       </div>
 
-      <SidebarOrganizationMenu
-        onCreateOrg={handleCreateOrg}
-        useDefaultCreateOrgDialog={useDefaultCreateOrgDialog}
-      />
+      <SidebarProjectMenu />
 
       <div role="search" aria-label="Sidebar search" className="px-2.5 py-2">
         <button
@@ -217,6 +206,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           logout={logout}
           logoutPending={logoutPending}
           renderExtraItems={config?.profileMenu?.items}
+          renderOrgSection={() => <SidebarUserOrgSection />}
           version={version}
         />
       </div>

@@ -302,6 +302,16 @@ pub async fn create_organization(
     // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
     crate::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
 
+    // Every org gets a default project so project-scoped resources always have
+    // a home and the project switcher is never empty (Direction F onboarding).
+    if let Err(e) = state.db.ensure_default_project(row.org_id).await {
+        tracing::warn!(
+            org_id = row.org_id,
+            error = %e,
+            "Failed to create default project for new org (non-fatal)"
+        );
+    }
+
     // Seed agents are available as examples (GET /v1/agent-examples) and adopted
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
     // this prevents duplicate agents when users adopt from the examples gallery.

@@ -344,6 +344,11 @@ impl Ctx {
         self.caller.org_id
     }
 
+    /// Active project scope for the caller (within `org_id`).
+    pub fn project_id(&self) -> i64 {
+        self.caller.project_id
+    }
+
     /// Construct a Ctx for an HTTP request.
     ///
     /// `encryption` may be `None` for domains that never need it (agents,

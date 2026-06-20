@@ -103,6 +103,7 @@ pub mod observer;
 pub mod organization;
 pub mod payment;
 pub mod principal;
+pub mod project;
 pub mod provider;
 pub mod reporting;
 pub mod session;
@@ -460,6 +461,10 @@ pub use payment::{
     PaymentOwnerType, PaymentPolicy, PaymentRail, PaymentStatus,
 };
 pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
+pub use project::{
+    DEFAULT_PROJECT_ID, DEFAULT_PROJECT_PUBLIC_ID, Project, ProjectSummary,
+    generate_project_public_id, validate_project_public_id,
+};
 pub use provider::{Provider, ProviderStatus};
 pub use session::{Session, SessionStatus, SubagentStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};

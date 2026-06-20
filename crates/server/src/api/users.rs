@@ -12,7 +12,9 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{DateTime, Utc};
-use everruns_core::{AuditEvent, ManagementAction, validate_org_public_id};
+use everruns_core::{
+    AuditEvent, ManagementAction, validate_org_public_id, validate_project_public_id,
+};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
@@ -24,6 +26,9 @@ use crate::storage::models::UpdateUser;
 
 /// Cookie name for storing selected organization
 pub const ORG_COOKIE_NAME: &str = "everruns_org";
+
+/// Cookie name for storing the selected project (within the active org).
+pub const PROJECT_COOKIE_NAME: &str = "everruns_project";
 
 /// App state for users routes
 #[derive(Clone)]
@@ -65,6 +70,23 @@ pub struct SwitchOrgRequest {
     /// Organization public ID to switch to
     #[schema(example = "org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0")]
     pub org_id: String,
+}
+
+/// Request to switch project
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SwitchProjectRequest {
+    /// Project public ID to switch to (must belong to the active org)
+    #[schema(example = "proj_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0")]
+    pub project_id: String,
+}
+
+/// Response from switch project endpoint
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SwitchProjectResponse {
+    /// Whether the switch was successful
+    pub success: bool,
+    /// The project ID that was switched to
+    pub project_id: String,
 }
 
 /// Response from switch org endpoint
@@ -199,6 +221,7 @@ pub fn routes(state: UsersState) -> Router {
         .route("/v1/users/me", patch(update_profile).delete(delete_account))
         .route("/v1/users/me/export", get(export_user_data))
         .route("/v1/users/me/switch-org", post(switch_org))
+        .route("/v1/users/me/switch-project", post(switch_project))
         .with_state(state)
 }
 
@@ -379,6 +402,71 @@ pub async fn switch_org(
         Json(SwitchOrgResponse {
             success: true,
             org_id: req.org_id,
+        }),
+    ))
+}
+
+/// POST /v1/users/me/switch-project - Switch the active project
+///
+/// Sets the `everruns_project` cookie. The project must belong to the caller's
+/// active organization. Used for all subsequent project-scoped requests
+/// (including SSE).
+#[utoipa::path(
+    post,
+    path = "/v1/users/me/switch-project",
+    request_body = SwitchProjectRequest,
+    responses(
+        (status = 200, description = "Project switched successfully", body = SwitchProjectResponse),
+        (status = 400, description = "Invalid project ID format"),
+        (status = 401, description = "Unauthorized"),
+        (status = 404, description = "Project not found in the active organization")
+    ),
+    tag = "users"
+)]
+pub async fn switch_project(
+    State(state): State<UsersState>,
+    org: ResolvedOrg,
+    jar: CookieJar,
+    Json(req): Json<SwitchProjectRequest>,
+) -> Result<(CookieJar, Json<SwitchProjectResponse>), StatusCode> {
+    if !validate_project_public_id(&req.project_id) {
+        tracing::warn!("Invalid project ID format: {}", req.project_id);
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // The project must belong to the caller's active org.
+    let project = state
+        .db
+        .get_project_by_public_id(org.org_id, &req.project_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to look up project: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    if project.is_none() {
+        tracing::warn!(
+            "User attempted to switch to project {} not in org {}",
+            req.project_id,
+            org.public_id
+        );
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let project_cookie = Cookie::build((PROJECT_COOKIE_NAME, req.project_id.clone()))
+        .path("/")
+        .http_only(false) // Allow JS to read for UI state
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .build();
+
+    let jar = jar.add(project_cookie);
+
+    Ok((
+        jar,
+        Json(SwitchProjectResponse {
+            success: true,
+            project_id: req.project_id,
         }),
     ))
 }

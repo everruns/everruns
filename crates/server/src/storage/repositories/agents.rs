@@ -16,8 +16,8 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, project_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
             RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
@@ -36,6 +36,7 @@ impl Database {
         .bind(&input.network_access)
         .bind(input.max_iterations)
         .bind(input.parallel_tool_calls)
+        .bind(input.project_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -52,8 +53,8 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, project_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
@@ -98,6 +99,7 @@ impl Database {
         .bind(&input.network_access)
         .bind(input.max_iterations)
         .bind(input.parallel_tool_calls)
+        .bind(input.project_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -134,9 +136,12 @@ impl Database {
         Ok(row.map(|(org_id,)| org_id))
     }
 
+    /// Look up an agent by public_id. `project_id = Some(p)` enforces project
+    /// isolation (UI/API); `None` is org-wide (trusted internal/worker paths).
     pub async fn get_agent_by_public_id(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         public_id: &str,
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
@@ -144,42 +149,48 @@ impl Database {
             SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             FROM agents
-            WHERE org_id = $1 AND public_id = $2
+            WHERE org_id = $1 AND public_id = $2 AND ($3::bigint IS NULL OR project_id = $3)
             "#,
         )
         .bind(org_id)
         .bind(public_id)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
     }
 
+    /// List agents. `project_id = Some(p)` enforces project isolation (UI/API);
+    /// `None` is org-wide (trusted internal/worker paths).
     pub async fn list_agents(
         &self,
         org_id: i64,
+        project_id: Option<i64>,
         search: Option<&str>,
         include_archived: bool,
         pagination: crate::api::common::Pagination,
     ) -> Result<(Vec<AgentRow>, u32)> {
+        // org_id = $1, project filter = $2, search patterns start at $3.
         let (search_sql, patterns) = build_search_sql(
             search,
             "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, ''))",
-            2,
+            3,
         );
         let status_sql = if include_archived {
             " AND status != 'deleted'"
         } else {
             " AND status = 'active'"
         };
-        let param_idx = 1 + patterns.len();
+        let param_idx = 2 + patterns.len();
 
         // Count query
         let count_sql = format!(
-            "SELECT COUNT(*) as count FROM agents WHERE org_id = $1{status_sql}{search_sql}"
+            "SELECT COUNT(*) as count FROM agents WHERE org_id = $1 AND ($2::bigint IS NULL OR project_id = $2){status_sql}{search_sql}"
         );
-        let mut count_query =
-            sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(count_sql.as_str())).bind(org_id);
+        let mut count_query = sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(count_sql.as_str()))
+            .bind(org_id)
+            .bind(project_id);
         for pat in &patterns {
             count_query = count_query.bind(pat);
         }
@@ -192,12 +203,13 @@ impl Database {
             r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
-                WHERE org_id = $1{status_sql}{search_sql}
+                WHERE org_id = $1 AND ($2::bigint IS NULL OR project_id = $2){status_sql}{search_sql}
                 ORDER BY created_at DESC
                 LIMIT ${limit_idx} OFFSET ${offset_idx}"#
         );
-        let mut query =
-            sqlx::query_as::<_, AgentRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
+        let mut query = sqlx::query_as::<_, AgentRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(org_id)
+            .bind(project_id);
         for pat in &patterns {
             query = query.bind(pat);
         }
@@ -210,17 +222,25 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
-    pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
+    /// Look up an agent by name. `project_id = Some(p)` enforces project
+    /// isolation (UI/API); `None` is org-wide (trusted internal paths).
+    pub async fn get_agent_by_name(
+        &self,
+        org_id: i64,
+        project_id: Option<i64>,
+        name: &str,
+    ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
             SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             FROM agents
-            WHERE org_id = $1 AND name = $2 AND status != 'deleted'
+            WHERE org_id = $1 AND name = $2 AND ($3::bigint IS NULL OR project_id = $3) AND status != 'deleted'
             "#,
         )
         .bind(org_id)
         .bind(name)
+        .bind(project_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -333,8 +353,8 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, project_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
@@ -368,6 +388,7 @@ impl Database {
         .bind(&input.network_access)
         .bind(input.max_iterations)
         .bind(input.parallel_tool_calls)
+        .bind(input.project_id)
         .fetch_one(&self.pool)
         .await?;
 
@@ -384,8 +405,8 @@ impl Database {
     ) -> Result<(AgentRow, bool)> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, project_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
             ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
@@ -418,6 +439,7 @@ impl Database {
         .bind(&input.network_access)
         .bind(input.max_iterations)
         .bind(input.parallel_tool_calls)
+        .bind(input.project_id)
         .fetch_one(&self.pool)
         .await?;
 

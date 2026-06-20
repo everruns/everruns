@@ -255,6 +255,17 @@ pub async fn reconcile_built_in_harnesses_with_definitions(
             "Reconciled built-in harnesses for org"
         );
         total.merge(org_result);
+
+        // Ensure every org has a default project (Direction F). Idempotent;
+        // backfills orgs created before the projects feature or via paths that
+        // don't create one (e.g. external auth provider sync).
+        if let Err(e) = db.ensure_default_project(org.org_id).await {
+            tracing::warn!(
+                org_id = org.org_id,
+                error = %e,
+                "Failed to ensure default project for org (non-fatal)"
+            );
+        }
     }
 
     tracing::info!(

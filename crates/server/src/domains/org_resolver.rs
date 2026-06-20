@@ -241,6 +241,7 @@ mod tests {
         // cross-org situation: a user currently in one org follows a link
         // to a resource owned by another.
         let agent_one = CreateAgentRow {
+            project_id: everruns_core::DEFAULT_PROJECT_ID,
             public_id: "agent_00000000000000000000000000000001".to_string(),
             name: "one".to_string(),
             display_name: None,

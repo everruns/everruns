@@ -477,6 +477,7 @@ mod tests {
                 &Caller {
                     org_id: DEFAULT_ORG_ID,
                     org_public_id: everruns_core::org_public_id_from_internal(DEFAULT_ORG_ID),
+                    project_id: everruns_core::DEFAULT_PROJECT_ID,
                     user_id: None,
                     role: everruns_core::organization::OrgRole::Owner,
                     is_platform_user: true,

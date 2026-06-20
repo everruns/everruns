@@ -369,6 +369,10 @@ pub struct Caller {
     pub org_id: i64,
     /// External organization public ID.
     pub org_public_id: String,
+    /// Internal project ID (for database queries). The active project scope
+    /// within `org_id`. Project-scoped repositories filter on this; org-scoped
+    /// resources ignore it. Defaults to the org's default project.
+    pub project_id: i64,
     /// Authenticated user ID (`None` for API key auth without user context).
     pub user_id: Option<Uuid>,
     /// User's role in the organization.
@@ -386,9 +390,19 @@ impl Caller {
     /// operations that should bypass all policy checks.
     // THREAT[TM-AUTHZ-002]: Internal caller bypasses policies; only use for gRPC/internal paths
     pub fn internal(org_id: i64) -> Self {
+        Self::internal_with_project(org_id, crate::project::DEFAULT_PROJECT_ID)
+    }
+
+    /// Create an internal/platform caller scoped to a specific project.
+    ///
+    /// Internal paths that act on project-scoped resources (e.g. a worker
+    /// resuming a session) must carry the owning project so isolation holds.
+    // THREAT[TM-AUTHZ-002]: Internal caller bypasses policies; only use for gRPC/internal paths
+    pub fn internal_with_project(org_id: i64, project_id: i64) -> Self {
         Self {
             org_id,
             org_public_id: crate::organization::org_public_id_from_internal(org_id),
+            project_id,
             user_id: None,
             role: OrgRole::Owner,
             is_platform_user: true,
@@ -647,6 +661,7 @@ mod tests {
         Caller {
             org_id: 1,
             org_public_id: "org_00000000000000000000000000000001".to_string(),
+            project_id: crate::project::DEFAULT_PROJECT_ID,
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Owner,
             is_platform_user: false,
@@ -658,6 +673,7 @@ mod tests {
         Caller {
             org_id: 1,
             org_public_id: "org_00000000000000000000000000000001".to_string(),
+            project_id: crate::project::DEFAULT_PROJECT_ID,
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Admin,
             is_platform_user: false,
@@ -669,6 +685,7 @@ mod tests {
         Caller {
             org_id: 1,
             org_public_id: "org_00000000000000000000000000000001".to_string(),
+            project_id: crate::project::DEFAULT_PROJECT_ID,
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
             is_platform_user: false,
@@ -934,6 +951,7 @@ mod tests {
         let caller = Caller {
             org_id: 1,
             org_public_id: "org_00000000000000000000000000000001".to_string(),
+            project_id: crate::project::DEFAULT_PROJECT_ID,
             user_id: None,
             role: OrgRole::Admin,
             is_platform_user: false,
