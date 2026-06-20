@@ -1,19 +1,25 @@
 [package]
 name = "everruns-local"
-publish = false
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-local"
 description = "Local, SQLite-backed runtime backend stores for embedded in-process Everruns hosts"
+readme = "README.md"
+keywords = ["everruns", "agent", "sqlite", "embedded", "storage"]
+categories = ["development-tools", "database"]
 
 [dependencies]
 # SQLite
 rusqlite = { version = "0.39", features = ["bundled"] }
 
 # Everruns crates
-everruns-core = { path = "../core" }
-everruns-runtime = { path = "../runtime" }
+everruns-core.workspace = true
+everruns-runtime.workspace = true
 
 # Async
 tokio = { workspace = true, features = ["rt", "time", "sync"] }
