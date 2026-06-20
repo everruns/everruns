@@ -1,5 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
+import {
+  ProviderIcon,
+  getProviderLabel,
+  getProviderDescription,
+} from "@/components/providers/provider-icon";
 import type { DriverId } from "@/lib/api/types";
 
 describe("ProviderIcon", () => {
@@ -118,5 +122,31 @@ describe("getProviderLabel", () => {
 
   it("returns type string for unknown provider", () => {
     expect(getProviderLabel("unknown" as DriverId)).toBe("unknown");
+  });
+});
+
+describe("getProviderDescription", () => {
+  const knownProviders: DriverId[] = [
+    "openai",
+    "openrouter",
+    "azure_openai",
+    "openai_completions",
+    "anthropic",
+    "gemini",
+    "bedrock",
+    "mai",
+    "fireworks",
+  ];
+
+  it.each(knownProviders)("returns a non-empty tagline for %s", (providerType) => {
+    expect(getProviderDescription(providerType).length).toBeGreaterThan(0);
+  });
+
+  it("returns the Fireworks tagline", () => {
+    expect(getProviderDescription("fireworks")).toBe("Fast, low-cost inference for open models.");
+  });
+
+  it("returns an empty string for an unknown provider", () => {
+    expect(getProviderDescription("unknown" as DriverId)).toBe("");
   });
 });

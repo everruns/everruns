@@ -1,6 +1,6 @@
 ---
 title: Model Providers
-description: Connect Everruns to OpenAI, Anthropic, Google Gemini, AWS Bedrock, OpenRouter, and more. Configure provider credentials once and run any agent on any model.
+description: Connect Everruns to OpenAI, Anthropic, Google Gemini, AWS Bedrock, OpenRouter, Fireworks AI, and more. Configure provider credentials once and run any agent on any model.
 sidebar:
   label: Overview
   order: 0
@@ -24,6 +24,7 @@ served by OpenAI, Claude, Gemini, or any OpenAI-compatible endpoint.
 | [AWS Bedrock](/providers/bedrock/) | `bedrock` | Models hosted on Amazon Bedrock via the `ConverseStream` API. |
 | [OpenRouter](/providers/openrouter/) | `openrouter` | One key for a large multi-vendor catalog, with provider routing controls. |
 | [Microsoft MAI](/providers/mai/) | `mai` | Microsoft MAI models via Azure AI Foundry, with API-key or Entra ID (OAuth) auth. |
+| [Fireworks AI](/providers/fireworks/) | `fireworks` | Fast, low-cost inference for open models (Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, ...), with automatic model discovery. |
 
 Need a vendor that isn't listed? Any OpenAI-compatible endpoint works through the
 [OpenAI](/providers/openai/) provider with a custom base URL (use the dedicated
