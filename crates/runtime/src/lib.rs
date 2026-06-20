@@ -24,7 +24,9 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), everruns_core::AgentLoopError> {
 //! use everruns_core::{
 //!     CapabilityRegistry, DriverRegistry, InputMessage, DriverId, ResolvedModel,
 //!     PlatformDefinition,
@@ -54,6 +56,7 @@
 //!         provider_type: DriverId::LlmSim,
 //!         api_key: Some("fake-key".into()),
 //!         base_url: None,
+//!         provider_metadata: None,
 //!     })
 //!     .build()
 //!     .await?;
@@ -66,7 +69,8 @@
 //!     )
 //!     .await?;
 //! assert!(result.success);
-//! # Ok::<(), everruns_core::AgentLoopError>(())
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Real-disk workspace
