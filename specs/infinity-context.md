@@ -164,8 +164,11 @@ def select_messages(all_messages, budget, keep_head, min_tail, max_tail=None):
     return kept, excluded
 ```
 
-The notice is inserted between the anchor and the recent block, so the live
-prompt reads `[task anchor] -> [N earlier messages hidden] -> [recent window]`.
+The notice is inserted between any head anchor and the recent block. With an
+explicitly configured `keep_first_messages > 0` the live prompt reads
+`[task anchor] -> [N earlier messages hidden] -> [recent window]`; under the
+default (`keep_first_messages = 0`) there is no anchor, so it reads
+`[N earlier messages hidden] -> [recent window]` and the notice leads the prompt.
 
 `max_recent_messages` is a hard cap for constrained surfaces such as public
 support chat; it bounds only the recent tail (any explicitly configured head
