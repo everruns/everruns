@@ -521,6 +521,7 @@ struct AgentRunRecord {
     kind: String,
     external_agent_id: String,
     external_agent_name: String,
+    #[serde(alias = "task")]
     instructions: String,
     mode: AgentRunMode,
     status: AgentRunStatus,
@@ -2639,6 +2640,28 @@ mod tests {
             err.to_string().contains("remote_task_id"),
             "error should mention remote_task_id: {err}"
         );
+    }
+
+    /// Legacy records written before the task-to-instructions rename should
+    /// still load from durable session storage.
+    #[test]
+    fn agent_run_record_accepts_legacy_task_field() {
+        let legacy = json!({
+            "run_id": "legacy-run",
+            "kind": "external_a2a",
+            "external_agent_id": "echo",
+            "external_agent_name": "Echo",
+            "task": "legacy instructions",
+            "mode": "wait",
+            "status": "submitted"
+        });
+
+        let record: AgentRunRecord = serde_json::from_value(legacy).unwrap();
+        assert_eq!(record.instructions, "legacy instructions");
+
+        let serialized = serde_json::to_value(&record).unwrap();
+        assert_eq!(serialized["instructions"], "legacy instructions");
+        assert!(serialized.get("task").is_none());
     }
 
     /// Roundtrip: save_run → load_run → load_run_for_task all resolve consistently.
