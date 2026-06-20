@@ -34,6 +34,9 @@ const authState = {
 
 const orgState = {
   isLoading: false,
+  // Non-empty so the zero-org onboarding redirect doesn't fire in these
+  // auth-availability scenarios.
+  organizations: [{ public_id: "org-1" }] as Array<{ public_id: string }>,
 };
 
 jest.mock("next/navigation", () => ({

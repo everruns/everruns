@@ -18,6 +18,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
+import { useZeroOrgRedirect } from "@/components/onboarding/use-zero-org-redirect";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -53,6 +54,10 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const { isLoading: orgLoading } = useOrg();
   const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
+
+  // Authenticated users with zero orgs are redirected to onboarding. Reuses the
+  // OSS redirect hook so SaaS-style wrappers don't duplicate it.
+  const redirectingToOnboarding = useZeroOrgRedirect();
 
   // Combined loading state - wait for both auth and org to initialize
   const isLoading = authLoading || orgLoading;
@@ -97,6 +102,11 @@ function MainLayoutInner({ children }: MainLayoutProps) {
 
   // If auth required but not authenticated, show nothing (will redirect)
   if (requiresAuth && !isAuthenticated) {
+    return null;
+  }
+
+  // Zero-org users are being redirected to onboarding; don't flash the shell.
+  if (redirectingToOnboarding) {
     return null;
   }
 
