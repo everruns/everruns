@@ -3,7 +3,7 @@ title: Parallel
 description: Use Parallel's hosted MCP server for free web search and URL fetching, with optional API-key authentication and OAuth-compatible endpoint selection.
 ---
 
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="56" height="56" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M7 4v16M12 4v16M17 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="52.0" height="52.0" aria-hidden="true" style="float: right; margin-left: 16px;"><path d="M7 4v16M12 4v16M17 4v16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
 
 # Parallel
 
