@@ -173,14 +173,20 @@ async fn list_fireworks_models(
         .data
         .into_iter()
         .filter(FireworksModelInfo::is_chat_model)
-        .map(|m| DiscoveredModel {
-            created_at: m
+        .map(|m| {
+            // Build the profile (borrows `m`) before moving owned fields out.
+            let discovered_profile = Some(m.to_discovered_profile());
+            let created_at = m
                 .created
-                .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
-            display_name: Some(short_model_name(&m.id)),
-            owned_by: m.owned_by.clone(),
-            discovered_profile: Some(m.to_discovered_profile()),
-            model_id: m.id,
+                .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single());
+            let display_name = Some(short_model_name(&m.id));
+            DiscoveredModel {
+                created_at,
+                display_name,
+                owned_by: m.owned_by,
+                discovered_profile,
+                model_id: m.id,
+            }
         })
         .collect();
 

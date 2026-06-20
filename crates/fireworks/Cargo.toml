@@ -31,9 +31,6 @@ serde_json.workspace = true
 # Date/time (model `created` timestamps)
 chrono.workspace = true
 
-# Tracing
-tracing.workspace = true
-
 # Internal dependencies
 everruns-core.workspace = true
 
