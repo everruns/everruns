@@ -81,6 +81,7 @@ Closed `event:` vocabulary on this endpoint:
 | `tool.completed`                | `Event` (`data` = `ToolCompletedData`)                                     |
 | `tool.output.delta`             | `Event` (`data` = `ToolOutputDeltaData`)                                   |
 | `tool.call_requested`           | `Event` (`data` = `ToolCallRequestedData`)                                 |
+| `transcript.repaired`           | `Event` (`data` = `TranscriptRepairedData`)                                |
 | `llm.generation`                | `Event` (`data` = `LlmGenerationData`)                                     |
 | `capability.usage`              | `Event` (`data` = `CapabilityUsageData`)                                   |
 | `session.started`               | `Event` (`data` = `SessionStartedData`)                                    |

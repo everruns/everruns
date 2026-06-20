@@ -169,6 +169,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_PROGRESS,
     TOOL_OUTPUT_DELTA,
     TOOL_CALL_REQUESTED,
+    TRANSCRIPT_REPAIRED,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -196,6 +197,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     VOICE_SESSION_ENDED,
     VOICE_SESSION_FAILED,
     FILE_WRITTEN,
+    CAPABILITY_USAGE,
 ];
 
 // ============================================================================
@@ -3045,6 +3047,19 @@ mod tests {
         assert!(json.contains("\"session_id\""));
         assert!(json.contains("\"context\""));
         assert!(json.contains("\"data\""));
+    }
+
+    #[test]
+    fn transcript_repaired_is_valid_filter_event_type() {
+        assert!(VALID_EVENT_TYPES.contains(&TRANSCRIPT_REPAIRED));
+    }
+
+    /// `capability.usage` is emitted (`EventData::CapabilityUsage`) and documented
+    /// as streamable, so the public `types`/`exclude` filter allowlist must accept
+    /// it instead of rejecting it as an unknown event type.
+    #[test]
+    fn capability_usage_is_valid_filter_event_type() {
+        assert!(VALID_EVENT_TYPES.contains(&CAPABILITY_USAGE));
     }
 
     #[test]
