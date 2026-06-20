@@ -169,6 +169,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     TOOL_PROGRESS,
     TOOL_OUTPUT_DELTA,
     TOOL_CALL_REQUESTED,
+    TRANSCRIPT_REPAIRED,
     LLM_GENERATION,
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
@@ -3045,6 +3046,11 @@ mod tests {
         assert!(json.contains("\"session_id\""));
         assert!(json.contains("\"context\""));
         assert!(json.contains("\"data\""));
+    }
+
+    #[test]
+    fn transcript_repaired_is_valid_filter_event_type() {
+        assert!(VALID_EVENT_TYPES.contains(&TRANSCRIPT_REPAIRED));
     }
 
     #[test]
