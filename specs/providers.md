@@ -157,6 +157,19 @@ Env-var fallbacks for dev (`DEFAULT_*_API_KEY`, startup materialization into the
 
 Driver crates do **not** read the process environment for credentials. Credentials reach a driver through its constructor or `DriverConfig` (resolved from the encrypted database on the server path). Env-based loading for standalone/dev/CLI use is the single, injectable `CredentialProvider`/`EnvCredentialProvider` seam in `crates/core/src/credential_provider.rs`; the server never constructs an `EnvCredentialProvider`. See the Key Resolution Contract in [llm-drivers.md](llm-drivers.md).
 
+### OAuth provider connection
+
+A driver may additionally declare an **interactive OAuth connect flow** so an org admin can connect a provider by authorizing in the browser instead of pasting a key. This is a second way to *populate* the credential document, not a second credential model: the flow always ends by writing a long-lived credential into `credentials_encrypted`, exactly where a hand-typed key lands. Runtime resolution is unchanged, and non-admin users are unaffected — they never authorize; they use models served by the org provider against the one stored credential, as before.
+
+The capability is declared, not special-cased, mirroring services and credential schema:
+
+- `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/core/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant — **no new endpoints**.
+- Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Settings → Providers). Both require `provider.manage`.
+
+**OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
+
+**Security model.** The flow is CSRF-protected by an HttpOnly, `SameSite=Lax`, 10-minute state cookie bound to the provider id, org id, and the browser's PKCE verifier; the CSRF token also rides in the callback URL so it round-trips regardless of provider echo behavior. The callback re-checks `provider.manage` and validates the cookie before storing anything, so a forged callback cannot inject an attacker's credential. The token-exchange endpoint is driver-declared (not user input) and still passes SSRF validation as defense-in-depth.
+
 ## Providers vs Connections
 
 Two deliberately separate front doors over shared plumbing:

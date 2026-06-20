@@ -273,10 +273,10 @@ pub use utility_llm::{
 // LLM driver types re-exports
 pub use driver_registry::{
     BoxedChatDriver, BoxedEmbeddingsDriver, ChatDriver, DiscoveredModel, DriverDescriptor,
-    DriverFactory, DriverId, DriverRegistry, EmbedRequest, EmbedResponse, EmbeddingsDriver,
-    EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig, LlmCallConfigBuilder,
-    LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent, LlmMessageRole,
-    LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ServiceKind,
+    DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
+    EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
+    LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
+    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ServiceKind,
     fold_system_messages,
 };
 

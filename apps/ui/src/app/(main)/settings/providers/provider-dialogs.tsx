@@ -19,6 +19,7 @@ import {
   getProviderLabel,
   getProviderDescription,
 } from "@/components/providers/provider-icon";
+import { providerSupportsOAuth, providerOAuthAuthorizeUrl } from "@/lib/api/providers";
 import type { Provider, DriverId, CreateProviderRequest } from "@/lib/api/types";
 
 // Ordered list of provider types for the picker. Labels and descriptions come
@@ -184,6 +185,12 @@ export function AddProviderDialog({
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
               placeholder={getApiKeyPlaceholder(providerType)}
             />
+            {providerSupportsOAuth(providerType) ? (
+              <p className="text-sm text-muted-foreground">
+                Prefer not to paste a key? Create the provider without one, then use “Connect with{" "}
+                {getProviderLabel(providerType)}” to authorize a key in your browser.
+              </p>
+            ) : null}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
@@ -218,6 +225,15 @@ export function SetApiKeyDialog({
   const [apiKey, setApiKey] = useState("");
   const updateProvider = useUpdateProvider(provider?.id || "");
 
+  const oauthSupported = provider ? providerSupportsOAuth(provider.provider_type) : false;
+  const oauthLabel = provider ? getProviderLabel(provider.provider_type) : "";
+
+  const handleConnectOAuth = () => {
+    if (!provider) return;
+    // Server redirect that sets a state cookie, so navigate the browser directly.
+    window.location.href = providerOAuthAuthorizeUrl(provider.id);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!provider) return;
@@ -237,6 +253,22 @@ export function SetApiKeyDialog({
               : "Enter the API key for this provider."}
           </DialogDescription>
         </DialogHeader>
+        {oauthSupported ? (
+          <div className="space-y-3">
+            <Button type="button" className="w-full" onClick={handleConnectOAuth}>
+              Connect with {oauthLabel}
+            </Button>
+            <p className="text-sm text-muted-foreground">
+              Authorize in your browser to set up a key automatically — no copy &amp; paste needed.
+              Or enter a key manually below.
+            </p>
+            <div className="flex items-center gap-3 py-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted-foreground">or</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          </div>
+        ) : null}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="new-api-key">API Key</Label>

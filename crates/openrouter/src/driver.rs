@@ -187,8 +187,13 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
         credential_schema: CredentialFormSchema::api_key(
-            "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys).",
+            "Create an API key at [openrouter.ai/settings/keys](https://openrouter.ai/settings/keys), \
+             or use \"Connect with OpenRouter\" to authorize one without leaving the app.",
         ),
+        // OpenRouter supports a one-click PKCE flow that hands back a
+        // user-controlled API key, so an admin can connect without minting and
+        // pasting a key manually. The key is stored like any other credential.
+        oauth: Some(everruns_core::DriverOAuthConfig::openrouter()),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
@@ -278,5 +283,21 @@ mod tests {
         let descriptor = registry.descriptor(&DriverId::OpenRouter).unwrap();
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
+    }
+
+    #[test]
+    fn registered_descriptor_declares_oauth_connect_flow() {
+        let mut registry = DriverRegistry::new();
+        register_driver(&mut registry);
+
+        let oauth = registry
+            .descriptor(&DriverId::OpenRouter)
+            .unwrap()
+            .oauth
+            .as_ref()
+            .expect("OpenRouter declares an OAuth connect flow");
+        assert_eq!(oauth.flow, everruns_core::DriverOAuthFlow::OpenRouterPkce);
+        assert_eq!(oauth.authorize_url, "https://openrouter.ai/auth");
+        assert_eq!(oauth.token_url, "https://openrouter.ai/api/v1/auth/keys");
     }
 }

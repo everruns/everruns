@@ -1683,6 +1683,55 @@ impl std::fmt::Display for ServiceKind {
     }
 }
 
+/// Wire flavor of a driver's interactive OAuth connect flow.
+///
+/// A driver may let an org admin connect a provider by authorizing in the
+/// browser instead of pasting an API key. The flow always yields a long-lived
+/// credential that lands in `providers.credentials_encrypted`, exactly like a
+/// hand-entered key — so runtime resolution is unchanged and non-admin users
+/// are unaffected (see specs/providers.md "OAuth provider connection").
+///
+/// Only OpenRouter's PKCE flavor exists today. Adding OAuth to another driver
+/// means a new variant here (which the server matches on) plus a
+/// [`DriverOAuthConfig`] on that driver's descriptor — never a parallel set of
+/// endpoints.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DriverOAuthFlow {
+    /// OpenRouter one-click PKCE
+    /// (<https://openrouter.ai/docs/guides/overview/auth/oauth>): redirect the
+    /// admin to `authorize_url?callback_url=..&code_challenge=..&code_challenge_method=S256`,
+    /// then POST JSON `{code, code_verifier, code_challenge_method}` to
+    /// `token_url`; the `key` field of the response is the user-controlled API
+    /// key to store. No client registration or secret is required (public PKCE
+    /// client).
+    OpenRouterPkce,
+}
+
+/// A driver's declared OAuth connect flow.
+///
+/// Presence of this on a [`DriverDescriptor`] is what makes "Connect with
+/// {provider}" available; absence means credentials must be entered manually.
+#[derive(Debug, Clone)]
+pub struct DriverOAuthConfig {
+    /// Authorization endpoint the admin's browser is redirected to.
+    pub authorize_url: String,
+    /// Endpoint that exchanges the returned authorization code for a credential.
+    pub token_url: String,
+    /// Wire flavor of the two steps above.
+    pub flow: DriverOAuthFlow,
+}
+
+impl DriverOAuthConfig {
+    /// OpenRouter's one-click PKCE connect flow.
+    pub fn openrouter() -> Self {
+        Self {
+            authorize_url: "https://openrouter.ai/auth".to_string(),
+            token_url: "https://openrouter.ai/api/v1/auth/keys".to_string(),
+            flow: DriverOAuthFlow::OpenRouterPkce,
+        }
+    }
+}
+
 /// A registered provider driver: identity, declared services, the credential
 /// shape its providers must supply, and per-service factories.
 ///
@@ -1699,6 +1748,9 @@ pub struct DriverDescriptor {
     pub services: Vec<ServiceKind>,
     /// Credential fields a provider instance must supply.
     pub credential_schema: CredentialFormSchema,
+    /// Optional interactive OAuth connect flow. `Some` makes "Connect with
+    /// {provider}" available as an alternative to entering a key by hand.
+    pub oauth: Option<DriverOAuthConfig>,
     /// Chat service factory. `None` for drivers that only offer other services.
     pub chat: Option<DriverFactory>,
     /// Embeddings service factory. `None` for drivers that do not support embeddings.
@@ -1719,6 +1771,7 @@ impl DriverDescriptor {
             display_name: default_display_name(&id),
             credential_schema: default_credential_schema(&id),
             services: vec![ServiceKind::Chat],
+            oauth: None,
             chat: Some(Arc::new(factory)),
             embeddings: None,
             id,
@@ -1737,6 +1790,7 @@ impl std::fmt::Debug for DriverDescriptor {
             .field("id", &self.id)
             .field("display_name", &self.display_name)
             .field("services", &self.services)
+            .field("oauth", &self.oauth.is_some())
             .field("chat", &self.chat.is_some())
             .field("embeddings", &self.embeddings.is_some())
             .finish()
@@ -2510,6 +2564,7 @@ mod tests {
             display_name: "Embeddings Only".to_string(),
             services: vec![ServiceKind::Embeddings],
             credential_schema: CredentialFormSchema::empty(),
+            oauth: None,
             chat: None,
             embeddings: None,
         });
