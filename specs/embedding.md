@@ -377,6 +377,37 @@ ServerAppBuilder::new(config)
 
 This is the org-creation counterpart to the invitation surface moved into OSS by EVE-602; member management and invitations use the OSS surfaces directly.
 
+## Zero-Org Onboarding Surface
+
+OSS owns the first screen a user sees after login when they have no organizations. Wrappers compose it instead of forking a full onboarding page plus the main-layout redirect.
+
+OSS provides:
+
+- `ZeroOrgOnboarding` (`apps/ui/src/components/onboarding/zero-org-onboarding.tsx`) — owns the layout, org-name form, current-org selection after create, and the `/orgs/{orgId}/setup` redirect. Default behavior lets any authenticated user create their first org.
+- `useZeroOrgRedirect` (`apps/ui/src/components/onboarding/use-zero-org-redirect.ts`) — redirects authenticated zero-org users to `/onboarding`; consumed by the OSS `(main)` layout and reusable by wrappers so the redirect is not duplicated.
+- The `(onboarding)/onboarding` route, which renders `ZeroOrgOnboarding`.
+
+Wrappers configure two extension points on `ZeroOrgOnboarding`:
+
+- `usePolicy: () => ZeroOrgPolicyState` returning `{ status: "loading" }`, `{ status: "ready" }`, or `{ status: "blocked", title, body?, actions? }`. A blocked state renders a gate (e.g. "Verify your email") in place of the form before any org is created. Defaults to always-ready.
+- `useCreateOrg` — overrides the create mutation (e.g. to call a wrapper alias) while keeping the OSS layout and redirect. Defaults to the OSS `useCreateOrganization`.
+
+A SaaS wrapper replaces its local onboarding page with an OSS re-export plus a small policy adapter:
+
+```tsx
+// Wrapper-owned policy adapter; the page is just OSS + this hook.
+import { ZeroOrgOnboarding } from "everruns-ui/components/onboarding/zero-org-onboarding";
+
+export default function Onboarding() {
+  return <ZeroOrgOnboarding usePolicy={useVerifiedEmailPolicy} />;
+}
+```
+
+- **OSS owns**: the `ZeroOrgOnboarding` component and layout, the `ZeroOrgPolicyState` / `UseZeroOrgPolicy` types, the always-ready default policy, the create-and-redirect flow, and the zero-org redirect hook.
+- **Wrappers own**: the concrete policy hook (verified-email gate, plan limits) and any create-org override.
+
+This is the UI counterpart to the server-side org-creation policy above; the policy-blocked copy a wrapper shows here should mirror the `OrgCreatePolicy` rejection that remains the authoritative backstop.
+
 ## Non-goals
 
 This spec does not require:
