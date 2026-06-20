@@ -431,9 +431,10 @@ const EMAIL_FONT_STACK: &str =
 
 // Public Everruns surfaces. The logo must be a hosted absolute URL (most email
 // clients block SVG and inline data URIs), so we reference the PNG served by
-// the marketing site rather than the in-repo SVG.
+// the marketing site rather than the in-repo SVG. The 64px asset is sized for
+// the 28px header logo at 2x retina (~3 KB) to keep messages small.
 const EVERRUNS_SITE_URL: &str = "https://everruns.com";
-const EVERRUNS_LOGO_URL: &str = "https://everruns.com/logo.png";
+const EVERRUNS_LOGO_URL: &str = "https://everruns.com/logo-64.png";
 
 // App-styled HTML shell shared by every template. `title` sets the document
 // `<title>` (kept neutral for the unbranded minimal template, since some clients

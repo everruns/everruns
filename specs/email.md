@@ -49,11 +49,11 @@ All templates share an app-styled HTML shell whose colors and shapes mirror `app
   - use when the surrounding flow already carries Everruns branding
 - `EmailTemplate::Basic(BasicEmailTemplate)`
   - same app-styled shell as `Minimal`, plus branding
-  - header with the Everruns logo (`https://everruns.com/logo.png`) and wordmark, linking to everruns.com
+  - header with the Everruns logo (`https://everruns.com/logo-64.png`) and wordmark, linking to everruns.com
   - footer linking back to everruns.com
   - plain text body is prefixed with the Everruns wordmark and gets a site-link footer
 
-The logo is referenced as a hosted absolute PNG URL rather than the in-repo SVG, because most email clients block SVG and inline data URIs. The marketing site must serve `logo.png` at the apex domain.
+The logo is referenced as a hosted absolute PNG URL rather than the in-repo SVG, because most email clients block SVG and inline data URIs. The marketing site serves `logo-64.png` at the apex domain — a 64px PNG sized for the 28px header at 2x retina.
 
 ## System Configuration
 
