@@ -64,7 +64,7 @@ impl McpToolInvoker for ScopedMcpToolInvoker {
     async fn invoke(&self, tool_call: &ToolCall) -> Result<crate::tool_types::ToolResult> {
         if !self.allowed_tool_names.contains(&tool_call.name) {
             return Err(crate::AgentLoopError::tool(format!(
-                "MCP tool '{}' is not allowed in this session",
+                "MCP tool '{}' is not allowed in the current tool scope",
                 tool_call.name
             )));
         }
