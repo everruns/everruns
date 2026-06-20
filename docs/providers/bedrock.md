@@ -5,6 +5,8 @@ sidebar:
   label: AWS Bedrock
 ---
 
+<svg role="img" aria-label="AWS Bedrock logo" width="56" height="56" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="float: right; margin-left: 16px;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+
 Everruns runs agents on models hosted in
 [Amazon Bedrock](https://aws.amazon.com/bedrock/) through the Bedrock Runtime
 `ConverseStream` API, mapping its provider-neutral messages, tools, and reasoning

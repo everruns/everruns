@@ -5,6 +5,8 @@ sidebar:
   label: Microsoft MAI
 ---
 
+<svg role="img" aria-label="Microsoft MAI logo" width="56" height="56" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="float: right; margin-left: 16px;"><path d="M2 2h9.2v9.2H2zM12.8 2H22v9.2h-9.2zM2 12.8h9.2V22H2zM12.8 12.8H22V22h-9.2z"/></svg>
+
 Everruns runs agents on Microsoft MAI models (for example `MAI-Code-1-Flash`),
 which are served via [Azure AI Foundry](https://ai.azure.com) behind an
 OpenAI-compatible Chat Completions API. The MAI provider exists as its own driver
