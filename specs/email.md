@@ -39,14 +39,21 @@ At least one `to` recipient, a subject, and a valid template are required.
 
 ### Templates
 
-Email sends use explicit templates. V1 includes one template:
+Email sends use explicit templates. Callers select a template by constructing the matching `EmailTemplate` variant (or its `EmailMessage` constructor); there is no runtime template registry. Both templates accept a caller-supplied `text` and `html` body and require both to be non-empty.
 
-- `EmailTemplate::Generic(GenericEmailTemplate)`
-  - accepts `text` and `html`
-  - prefixes plain text with Everruns branding
-  - wraps HTML in a small Everruns-branded shell
+All templates share an app-styled HTML shell whose colors and shapes mirror `apps/ui/src/app/design-system.css` (grayscale surface, navy/gold brand accents, sharp 0px corners). Brand tokens are inlined as literals in `crates/core/src/email.rs` because email clients cannot load the app's webfont or CSS variables; keep them in sync if the palette changes.
 
-The generic template is for internal transactional emails that do not yet need their own dedicated template.
+- `EmailTemplate::Minimal(MinimalEmailTemplate)`
+  - app-styled shell, but **unbranded**: no wordmark, logo, or footer link
+  - plain text body is passed through verbatim
+  - use when the surrounding flow already carries Everruns branding
+- `EmailTemplate::Basic(BasicEmailTemplate)`
+  - same app-styled shell as `Minimal`, plus branding
+  - header with the Everruns logo (`https://everruns.com/logo.png`) and wordmark, linking to everruns.com
+  - footer linking back to everruns.com
+  - plain text body is prefixed with the Everruns wordmark and gets a site-link footer
+
+The logo is referenced as a hosted absolute PNG URL rather than the in-repo SVG, because most email clients block SVG and inline data URIs. The marketing site must serve `logo.png` at the apex domain.
 
 ## System Configuration
 

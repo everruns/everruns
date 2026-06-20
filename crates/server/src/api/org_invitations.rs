@@ -316,7 +316,9 @@ async fn deliver_invite_email(
          <p><a href=\"{url_html}\">Accept your invitation</a></p>\
          <p>This link expires in {INVITE_TTL_DAYS} days.</p>"
     );
-    let message = EmailMessage::generic(to, subject, text, html);
+    // Branded template: this is an external-facing invitation, so it carries
+    // the Everruns logo, wordmark, and a link back to everruns.com.
+    let message = EmailMessage::basic(to, subject, text, html);
     match email_sender.send_email(message).await {
         Ok(_) => EmailDelivery::Sent,
         // A disabled/unconfigured sender reports a configuration error.
