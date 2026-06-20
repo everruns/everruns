@@ -5,6 +5,8 @@ sidebar:
   label: Fireworks AI
 ---
 
+<svg role="img" aria-label="Fireworks AI logo" width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg" style="float: right; margin-left: 16px;"><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><path d="M12 2.5V6M12 18v3.5M2.5 12H6M18 12h3.5M5.2 5.2l2.5 2.5M16.3 16.3l2.5 2.5M18.8 5.2l-2.5 2.5M7.7 16.3l-2.5 2.5"/></svg>
+
 Everruns runs agents on [Fireworks AI](https://fireworks.ai/) through its
 OpenAI-compatible Chat Completions API. Fireworks serves frontier **open
 models** — Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, and more — on a fast,
