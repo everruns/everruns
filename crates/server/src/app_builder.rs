@@ -1042,6 +1042,14 @@ impl ServerAppBuilder {
             Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
             None => api::a2a_signing::A2aReplayStore::in_memory(),
         };
+        // api_endpoint execution keys get their own rate-limiter namespace so
+        // their per-channel cap is never shared with AG-UI / A2A / FCP buckets.
+        let api_endpoint_rate_limiter = match valkey_for_channel_rate_limits.clone() {
+            Some(client) => {
+                api::channel_rate_limit::ChannelRateLimiter::with_valkey("apikey", client)
+            }
+            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
+        };
         // FCP gets its own rate limiter namespace so the per-channel cap can
         // never be shared with — or exhausted by — AG-UI/A2A traffic.
         let fcp_rate_limiter = match valkey_for_channel_rate_limits.clone() {
@@ -1057,6 +1065,14 @@ impl ServerAppBuilder {
             sse_tracker.clone(),
             a2a_rate_limiter,
             a2a_replay_store,
+        );
+        let app_api_state = api::app_api::AppApiState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            notifications_enabled,
+            event_delivery.clone(),
+            api_endpoint_rate_limiter,
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
@@ -1336,6 +1352,7 @@ impl ServerAppBuilder {
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
+            .merge(api::app_api::routes(app_api_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::fcp::routes(fcp_state))
             .merge(api::feature_flags::routes(feature_flags_state))

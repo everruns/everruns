@@ -1927,6 +1927,169 @@
         }
       }
     },
+    "/v1/apps/{app_id}/api-endpoint-channels": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "POST /v1/apps/{app_id}/api-endpoint-channels - Add an api_endpoint channel (returns plaintext key once).",
+        "operationId": "add_api_endpoint_channel",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddApiEndpointChannelHttpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "api_endpoint channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddApiEndpointChannelOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Regenerate an api_endpoint channel API key. Returns the new plaintext key exactly once and invalidates the previous key.",
+        "operationId": "regenerate_api_endpoint_key",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "api_endpoint channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateApiEndpointApiKeyOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid app/channel ID or channel is not an api_endpoint channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or api_endpoint channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/fcp": {
       "get": {
         "tags": [
@@ -13398,6 +13561,53 @@
           }
         }
       },
+      "AddApiEndpointChannelHttpRequest": {
+        "type": "object",
+        "description": "Request body for the `add_api_endpoint_channel_http` operation.",
+        "properties": {
+          "auth": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AppEndpointAuthConfig",
+                "description": "Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`."
+              }
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Whether this resource is enabled.",
+            "example": true
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "How invocations route into sessions (`shared_session` to reuse one\ndurable session, or `session_per_invocation` for a fresh session)."
+          }
+        }
+      },
+      "AddApiEndpointChannelOutput": {
+        "type": "object",
+        "description": "Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key\n(returned **once**, never persisted) plus the resulting [`AppChannel`].",
+        "required": [
+          "api_key",
+          "channel"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Plaintext API key. Persist this — it cannot be recovered later."
+          },
+          "channel": {
+            "$ref": "#/components/schemas/AppChannel",
+            "description": "The created api_endpoint channel."
+          }
+        }
+      },
       "Agent": {
         "type": "object",
         "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
@@ -14967,7 +15177,8 @@
           "schedule",
           "webhook",
           "a2a",
-          "fcp"
+          "fcp",
+          "api_endpoint"
         ],
         "example": "webhook"
       },
@@ -28352,6 +28563,24 @@
           "channel": {
             "$ref": "#/components/schemas/AppChannel",
             "description": "The updated A2A channel."
+          }
+        }
+      },
+      "RegenerateApiEndpointApiKeyOutput": {
+        "type": "object",
+        "description": "Output of [`RegenerateApiEndpointApiKeyCmd`] — includes the newly generated\nplaintext API key (returned **once**, never persisted) plus the updated\n[`AppChannel`].",
+        "required": [
+          "api_key",
+          "channel"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "New plaintext API key. Persist this — it cannot be recovered later.\nThe previous key is invalidated immediately."
+          },
+          "channel": {
+            "$ref": "#/components/schemas/AppChannel",
+            "description": "The updated api_endpoint channel."
           }
         }
       },

@@ -10,6 +10,7 @@ pub mod agent_identities;
 pub mod agent_identity_connections;
 pub mod agents;
 pub mod app_a2a;
+pub mod app_api;
 pub mod app_endpoint_auth;
 pub mod app_webhooks;
 pub mod apps;

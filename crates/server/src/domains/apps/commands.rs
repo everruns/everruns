@@ -25,9 +25,9 @@ use chrono::{DateTime, Duration, Timelike, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, App, AppChannel,
-    AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus,
-    AuditEvent, ChannelType, FcpChannelConfig, Policy, SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, ApiEndpointChannelConfig,
+    App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
+    AppStatus, AuditEvent, ChannelType, FcpChannelConfig, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
@@ -134,6 +134,7 @@ pub enum AppInvocationSource {
     Schedule,
     Webhook,
     A2a,
+    ApiEndpoint,
 }
 
 impl AppInvocationSource {
@@ -142,6 +143,7 @@ impl AppInvocationSource {
             Self::Schedule => "schedule",
             Self::Webhook => "webhook",
             Self::A2a => "a2a",
+            Self::ApiEndpoint => "api_endpoint",
         }
     }
 }
@@ -240,7 +242,7 @@ fn normalize_and_validate_channel_config(
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
-        ChannelType::AgUi | ChannelType::A2a => {
+        ChannelType::AgUi | ChannelType::A2a | ChannelType::ApiEndpoint => {
             normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
         }
         ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
@@ -398,6 +400,32 @@ fn normalize_and_validate_channel_config(
                 }
             }
         }
+        ChannelType::ApiEndpoint => {
+            let config: ApiEndpointChannelConfig = serde_json::from_value(channel_config.clone())
+                .map_err(|e| {
+                CommandError::bad_request(format!("Invalid api_endpoint channel config: {e}"))
+            })?;
+            if config.api_key_hash.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "api_endpoint channel config requires a non-empty api_key_hash",
+                ));
+            }
+            if config.api_key_prefix.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "api_endpoint channel config requires a non-empty api_key_prefix",
+                ));
+            }
+            // Mirror the A2A/AG-UI cap so a typo cannot silently disable the
+            // per-channel limit by overflowing reasonable expectations. `0` is
+            // allowed and means "no per-channel cap".
+            if let Some(limit) = config.rate_limit_per_minute
+                && limit > 1_000_000
+            {
+                return Err(CommandError::bad_request(
+                    "api_endpoint rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
+        }
         ChannelType::Fcp => {
             let config: FcpChannelConfig =
                 serde_json::from_value(channel_config.clone()).map_err(|e| {
@@ -503,9 +531,9 @@ fn validate_endpoint_auth_config(
             }
         }
         AppEndpointAuthMode::ApiKey => {
-            if *channel_type != ChannelType::A2a {
+            if *channel_type != ChannelType::A2a && *channel_type != ChannelType::ApiEndpoint {
                 return Err(CommandError::bad_request(
-                    "API key auth is only supported for A2A channels",
+                    "API key auth is only supported for A2A and api_endpoint channels",
                 ));
             }
             let has_hash = channel_config
@@ -520,7 +548,7 @@ fn validate_endpoint_auth_config(
                 Ok(())
             } else {
                 Err(CommandError::bad_request(
-                    "API key auth requires a configured A2A API key",
+                    "API key auth requires a configured API key",
                 ))
             }
         }
@@ -666,6 +694,12 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 map.insert("token_configured".to_string(), Value::Bool(true));
             }
         }
+        ChannelType::ApiEndpoint => {
+            // The api_key_hash is a secret-equivalent: anyone who can submit a
+            // key whose SHA-256 matches it authenticates. Never surface it on
+            // read; the non-secret api_key_prefix stays for display.
+            map.remove("api_key_hash");
+        }
         ChannelType::Schedule => {}
     }
 }
@@ -774,6 +808,17 @@ fn merge_preserved_secret_fields(
                 .is_none_or(str::is_empty);
             if should_preserve && let Some(existing_value) = existing.get("token") {
                 out.insert("token".to_string(), existing_value.clone());
+            }
+        }
+        ChannelType::ApiEndpoint => {
+            // api_key_hash is write-only on the wire (redacted on read), so a
+            // PATCH that edits session_mode / rate_limit must preserve the
+            // existing key rather than wipe it. Rotation goes through the
+            // dedicated regenerate-key command.
+            for key in ["api_key_hash", "api_key_prefix"] {
+                if let Some(existing_value) = existing.get(key) {
+                    out.insert(key.to_string(), existing_value.clone());
+                }
             }
         }
         ChannelType::Schedule => {}
@@ -1342,6 +1387,14 @@ where
                 .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?
                 .message
         }
+        // api_endpoint channels carry no config-side message template — the
+        // caller supplies the message directly, so they use the dedicated
+        // `invoke_api_app_channel` path instead of this template renderer.
+        AppInvocationSource::ApiEndpoint => {
+            return Err(CommandError::bad_request(
+                "api_endpoint channels do not use message templates",
+            ));
+        }
     };
     let rendered_message = render_message_template(&message_template, &template_context);
     if rendered_message.trim().is_empty() {
@@ -1540,6 +1593,178 @@ where
         after_session_resolved,
     )
     .await
+}
+
+/// Request to start an api_endpoint execution-key invocation.
+#[derive(Debug, Clone)]
+pub struct ApiInvocationRequest {
+    pub app_id: String,
+    pub channel_id: String,
+    /// Caller-supplied message dispatched into the app session.
+    pub message: String,
+}
+
+/// Resolve the published app + enabled api_endpoint channel for an
+/// execution-key request. Shared by the create-session and post-message paths
+/// so lifecycle and channel-type checks live in one place.
+async fn resolve_api_app_channel(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    app_id: &str,
+    channel_id: &str,
+) -> Result<(App, AppChannel), CommandError> {
+    let app = q::get_by_public_id_unscoped(db, encryption, app_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("App"))?;
+    if app.status != AppStatus::Published {
+        return Err(CommandError::forbidden("App is not published".to_string()));
+    }
+    let channel_public_id: AppChannelId = channel_id
+        .parse()
+        .map_err(|e| CommandError::bad_request(format!("Invalid channel ID: {e}")))?;
+    let channel = app
+        .channel_by_id(&channel_public_id)
+        .cloned()
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    if channel.channel_type != ChannelType::ApiEndpoint {
+        return Err(CommandError::not_found("Channel"));
+    }
+    if !channel.enabled {
+        return Err(CommandError::forbidden(
+            "App channel is disabled".to_string(),
+        ));
+    }
+    Ok((app, channel))
+}
+
+/// Whether a session's routing tags bind it to the given app + channel.
+/// Confinement check for api_endpoint execution keys (mirrors the A2A
+/// `session_belongs_to_a2a_channel` guard). THREAT[TM-APIKEY-002].
+pub fn session_has_app_channel_tags(
+    tags: &[String],
+    app_public_id: &str,
+    channel_public_id: &str,
+) -> bool {
+    let app_tag = format!("app:{app_public_id}");
+    let channel_tag = format!("app_channel:{channel_public_id}");
+    tags.iter().any(|t| t == &app_tag) && tags.iter().any(|t| t == &channel_tag)
+}
+
+/// Create (or resolve, for shared-session mode) the app-owned session for an
+/// api_endpoint channel and dispatch the caller-supplied message, triggering a
+/// turn. Mirrors `invoke_a2a_app_channel`, but the message is supplied by the
+/// caller rather than rendered from a config-side template.
+pub async fn invoke_api_app_channel(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    req: ApiInvocationRequest,
+    request_id: Option<String>,
+) -> Result<AppInvocationResult, CommandError> {
+    if req.message.trim().is_empty() {
+        return Err(CommandError::bad_request("message must not be empty"));
+    }
+    let (app, channel) =
+        resolve_api_app_channel(db, encryption, &req.app_id, &req.channel_id).await?;
+    let config = channel
+        .api_endpoint_config()
+        .ok_or_else(|| CommandError::bad_request("Invalid api_endpoint channel configuration"))?;
+
+    let (session_id, created_session) = find_or_create_invocation_session(
+        db,
+        session_service,
+        &app,
+        &channel,
+        config.session_mode,
+        AppInvocationSource::ApiEndpoint,
+    )
+    .await?;
+
+    dispatch_invocation_message(
+        message_service,
+        &app,
+        &channel,
+        session_id,
+        AppInvocationSource::ApiEndpoint,
+        request_id,
+        req.message,
+    )
+    .await?;
+
+    emit_app_invocation_audit_event(
+        Arc::clone(db),
+        &app,
+        &channel,
+        session_id,
+        AppInvocationSource::ApiEndpoint,
+        created_session,
+    );
+
+    Ok(AppInvocationResult {
+        session_id,
+        created_session,
+    })
+}
+
+/// Dispatch a follow-up message into an existing session that belongs to the
+/// api_endpoint channel. The session must carry the channel's routing tags
+/// (confinement) or the call fails with not-found, so one app's key cannot
+/// drive another app's sessions. THREAT[TM-APIKEY-002].
+#[allow(clippy::too_many_arguments)]
+pub async fn post_api_app_channel_message(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    message_service: &MessageService,
+    app_id: &str,
+    channel_id: &str,
+    session_id: SessionId,
+    message: String,
+    request_id: Option<String>,
+) -> Result<AppInvocationResult, CommandError> {
+    if message.trim().is_empty() {
+        return Err(CommandError::bad_request("message must not be empty"));
+    }
+    let (app, channel) = resolve_api_app_channel(db, encryption, app_id, channel_id).await?;
+
+    let session = db
+        .get_session(app.org_id, session_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Session"))?;
+    if !session_has_app_channel_tags(
+        &session.tags,
+        &app.public_id.to_string(),
+        &channel.public_id.to_string(),
+    ) {
+        return Err(CommandError::not_found("Session"));
+    }
+
+    dispatch_invocation_message(
+        message_service,
+        &app,
+        &channel,
+        session_id,
+        AppInvocationSource::ApiEndpoint,
+        request_id,
+        message,
+    )
+    .await?;
+
+    emit_app_invocation_audit_event(
+        Arc::clone(db),
+        &app,
+        &channel,
+        session_id,
+        AppInvocationSource::ApiEndpoint,
+        false,
+    );
+
+    Ok(AppInvocationResult {
+        session_id,
+        created_session: false,
+    })
 }
 
 pub async fn invoke_webhook_app_channel(
@@ -3186,6 +3411,229 @@ impl Command for RegenerateA2aApiKeyCmd {
 }
 
 inventory::submit! { CommandDescriptor::of::<RegenerateA2aApiKeyCmd>() }
+
+// ============================================================================
+// AddApiEndpointChannel
+// ============================================================================
+
+/// Generate a fresh api_endpoint execution API key, returning
+/// (plaintext, sha256_hash, display_prefix).
+///
+/// Plaintext format: `evr_app_<64 hex chars>` — 32 random bytes (256-bit
+/// entropy), prefix-scoped so secret scanners can target it distinctly from
+/// `evr_pat_` (personal access tokens) and `evra2a_` (A2A keys). The hash is
+/// SHA-256 hex; the prefix is the first 8 hex chars after `evr_app_`, suffixed
+/// with `...`, for non-secret UI display.
+pub fn generate_app_api_key() -> (String, String, String) {
+    use rand::RngCore;
+
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let hex = hex::encode(bytes);
+    let plaintext = format!("evr_app_{hex}");
+    let hash = hash_app_api_key(&plaintext);
+    let prefix = format!("evr_app_{}...", &hex[..8]);
+    (plaintext, hash, prefix)
+}
+
+/// Hash a plaintext api_endpoint API key using SHA-256, returning hex.
+pub fn hash_app_api_key(plaintext: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(plaintext.as_bytes()))
+}
+
+/// Output of [`AddApiEndpointChannelCmd`] — includes the plaintext API key
+/// (returned **once**, never persisted) plus the resulting [`AppChannel`].
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct AddApiEndpointChannelOutput {
+    /// Plaintext API key. Persist this — it cannot be recovered later.
+    pub api_key: String,
+    /// The created api_endpoint channel.
+    pub channel: AppChannel,
+}
+
+/// Add an api_endpoint (execution-only API key) channel to an app. Generates
+/// the API key server-side and returns the plaintext exactly once.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddApiEndpointChannelCmd {
+    /// App's prefixed public identifier.
+    pub app_id: String,
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    #[serde(default)]
+    pub auth: Option<AppEndpointAuthConfig>,
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Whether this resource is enabled.
+    pub enabled: Option<bool>,
+}
+
+impl Command for AddApiEndpointChannelCmd {
+    type Output = AddApiEndpointChannelOutput;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "add_api_endpoint_app_channel",
+            category: "apps",
+            description: "Add an api_endpoint (execution-only API key) channel to an app. Returns the plaintext API key exactly once.",
+            method: "POST",
+            path: "/v1/apps/{id}/api-endpoint-channels",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AddApiEndpointChannelOutput, CommandError> {
+        let (plaintext, hash, prefix) = generate_app_api_key();
+        let mut config = json!({
+            "api_key_hash": hash,
+            "api_key_prefix": prefix,
+            "session_mode": self.session_mode,
+        });
+        if let Some(auth) = self.auth {
+            config["auth"] = serde_json::to_value(auth).map_err(|e| {
+                CommandError::bad_request(format!("Invalid app endpoint auth config: {e}"))
+            })?;
+        }
+        let channel = AddChannel {
+            app_id: self.app_id,
+            req: AddChannelRequest {
+                channel_type: ChannelType::ApiEndpoint,
+                channel_config: Some(config),
+                enabled: self.enabled,
+            },
+        }
+        .execute(ctx)
+        .await?;
+        Ok(AddApiEndpointChannelOutput {
+            api_key: plaintext,
+            channel,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<AddApiEndpointChannelCmd>() }
+
+// ============================================================================
+// RegenerateApiEndpointApiKey
+// ============================================================================
+
+/// Regenerate the API key for an api_endpoint channel. Returns the new
+/// plaintext key exactly once and invalidates the previous key.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegenerateApiEndpointApiKeyCmd {
+    /// App's prefixed public identifier.
+    pub app_id: String,
+    /// Channel's prefixed public identifier.
+    pub channel_id: String,
+}
+
+/// Output of [`RegenerateApiEndpointApiKeyCmd`] — includes the newly generated
+/// plaintext API key (returned **once**, never persisted) plus the updated
+/// [`AppChannel`].
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct RegenerateApiEndpointApiKeyOutput {
+    /// New plaintext API key. Persist this — it cannot be recovered later.
+    /// The previous key is invalidated immediately.
+    pub api_key: String,
+    /// The updated api_endpoint channel.
+    pub channel: AppChannel,
+}
+
+impl Command for RegenerateApiEndpointApiKeyCmd {
+    type Output = RegenerateApiEndpointApiKeyOutput;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "regenerate_api_endpoint_app_channel_key",
+            category: "apps",
+            description: "Regenerate the api_endpoint channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
+            method: "POST",
+            path: "/v1/apps/{id}/api-endpoint-channels/{channel_id}/regenerate-key",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<RegenerateApiEndpointApiKeyOutput, CommandError> {
+        let app_id: AppId = self
+            .app_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+        let app = ctx
+            .db
+            .get_app_by_public_id(ctx.org_id(), &app_id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+        if !matches!(app.status.as_str(), "draft" | "published") {
+            return Err(CommandError::bad_request(
+                "Archived or deleted apps cannot be edited",
+            ));
+        }
+
+        let channel_row = ctx
+            .db
+            .get_app_channel_by_public_id(&self.channel_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if channel_row.app_id != app.id {
+            return Err(CommandError::bad_request(
+                "Channel does not belong to this app",
+            ));
+        }
+        if channel_row.channel_type != ChannelType::ApiEndpoint.to_string() {
+            return Err(CommandError::bad_request(
+                "Channel is not an api_endpoint channel",
+            ));
+        }
+
+        let encryption = ctx.encryption.as_ref();
+        let mut existing_config: Value = q::decrypt_channel_config(
+            encryption,
+            channel_row.channel_config_encrypted.as_deref(),
+            &channel_row.channel_config,
+        );
+        let (plaintext, hash, prefix) = generate_app_api_key();
+        if let Some(map) = existing_config.as_object_mut() {
+            map.insert("api_key_hash".to_string(), Value::String(hash));
+            map.insert("api_key_prefix".to_string(), Value::String(prefix));
+        } else {
+            return Err(CommandError::bad_request(
+                "Existing api_endpoint channel configuration is not a JSON object",
+            ));
+        }
+        let existing_config =
+            normalize_and_validate_channel_config(ChannelType::ApiEndpoint, existing_config)?;
+
+        let (stored, encrypted) =
+            q::prepare_channel_config(encryption, &existing_config).map_err(classify_anyhow)?;
+        let row = ctx
+            .db
+            .update_app_channel(
+                channel_row.id,
+                UpdateAppChannel {
+                    channel_config: Some(stored),
+                    channel_config_encrypted: encrypted,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Channel"))?;
+
+        Ok(RegenerateApiEndpointApiKeyOutput {
+            api_key: plaintext,
+            channel: redact_channel_for_response(q::channel_row_to_channel(encryption, row)),
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<RegenerateApiEndpointApiKeyCmd>() }
 
 // ============================================================================
 // UpdateChannel
