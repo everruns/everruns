@@ -209,6 +209,15 @@ The channels-first page folds App configuration into the header, renders a Healt
 
 Schedule labels in rows, headers, breadcrumbs, summaries, and other read-only UI must render a human-readable cron description plus timezone. Raw cron expressions are only shown inside the editable Cron input.
 
+### Create-app entry points
+
+Apps are the publish surface for Harnesses and Agents. To avoid forcing users to leave the building block they just configured, the Harness and Agent detail pages each expose a **Create app** shortcut (active status only) that links to the App create form with the originating building block prefilled:
+
+- Harness detail → `/apps/new?harness_id={harness_id}`
+- Agent detail → `/apps/new?agent_id={agent_id}`
+
+The create form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft; the agent shortcut still requires the user to pick a harness.
+
 ## Data Model
 
 See `crates/core/src/app.rs` for the complete `App` and `AppChannel` definitions.

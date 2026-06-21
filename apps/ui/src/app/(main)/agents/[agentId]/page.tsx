@@ -38,6 +38,7 @@ import {
   LayoutDashboard,
   BarChart3,
   GitBranch,
+  Rocket,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
@@ -201,6 +202,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               <Button variant="outline">
                 <Pencil className="w-4 h-4 mr-2" />
                 Edit
+              </Button>
+            </Link>
+          )}
+          {agent.status === "active" && (
+            <Link href={`/apps/new?agent_id=${agentId}`}>
+              <Button variant="outline">
+                <Rocket className="w-4 h-4 mr-2" />
+                Create app
               </Button>
             </Link>
           )}
