@@ -9,7 +9,7 @@ use crate::storage::{
     models::{CreateProviderRow, ProviderRow, UpdateProvider},
 };
 use anyhow::{Result, anyhow};
-use everruns_core::provider::Provider;
+use everruns_core::provider::{Provider, ProviderTraceConfig};
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{Caller, DriverId, Permission, Policy, ProviderStatus, Rule};
 use reqwest::Url;
@@ -77,12 +77,18 @@ impl ProviderService {
             None
         };
 
+        // Persist only the trace override; driver defaults are applied on read.
+        let settings = req
+            .trace
+            .as_ref()
+            .map(|trace| serde_json::json!({ "trace": trace }));
+
         let input = CreateProviderRow {
             name: req.name,
             provider_type: req.provider_type.to_string(),
             base_url: req.base_url,
             api_key_encrypted,
-            settings: None,
+            settings,
         };
 
         let row = self.db.create_provider(caller.org_id, input).await?;
@@ -157,6 +163,17 @@ impl ProviderService {
             None
         };
 
+        // Merge the trace override into existing settings, preserving any other
+        // settings keys. `None` leaves settings untouched (COALESCE in storage).
+        let settings = req.trace.as_ref().map(|trace| {
+            let mut merged = existing.settings.clone();
+            if !merged.is_object() {
+                merged = serde_json::json!({});
+            }
+            merged["trace"] = serde_json::to_value(trace).unwrap_or(serde_json::Value::Null);
+            merged
+        });
+
         let input = UpdateProvider {
             name: req.name,
             provider_type: req.provider_type.map(|t| t.to_string()),
@@ -166,7 +183,7 @@ impl ProviderService {
                 ProviderStatus::Active => "active".to_string(),
                 ProviderStatus::Disabled => "disabled".to_string(),
             }),
-            settings: None,
+            settings,
         };
 
         let row = self.db.update_provider(caller.org_id, id, input).await?;
@@ -194,6 +211,7 @@ impl ProviderService {
         // `seed::seed_default_provider_keys_from_env`), which sets
         // `row.api_key_set` through the normal path.
         let api_key_set = row.api_key_set;
+        let trace = resolve_trace_config(&provider_type, &row.settings);
 
         Provider {
             id: row.id,
@@ -208,8 +226,45 @@ impl ProviderService {
             last_synced_at: row.last_synced_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            trace,
         }
     }
+}
+
+/// Resolve a provider's trace-link configuration by overlaying its stored
+/// override (`settings.trace`) onto the driver's default templates. Returns
+/// `None` when neither the driver nor the org provides anything to link to, so
+/// the UI shows no trace affordance.
+fn resolve_trace_config(
+    provider_type: &DriverId,
+    settings: &serde_json::Value,
+) -> Option<ProviderTraceConfig> {
+    let (default_generation, default_session) = provider_type.default_trace_templates();
+
+    // A stored override may be partial; missing fields fall back to defaults.
+    let stored: Option<ProviderTraceConfig> = settings
+        .get("trace")
+        .and_then(|v| serde_json::from_value(v.clone()).ok());
+
+    let enabled = stored.as_ref().map(|t| t.enabled).unwrap_or(false);
+    let generation_url_template = stored
+        .as_ref()
+        .and_then(|t| t.generation_url_template.clone())
+        .or(default_generation);
+    let session_url_template = stored
+        .as_ref()
+        .and_then(|t| t.session_url_template.clone())
+        .or(default_session);
+
+    if !enabled && generation_url_template.is_none() && session_url_template.is_none() {
+        return None;
+    }
+
+    Some(ProviderTraceConfig {
+        enabled,
+        generation_url_template,
+        session_url_template,
+    })
 }
 
 fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
@@ -274,9 +329,63 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_provider_base_url, validate_provider_type};
+    use super::{resolve_trace_config, validate_provider_base_url, validate_provider_type};
     use everruns_core::DriverId;
     use everruns_core::url_validation::validate_safe_url;
+
+    // ---- Trace config resolution (provider trace links) ----
+
+    #[test]
+    fn trace_openrouter_defaults_present_but_disabled_without_override() {
+        // OpenRouter ships default templates, but links stay off until an admin
+        // opts in, so the resolved config carries the templates with enabled=false.
+        let trace =
+            resolve_trace_config(&DriverId::OpenRouter, &serde_json::json!({})).expect("some");
+        assert!(!trace.enabled);
+        assert_eq!(
+            trace.generation_url_template.as_deref(),
+            Some("https://openrouter.ai/logs?id={response_id}")
+        );
+        assert_eq!(
+            trace.session_url_template.as_deref(),
+            Some("https://openrouter.ai/logs")
+        );
+    }
+
+    #[test]
+    fn trace_none_for_driver_without_defaults_or_override() {
+        assert!(resolve_trace_config(&DriverId::OpenAI, &serde_json::json!({})).is_none());
+    }
+
+    #[test]
+    fn trace_override_enables_and_keeps_driver_default_templates() {
+        let settings = serde_json::json!({ "trace": { "enabled": true } });
+        let trace = resolve_trace_config(&DriverId::OpenRouter, &settings).expect("some");
+        assert!(trace.enabled);
+        // Missing override fields fall back to the driver defaults.
+        assert_eq!(
+            trace.generation_url_template.as_deref(),
+            Some("https://openrouter.ai/logs?id={response_id}")
+        );
+    }
+
+    #[test]
+    fn trace_override_template_wins_for_any_driver() {
+        // A generic provider with no driver default can still configure links.
+        let settings = serde_json::json!({
+            "trace": {
+                "enabled": true,
+                "session_url_template": "https://langfuse.example.com/s/{session_id}"
+            }
+        });
+        let trace = resolve_trace_config(&DriverId::OpenAI, &settings).expect("some");
+        assert!(trace.enabled);
+        assert_eq!(
+            trace.session_url_template.as_deref(),
+            Some("https://langfuse.example.com/s/{session_id}")
+        );
+        assert!(trace.generation_url_template.is_none());
+    }
 
     // ---- SSRF prevention tests (EVE-69) ----
 

@@ -27,6 +27,10 @@ pub struct CreateProvider {
     pub provider_type: DriverId,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    /// Trace/observability link configuration override (driver defaults apply
+    /// when omitted).
+    #[serde(default)]
+    pub trace: Option<everruns_core::ProviderTraceConfig>,
 }
 
 impl Command for CreateProvider {
@@ -55,6 +59,7 @@ impl Command for CreateProvider {
                     provider_type: self.provider_type,
                     base_url: self.base_url,
                     api_key: self.api_key,
+                    trace: self.trace,
                 },
             )
             .await
@@ -144,6 +149,10 @@ pub struct UpdateProvider {
     pub api_key: Option<String>,
     /// Current lifecycle status.
     pub status: Option<ProviderStatus>,
+    /// Trace/observability link configuration override (merged into stored
+    /// settings, preserving other keys).
+    #[serde(default)]
+    pub trace: Option<everruns_core::ProviderTraceConfig>,
 }
 
 impl Command for UpdateProvider {
@@ -175,6 +184,7 @@ impl Command for UpdateProvider {
                     base_url: self.base_url,
                     api_key: self.api_key,
                     status: self.status,
+                    trace: self.trace,
                 },
             )
             .await

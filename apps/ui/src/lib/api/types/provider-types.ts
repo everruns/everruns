@@ -30,6 +30,19 @@ export type ModelVendor =
   | "xai"
   | "llmsim";
 
+/**
+ * Configuration for linking from the chat UI to a provider's observability
+ * dashboard ("trace"/"logs"). URL templates support the `{response_id}`,
+ * `{session_id}`, `{turn_id}` and `{model}` placeholders. The backend resolves
+ * driver defaults overlaid with the org's stored overrides; `enabled` gates
+ * whether links are shown at all.
+ */
+export interface ProviderTraceConfig {
+  enabled: boolean;
+  generation_url_template?: string;
+  session_url_template?: string;
+}
+
 export interface Provider {
   id: string;
   name: string;
@@ -39,6 +52,8 @@ export interface Provider {
   status: ProviderStatus;
   created_at: string;
   updated_at: string;
+  /** Resolved trace/observability link configuration (driver defaults + overrides). */
+  trace?: ProviderTraceConfig;
 }
 
 export interface Model {
@@ -188,6 +203,7 @@ export interface CreateProviderRequest {
   provider_type: DriverId;
   base_url?: string;
   api_key?: string;
+  trace?: ProviderTraceConfig;
 }
 
 export interface UpdateProviderRequest {
@@ -196,6 +212,7 @@ export interface UpdateProviderRequest {
   base_url?: string;
   api_key?: string;
   status?: ProviderStatus;
+  trace?: ProviderTraceConfig;
 }
 
 export interface CreateModelRequest {

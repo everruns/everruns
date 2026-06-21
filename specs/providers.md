@@ -86,6 +86,41 @@ Org-scoped row in the `providers` table (renamed from `llm_providers`):
 
 Multiple providers per driver are first-class: two Azure OpenAI providers in different regions are two rows with `driver = 'azure_openai'`.
 
+#### Trace links
+
+Providers may expose deep links from session chats to the vendor's
+observability dashboard ("trace"/"logs"). The mechanism is provider-agnostic
+and template-based:
+
+- A driver declares best-effort default URL templates
+  (`DriverId::default_trace_templates`); OpenRouter points at its **Logs** page
+  (`https://openrouter.ai/logs`, gated behind the account's "Input & Output
+  Logging" Observability setting). OpenRouter does not document a public
+  per-generation deep link, so the generation template passes the id best-effort.
+- An org stores a per-provider override in `settings.trace`
+  (`ProviderTraceConfig`: `enabled`, `generation_url_template`,
+  `session_url_template`). Templates support the `{response_id}`,
+  `{session_id}`, `{turn_id}` and `{model}` placeholders, so the same mechanism
+  works for third-party backends (Langfuse, Helicone, ...) via an override. The
+  UI substitutes placeholders, then renders the link only if the result is a
+  valid `http(s)` URL (rejecting `javascript:`/`data:` schemes — the templates
+  are admin-controlled but rendered as clickable links).
+- The Provider API response carries the **resolved** config (driver defaults
+  overlaid with the override). `enabled` defaults `false`: vendors retain
+  prompt/completion content only when logging is turned on, so the org opts in
+  once that is set up — this is the answer to "what if logs are not enabled".
+
+The chat UI renders three link affordances when the session's provider has
+trace links enabled: a session-level link in the session header (using the
+forwarded `session_id` for grouping — see the OpenRouter section in
+[integrations.md](integrations.md)), a per-turn link on the turn divider, and a
+per-generation link beside each assistant message. The assistant message's
+provider driver id and `response_id` are stamped onto the message metadata by
+the reason atom so the UI can build the link without correlating events. Trace
+config is keyed by driver id (the resolved model carries the driver, not the
+provider instance id), so when an org runs multiple providers on one driver the
+first trace-enabled provider for that driver supplies the templates.
+
 ### Model
 
 Org-scoped row in the `models` table (renamed from `llm_models`). A model means **a specific model via a specific provider** — the concrete, callable unit:

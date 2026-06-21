@@ -18,7 +18,7 @@ use axum::{
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use everruns_core::provider::Provider;
+use everruns_core::provider::{Provider, ProviderTraceConfig};
 use everruns_core::typed_id::ProviderId;
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{
@@ -108,6 +108,10 @@ pub struct CreateProviderRequest {
     /// Will be encrypted at rest if encryption is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Trace/observability link configuration. Stored as a per-provider override
+    /// of the driver's default templates; omit to keep driver defaults.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<ProviderTraceConfig>,
 }
 
 /// Response from syncing models from a provider
@@ -148,6 +152,10 @@ pub struct UpdateProviderRequest {
     /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<ProviderStatus>,
+    /// Trace/observability link configuration override. Merged into the
+    /// provider's stored settings, preserving other settings keys.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trace: Option<ProviderTraceConfig>,
 }
 
 /// Create a new LLM provider
@@ -174,6 +182,7 @@ pub async fn create_provider(
             provider_type: req.provider_type,
             base_url: req.base_url,
             api_key: req.api_key,
+            trace: req.trace,
         })
         .await
 }
@@ -252,6 +261,7 @@ pub async fn update_provider(
             base_url: req.base_url,
             api_key: req.api_key,
             status: req.status,
+            trace: req.trace,
         })
         .await
 }
@@ -488,6 +498,7 @@ pub async fn oauth_callback(
                 base_url: None,
                 api_key: Some(api_key),
                 status: None,
+                trace: None,
             },
         )
         .await

@@ -41,6 +41,7 @@ import {
   Check,
   ChevronDown,
   Database,
+  ExternalLink,
   Folder,
   GitBranch,
   Activity,
@@ -190,6 +191,32 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
   );
 }
 
+/**
+ * Link to the session's grouped trace on its provider's observability dashboard
+ * (e.g. OpenRouter Logs). The URL and label are resolved by the caller (which
+ * has org/provider context) and passed in, mirroring the `liveUsage` pattern, so
+ * the header stays renderable in isolation (dev page, unit tests).
+ */
+function SessionTraceBadge({ href, label }: { href?: string; label?: string }) {
+  if (!href) return null;
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        buttonVariants({ variant: "outline", size: "sm" }),
+        "gap-1 text-muted-foreground",
+      )}
+      title={label}
+    >
+      <ExternalLink className="icon-sharp h-3 w-3" />
+      {label}
+    </a>
+  );
+}
+
 export function SessionStatusBadge({ status }: { status: SessionStatus | undefined }) {
   if (status === "active") {
     return <Badge variant="default">Processing...</Badge>;
@@ -305,6 +332,8 @@ export function SessionHeader({
   activeTab,
   navigationItems,
   secondaryMetaText,
+  sessionTraceUrl,
+  sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Back to Sessions",
   allowTitleEditing = true,
@@ -319,6 +348,9 @@ export function SessionHeader({
   activeTab: SessionNavKey;
   navigationItems: SessionNavItem[];
   secondaryMetaText: string;
+  /** Deep link to the session's provider trace, resolved by the caller. */
+  sessionTraceUrl?: string;
+  sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
   allowTitleEditing?: boolean;
@@ -394,6 +426,8 @@ export function SessionHeader({
               {llmModel.display_name}
             </Badge>
           )}
+
+          <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
 
           <SessionStatusBadge status={effectiveStatus} />
 

@@ -11,7 +11,10 @@ import {
   buildSessionNavigation,
 } from "@/components/session/session-header";
 import { usePageTitle } from "@/hooks";
+import { useProviders } from "@/hooks/use-providers";
+import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { useLocale } from "@/providers/locale-provider";
 
 const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   chat: "Chat",
@@ -73,6 +76,19 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     activeScheduleCount: session?.active_schedule_count,
   });
 
+  // Resolve the session-level provider trace link here, where org/provider
+  // context is available, and pass it to the (presentational) header.
+  const { t } = useLocale();
+  const { data: providers } = useProviders();
+  const sessionTraceUrl = useMemo(() => {
+    const traceByDriver = buildTraceConfigByDriver(providers);
+    return (
+      resolveSessionTraceUrl(llmModel?.provider_type, sessionId, traceByDriver, {
+        model: llmModel?.model_id,
+      }) ?? undefined
+    );
+  }, [providers, llmModel?.provider_type, llmModel?.model_id, sessionId]);
+
   if (sessionLoading) {
     return (
       <div className="container mx-auto p-6">
@@ -112,6 +128,8 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
             ? "Workspace: /workspace"
             : `Started ${new Date(session.created_at).toLocaleString()}`
         }
+        sessionTraceUrl={sessionTraceUrl}
+        sessionTraceLabel={t("trace_view_session")}
       />
 
       {/* Tab content */}

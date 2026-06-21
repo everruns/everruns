@@ -460,7 +460,7 @@ pub use payment::{
     PaymentOwnerType, PaymentPolicy, PaymentRail, PaymentStatus,
 };
 pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
-pub use provider::{Provider, ProviderStatus};
+pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
 pub use session::{Session, SessionStatus, SubagentStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
 pub use session_resource::{
