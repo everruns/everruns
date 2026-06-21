@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 use everruns_core::{McpToolsListRequest, McpToolsListResponse};
 
@@ -38,16 +38,12 @@ impl Connector for ParallelConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "API Key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("parallel_api_key".to_string()),
-                help_text: Some(
-                    "Parallel is free without a key; add one for authenticated usage.".to_string(),
-                ),
-            }],
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .with_placeholder("parallel_api_key")
+                    .with_help("Parallel is free without a key; add one for authenticated usage."),
+            ],
             instructions_markdown: "\
 Parallel MCP works without a key by default.\n\n\
 To use authenticated mode:\n\

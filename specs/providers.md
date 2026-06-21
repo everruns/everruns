@@ -51,7 +51,7 @@ Connectors are the user-scoped sibling concept (see "Providers vs Connections" b
 
 A driver is a code unit registered in `DriverRegistry`, keyed by a **driver id** (`openai`, `azure_openai`, `openai_completions`, `openrouter`, `anthropic`, `gemini`, `bedrock`, `mai`, `fireworks`, `llmsim`). Ids are open, not a closed set: built-in drivers are compiled-in enum variants, and embedder-defined drivers register arbitrary ids via `ProviderType::External` (`register_external`, landed in EVE-561) through `PlatformDefinition` — an embedder adds a vendor without patching core. The database stores the id as a plain string; unknown ids parse to `External` rather than erroring.
 
-The `mai` driver (`everruns-mai`) is a publishable example of a first-party built-in driver layered on a generic protocol: Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry behind an OpenAI-compatible Chat Completions API, so the driver wraps `OpenAIProtocolChatDriver` and supplies authentication through the generic `AuthHeaderProvider` hook (see [llm-drivers.md](llm-drivers.md)). It is the only built-in driver besides `llmsim`/`External` that does not require an `api_key` at the registry layer, because it can authenticate via Microsoft Entra ID (OAuth) credentials carried in `ProviderMetadata`.
+The `mai` driver (`everruns-mai`) is a publishable example of a first-party built-in driver layered on a generic protocol: Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry behind an OpenAI-compatible Chat Completions API, so the driver wraps `OpenAIProtocolChatDriver` and supplies authentication through the generic `AuthHeaderProvider` hook (see [llm-drivers.md](llm-drivers.md)). It is the only built-in driver besides `llmsim`/`External` that does not require an `api_key` at the registry layer, because it can authenticate via Microsoft Entra ID (OAuth) credentials supplied as first-class credential fields (or, on the embedder path, carried in `ProviderMetadata`).
 
 Each registered driver declares:
 
@@ -182,11 +182,13 @@ Consumers and their paths:
 
 The credential schema is a shared primitive between drivers and connectors:
 
-- **Schema**: named fields with types (`password`, `text`, `select`), required flags, and instructions markdown — the shape `ConnectionProviderPlugin::form_schema` already defines. Drivers and connectors declare schemas the same way; the Settings UI renders both with one form component.
-- **Validation**: both declare async `validate()` invoked before saving.
-- **Storage**: both encrypt the credential document with the same AES-256-GCM envelope (`specs/encryption.md`). Values are never returned by any API.
+- **Schema**: named fields with a type (`password`, `text`, `url`), required flag, optional placeholder / help text / default value, and optional mutually-exclusive **group** label. Drivers and connectors declare schemas the same way (`crates/core/src/credential_schema.rs`); the Settings UI renders both with one form component that lays out discrete typed inputs (multi-field credentials, grouped alternatives) — no hand-authored JSON.
+- **Validation**: ungrouped required fields must be present; fields sharing a group label form one alternative method, and at least one group must be complete (`CredentialFormSchema::validate`). Connectors additionally declare async `validate()` against the upstream API.
+- **Storage**: the submitted field map is assembled into one credential document (`assemble_credential_document`) and encrypted with the AES-256-GCM envelope (`specs/encryption.md`); values are never returned by any API. A lone `api_key` is stored as the raw key; multi-field credentials are stored as a JSON object keyed by field name. At driver-construction time the document is parsed back into the typed `DriverConfig::credentials` map (`parse_credential_document`), the single point where the stored string becomes typed fields for every path (server, worker, sync, dev).
 
-Simple drivers declare a one-field schema (`api_key`); Bedrock declares `access_key_id`, `secret_access_key`, `region`, optional `session_token`.
+Simple drivers declare a one-field schema (`api_key`). **Bedrock** declares `access_key_id`, `secret_access_key`, optional `region`, optional `session_token`. **MAI** declares two grouped methods — an Azure AI Foundry `api_key`, or first-class Microsoft Entra ID OAuth fields (`tenant_id`, `client_id`, `client_secret`, optional `scope`/`authority`). Their drivers read the typed `DriverConfig::credentials` fields rather than parsing JSON out of `api_key`. The provider's endpoint stays the first-class `base_url`, not a credential field.
+
+Because the stored document is keyed by field name, existing Bedrock/MAI rows (which already hold such a JSON document) and existing single-key rows resolve unchanged — no re-encryption or data migration is required.
 
 Env-var fallbacks for dev (`DEFAULT_*_API_KEY`, startup materialization into the default org) keep their existing semantics, mapped onto the credential document.
 
@@ -287,7 +289,8 @@ The refactor has landed; current implementations live at:
 - `crates/core/src/provider.rs` — `Provider` entity + `DriverId`
 - `crates/core/src/model.rs` — `Model` / `ModelWithProvider` entity types
 - `crates/core/src/model_profiles.rs` — built-in profile data
-- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories)
+- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories); `DriverConfig` typed `credentials` map
+- `crates/core/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs` — model discovery

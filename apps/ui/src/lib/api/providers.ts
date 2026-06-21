@@ -12,6 +12,7 @@ import type {
   UpdateModelRequest,
   ListResponse,
   SyncModelsResponse,
+  ProvidersConfigResponse,
 } from "./types";
 
 // Provider CRUD
@@ -44,6 +45,13 @@ export async function deleteProvider(providerId: string): Promise<void> {
 
 export async function syncProviderModels(providerId: string): Promise<SyncModelsResponse> {
   const response = await api.post<SyncModelsResponse>(`/v1/providers/${providerId}/sync-models`);
+  return response.data;
+}
+
+// Caller policies plus the per-driver credential schemas the Settings UI renders
+// as discrete typed inputs (multi-field AWS keys, Entra OAuth fields).
+export async function getProvidersConfig(): Promise<ProvidersConfigResponse> {
+  const response = await api.get<ProvidersConfigResponse>("/v1/providers/config");
   return response.data;
 }
 

@@ -6,7 +6,7 @@
 use crate::client::DenoClient;
 use async_trait::async_trait;
 use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 use std::collections::HashMap;
 
@@ -37,28 +37,17 @@ impl Connector for DenoConnector {
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
             fields: vec![
-                FormField {
-                    name: "api_key".to_string(),
-                    label: "Access Token".to_string(),
-                    field_type: FieldType::Password,
-                    required: true,
-                    placeholder: Some("ddo_... or ddp_...".to_string()),
-                    help_text: Some(
-                        "Organization token (ddo_...) or personal token (ddp_...). Personal tokens require the organization slug below."
-                            .to_string(),
+                FormField::password("api_key", "Access Token")
+                    .required()
+                    .with_placeholder("ddo_... or ddp_...")
+                    .with_help(
+                        "Organization token (ddo_...) or personal token (ddp_...). Personal tokens require the organization slug below.",
                     ),
-                },
-                FormField {
-                    name: "org_slug".to_string(),
-                    label: "Organization Slug".to_string(),
-                    field_type: FieldType::Text,
-                    required: false,
-                    placeholder: Some("my-org".to_string()),
-                    help_text: Some(
-                        "Required for personal tokens (ddp_...). Find it in your Deno Deploy dashboard URL."
-                            .to_string(),
+                FormField::text("org_slug", "Organization Slug")
+                    .with_placeholder("my-org")
+                    .with_help(
+                        "Required for personal tokens (ddp_...). Find it in your Deno Deploy dashboard URL.",
                     ),
-                },
             ],
             instructions_markdown:
                 "1. Go to [Deno Deploy Sandbox](https://console.deno.com)\n2. Create an access token (`ddo_...` or `ddp_...`)\n3. Paste the token below"

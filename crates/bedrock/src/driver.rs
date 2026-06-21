@@ -4,7 +4,7 @@
 // Uses the aws-sdk-bedrockruntime crate for typed event stream handling,
 // which handles SigV4 signing and binary event stream framing internally.
 //
-// Credential shape: api_key is a JSON object (see credential.rs).
+// Credential shape: typed credential fields (see credential.rs).
 // base_url is unused.
 
 use async_trait::async_trait;
@@ -20,11 +20,11 @@ use aws_sdk_bedrockruntime::types::{
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
-use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
+use everruns_core::credential_schema::{CredentialFormSchema, FormField};
 use everruns_core::driver_registry::{
-    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
-    LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
+    DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
@@ -40,15 +40,15 @@ use crate::credential::BedrockCredential;
 /// AWS Bedrock Runtime Chat Driver.
 ///
 /// Implements `ChatDriver` using the `ConverseStream` API.
-/// Credentials are parsed from the JSON-encoded `api_key` field.
+/// Credentials come from the driver's declared typed credential fields.
 #[derive(Clone, Debug)]
 pub struct BedrockChatDriver {
     credential: BedrockCredential,
 }
 
 impl BedrockChatDriver {
-    pub fn new(api_key: &str) -> Result<Self> {
-        let credential = BedrockCredential::from_api_key(api_key)?;
+    pub fn from_config(config: &DriverConfig) -> Result<Self> {
+        let credential = BedrockCredential::from_driver_config(config)?;
         Ok(Self { credential })
     }
 
@@ -71,54 +71,30 @@ impl BedrockChatDriver {
 
 /// Register the Bedrock driver with the given registry.
 pub fn register_driver(registry: &mut DriverRegistry) {
-    // The declared schema is the target credential shape (specs/providers.md).
-    // Until the credential-document storage phase lands, the runtime still
-    // receives these fields as a JSON document through `config.api_key`.
+    // Bedrock's multi-field credential is a declared schema of discrete typed
+    // fields (specs/providers.md), not a JSON document smuggled through
+    // `api_key`. The fields are assembled into the stored credential document
+    // and parsed back into the typed `DriverConfig` credential map.
     registry.register_descriptor(DriverDescriptor {
         credential_schema: CredentialFormSchema {
             fields: vec![
-                FormField {
-                    name: "access_key_id".to_string(),
-                    label: "Access Key ID".to_string(),
-                    field_type: FieldType::Password,
-                    required: true,
-                    placeholder: None,
-                    help_text: None,
-                },
-                FormField {
-                    name: "secret_access_key".to_string(),
-                    label: "Secret Access Key".to_string(),
-                    field_type: FieldType::Password,
-                    required: true,
-                    placeholder: None,
-                    help_text: None,
-                },
-                FormField {
-                    name: "region".to_string(),
-                    label: "Region".to_string(),
-                    field_type: FieldType::Text,
-                    // Optional to match BedrockCredential::from_api_key, which
-                    // defaults the region to us-east-1 when omitted.
-                    required: false,
-                    placeholder: Some("us-east-1".to_string()),
-                    help_text: Some("Defaults to us-east-1.".to_string()),
-                },
-                FormField {
-                    name: "session_token".to_string(),
-                    label: "Session Token".to_string(),
-                    field_type: FieldType::Password,
-                    required: false,
-                    placeholder: None,
-                    help_text: Some("Only for temporary credentials.".to_string()),
-                },
+                FormField::password("access_key_id", "Access Key ID").required(),
+                FormField::password("secret_access_key", "Secret Access Key").required(),
+                // Optional to match BedrockCredential, which defaults the
+                // region to us-east-1 when omitted.
+                FormField::text("region", "Region")
+                    .with_placeholder("us-east-1")
+                    .with_default("us-east-1")
+                    .with_help("Defaults to us-east-1."),
+                FormField::password("session_token", "Session Token")
+                    .with_help("Only for temporary credentials."),
             ],
             instructions_markdown:
                 "Create an IAM user or role with Bedrock invoke permissions and use its access keys."
                     .to_string(),
         },
         ..DriverDescriptor::chat_only(DriverId::Bedrock, |config| {
-            let api_key = config.api_key.as_deref().unwrap_or("");
-            match BedrockChatDriver::new(api_key) {
+            match BedrockChatDriver::from_config(config) {
                 Ok(driver) => Box::new(driver) as BoxedChatDriver,
                 Err(e) => Box::new(FailDriver(e.to_string())) as BoxedChatDriver,
             }

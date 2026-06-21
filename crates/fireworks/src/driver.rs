@@ -12,7 +12,7 @@ use chrono::TimeZone;
 use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
+use everruns_core::credential_schema::{CredentialFormSchema, FormField};
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
@@ -307,35 +307,20 @@ fn clamp_i64_to_i32(value: i64) -> i32 {
     value.clamp(0, i32::MAX as i64) as i32
 }
 
-/// Credential schema for the Fireworks driver: an API key plus an optional base
-/// URL override (for self-hosted proxies or alternate endpoints).
+/// Credential schema for the Fireworks driver: a single API key. The optional
+/// endpoint override is the provider's first-class `base_url`, not a credential
+/// field, so it is configured separately rather than stored in the credential
+/// document.
 fn fireworks_credential_schema() -> CredentialFormSchema {
     CredentialFormSchema {
         fields: vec![
-            FormField {
-                name: "api_key".to_string(),
-                label: "API Key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("fw_...".to_string()),
-                help_text: Some(
+            FormField::password("api_key", "API Key")
+                .required()
+                .with_placeholder("fw_...")
+                .with_help(
                     "Your Fireworks AI API key. Create one at https://fireworks.ai under \
-                     Account → API Keys."
-                        .to_string(),
+                     Account → API Keys.",
                 ),
-            },
-            FormField {
-                name: "base_url".to_string(),
-                label: "Base URL".to_string(),
-                field_type: FieldType::Url,
-                required: false,
-                placeholder: Some("https://api.fireworks.ai/inference/v1".to_string()),
-                help_text: Some(
-                    "Optional. Override the default Fireworks endpoint to use a proxy. \
-                     Leave blank to use Fireworks' hosted API."
-                        .to_string(),
-                ),
-            },
         ],
         instructions_markdown:
             "Configure a [Fireworks AI](https://fireworks.ai) provider with your API key. \

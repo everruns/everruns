@@ -15,7 +15,7 @@ use chrono::TimeZone;
 use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
+use everruns_core::credential_schema::{CredentialFormSchema, FormField};
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
@@ -25,7 +25,7 @@ use everruns_core::openai_protocol::{
     AuthHeaderProvider, is_azure_openai_api_url, models_api_status_error, models_url_for_api_url,
 };
 
-use crate::auth::MaiAuth;
+use crate::auth::{DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, MaiAuth};
 
 /// Microsoft MAI chat driver (Azure AI Foundry, OpenAI-compatible).
 ///
@@ -299,38 +299,46 @@ fn normalize_mai_url(endpoint: &str) -> String {
     }
 }
 
-/// Credential schema for the MAI driver: an Azure AI Foundry API key plus an
-/// optional resource endpoint. Entra ID OAuth is configured through provider
-/// metadata rather than the credential form.
+/// Credential schema for the MAI driver: two mutually-exclusive credential
+/// methods rendered as discrete fields — an Azure AI Foundry API key, or
+/// first-class Microsoft Entra ID OAuth (client-credentials) fields. The
+/// resource endpoint is the provider's first-class `base_url`, configured
+/// separately rather than as a credential field.
 fn mai_credential_schema() -> CredentialFormSchema {
+    const API_KEY_GROUP: &str = "API key";
+    const OAUTH_GROUP: &str = "Microsoft Entra ID OAuth";
     CredentialFormSchema {
         fields: vec![
-            FormField {
-                name: "api_key".to_string(),
-                label: "API Key or Entra ID OAuth JSON".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: None,
-                help_text: Some(
-                    "An Azure AI Foundry resource key, or a Microsoft Entra ID OAuth JSON \
-                     document: {\"tenant_id\":\"…\",\"client_id\":\"…\",\"client_secret\":\"…\"}."
-                        .to_string(),
-                ),
-            },
-            FormField {
-                name: "base_url".to_string(),
-                label: "Resource Endpoint".to_string(),
-                field_type: FieldType::Url,
-                required: true,
-                placeholder: Some("https://<resource>.services.ai.azure.com".to_string()),
-                help_text: Some("Your Azure AI Foundry resource endpoint.".to_string()),
-            },
+            FormField::password("api_key", "Azure AI Foundry API Key")
+                .required()
+                .in_group(API_KEY_GROUP)
+                .with_help("A resource key from your Azure AI Foundry deployment."),
+            FormField::text("tenant_id", "Directory (tenant) ID")
+                .required()
+                .in_group(OAUTH_GROUP),
+            FormField::text("client_id", "Application (client) ID")
+                .required()
+                .in_group(OAUTH_GROUP),
+            FormField::password("client_secret", "Client secret")
+                .required()
+                .in_group(OAUTH_GROUP),
+            FormField::text("scope", "Scope")
+                .in_group(OAUTH_GROUP)
+                .with_default(DEFAULT_ENTRA_SCOPE)
+                .with_placeholder(DEFAULT_ENTRA_SCOPE)
+                .with_help("Defaults to the Azure Cognitive Services scope."),
+            FormField::text("authority", "Authority")
+                .in_group(OAUTH_GROUP)
+                .with_default(DEFAULT_ENTRA_AUTHORITY)
+                .with_placeholder(DEFAULT_ENTRA_AUTHORITY)
+                .with_help("Microsoft Entra authority host."),
         ],
         instructions_markdown:
-            "Configure a Microsoft MAI deployment on [Azure AI Foundry](https://ai.azure.com). \
-             Authenticate with the resource API key, or with Microsoft Entra ID OAuth \
-             (client-credentials) by entering a JSON document with `tenant_id`, `client_id`, \
-             and `client_secret` in the credential field."
+            "Configure a Microsoft MAI deployment on [Azure AI Foundry](https://ai.azure.com), \
+             then set the **Base URL** to your resource endpoint \
+             (e.g. `https://<resource>.services.ai.azure.com`). Authenticate with the resource \
+             **API key**, or with **Microsoft Entra ID OAuth** (client-credentials) by entering \
+             the tenant, client id, and client secret."
                 .to_string(),
     }
 }
@@ -499,6 +507,7 @@ mod tests {
     async fn misconfigured_without_base_url_errors_at_call_time() {
         let config = DriverConfig {
             provider_type: DriverId::Mai,
+            credentials: [("api_key".to_string(), "k".to_string())].into(),
             api_key: Some("k".into()),
             base_url: None,
             metadata: ProviderMetadata::default(),
@@ -515,6 +524,7 @@ mod tests {
     async fn misconfigured_without_auth_errors_at_call_time() {
         let config = DriverConfig {
             provider_type: DriverId::Mai,
+            credentials: Default::default(),
             api_key: None,
             base_url: Some("https://res.services.ai.azure.com".into()),
             metadata: ProviderMetadata::default(),

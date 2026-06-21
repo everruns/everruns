@@ -1,32 +1,52 @@
 // Bedrock credential parsing
 //
-// Credentials are encoded as a JSON object in ProviderConfig.api_key:
-//   {"access_key_id":"...","secret_access_key":"...","session_token":"...","region":"..."}
-// session_token is optional. region defaults to "us-east-1" when omitted.
+// Credentials are declared as discrete typed fields (see the driver's
+// `credential_schema`) and reach the driver as the typed `DriverConfig`
+// credential map — `access_key_id`, `secret_access_key`, optional
+// `session_token`, optional `region` (defaults to "us-east-1"). The driver no
+// longer parses a JSON document out of `api_key`; the credential document is
+// parsed into typed fields once, centrally, in `DriverConfig`.
 
+use everruns_core::driver_registry::DriverConfig;
 use everruns_core::error::{AgentLoopError, Result};
-use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+const DEFAULT_REGION: &str = "us-east-1";
+
+#[derive(Debug, Clone)]
 pub struct BedrockCredential {
     pub access_key_id: String,
     pub secret_access_key: String,
-    #[serde(default)]
     pub session_token: Option<String>,
-    #[serde(default = "default_region")]
     pub region: String,
 }
 
-fn default_region() -> String {
-    "us-east-1".to_string()
-}
-
 impl BedrockCredential {
-    pub fn from_api_key(api_key: &str) -> Result<Self> {
-        serde_json::from_str(api_key).map_err(|e| {
-            AgentLoopError::llm(format!(
-                "Bedrock credentials must be JSON {{access_key_id,secret_access_key}} (region and session_token are optional): {e}"
-            ))
+    /// Build a credential from the typed driver credential fields.
+    ///
+    /// `access_key_id` and `secret_access_key` are required; `region` defaults
+    /// to `us-east-1`; `session_token` is only set for temporary credentials.
+    pub fn from_driver_config(config: &DriverConfig) -> Result<Self> {
+        let access_key_id = config.credential("access_key_id").ok_or_else(|| {
+            AgentLoopError::llm(
+                "Bedrock provider is missing the AWS access key ID. Configure access_key_id and \
+                 secret_access_key in provider settings.",
+            )
+        })?;
+        let secret_access_key = config.credential("secret_access_key").ok_or_else(|| {
+            AgentLoopError::llm(
+                "Bedrock provider is missing the AWS secret access key. Configure access_key_id \
+                 and secret_access_key in provider settings.",
+            )
+        })?;
+
+        Ok(Self {
+            access_key_id: access_key_id.to_string(),
+            secret_access_key: secret_access_key.to_string(),
+            session_token: config.credential("session_token").map(str::to_string),
+            region: config
+                .credential("region")
+                .unwrap_or(DEFAULT_REGION)
+                .to_string(),
         })
     }
 }
@@ -34,11 +54,23 @@ impl BedrockCredential {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::credential_schema::parse_credential_document;
+    use everruns_core::driver_registry::DriverId;
+
+    fn config_from_document(document: &str) -> DriverConfig {
+        DriverConfig {
+            provider_type: DriverId::Bedrock,
+            credentials: parse_credential_document(Some(document)),
+            api_key: Some(document.to_string()),
+            base_url: None,
+            metadata: Default::default(),
+        }
+    }
 
     #[test]
     fn test_parse_full_credential() {
         let json = r#"{"access_key_id":"AKID","secret_access_key":"SECRET","session_token":"TOKEN","region":"eu-west-1"}"#;
-        let cred = BedrockCredential::from_api_key(json).unwrap();
+        let cred = BedrockCredential::from_driver_config(&config_from_document(json)).unwrap();
         assert_eq!(cred.access_key_id, "AKID");
         assert_eq!(cred.secret_access_key, "SECRET");
         assert_eq!(cred.session_token.as_deref(), Some("TOKEN"));
@@ -48,14 +80,16 @@ mod tests {
     #[test]
     fn test_parse_minimal_credential_defaults_region() {
         let json = r#"{"access_key_id":"AKID","secret_access_key":"SECRET"}"#;
-        let cred = BedrockCredential::from_api_key(json).unwrap();
+        let cred = BedrockCredential::from_driver_config(&config_from_document(json)).unwrap();
         assert_eq!(cred.region, "us-east-1");
         assert!(cred.session_token.is_none());
     }
 
     #[test]
-    fn test_parse_invalid_json_returns_error() {
-        assert!(BedrockCredential::from_api_key("not-json").is_err());
-        assert!(BedrockCredential::from_api_key("{}").is_err()); // missing required fields
+    fn test_missing_required_fields_returns_error() {
+        // A raw (non-JSON) credential parses to a lone `api_key` field, which is
+        // not a valid Bedrock credential.
+        assert!(BedrockCredential::from_driver_config(&config_from_document("not-json")).is_err());
+        assert!(BedrockCredential::from_driver_config(&config_from_document("{}")).is_err());
     }
 }

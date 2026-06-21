@@ -423,9 +423,7 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connector::{
-        ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
-    };
+    use crate::connector::{ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField};
     use crate::{CapabilityStatus, CurrentTimeCapability};
     use async_trait::async_trait;
 
@@ -455,14 +453,7 @@ mod tests {
 
         fn form_schema(&self) -> Option<ConnectorFormSchema> {
             Some(ConnectorFormSchema {
-                fields: vec![FormField {
-                    name: "api_key".to_string(),
-                    label: "API Key".to_string(),
-                    field_type: FieldType::Password,
-                    required: true,
-                    placeholder: None,
-                    help_text: None,
-                }],
+                fields: vec![FormField::password("api_key", "API Key").required()],
                 instructions_markdown: "Enter the API key.".to_string(),
             })
         }

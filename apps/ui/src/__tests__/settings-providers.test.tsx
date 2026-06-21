@@ -69,10 +69,12 @@ const mockUseDeleteProvider = jest.fn();
 const mockUseCreateModel = jest.fn();
 const mockUseDeleteModel = jest.fn();
 const mockUseSyncProviderModels = jest.fn();
+const mockUseProvidersConfig = jest.fn();
 
 jest.mock("@/hooks/use-providers", () => ({
   useProviders: () => mockUseProviders(),
   useProvider: () => ({ data: null, isLoading: false, error: null }),
+  useProvidersConfig: () => mockUseProvidersConfig(),
   useModels: () => mockUseModels(),
   useCreateProvider: () => mockUseCreateProvider(),
   useUpdateProvider: () => mockUseUpdateProvider(),
@@ -175,6 +177,27 @@ describe("ProvidersPage", () => {
     mockUseSyncProviderModels.mockReturnValue({
       mutateAsync: jest.fn(),
       isPending: false,
+    });
+
+    // Per-driver credential schemas drive the provider credential forms.
+    mockUseProvidersConfig.mockReturnValue({
+      data: {
+        policies: {},
+        drivers: [
+          {
+            driver: "openai",
+            supports_oauth: false,
+            credential_schema: {
+              fields: [
+                { name: "api_key", label: "API Key", field_type: "password", required: true },
+              ],
+              instructions_markdown: "",
+            },
+          },
+        ],
+      },
+      isLoading: false,
+      error: null,
     });
   });
 
@@ -293,7 +316,8 @@ describe("ProvidersPage", () => {
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
-      expect(screen.getByText("Add LLM Provider")).toBeInTheDocument();
+      // Disambiguate from the "Add Provider" trigger button: assert the dialog heading.
+      expect(screen.getByRole("heading", { name: "Add Provider" })).toBeInTheDocument();
     });
   });
 });

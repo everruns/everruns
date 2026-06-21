@@ -345,14 +345,17 @@ limitation Azure OpenAI has.
 
 `MaiAuth::from_driver_config` resolves auth in two ways. In-process / embedder
 callers may pass an Entra OAuth block in `ProviderMetadata.extra`. Server-stored
-providers carry their secret in the encrypted credential field (`api_key`),
-which may be **either** a plain Azure AI Foundry key **or** an Entra OAuth JSON
-document (`{tenant_id, client_id, client_secret}`, with optional `scope` /
-`authority`) — mirroring how Bedrock stores its multi-field credential. Because
-the credential always travels through the existing `api_key` field, OAuth works
-end-to-end for **both** chat execution and model sync with no provider-metadata
-forwarding, and the fail-closed key-resolution contract is preserved (a stored
-credential is still required; nothing falls back to env).
+providers carry their secret as the driver's declared typed credential fields —
+**either** a plain Azure AI Foundry `api_key` **or** discrete Entra OAuth fields
+(`tenant_id`, `client_id`, `client_secret`, optional `scope` / `authority`),
+which the operator enters as separate inputs (no hand-authored JSON). These
+fields are assembled into the encrypted credential document and parsed back into
+the typed `DriverConfig::credentials` map (`parse_credential_document`), so OAuth
+works end-to-end for **both** chat execution and model sync with no
+provider-metadata forwarding, and the fail-closed key-resolution contract is
+preserved (a stored credential is still required; nothing falls back to env).
+Existing rows that stored OAuth as a JSON document keep resolving, since that
+document parses into the same typed fields.
 
 ### Pluggable Authentication (`AuthHeaderProvider`)
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,14 +13,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCreateProvider, useUpdateProvider } from "@/hooks/use-providers";
+import { useCreateProvider, useProvidersConfig, useUpdateProvider } from "@/hooks/use-providers";
 import {
   ProviderIcon,
   getProviderLabel,
   getProviderDescription,
 } from "@/components/providers/provider-icon";
 import { providerSupportsOAuth, providerOAuthAuthorizeUrl } from "@/lib/api/providers";
-import type { Provider, DriverId, CreateProviderRequest } from "@/lib/api/types";
+import type {
+  Provider,
+  DriverId,
+  CreateProviderRequest,
+  CredentialFormSchema,
+} from "@/lib/api/types";
+import {
+  CredentialFields,
+  defaultCredentialValues,
+  nonEmptyCredentials,
+} from "./credential-fields";
 
 // Ordered list of provider types for the picker. Labels and descriptions come
 // from the centralized `getProviderLabel` / `getProviderDescription` mappings so
@@ -37,28 +47,8 @@ const PROVIDER_TYPES: DriverId[] = [
   "fireworks",
 ];
 
-// Get API key placeholder based on provider type
-function getApiKeyPlaceholder(providerType: DriverId): string {
-  switch (providerType) {
-    case "openai":
-    case "openai_completions":
-      return "sk-...";
-    case "openrouter":
-      return "sk-or-...";
-    case "azure_openai":
-      return "Azure OpenAI resource key";
-    case "anthropic":
-      return "sk-ant-api03-...";
-    case "bedrock":
-      return '{"access_key_id":"...","secret_access_key":"...","region":"us-east-1"}';
-    case "mai":
-      return 'Foundry key, or {"tenant_id":"...","client_id":"...","client_secret":"..."}';
-    case "fireworks":
-      return "fw_...";
-    default:
-      return "your-api-key";
-  }
-}
+// Drivers whose endpoint (`base_url`) is mandatory.
+const BASE_URL_REQUIRED: DriverId[] = ["azure_openai", "mai"];
 
 function getBaseUrlPlaceholder(providerType: DriverId): string {
   switch (providerType) {
@@ -83,6 +73,22 @@ function getBaseUrlPlaceholder(providerType: DriverId): string {
   }
 }
 
+// Resolve a driver's declared credential schema (and whether it supports OAuth)
+// from the providers config. Falls back to the client OAuth shim when the
+// config has not loaded yet.
+function useDriverCredentialSchema(providerType: DriverId | undefined): {
+  schema: CredentialFormSchema | undefined;
+  supportsOAuth: boolean;
+} {
+  const { data: config } = useProvidersConfig();
+  const entry = providerType ? config?.drivers.find((d) => d.driver === providerType) : undefined;
+  return {
+    schema: entry?.credential_schema,
+    supportsOAuth:
+      entry?.supports_oauth ?? (providerType ? providerSupportsOAuth(providerType) : false),
+  };
+}
+
 export function AddProviderDialog({
   open,
   onOpenChange,
@@ -93,34 +99,45 @@ export function AddProviderDialog({
   const [name, setName] = useState("");
   const [providerType, setProviderType] = useState<DriverId>("openai");
   const [baseUrl, setBaseUrl] = useState("");
-  const [apiKey, setApiKey] = useState("");
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
 
+  const { schema, supportsOAuth } = useDriverCredentialSchema(providerType);
   const createProvider = useCreateProvider();
+
+  // Reset credential inputs to the selected driver's declared defaults whenever
+  // the driver (or its schema) changes.
+  useEffect(() => {
+    setCredentials(defaultCredentialValues(schema));
+  }, [schema, providerType]);
+
+  const baseUrlRequired = BASE_URL_REQUIRED.includes(providerType);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const submitted = nonEmptyCredentials(credentials);
     const data: CreateProviderRequest = {
       name,
       provider_type: providerType,
       base_url: baseUrl || undefined,
-      api_key: apiKey || undefined,
+      credentials: Object.keys(submitted).length > 0 ? submitted : undefined,
     };
     await createProvider.mutateAsync(data);
     onOpenChange(false);
     setName("");
     setProviderType("openai");
     setBaseUrl("");
-    setApiKey("");
+    setCredentials({});
   };
+
+  const updateCredential = (key: string, value: string) =>
+    setCredentials((prev) => ({ ...prev, [key]: value }));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add LLM Provider</DialogTitle>
-          <DialogDescription>
-            Configure a new LLM provider for your agents to use.
-          </DialogDescription>
+          <DialogTitle>Add Provider</DialogTitle>
+          <DialogDescription>Configure a new provider for your agents to use.</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -161,13 +178,13 @@ export function AddProviderDialog({
             <p className="text-sm text-muted-foreground">{getProviderDescription(providerType)}</p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="base-url">Base URL (optional)</Label>
+            <Label htmlFor="base-url">Base URL{baseUrlRequired ? "" : " (optional)"}</Label>
             <Input
               id="base-url"
               value={baseUrl}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setBaseUrl(e.target.value)}
               placeholder={getBaseUrlPlaceholder(providerType)}
-              required={providerType === "azure_openai"}
+              required={baseUrlRequired}
             />
             {providerType === "azure_openai" ? (
               <p className="text-sm text-muted-foreground">
@@ -176,33 +193,27 @@ export function AddProviderDialog({
               </p>
             ) : null}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="api-key">API Key (optional)</Label>
-            <Input
-              id="api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder={getApiKeyPlaceholder(providerType)}
+          {schema ? (
+            <CredentialFields
+              schema={schema}
+              values={credentials}
+              onChange={updateCredential}
+              idPrefix="add-provider"
             />
-            {providerSupportsOAuth(providerType) ? (
-              <p className="text-sm text-muted-foreground">
-                Prefer not to paste a key? Create the provider without one, then use “Connect with{" "}
-                {getProviderLabel(providerType)}” to authorize a key in your browser.
-              </p>
-            ) : null}
-          </div>
+          ) : null}
+          {supportsOAuth ? (
+            <p className="text-sm text-muted-foreground">
+              Prefer not to paste a key? Create the provider without one, then use “Connect with{" "}
+              {getProviderLabel(providerType)}” to authorize a key in your browser.
+            </p>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
             <Button
               type="submit"
-              disabled={
-                createProvider.isPending ||
-                !name ||
-                (providerType === "azure_openai" && !baseUrl.trim())
-              }
+              disabled={createProvider.isPending || !name || (baseUrlRequired && !baseUrl.trim())}
             >
               {createProvider.isPending ? "Creating..." : "Create Provider"}
             </Button>
@@ -222,11 +233,17 @@ export function SetApiKeyDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [apiKey, setApiKey] = useState("");
+  const { schema, supportsOAuth } = useDriverCredentialSchema(provider?.provider_type);
+  const [credentials, setCredentials] = useState<Record<string, string>>({});
   const updateProvider = useUpdateProvider(provider?.id || "");
 
-  const oauthSupported = provider ? providerSupportsOAuth(provider.provider_type) : false;
   const oauthLabel = provider ? getProviderLabel(provider.provider_type) : "";
+
+  // Reset to the driver's declared defaults each time the dialog opens for a
+  // provider. Secrets are write-only, so existing values are never pre-filled.
+  useEffect(() => {
+    if (open) setCredentials(defaultCredentialValues(schema));
+  }, [open, schema]);
 
   const handleConnectOAuth = () => {
     if (!provider) return;
@@ -234,33 +251,41 @@ export function SetApiKeyDialog({
     window.location.href = providerOAuthAuthorizeUrl(provider.id);
   };
 
+  const updateCredential = (key: string, value: string) =>
+    setCredentials((prev) => ({ ...prev, [key]: value }));
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!provider) return;
-    await updateProvider.mutateAsync({ api_key: apiKey });
+    await updateProvider.mutateAsync({
+      provider_type: provider.provider_type,
+      credentials: nonEmptyCredentials(credentials),
+    });
     onOpenChange(false);
-    setApiKey("");
+    setCredentials({});
   };
+
+  const hasInput = Object.values(credentials).some((v) => v.trim() !== "");
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} API Key</DialogTitle>
+          <DialogTitle>{provider?.api_key_set ? "Update" : "Set"} Credentials</DialogTitle>
           <DialogDescription>
             {provider?.api_key_set
-              ? "Enter a new API key to replace the existing one."
-              : "Enter the API key for this provider."}
+              ? "Enter new credentials to replace the existing ones."
+              : "Enter the credentials for this provider."}
           </DialogDescription>
         </DialogHeader>
-        {oauthSupported ? (
+        {supportsOAuth ? (
           <div className="space-y-3">
             <Button type="button" className="w-full" onClick={handleConnectOAuth}>
               Connect with {oauthLabel}
             </Button>
             <p className="text-sm text-muted-foreground">
               Authorize in your browser to set up a key automatically — no copy &amp; paste needed.
-              Or enter a key manually below.
+              Or enter credentials manually below.
             </p>
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-border" />
@@ -270,23 +295,20 @@ export function SetApiKeyDialog({
           </div>
         ) : null}
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="new-api-key">API Key</Label>
-            <Input
-              id="new-api-key"
-              type="password"
-              value={apiKey}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setApiKey(e.target.value)}
-              placeholder={provider ? getApiKeyPlaceholder(provider.provider_type) : "your-api-key"}
-              required
+          {schema ? (
+            <CredentialFields
+              schema={schema}
+              values={credentials}
+              onChange={updateCredential}
+              idPrefix="set-credentials"
             />
-          </div>
+          ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={updateProvider.isPending || !apiKey}>
-              {updateProvider.isPending ? "Saving..." : "Save API Key"}
+            <Button type="submit" disabled={updateProvider.isPending || !hasInput}>
+              {updateProvider.isPending ? "Saving..." : "Save Credentials"}
             </Button>
           </DialogFooter>
         </form>

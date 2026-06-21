@@ -59,6 +59,9 @@ impl Command for CreateProvider {
                     provider_type: self.provider_type,
                     base_url: self.base_url,
                     api_key: self.api_key,
+                    // Typed credentials are resolved into `api_key` at the HTTP
+                    // boundary; the command carries the assembled document.
+                    credentials: None,
                     trace: self.trace,
                 },
             )
@@ -183,6 +186,9 @@ impl Command for UpdateProvider {
                     provider_type: self.provider_type,
                     base_url: self.base_url,
                     api_key: self.api_key,
+                    // Typed credentials are resolved into `api_key` at the HTTP
+                    // boundary; the command carries the assembled document.
+                    credentials: None,
                     status: self.status,
                     trace: self.trace,
                 },

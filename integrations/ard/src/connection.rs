@@ -12,7 +12,7 @@
 
 use async_trait::async_trait;
 use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 
 /// Connection provider id; also the fallback session-secret name is derived
@@ -47,18 +47,15 @@ impl Connector for ArdConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "Registry token".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("ard_...".to_string()),
-                help_text: Some(
-                    "Bearer token for your ARD registry. Public reference registries may not \
-                     require one — leave blank if your registry allows anonymous search."
-                        .to_string(),
-                ),
-            }],
+            fields: vec![
+                FormField::password("api_key", "Registry token")
+                    .required()
+                    .with_placeholder("ard_...")
+                    .with_help(
+                        "Bearer token for your ARD registry. Public reference registries may not \
+                         require one — leave blank if your registry allows anonymous search.",
+                    ),
+            ],
             instructions_markdown: "\
 1. Obtain a registry token from your ARD registry operator.\n\
 2. Paste it below. The registry base URL is configured per-agent on the \

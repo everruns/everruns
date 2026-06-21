@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 use serde_json::json;
 
@@ -39,17 +39,14 @@ impl Connector for CursorConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "Cloud Agents API Key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("cur_...".to_string()),
-                help_text: Some(
-                    "Use a Cursor Cloud Agents API key, not a general Cursor dashboard key."
-                        .to_string(),
-                ),
-            }],
+            fields: vec![
+                FormField::password("api_key", "Cloud Agents API Key")
+                    .required()
+                    .with_placeholder("cur_...")
+                    .with_help(
+                        "Use a Cursor Cloud Agents API key, not a general Cursor dashboard key.",
+                    ),
+            ],
             instructions_markdown: "\
 1. Open [Cursor Dashboard](https://cursor.com/dashboard?tab=cloud-agents)\n\
 2. Go to **Cloud Agents** > **My Settings** > **API Keys**\n\

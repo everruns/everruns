@@ -7,7 +7,7 @@
 
 use async_trait::async_trait;
 use everruns_core::connector::{
-    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FieldType, FormField,
+    Connector, ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
 };
 
 use crate::BRAVE_SEARCH_API_BASE;
@@ -38,14 +38,11 @@ impl Connector for BraveSearchConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "API Key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("BSA...".to_string()),
-                help_text: None,
-            }],
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .with_placeholder("BSA..."),
+            ],
             instructions_markdown: "\
 1. Go to [Brave Search API](https://brave.com/search/api/)\n\
 2. Sign up for a **free** plan (2,000 queries/month)\n\
