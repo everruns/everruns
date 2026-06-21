@@ -429,14 +429,6 @@ async fn handle_mcp(
     headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> Response {
-    if !org.feature_flags.mcp_endpoint {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(JsonRpcResponse::method_not_found(req.id)),
-        )
-            .into_response();
-    }
-
     let protocol_version = if req.method == "initialize" {
         None
     } else {

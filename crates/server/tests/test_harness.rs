@@ -258,14 +258,13 @@ impl TestServer {
         // Org-effective = system && org-opt-in, so both must be on (see the
         // org opt-in seeded just below).
         feature_flags.voice = true;
-        feature_flags.mcp_endpoint = true;
         feature_flags.agent_versions = true;
         feature_flags.app_budgets = true;
         feature_flags.global_chat = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
-        // the org-effective flags (evals, voice, mcp_endpoint, agent_versions,
+        // the org-effective flags (evals, voice, agent_versions,
         // app_budgets, global_chat). Without this those gates reject requests in tests even
         // though the system flags are on. Deliberately scoped to these flags —
         // e.g. `notifications` is left off so tests asserting its default-off
@@ -273,7 +272,6 @@ impl TestServer {
         let org_flag_overrides: std::collections::HashMap<String, bool> = [
             "evals",
             "voice",
-            "mcp_endpoint",
             "agent_versions",
             "app_budgets",
             "global_chat",

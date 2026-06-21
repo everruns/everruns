@@ -70,7 +70,6 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({
     global_chat: true,
     notifications: true,
-    mcp_endpoint: true,
   }),
 }));
 

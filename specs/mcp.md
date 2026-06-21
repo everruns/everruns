@@ -4,6 +4,8 @@
 
 Everruns exposes an MCP server endpoint (`/mcp`) so external MCP clients — Claude Desktop, Cursor, VS Code, etc. — can interact with Everruns agents and tools over the [Model Context Protocol](https://spec.modelcontextprotocol.io). Authentication uses the same mechanisms as other API routes (`ResolvedOrg` extractor — API keys, JWT/cookie sessions), including OAuth 2.1-issued JWTs with mandatory PKCE for MCP client registration flows.
 
+The endpoint is always mounted (no feature flag); access is gated per request by authentication and per-call org resolution, not by deployment- or org-level opt-in.
+
 Routing is intentionally split:
 
 - REST API lives under `/api/*`

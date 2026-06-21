@@ -1449,11 +1449,9 @@ impl ServerAppBuilder {
 
         let mut root_routes = Router::new();
 
-        if feature_flags.mcp_endpoint {
-            root_routes = root_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
-        } else {
-            tracing::info!("MCP endpoint disabled via feature flag");
-        }
+        // MCP endpoint (POST /mcp) is always available; access is gated per-request
+        // by authentication, not a feature flag.
+        root_routes = root_routes.merge(api::mcp_endpoint::routes(mcp_endpoint_state));
 
         if let Some(public_routes) = auth_backend.public_routes() {
             root_routes = root_routes.merge(public_routes);
