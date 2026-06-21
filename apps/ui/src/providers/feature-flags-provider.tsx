@@ -15,7 +15,6 @@ import { useOrg } from "@/providers/org-provider";
 const DEFAULT_FLAGS: FeatureFlags = {
   global_chat: false,
   notifications: false,
-  mcp_endpoint: false,
   evals: false,
   app_budgets: false,
   agent_versions: false,

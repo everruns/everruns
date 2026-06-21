@@ -33,8 +33,6 @@ pub struct FeatureFlags {
     pub global_chat: bool,
     /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
-    /// MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental.
-    pub mcp_endpoint: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
     /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
@@ -110,14 +108,6 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         experimental: true,
     },
     FeatureFlagDefinition {
-        name: "mcp_endpoint",
-        label: "MCP server endpoint",
-        description: "Lets Everruns act as an MCP server so external tools and assistants can \
-             connect to it. Other MCP-compatible clients can then reach your agents and data \
-             through a standard endpoint.",
-        experimental: true,
-    },
-    FeatureFlagDefinition {
         name: "evals",
         label: "Evals",
         description: "Lets you define and run behavioral evals against your agents. Use it to \
@@ -170,7 +160,6 @@ impl FeatureFlags {
         Self {
             global_chat: opt_in("global_chat", system.global_chat),
             notifications: opt_in("notifications", system.notifications),
-            mcp_endpoint: opt_in("mcp_endpoint", system.mcp_endpoint),
             evals: opt_in("evals", system.evals),
             app_budgets: opt_in("app_budgets", system.app_budgets),
             agent_versions: opt_in("agent_versions", system.agent_versions),
@@ -185,7 +174,6 @@ impl FeatureFlags {
         Self {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
             notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
-            mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
             app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
             agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
@@ -211,7 +199,6 @@ impl FeatureFlags {
         FeatureFlagMap(BTreeMap::from([
             ("global_chat".to_string(), self.global_chat),
             ("notifications".to_string(), self.notifications),
-            ("mcp_endpoint".to_string(), self.mcp_endpoint),
             ("evals".to_string(), self.evals),
             ("app_budgets".to_string(), self.app_budgets),
             ("agent_versions".to_string(), self.agent_versions),
@@ -226,7 +213,6 @@ impl FeatureFlags {
         match flag {
             "global_chat" => self.global_chat,
             "notifications" => self.notifications,
-            "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
             "app_budgets" => self.app_budgets,
             "agent_versions" => self.agent_versions,
@@ -243,7 +229,6 @@ impl FeatureFlags {
         Self {
             global_chat: true,
             notifications: true,
-            mcp_endpoint: true,
             evals: true,
             app_budgets: true,
             agent_versions: true,
@@ -400,7 +385,6 @@ mod tests {
         let flags = FeatureFlags {
             global_chat: true,
             notifications: true,
-            mcp_endpoint: true,
             evals: true,
             app_budgets: true,
             agent_versions: true,
@@ -410,7 +394,6 @@ mod tests {
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
-        assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
         assert!(flags.is_enabled("app_budgets"));
         assert!(flags.is_enabled("agent_versions"));
@@ -425,7 +408,6 @@ mod tests {
         let flags = FeatureFlags {
             global_chat: true,
             notifications: true,
-            mcp_endpoint: true,
             evals: true,
             app_budgets: true,
             agent_versions: true,

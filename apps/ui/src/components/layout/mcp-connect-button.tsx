@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
-import { useFeatureFlags } from "@/providers/feature-flags-provider";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -18,8 +17,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const McpIcon = capabilityIconMap.mcp;
 
 function useMcpConfig() {
-  const featureFlags = useFeatureFlags();
-  const enabled = featureFlags.mcp_endpoint;
   const mcpUrl = typeof window !== "undefined" ? `${window.location.origin}/mcp` : "/mcp";
   const configSnippet = JSON.stringify(
     {
@@ -33,7 +30,7 @@ function useMcpConfig() {
     2,
   );
 
-  return { enabled, mcpUrl, configSnippet };
+  return { mcpUrl, configSnippet };
 }
 
 function CopySnippetButton({ value }: { value: string }) {
@@ -117,11 +114,7 @@ export function McpConnectDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
-
-  if (!enabled) {
-    return null;
-  }
+  const { mcpUrl, configSnippet } = useMcpConfig();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -131,11 +124,7 @@ export function McpConnectDialog({
 }
 
 export function McpConnectButton() {
-  const { enabled, mcpUrl, configSnippet } = useMcpConfig();
-
-  if (!enabled) {
-    return null;
-  }
+  const { mcpUrl, configSnippet } = useMcpConfig();
 
   return (
     <Dialog>
@@ -157,12 +146,6 @@ export function McpConnectButton() {
 }
 
 export function McpConnectMenuItem({ onSelect }: { onSelect: () => void }) {
-  const { enabled } = useMcpConfig();
-
-  if (!enabled) {
-    return null;
-  }
-
   return (
     <DropdownMenuItem
       onClick={() => {
