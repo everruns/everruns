@@ -517,7 +517,8 @@ pub use deployment::DeploymentGrade;
 
 // Feature flags
 pub use feature_flags::{
-    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlags, InternalFeatureFlags,
+    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
+    InternalFeatureFlags,
 };
 
 // Observation backends

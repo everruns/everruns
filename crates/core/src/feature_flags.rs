@@ -8,6 +8,8 @@
 // Decision: Future extensibility: per-org/per-user flags, external providers (LaunchDarkly).
 // Decision: No database storage needed yet — env vars + deployment grade suffice.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::deployment::DeploymentGrade;
@@ -16,8 +18,12 @@ use crate::deployment::DeploymentGrade;
 ///
 /// Currently backed by environment variables and deployment grade.
 /// Future: per-org flags, per-user flags, external providers.
+///
+/// Decision: this is the type-safe representation used throughout the backend.
+/// The API does not serialize it directly — it exposes the untyped
+/// [`FeatureFlagMap`] instead, so adding/removing a flag never changes
+/// `docs/api/openapi.json`.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FeatureFlags {
     /// Platform Chat: the per-user singleton assistant chat surface — sidebar
     /// entry, the `/chat` page, and the `POST /v1/sessions/chat` (+ voice)
@@ -45,6 +51,29 @@ pub struct FeatureFlags {
     pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
+}
+
+/// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
+///
+/// Decision: the public API is intentionally untyped. The set of flags churns
+/// frequently; encoding each flag as a named schema property would force a
+/// `docs/api/openapi.json` change on every add/remove. A generic string→bool map
+/// keeps the API spec stable. The frontend layers its own typed view on top.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[serde(transparent)]
+pub struct FeatureFlagMap(pub BTreeMap<String, bool>);
+
+impl From<&FeatureFlags> for FeatureFlagMap {
+    fn from(flags: &FeatureFlags) -> Self {
+        flags.to_map()
+    }
+}
+
+impl From<FeatureFlags> for FeatureFlagMap {
+    fn from(flags: FeatureFlags) -> Self {
+        flags.to_map()
+    }
 }
 
 /// Metadata for an API-visible feature flag (org opt-in UI + catalog).
@@ -170,6 +199,26 @@ impl FeatureFlags {
     /// Convenience for callers that don't have a `FeatureFlags` instance handy.
     pub fn current() -> Self {
         Self::from_env(&DeploymentGrade::from_env())
+    }
+
+    /// Generic `name -> enabled` map for the untyped API representation.
+    ///
+    /// Keys and values match the JSON wire format of the typed `FeatureFlags`
+    /// response body. The JSON content is equivalent; only the key order differs
+    /// (`BTreeMap` sorts keys, whereas the struct serializes in field order), which
+    /// is irrelevant to JSON consumers.
+    pub fn to_map(&self) -> FeatureFlagMap {
+        FeatureFlagMap(BTreeMap::from([
+            ("global_chat".to_string(), self.global_chat),
+            ("notifications".to_string(), self.notifications),
+            ("mcp_endpoint".to_string(), self.mcp_endpoint),
+            ("evals".to_string(), self.evals),
+            ("app_budgets".to_string(), self.app_budgets),
+            ("agent_versions".to_string(), self.agent_versions),
+            ("voice".to_string(), self.voice),
+            ("agent_delegation".to_string(), self.agent_delegation),
+            ("observers".to_string(), self.observers),
+        ]))
     }
 
     /// Look up a flag by name (for dynamic/string-based access).
@@ -395,6 +444,24 @@ mod tests {
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
+    }
+
+    #[test]
+    fn test_to_map_matches_serialized_flags() {
+        // `to_map` must produce the same keys/values as the struct's JSON form
+        // (compared as `serde_json::Value`, so key order is ignored). If a field is
+        // added to `FeatureFlags` but not to `to_map`, this fails — keeping the
+        // untyped API representation in sync with the struct.
+        let flags = FeatureFlags::all_enabled();
+        let typed: serde_json::Value = serde_json::to_value(&flags).unwrap();
+        let map: serde_json::Value = serde_json::to_value(flags.to_map()).unwrap();
+        assert_eq!(typed, map);
+
+        let default_typed: serde_json::Value =
+            serde_json::to_value(FeatureFlags::default()).unwrap();
+        let default_map: serde_json::Value =
+            serde_json::to_value(FeatureFlags::default().to_map()).unwrap();
+        assert_eq!(default_typed, default_map);
     }
 
     #[test]
