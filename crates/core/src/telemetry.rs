@@ -5,14 +5,23 @@
 // - Initialization helpers for OTLP exporters
 // - Span creation helpers with proper attribute naming
 
+// OTLP exporter wiring lives behind the `telemetry` feature so provider crates
+// that only need the gen-AI span conventions (below) do not pull the
+// OpenTelemetry SDK + exporter dependency tree. See crates/core/Cargo.toml.
+#[cfg(feature = "telemetry")]
 use opentelemetry::KeyValue;
+#[cfg(feature = "telemetry")]
 use opentelemetry::trace::TracerProvider as _;
+#[cfg(feature = "telemetry")]
 use opentelemetry_otlp::{SpanExporter, WithExportConfig};
+#[cfg(feature = "telemetry")]
 use opentelemetry_sdk::{
     Resource,
     trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
 };
+#[cfg(feature = "telemetry")]
 use std::time::Duration;
+#[cfg(feature = "telemetry")]
 use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 // ============================================================================
@@ -243,10 +252,12 @@ impl TelemetryConfig {
 // ============================================================================
 
 /// Guard that shuts down the tracer provider when dropped
+#[cfg(feature = "telemetry")]
 pub struct TelemetryGuard {
     _provider: Option<SdkTracerProvider>,
 }
 
+#[cfg(feature = "telemetry")]
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
         if let Some(provider) = self._provider.take()
@@ -255,6 +266,18 @@ impl Drop for TelemetryGuard {
             eprintln!("Failed to shutdown tracer provider: {:?}", e);
         }
     }
+}
+
+/// Install the rustls crypto provider (ring) for TLS.
+///
+/// Must be called before any TLS usage. Without this, concurrent TLS
+/// connections (e.g. parallel tool execution in ActAtom) panic because
+/// rustls 0.23 cannot auto-detect the provider when multiple threads race.
+///
+/// Safe to call multiple times — subsequent calls are no-ops.
+pub fn install_crypto_provider() {
+    // Already-installed is expected if called from multiple init paths
+    let _ = rustls::crypto::ring::default_provider().install_default();
 }
 
 /// Initialize OpenTelemetry with the given configuration
@@ -274,18 +297,7 @@ impl Drop for TelemetryGuard {
 ///     // ... your application code
 /// }
 /// ```
-/// Install the rustls crypto provider (ring) for TLS.
-///
-/// Must be called before any TLS usage. Without this, concurrent TLS
-/// connections (e.g. parallel tool execution in ActAtom) panic because
-/// rustls 0.23 cannot auto-detect the provider when multiple threads race.
-///
-/// Safe to call multiple times — subsequent calls are no-ops.
-pub fn install_crypto_provider() {
-    // Already-installed is expected if called from multiple init paths
-    let _ = rustls::crypto::ring::default_provider().install_default();
-}
-
+#[cfg(feature = "telemetry")]
 pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
     install_crypto_provider();
 
@@ -357,6 +369,7 @@ pub fn init_telemetry(config: TelemetryConfig) -> TelemetryGuard {
     }
 }
 
+#[cfg(feature = "telemetry")]
 fn build_otlp_tracer(
     endpoint: &str,
     resource: Resource,

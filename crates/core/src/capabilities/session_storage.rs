@@ -20,7 +20,7 @@ use serde_json::{Value, json};
 // attachments / discovery cache (`ard_attachment`). Reserving the ARD prefixes
 // stops a session/tool actor forging attachments via kv_store (TM-TOOL/TM-AGENT).
 const INTERNAL_KV_PREFIXES: &[&str] = &[
-    super::a2a_delegation::AGENT_RUN_KEY_PREFIX,
+    super::AGENT_RUN_KEY_PREFIX,
     crate::ard_attachment::ARD_ATTACHMENT_KV_PREFIX,
     crate::ard_attachment::ARD_DISCOVERY_KV_PREFIX,
 ];

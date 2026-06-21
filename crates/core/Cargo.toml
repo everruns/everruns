@@ -46,15 +46,19 @@ rand.workspace = true
 # Cron parsing for session-schedule minimum-interval enforcement
 cron = "0.15"
 
-# Tracing
+# Tracing. `tracing` instrumentation is unconditional; the `tracing-subscriber`
+# registry/fmt layers are only used by telemetry init, so the dep is optional
+# and pulled in by the `telemetry` feature.
 tracing.workspace = true
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
 
-# OpenTelemetry
-opentelemetry.workspace = true
-opentelemetry_sdk.workspace = true
-opentelemetry-otlp.workspace = true
-tracing-opentelemetry.workspace = true
+# OpenTelemetry (optional; behind the `telemetry` feature). The OTLP exporter
+# pulls a large dependency subtree, so provider crates that opt out of core
+# defaults skip it. Plain `tracing` instrumentation stays unconditional.
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+tracing-opentelemetry = { workspace = true, optional = true }
 
 # Encoding
 base64.workspace = true
@@ -69,12 +73,13 @@ similar = "2"
 # URL parsing
 url = "2"
 
-# Web fetching
+# Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
+# ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
 bytes = "1"
-fetchkit = { version = "=0.4.0", features = ["bot-auth"] }
+fetchkit = { version = "=0.4.0", features = ["bot-auth"], optional = true }
 
 # Ed25519 key derivation (bot-auth public key registration)
-ed25519-dalek = { version = "2", features = ["rand_core"] }
+ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
 
 # Bash interpreter backing the bashkit_shell capability
 bashkit = { version = "0.10.0", features = ["jq"] }
@@ -119,15 +124,32 @@ everruns-openui = { path = "../openui", version = "0.16.1", optional = true }
 # A2UI component catalog and prompt generator
 everruns-a2ui = { path = "../a2ui", version = "0.16.1", optional = true }
 
-# A2A outbound agent delegation
-a2a.workspace = true
-a2a-client.workspace = true
+# A2A outbound agent delegation (optional; behind the `a2a` feature). Pulls the
+# tonic/prost gRPC stack and a second reqwest major, so it is the largest single
+# subtree a provider-only consumer can shed.
+a2a = { workspace = true, optional = true }
+a2a-client = { workspace = true, optional = true }
 
 # Compile-time directory embedding for virtual mounts (platform docs)
 include_dir = { version = "0.7", optional = true }
 
 [features]
-default = ["llm-tests"]
+# Heavy subtrees stay ON by default so the application crates (server, worker,
+# cli, runtime) and core's own test suite are unchanged. Provider crates depend
+# on core with `default-features = false` to shed them — see crates/openrouter.
+default = ["llm-tests", "telemetry", "a2a", "web-fetch"]
+# OTLP telemetry exporter (OpenTelemetry SDK + tracing-opentelemetry bridge).
+telemetry = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
+]
+# Outbound A2A agent delegation (tonic/prost gRPC stack).
+a2a = ["dep:a2a", "dep:a2a-client"]
+# WebFetch capability (fetchkit HTTP pipeline + ed25519 bot-auth).
+web-fetch = ["dep:fetchkit", "dep:ed25519-dalek"]
 embedded-platform-docs = ["dep:include_dir"]
 # Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
 # Off by default; enabling compiles the C sources. See specs/lua-execution.md.

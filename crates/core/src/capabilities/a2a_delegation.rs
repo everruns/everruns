@@ -38,7 +38,10 @@ use std::time::Duration;
 use tokio::time::{Instant, sleep};
 use url::Url;
 
-pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
+// The capability-ID constant lives ungated in `capabilities::mod` so session
+// attachment logic (ard_attachment) can reference it even in builds that gate
+// out the A2A delegation implementation. See the `a2a` feature.
+pub use super::A2A_AGENT_DELEGATION_CAPABILITY_ID;
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
 const DEFAULT_POLL_INTERVAL_MS: u64 = 1_000;
 
@@ -620,7 +623,7 @@ fn require_storage(
 /// builds keys from it, and `session_storage` reserves it from the user-facing
 /// `kv_store` tool (see `is_internal_session_kv_key`) so session/tool actors
 /// cannot forge or read A2A run records.
-pub(crate) const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+pub(crate) use super::AGENT_RUN_KEY_PREFIX;
 
 /// KV key for a specific agent run record.
 fn run_key(run_id: &str) -> String {
