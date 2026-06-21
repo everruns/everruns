@@ -18,6 +18,12 @@ use crate::tool_fingerprint::tool_call_parts_fingerprint;
 /// Default threshold: 3 repeated attempts triggers warning.
 const DEFAULT_THRESHOLD: usize = 3;
 
+/// Default threshold for repeated identical *failed* results from mutating tools
+/// (edit_file/write_file/delete_file/bash). Lower than `DEFAULT_THRESHOLD` so a
+/// model re-issuing the same broken mutation is interrupted before a third
+/// identical failure and any further wasted turns or side-effect risk (EVE-617).
+const DEFAULT_MUTATING_FAILURE_THRESHOLD: usize = 2;
+
 pub const LOOP_DETECTION_CAPABILITY_ID: &str = "loop_detection";
 
 pub struct LoopDetectionCapability;
@@ -51,6 +57,13 @@ impl Capability for LoopDetectionCapability {
                     "description": "Number of repeated identical tool-call batches, tool results, or read ranges that triggers the loop warning.",
                     "minimum": 1,
                     "default": DEFAULT_THRESHOLD
+                },
+                "mutating_failure_threshold": {
+                    "type": "integer",
+                    "title": "Mutating-tool failure threshold",
+                    "description": "Number of repeated identical FAILED results from a mutating tool (edit_file/write_file/delete_file/bash) that triggers an earlier loop warning. Lower than the general threshold to interrupt wasted, side-effecting retries sooner.",
+                    "minimum": 1,
+                    "default": DEFAULT_MUTATING_FAILURE_THRESHOLD
                 }
             }
         }))
@@ -63,17 +76,18 @@ impl Capability for LoopDetectionCapability {
         if !config.is_object() {
             return Err("loop_detection config must be an object".to_string());
         }
-        match config.get("threshold") {
-            None => Ok(()),
-            // `post_load` clamps the threshold to >= 1; reject values that
-            // would be silently clamped or are not unsigned integers.
-            Some(value) => match value.as_u64() {
-                Some(threshold) if threshold >= 1 => Ok(()),
-                _ => Err(format!(
-                    "threshold must be a positive integer (>= 1), got {value}"
-                )),
-            },
+        // `post_load` clamps both thresholds to >= 1; reject values that would
+        // be silently clamped or are not unsigned integers.
+        for key in ["threshold", "mutating_failure_threshold"] {
+            if let Some(value) = config.get(key)
+                && !matches!(value.as_u64(), Some(n) if n >= 1)
+            {
+                return Err(format!(
+                    "{key} must be a positive integer (>= 1), got {value}"
+                ));
+            }
         }
+        Ok(())
     }
 
     fn localizations(&self) -> Vec<CapabilityLocalization> {
@@ -129,6 +143,36 @@ impl MessageFilterProvider for LoopDetectionFilter {
             .map(|v| v as usize)
             .unwrap_or(DEFAULT_THRESHOLD)
             .max(1); // Clamp to at least 1 to avoid indexing empty vec
+
+        let mutating_failure_threshold = config
+            .get("mutating_failure_threshold")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(DEFAULT_MUTATING_FAILURE_THRESHOLD)
+            .max(1);
+
+        // Check the mutating-tool failure loop first: it uses a lower threshold
+        // and a more specific, actionable message, so it should interrupt before
+        // the generic repeated-result warning fires.
+        if let Some(failed) = repeated_failed_mutating_result(messages, mutating_failure_threshold)
+        {
+            tracing::warn!(
+                tool_name = failed.tool_name,
+                consecutive = failed.consecutive,
+                threshold = mutating_failure_threshold,
+                "Loop detected: mutating tool failed identically and repeatedly"
+            );
+            messages.push(Message::system(format!(
+                "\u{26a0} Loop detected: `{}` failed the same way {} times in a row with identical \
+                 arguments (error: {}). Repeating the same call will not make progress and may \
+                 cause side effects. Change the arguments, correct the tool contract, inspect a \
+                 new source of context, or report the blocker instead of retrying it unchanged.",
+                failed.tool_name,
+                failed.consecutive,
+                truncate_error(&failed.error),
+            )));
+            return;
+        }
 
         if let Some(consecutive) = repeated_tool_result_count(messages, threshold) {
             tracing::warn!(
@@ -239,6 +283,108 @@ fn tool_result_signature(msg: &Message) -> Option<String> {
     let call = metadata.get("tool_call_fingerprint")?.as_str()?;
     let result = metadata.get("tool_result_fingerprint")?.as_str()?;
     Some(format!("{call}:{result}"))
+}
+
+/// Tools that mutate session state, where re-issuing an identical failing call
+/// wastes turns and risks side effects. Matched by bare name or namespaced
+/// suffix (e.g. an MCP-prefixed `server__edit_file`).
+fn is_mutating_tool_name(name: &str) -> bool {
+    const MUTATING: [&str; 4] = ["edit_file", "write_file", "delete_file", "bash"];
+    MUTATING
+        .iter()
+        .any(|m| name == *m || name.ends_with(&format!("__{m}")))
+}
+
+/// The tool name recorded on a tool-result message's metadata, if present.
+fn tool_result_tool_name(msg: &Message) -> Option<String> {
+    msg.metadata
+        .as_ref()?
+        .get("tool_name")?
+        .as_str()
+        .map(str::to_string)
+}
+
+/// Whether a tool-result message carries an error (the tool call failed).
+fn is_failed_tool_result(msg: &Message) -> bool {
+    msg.tool_result_content()
+        .map(|part| part.error.is_some())
+        .unwrap_or(false)
+}
+
+/// Keep the warning bounded: tool errors can be large.
+fn truncate_error(error: &str) -> String {
+    const MAX_CHARS: usize = 200;
+    let trimmed = error.trim();
+    if trimmed.chars().count() <= MAX_CHARS {
+        return trimmed.to_string();
+    }
+    let truncated: String = trimmed.chars().take(MAX_CHARS).collect();
+    format!("{truncated}…")
+}
+
+struct RepeatedFailedMutation {
+    tool_name: String,
+    error: String,
+    consecutive: usize,
+}
+
+/// Detect the most recent run of identical FAILED tool-result pairs from a
+/// mutating tool. The run is anchored on the latest tool result; if that result
+/// is not a failed mutating call, this is out of scope (the generic detector
+/// still covers ordinary repeats). Returns the run once it reaches `threshold`
+/// so the model is nudged to change approach before another wasted mutation.
+fn repeated_failed_mutating_result(
+    messages: &[Message],
+    threshold: usize,
+) -> Option<RepeatedFailedMutation> {
+    let mut target: Option<String> = None;
+    let mut consecutive = 0;
+    let mut tool_name = String::new();
+    let mut error = String::new();
+
+    for msg in messages.iter().rev() {
+        if msg.role == MessageRole::User || msg.role == MessageRole::System {
+            break;
+        }
+        if msg.role != MessageRole::ToolResult {
+            continue;
+        }
+        // An older result without fingerprint metadata can't be compared; stop
+        // extending the run rather than discarding the count gathered so far (a
+        // pre-fingerprint message must not suppress a warning for the recent,
+        // fingerprinted failures above it).
+        let Some(signature) = tool_result_signature(msg) else {
+            break;
+        };
+        match &target {
+            Some(target) if target == &signature => consecutive += 1,
+            Some(_) => break,
+            None => {
+                // Anchor on the most recent tool result: only a failed mutating
+                // call qualifies for the earlier, lower-threshold interrupt.
+                if !is_failed_tool_result(msg) {
+                    return None;
+                }
+                let name = tool_result_tool_name(msg)?;
+                if !is_mutating_tool_name(&name) {
+                    return None;
+                }
+                error = msg
+                    .tool_result_content()
+                    .and_then(|part| part.error.clone())
+                    .unwrap_or_default();
+                tool_name = name;
+                target = Some(signature);
+                consecutive = 1;
+            }
+        }
+    }
+
+    (consecutive >= threshold).then_some(RepeatedFailedMutation {
+        tool_name,
+        error,
+        consecutive,
+    })
 }
 
 #[derive(Debug)]
@@ -388,6 +534,198 @@ mod tests {
             ),
         ]));
         msg
+    }
+
+    /// Helper: build a FAILED tool-result message for `tool_name` carrying the
+    /// given fingerprints and error text, mirroring what the runtime stamps onto
+    /// replayed tool-result messages.
+    fn failed_tool_result_msg(
+        tool_name: &str,
+        call_fingerprint: &str,
+        result_fingerprint: &str,
+        error: &str,
+    ) -> Message {
+        let mut msg = Message::tool_result("call_1", None, Some(error.to_string()));
+        msg.metadata = Some(std::collections::HashMap::from([
+            ("tool_name".to_string(), serde_json::json!(tool_name)),
+            (
+                "tool_call_fingerprint".to_string(),
+                serde_json::json!(call_fingerprint),
+            ),
+            (
+                "tool_result_fingerprint".to_string(),
+                serde_json::json!(result_fingerprint),
+            ),
+        ]));
+        msg
+    }
+
+    fn last_system_message(messages: &[Message]) -> Option<String> {
+        messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::System)
+            .map(|m| m.content_to_llm_string())
+    }
+
+    #[test]
+    fn test_failed_mutating_loop_detected_at_two() {
+        // EVE-617: two identical failed edit_file results interrupt earlier than
+        // the generic threshold of 3.
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            failed_tool_result_msg(
+                "edit_file",
+                "call:abc",
+                "res:xyz",
+                "Provide either old_text/new_text or edits, not both",
+            ),
+            failed_tool_result_msg(
+                "edit_file",
+                "call:abc",
+                "res:xyz",
+                "Provide either old_text/new_text or edits, not both",
+            ),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(
+            messages.len(),
+            original_len + 1,
+            "a warning should be injected"
+        );
+        let warning = last_system_message(&messages).expect("system warning");
+        assert!(
+            warning.contains("edit_file"),
+            "warning names the tool: {warning}"
+        );
+        assert!(
+            warning.contains("report the blocker") || warning.contains("Change the arguments"),
+            "warning is actionable: {warning}"
+        );
+    }
+
+    #[test]
+    fn test_failed_mutating_loop_detected_for_namespaced_tool() {
+        // Namespaced/MCP-prefixed mutating tools (e.g. `server__edit_file`) are
+        // matched by suffix, so the early interrupt applies to them too.
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            failed_tool_result_msg("server__write_file", "call:n", "res:n", "permission denied"),
+            failed_tool_result_msg("server__write_file", "call:n", "res:n", "permission denied"),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(
+            messages.len(),
+            original_len + 1,
+            "namespaced mutating tool should warn"
+        );
+        let warning = last_system_message(&messages).expect("system warning");
+        assert!(warning.contains("server__write_file"), "warning: {warning}");
+    }
+
+    #[test]
+    fn test_failed_mutating_single_failure_no_loop() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            failed_tool_result_msg("edit_file", "call:abc", "res:xyz", "boom"),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(messages.len(), original_len, "single failure is not a loop");
+    }
+
+    #[test]
+    fn test_failed_non_mutating_two_no_loop() {
+        // Two identical failed read_file results: read_file is not mutating, so
+        // the early interrupt does not apply and the generic threshold (3) is not
+        // reached either.
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            failed_tool_result_msg("read_file", "call:r", "res:r", "no such file"),
+            failed_tool_result_msg("read_file", "call:r", "res:r", "no such file"),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(
+            messages.len(),
+            original_len,
+            "non-mutating repeat is not an early loop"
+        );
+    }
+
+    #[test]
+    fn test_failed_mutating_different_results_no_loop() {
+        // Different result fingerprints (e.g. the error changed) mean progress is
+        // possible; do not warn.
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            failed_tool_result_msg("edit_file", "call:abc", "res:1", "error one"),
+            failed_tool_result_msg("edit_file", "call:abc", "res:2", "error two"),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(messages.len(), original_len, "changed result is not a loop");
+    }
+
+    #[test]
+    fn test_successful_mutating_repeat_no_failure_warning() {
+        // Two identical SUCCESSFUL edit_file results: the failure interrupt must
+        // not fire, and the generic threshold (3) is not reached.
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("go"),
+            tool_result_msg("call:ok", "res:ok"),
+            tool_result_msg("call:ok", "res:ok"),
+        ];
+        let original_len = messages.len();
+        filter.post_load(&mut messages, &default_config());
+        assert_eq!(
+            messages.len(),
+            original_len,
+            "successful repeats are not a failure loop"
+        );
+    }
+
+    #[test]
+    fn test_failed_mutating_threshold_configurable() {
+        let filter = LoopDetectionFilter;
+        let config = serde_json::json!({ "mutating_failure_threshold": 3 });
+
+        // Two failures: below the raised threshold, no warning.
+        let mut two = vec![
+            Message::user("go"),
+            failed_tool_result_msg("bash", "call:b", "res:b", "command failed"),
+            failed_tool_result_msg("bash", "call:b", "res:b", "command failed"),
+        ];
+        let two_len = two.len();
+        filter.post_load(&mut two, &config);
+        assert_eq!(
+            two.len(),
+            two_len,
+            "two failures below configured threshold"
+        );
+
+        // Three failures: warning fires.
+        let mut three = vec![
+            Message::user("go"),
+            failed_tool_result_msg("bash", "call:b", "res:b", "command failed"),
+            failed_tool_result_msg("bash", "call:b", "res:b", "command failed"),
+            failed_tool_result_msg("bash", "call:b", "res:b", "command failed"),
+        ];
+        let three_len = three.len();
+        filter.post_load(&mut three, &config);
+        assert_eq!(
+            three.len(),
+            three_len + 1,
+            "three failures hit configured threshold"
+        );
     }
 
     #[test]
@@ -699,6 +1037,7 @@ mod tests {
         let schema = cap.config_schema().expect("config schema");
         assert_eq!(schema["type"], "object");
         assert!(schema["properties"]["threshold"].is_object());
+        assert!(schema["properties"]["mutating_failure_threshold"].is_object());
 
         // Null, empty, and valid configs are accepted.
         assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
@@ -719,6 +1058,16 @@ mod tests {
         );
         assert!(
             cap.validate_config(&serde_json::json!({"threshold": "three"}))
+                .is_err()
+        );
+
+        // The mutating-failure threshold is validated the same way.
+        assert!(
+            cap.validate_config(&serde_json::json!({"mutating_failure_threshold": 1}))
+                .is_ok()
+        );
+        assert!(
+            cap.validate_config(&serde_json::json!({"mutating_failure_threshold": 0}))
                 .is_err()
         );
     }
