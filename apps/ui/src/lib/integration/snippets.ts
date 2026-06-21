@@ -485,8 +485,14 @@ export function codingAgentPrompt(opts: {
   name?: string;
   endpointUrl?: string;
 }): string {
+  const subject: Record<PromptKind, string> = {
+    agent: "an Everruns agent",
+    harness: "an Everruns harness",
+    webhook: "an Everruns app (webhook channel)",
+    a2a: "an Everruns app (A2A channel)",
+  };
   const intro = [
-    `I want to integrate an Everruns agent into my application.`,
+    `I want to integrate ${subject[opts.kind]} into my application.`,
     ``,
     `Everruns is a headless agent platform that I call over its HTTP API.`,
     `- OpenAPI spec (authoritative schemas): ${openApiUrl(opts.origin)}`,

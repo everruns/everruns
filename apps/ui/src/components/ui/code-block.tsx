@@ -31,20 +31,26 @@ export function CodeBlock({ samples, className }: CodeBlockProps) {
   if (!current) return null;
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(current.code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(current.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard can reject in insecure contexts or when permission is denied;
+      // swallow so the click never surfaces an unhandled rejection.
+    }
   };
 
   return (
     <div className={cn("overflow-hidden rounded-md border bg-muted", className)}>
       <div className="flex items-center justify-between gap-2 border-b bg-muted/50 px-2 py-1">
-        <div className="flex flex-wrap gap-0.5">
+        <div className="flex flex-wrap gap-0.5" role="group" aria-label="Code language">
           {samples.length > 1 &&
             samples.map((sample, index) => (
               <button
-                key={sample.label}
+                key={`${index}-${sample.label}`}
                 type="button"
+                aria-pressed={index === active}
                 onClick={() => setActive(index)}
                 className={cn(
                   "px-2 py-1 text-xs font-medium transition-colors",

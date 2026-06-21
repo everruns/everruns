@@ -79,4 +79,19 @@ describe("integration snippets", () => {
     expect(prompt).toContain("everruns-sdk");
     expect(prompt).toContain(openApiUrl(ORIGIN));
   });
+
+  it("opens the coding-agent prompt with a subject matching the kind", () => {
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "agent", id: "a" })).toMatch(
+      /^I want to integrate an Everruns agent /,
+    );
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "harness", id: "h" })).toMatch(
+      /^I want to integrate an Everruns harness /,
+    );
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "webhook", endpointUrl: "/w" })).toMatch(
+      /^I want to integrate an Everruns app \(webhook channel\) /,
+    );
+    expect(codingAgentPrompt({ origin: ORIGIN, kind: "a2a", endpointUrl: "/a" })).toMatch(
+      /^I want to integrate an Everruns app \(A2A channel\) /,
+    );
+  });
 });
