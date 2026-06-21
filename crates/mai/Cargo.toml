@@ -37,7 +37,10 @@ chrono.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
-everruns-core.workspace = true
+# default-features = false sheds core's heavy optional subtrees
+# (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
+# need, keeping the standalone crate's dependency tree small.
+everruns-core = { path = "../core", version = "0.16.1", default-features = false }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures driver/token requests;
