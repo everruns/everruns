@@ -65,7 +65,17 @@ pub struct ExportEvalRunDatasetRequest {
 
 /// Keys whose string values carry raw model content (as opposed to structural
 /// fields like `role`, `id`, `name`, `type`). Used for full-content redaction.
-const CONTENT_KEYS: [&str; 5] = ["text", "arguments", "result", "error", "thinking"];
+/// Includes image payload keys (`url`, `base64`) so `redact_content` also blanks
+/// inline image data, not just text/tool content.
+const CONTENT_KEYS: [&str; 7] = [
+    "text",
+    "arguments",
+    "result",
+    "error",
+    "thinking",
+    "url",
+    "base64",
+];
 
 /// High-signal credential patterns scrubbed from every exported string, always.
 /// Deliberately conservative to avoid mangling legitimate content.
@@ -208,11 +218,14 @@ fn metadata(run: &EvalRun, result: &EvalCaseResult) -> Value {
 }
 
 fn model_of_target(target: &everruns_core::eval::EvalTarget) -> Option<String> {
-    // EvalTarget variants carry an optional model override in different arms;
-    // fall back to serializing and reading a "model" field generically.
-    serde_json::to_value(target)
-        .ok()
-        .and_then(|v| v.get("model").and_then(Value::as_str).map(str::to_string))
+    // `EvalTarget::Session` carries the model as `model_id`; read that first and
+    // fall back to a generic `model` field for other arms.
+    let value = serde_json::to_value(target).ok()?;
+    value
+        .get("model_id")
+        .or_else(|| value.get("model"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
 }
 
 /// SFT chat role string for a message role.
@@ -261,29 +274,28 @@ pub fn build_record(
     messages: &[Message],
     redaction: &RedactionOptions,
 ) -> Value {
-    match format {
-        DatasetFormat::Trajectory => {
-            let mut msgs = serde_json::to_value(messages).unwrap_or_else(|_| json!([]));
-            sanitize_value(&mut msgs, redaction.redact_content);
-            json!({
-                "source_key": source_key(run, result),
-                "eval_run_id": run.public_id.to_string(),
-                "case_id": result.eval_case_id.to_string(),
-                "case_name": result.case_name,
-                "session_id": result.session_id.map(|s| s.to_string()),
-                "reward": reward(result),
-                "messages": msgs,
-                "metadata": metadata(run, result),
-            })
-        }
+    let mut record = match format {
+        DatasetFormat::Trajectory => json!({
+            "source_key": source_key(run, result),
+            "eval_run_id": run.public_id.to_string(),
+            "case_id": result.eval_case_id.to_string(),
+            "case_name": result.case_name,
+            "session_id": result.session_id.map(|s| s.to_string()),
+            "reward": reward(result),
+            "messages": serde_json::to_value(messages).unwrap_or_else(|_| json!([])),
+            "metadata": metadata(run, result),
+        }),
         DatasetFormat::Sft => {
             let chat: Vec<Value> = messages
                 .iter()
                 .map(|m| {
+                    // The SFT `content` key is not in CONTENT_KEYS (trajectory uses
+                    // `content` as the message-array container), so blank it here
+                    // when redacting; the whole-record pass below still secret-scrubs.
                     let content = if redaction.redact_content {
                         REDACTED.to_string()
                     } else {
-                        scrub_secrets(&message_text(m))
+                        message_text(m)
                     };
                     json!({ "role": sft_role(&m.role), "content": content })
                 })
@@ -294,7 +306,13 @@ pub fn build_record(
                 "reward": reward(result),
             })
         }
-    }
+    };
+
+    // Always-on secret scrubbing across *every* exported string (case_name,
+    // scorer reasons, metadata, messages, …); additionally blank content-bearing
+    // fields (incl. image payloads) when redaction is requested.
+    sanitize_value(&mut record, redaction.redact_content);
+    record
 }
 
 #[cfg(test)]
@@ -493,5 +511,47 @@ mod tests {
             },
         );
         assert_eq!(rec["messages"][0]["content"], json!(REDACTED));
+    }
+
+    #[test]
+    fn secret_scrubbing_covers_case_name_and_scorer_reason() {
+        let mut r = result_with(
+            CaseResultStatus::Passed,
+            json!([{"value": 1.0, "pass": true, "reason": "leaked sk-abcdef0123456789ABCDEF"}]),
+        );
+        r.case_name = Some("case AKIAABCDEFGHIJKLMNOP".into());
+        let rec = build_record(
+            DatasetFormat::Trajectory,
+            &run(),
+            &r,
+            &[],
+            &RedactionOptions::default(),
+        );
+        let serialized = serde_json::to_string(&rec).unwrap();
+        // Secrets outside `messages` (case_name, scorer reason) are scrubbed too.
+        assert!(!serialized.contains("sk-abcdef0123456789ABCDEF"));
+        assert!(!serialized.contains("AKIAABCDEFGHIJKLMNOP"));
+        assert!(serialized.contains(REDACTED));
+    }
+
+    #[test]
+    fn redact_content_blanks_image_payload() {
+        use everruns_core::message::ImageContentPart;
+        let r = result_with(CaseResultStatus::Passed, json!([{"value": 1.0}]));
+        let mut msg = text_msg(MessageRole::User, "x");
+        msg.content = vec![ContentPart::Image(ImageContentPart::from_url(
+            "https://example.com/SECRETIMAGEDATA.png",
+        ))];
+        let rec = build_record(
+            DatasetFormat::Trajectory,
+            &run(),
+            &r,
+            &[msg],
+            &RedactionOptions {
+                redact_content: true,
+            },
+        );
+        let serialized = serde_json::to_string(&rec).unwrap();
+        assert!(!serialized.contains("SECRETIMAGEDATA"));
     }
 }

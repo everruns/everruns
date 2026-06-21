@@ -115,7 +115,7 @@ authenticated caller and cannot be widened by a filter.
 - Datasets are derived artifacts: deleting the underlying session/eval removes
   the source, so re-export reflects deletions.
 
-See `specs/threat-model.md` (TM-DATASET-001) for the threat review.
+See `specs/threat-model.md` (TM-OBS-008) for the threat review.
 
 ## Follow-ups
 
