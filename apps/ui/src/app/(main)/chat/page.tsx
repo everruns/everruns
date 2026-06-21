@@ -53,7 +53,7 @@ export default function GlobalChatPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Global Chat is not enabled</p>
+          <p className="text-lg font-medium">Platform Chat is not enabled</p>
           <p className="text-sm">This feature is currently disabled.</p>
         </div>
       </div>

@@ -500,10 +500,26 @@ pub async fn create_session(
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
 }
 
+/// Guard the Platform Chat feature behind the org-effective `global_chat` flag.
+///
+/// Mirrors `ensure_voice_enabled`: when the feature is off we answer 404 so the
+/// surface is fully hidden rather than advertising a disabled endpoint. This is
+/// the backend half of the feature flag — the UI gate alone is not enforcement.
+pub(crate) fn ensure_global_chat_enabled(
+    org: &ResolvedOrg,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if org.feature_flags.global_chat {
+        Ok(())
+    } else {
+        Err(ErrorResponse::not_found("Chat"))
+    }
+}
+
 /// POST /v1/sessions/chat - Get or create global chat session
 ///
 /// Returns the user's singleton global chat session. Creates one if it doesn't exist.
 /// Uses the Platform Chat harness and tags for per-user singleton management.
+/// Gated by the `global_chat` feature flag; returns 404 when disabled.
 #[utoipa::path(
     post,
     path = "/v1/sessions/chat",
@@ -511,6 +527,7 @@ pub async fn create_session(
     responses(
         (status = 200, description = "Chat session returned", body = WithUrls<Session>),
         (status = 401, description = "Authentication required"),
+        (status = 404, description = "Platform Chat feature (global_chat) is disabled for the org"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -520,6 +537,7 @@ pub async fn get_or_create_chat_session(
     State(state): State<AppState>,
     payload: Option<Json<GetOrCreateChatSessionRequest>>,
 ) -> ApiResult<WithUrls<Session>> {
+    ensure_global_chat_enabled(&org)?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = GetOrCreateChatSession {
         locale: payload.and_then(|Json(body)| body.locale),

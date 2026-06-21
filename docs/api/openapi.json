@@ -10003,7 +10003,7 @@
           "sessions"
         ],
         "summary": "POST /v1/sessions/chat - Get or create global chat session",
-        "description": "Returns the user's singleton global chat session. Creates one if it doesn't exist.\nUses the Platform Chat harness and tags for per-user singleton management.",
+        "description": "Returns the user's singleton global chat session. Creates one if it doesn't exist.\nUses the Platform Chat harness and tags for per-user singleton management.\nGated by the `global_chat` feature flag; returns 404 when disabled.",
         "operationId": "get_or_create_chat_session",
         "requestBody": {
           "content": {
@@ -10035,6 +10035,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "404": {
+            "description": "Platform Chat feature (global_chat) is disabled for the org"
+          },
           "500": {
             "description": "Internal server error"
           }
@@ -10046,7 +10049,7 @@
         "tags": [
           "voice"
         ],
-        "description": "Create a voice session for the user's global chat. Returns connection details for the realtime audio channel.",
+        "description": "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires both the `global_chat` and `voice` feature flags; returns 404 when either is disabled.",
         "operationId": "create_chat_voice_session",
         "requestBody": {
           "content": {
@@ -10068,6 +10071,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
           }
         },
         "x-cost-tier": "paid"
@@ -18808,7 +18814,7 @@
           },
           "global_chat": {
             "type": "boolean",
-            "description": "Global chat (per-user singleton chat session). Experimental."
+            "description": "Platform Chat: the per-user singleton assistant chat surface — sidebar\nentry, the `/chat` page, and the `POST /v1/sessions/chat` (+ voice)\nendpoints. When off, the whole Platform Chat feature is disabled\n(UI hidden and APIs return 404); other chat surfaces (per-session,\nagent, channel) are unaffected. Experimental."
           },
           "mcp_endpoint": {
             "type": "boolean",
