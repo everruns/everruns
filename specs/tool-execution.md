@@ -347,13 +347,30 @@ This logic is shared by all execution paths — the in-process runtime/host loop
 - **`Some(true)`** explicitly signals the provider that parallel tool calls are wanted. This lets an embedder opt into batching independent reads/searches instead of relying on each provider's undocumented default.
 - **`Some(false)`** asks the provider to emit at most one tool call per turn *and* forces the act scheduler to serialize the batch.
 
-Provider wire mapping (only sent when `Some(_)`):
+This field is a lower-level escape hatch. The user-facing surface is the [`parallel_tool_calls` capability](#parallel_tool_calls-capability) below; the explicit field takes precedence over the capability when both are set.
 
-- **OpenAI** (Responses, and the Chat Completions `OpenAiRequest` shape used by the OpenAI Chat driver and MAI): `parallel_tool_calls` top-level boolean.
-- **Anthropic** (Messages): `tool_choice` with `type: "auto"` and `disable_parallel_tool_use = !value`. Sent only when the request carries tools (Anthropic rejects `tool_choice` without tools).
-- **OpenRouter**: wraps the Open Responses driver, so the request body inherits the Responses serialization (already includes `parallel_tool_calls`); the OpenRouter decoration layer does not strip it.
+Provider wire mapping is gated by `ChatDriver::supports_parallel_tool_calls(model)` and only emitted when the resolved preference is `Some(_)`:
+
+- **OpenAI** (Responses, and the Chat Completions `OpenAiRequest` shape used by the OpenAI Chat driver, MAI, and Fireworks): `parallel_tool_calls` top-level boolean. `supports_parallel_tool_calls` → `true`.
+- **Anthropic** (Messages): `tool_choice` with `type: "auto"` and `disable_parallel_tool_use = !value`. Sent only when the request carries tools (Anthropic rejects `tool_choice` without tools). `supports_parallel_tool_calls` → `true`.
+- **OpenRouter**: wraps the Open Responses driver, so the request body inherits the Responses serialization; the OpenRouter decoration layer does not strip it. `supports_parallel_tool_calls` → `true`.
+- **Gemini** and **Bedrock**: their provider APIs have no request control for parallel tool calls. `supports_parallel_tool_calls` → `false`, so the field is omitted. The preference is still honored by the act scheduler (an `avoid`/`Some(false)` preference serializes execution on every provider).
+
+`LlmCallConfig::resolved_parallel_tool_calls(supported)` performs the gating: it returns the preference when `supported` is `true`, else `None` (omit). Each driver calls it with `self.supports_parallel_tool_calls(&config.model)` while building the request.
 
 Durable parity: the worker builds `RuntimeAgent` from gRPC-fetched schema objects, so the proto `Agent` and `Session` messages carry `parallel_tool_calls`. The server schema→proto and worker proto→schema adapters round-trip the value, preserving the operator setting through `RuntimeAgent` → `ReasonResult` → provider in durable mode.
+
+### `parallel_tool_calls` capability
+
+The `parallel_tool_calls` capability is the user-facing way to set the preference above. It carries a `mode`:
+
+- **`prefer`** (default when the capability is enabled without explicit config) → `Some(true)`.
+- **`avoid`** → `Some(false)`.
+- **`none`** → `None` (provider default; neutralizes an inherited preference).
+
+The capability resolves its `mode` to a preference during capability collection (`CollectedCapabilities.parallel_tool_calls`) and applies it to `RuntimeAgent.parallel_tool_calls`. An explicit `parallel_tool_calls` field on any layer wins over the capability. The **Generic** harness and the built-in **coding** harnesses enable the capability with `mode: "prefer"`.
+
+Because harness/agent capability config is reconstructed from IDs over gRPC (durable worker), a non-default harness/agent `mode` falls back to the default (`prefer`) in durable mode; set the mode at the session level or use the explicit `parallel_tool_calls` field to override durably. This matches other config-bearing capabilities.
 
 ### Step-Based Execution (Durable Mode)
 

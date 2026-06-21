@@ -6,7 +6,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic",
-        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, tool output distillation, loop detection, message timestamp annotations, detailed error disclosure, and agent skills. Recommended default for most use cases.",
+        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, tool output distillation, loop detection, message timestamp annotations, detailed error disclosure, parallel tool calls, and agent skills. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
     .with_tags(["generic", "default", "built-in"])
@@ -30,6 +30,13 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
         BuiltInCapabilityDefinition::new("loop_detection"),
+        // Batch independent reads/searches: request parallel tool calls where the
+        // provider supports it; the local scheduler already runs batches
+        // concurrently by class.
+        BuiltInCapabilityDefinition::with_config(
+            "parallel_tool_calls",
+            serde_json::json!({"mode": "prefer"}),
+        ),
         // Trusted, operator-facing default harness: show full provider error
         // detail so failures (bad key, quota, outage) are self-explanatory.
         BuiltInCapabilityDefinition::with_config(

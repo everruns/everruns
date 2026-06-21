@@ -191,8 +191,13 @@ impl RuntimeAgentBuilder {
         // Set merged network_access
         builder = builder.network_access(layer.network_access);
 
-        // Set merged request-level parallel_tool_calls preference (EVE-598)
-        builder = builder.parallel_tool_calls(layer.parallel_tool_calls);
+        // Set merged request-level parallel_tool_calls preference (EVE-598).
+        // The explicit field is an escape hatch and wins over the
+        // `parallel_tool_calls` capability applied during capability collection;
+        // when unset, the capability-derived preference (if any) stands.
+        if let Some(explicit) = layer.parallel_tool_calls {
+            builder = builder.parallel_tool_calls(Some(explicit));
+        }
 
         builder
     }
@@ -314,6 +319,12 @@ impl RuntimeAgentBuilder {
 
         if let Some(routing) = collected.openrouter_routing {
             self.runtime_agent.openrouter_routing = Some(routing);
+        }
+
+        // Apply the `parallel_tool_calls` capability preference. An explicit
+        // request-level field set later (see `from_overlay`) takes precedence.
+        if let Some(ptc) = collected.parallel_tool_calls {
+            self.runtime_agent.parallel_tool_calls = Some(ptc);
         }
 
         self.tool_definition_hooks

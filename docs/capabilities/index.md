@@ -106,6 +106,7 @@ Performance and cost optimization for LLM interactions.
 | [Tool Search](/capabilities/tool-search/) | `tool_search` | 1 |
 | [Budgeting](/capabilities/budgeting/) | `budgeting` | 1 |
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |
+| [Parallel Tool Calls](/capabilities/parallel-tool-calls/) | `parallel_tool_calls` | 0 |
 
 ### Safety
 

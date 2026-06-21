@@ -239,6 +239,20 @@ pub trait ChatDriver: Send + Sync {
         false
     }
 
+    /// Whether this driver can express the request-level `parallel_tool_calls`
+    /// preference on the wire for `model`.
+    ///
+    /// Drivers that map the preference onto a request field (OpenAI/Anthropic
+    /// families) return `true`; drivers whose provider API has no such control
+    /// (Gemini, Bedrock) return `false`. When `false`, the preference is omitted
+    /// from the request and is honored only by the local tool scheduler, so an
+    /// `avoid` preference still serializes tool execution on every provider.
+    ///
+    /// The default is `false` (conservative: omit unless a driver opts in).
+    fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        false
+    }
+
     /// Compact a conversation to reduce context size
     ///
     /// This method compresses conversation history by calling the provider's
@@ -289,6 +303,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn supports_compact(&self) -> bool {
         (**self).supports_compact()
+    }
+
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        (**self).supports_parallel_tool_calls(model)
     }
 
     async fn compact(&self, request: CompactRequest) -> Result<Option<CompactResponse>> {
@@ -1155,6 +1173,25 @@ pub struct LlmCallConfig {
     /// `tool_choice.disable_parallel_tool_use = true`. `None` preserves
     /// provider defaults (no field sent).
     pub parallel_tool_calls: Option<bool>,
+}
+
+impl LlmCallConfig {
+    /// Resolve the effective wire value for `parallel_tool_calls`, gated by
+    /// whether the driver/model can express it on the request.
+    ///
+    /// Returns `None` (omit the field, keep the provider default) when the
+    /// preference is unset or `supported` is `false`. Drivers call this with
+    /// `self.supports_parallel_tool_calls(&config.model)` so the preference is
+    /// only serialized where the provider has a control for it. The local tool
+    /// scheduler honors the preference independently, so `Some(false)` still
+    /// serializes execution even when this returns `None`.
+    pub fn resolved_parallel_tool_calls(&self, supported: bool) -> Option<bool> {
+        if supported {
+            self.parallel_tool_calls
+        } else {
+            None
+        }
+    }
 }
 
 impl From<&RuntimeAgent> for LlmCallConfig {
@@ -2054,6 +2091,41 @@ fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_resolved_parallel_tool_calls_gating() {
+        let mut config = LlmCallConfig::from(&RuntimeAgent::new("p", "gpt-5.2"));
+
+        // No preference => always None.
+        assert_eq!(config.resolved_parallel_tool_calls(true), None);
+        assert_eq!(config.resolved_parallel_tool_calls(false), None);
+
+        // Preference passes through only when the driver/model supports it.
+        config.parallel_tool_calls = Some(true);
+        assert_eq!(config.resolved_parallel_tool_calls(true), Some(true));
+        assert_eq!(config.resolved_parallel_tool_calls(false), None);
+
+        config.parallel_tool_calls = Some(false);
+        assert_eq!(config.resolved_parallel_tool_calls(true), Some(false));
+        assert_eq!(config.resolved_parallel_tool_calls(false), None);
+    }
+
+    #[test]
+    fn test_chat_driver_default_omits_parallel_tool_calls() {
+        // Default trait impl is conservative: drivers opt in.
+        struct DefaultDriver;
+        #[async_trait]
+        impl ChatDriver for DefaultDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unreachable!()
+            }
+        }
+        assert!(!DefaultDriver.supports_parallel_tool_calls("any-model"));
+    }
 
     #[test]
     fn test_fold_system_messages_none_when_absent() {

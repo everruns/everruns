@@ -118,6 +118,10 @@ impl ChatDriver for FireworksChatDriver {
         self.inner.chat_completion_stream(messages, config).await
     }
 
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        self.inner.supports_parallel_tool_calls(model)
+    }
+
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
         // Discovery only runs against Fireworks' own host. A custom proxy URL may
         // resolve to private infrastructure at request time (mirrors the

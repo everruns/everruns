@@ -1082,6 +1082,15 @@ mod tests {
     use super::*;
     use everruns_core::FileSystemCapability;
     use everruns_core::capabilities::Capability;
+    use everruns_core::driver_registry::ChatDriver;
+
+    #[test]
+    fn supports_parallel_tool_calls_is_false() {
+        // Gemini has no request control; the preference is honored only by the
+        // local tool scheduler.
+        let driver = GeminiChatDriver::new("test-key");
+        assert!(!driver.supports_parallel_tool_calls("gemini-2.5-pro"));
+    }
 
     #[test]
     fn test_convert_content_text() {

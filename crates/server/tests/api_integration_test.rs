@@ -1957,8 +1957,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        20,
-        "Generic harness should have 20 capabilities"
+        21,
+        "Generic harness should have 21 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -2504,8 +2504,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        20,
-        "Copied harness should have same 20 capabilities"
+        21,
+        "Copied harness should have same 21 capabilities"
     );
     assert!(
         copied

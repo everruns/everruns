@@ -91,6 +91,10 @@ impl ChatDriver for OpenRouterChatDriver {
         self.inner.chat_completion_stream(messages, config).await
     }
 
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        self.inner.supports_parallel_tool_calls(model)
+    }
+
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
         // OpenRouter discovery is only safe against OpenRouter's own host.
         // Custom proxy URLs may resolve to private infrastructure at request time.
