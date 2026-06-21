@@ -52,18 +52,24 @@ impl Database {
         let Some(blob) = self.blob_store() else {
             return Ok(());
         };
-        let key: Option<(String,)> =
-            sqlx::query_as("SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1")
-                .bind(row.id)
-                .fetch_optional(&self.pool)
-                .await?;
-        if let Some((key,)) = key {
+        let pointer: Option<(String, String)> = sqlx::query_as(
+            "SELECT blob_key, content_sha256 FROM workspace_file_blobs WHERE file_id = $1",
+        )
+        .bind(row.id)
+        .fetch_optional(&self.pool)
+        .await?;
+        if let Some((key, expected_sha)) = pointer {
             // A sidecar pointer exists, so a missing object means data loss —
             // surface it as an error rather than silently returning empty content.
             let bytes = blob
                 .get(&key)
                 .await?
                 .ok_or_else(|| anyhow::anyhow!("offloaded file blob missing for {key}"))?;
+            let actual_sha = content_sha256(&bytes);
+            anyhow::ensure!(
+                actual_sha == expected_sha,
+                "offloaded file blob hash mismatch for {key}: expected {expected_sha}, got {actual_sha}"
+            );
             row.content = Some(bytes);
         }
         Ok(())
@@ -80,8 +86,8 @@ impl Database {
             && !input.is_directory
         {
             let file_id = Uuid::now_v7();
-            let key = workspace_file_key(workspace_id, file_id);
             let sha = content_sha256(content);
+            let key = workspace_file_key(workspace_id, file_id, &sha);
 
             // Write the blob first; if the row insert then fails (e.g. duplicate
             // path) we clean the orphan object up rather than leaving it behind.
@@ -284,8 +290,8 @@ impl Database {
         // Offload path: a content update with a configured blob backend. Write
         // the new blob first, then update the row + sidecar in one transaction,
         // so a failed object write never leaves the row pointing at missing
-        // content. The blob key is addressed by file id, so the put overwrites
-        // the file's existing object in place.
+        // content. The blob key embeds the content SHA-256, so each revision
+        // writes to a distinct, immutable object instead of overwriting in place.
         if let (Some(blob), Some(content)) = (self.blob_store(), input.content.as_ref()) {
             let size_bytes = content.len() as i64;
 
@@ -301,8 +307,8 @@ impl Database {
                 return Ok(None);
             };
 
-            let key = workspace_file_key(session_id, file_id);
             let sha = content_sha256(content);
+            let key = workspace_file_key(session_id, file_id, &sha);
             blob.put(
                 &key,
                 content.clone(),
@@ -439,8 +445,8 @@ impl Database {
             }
 
             let size_bytes = new_content.len() as i64;
-            let key = workspace_file_key(session_id, existing.id);
             let sha = content_sha256(&new_content);
+            let key = workspace_file_key(session_id, existing.id, &sha);
             blob.put(
                 &key,
                 new_content.clone(),
@@ -681,8 +687,8 @@ impl Database {
             // the row + sidecar can be inserted in one transaction with the blob
             // already durable; clean the blob up on any DB failure.
             let written_key = if let Some(content) = source.content.clone() {
-                let key = workspace_file_key(session_id, dest_id);
                 let sha = content_sha256(&content);
+                let key = workspace_file_key(session_id, dest_id, &sha);
                 blob.put(
                     &key,
                     content,
