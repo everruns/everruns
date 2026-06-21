@@ -206,7 +206,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             </Link>
           )}
           {agent.status === "active" && (
-            <Link href={`/apps/new?agent_id=${agentId}`}>
+            <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
               <Button variant="outline">
                 <Rocket className="w-4 h-4 mr-2" />
                 Create app

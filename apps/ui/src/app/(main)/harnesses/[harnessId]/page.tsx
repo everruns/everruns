@@ -152,7 +152,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
         </div>
         <div className="flex gap-2">
           {harness.status === "active" && (
-            <Link href={`/apps/new?harness_id=${harnessId}`}>
+            <Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }}>
               <Button variant="accent">
                 <Rocket className="w-4 h-4 mr-2" />
                 Create app
