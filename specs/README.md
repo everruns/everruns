@@ -88,6 +88,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/apps.md` - Apps system
 - `specs/app-invocation-channels.md` - App schedule/webhook invocation channels
 - `specs/app-endpoint-auth.md` - Shared inbound auth framework for App-published endpoints
+- `specs/app-api-keys.md` - App-scoped, execution-only API keys over the native session API
 - `specs/a2a-channel.md` - A2A inbound channel
 - `specs/a2a-capability.md` - A2A outbound delegation capability
 - `specs/fcp-channel.md` - FCP inbound channel
