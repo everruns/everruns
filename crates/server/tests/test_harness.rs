@@ -526,6 +526,14 @@ impl TestServer {
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
             api::a2a_signing::A2aReplayStore::in_memory(),
         );
+        let app_api_state = api::app_api::AppApiState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("apikey"),
+        );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -602,6 +610,7 @@ impl TestServer {
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
+            .merge(api::app_api::routes(app_api_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {

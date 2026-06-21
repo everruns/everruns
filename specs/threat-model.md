@@ -1386,6 +1386,24 @@ This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categorie
 | TM-AGENT-025 | Prompt-injection-driven attach storm (untrusted registry text steers the agent into attaching many or hostile resources) | Medium | Registry search results are untrusted external data returned via the `tool_result` role (no complete defense, same class as TM-AGENT-002). `max_attachments` (default 5) bounds the number of resources attachable per session; `attach_resource` is idempotent per URN so repeated injected requests cannot inflate the count; the trust gate and allowlist constrain *what* can attach. The agent loop, iteration limits, and `tool_search` deferral are unchanged. | MITIGATED |
 | TM-DOS-019 | Resource exhaustion via unbounded attachments or oversized discovery caches | Medium | `max_attachments` caps attachments per session; cached discovery and attachment entries are bounded by normal session-KV limits; `discover_resources` runs outside model context so large registry responses do not inflate the prompt directly. | MITIGATED |
 
+## 28. App API Keys / api_endpoint Channel (TM-APIKEY)
+
+App-scoped, execution-only API keys (`evr_app_...`) over native session routes
+mounted under the app (`/v1/apps/{app_id}/api/{channel_id}/...`). Structurally
+execution-only: the key authenticates only these app-mounted routes and has no
+path to any management API. Mitigations live in
+`crates/server/src/api/app_api.rs` and
+`crates/server/src/domains/apps/commands.rs`. See `specs/app-api-keys.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-APIKEY-001 | API key brute force / timing oracle / plaintext leak | Medium | Keys are 32 random bytes (256-bit entropy) prefixed `evr_app_`; stored only as SHA-256 hex; plaintext returned exactly once at create / regenerate and never persisted; the hash is redacted from channel read responses (`redact_channel_config`). Inbound keys are hashed and compared constant-time (`app_api::constant_time_eq`) after the published-app + enabled-channel gate, before any session work. Rotation (`regenerate_api_endpoint_app_channel_key`) overwrites both hash and prefix so the previous key fails on the next request | MITIGATED |
+| TM-APIKEY-002 | Cross-app session access via a leaked session id | High | Every read / message / cancel against a `{session_id}` verifies the session carries this channel's `app:<public_id>` + `app_channel:<public_id>` routing tags (`session_has_app_channel_tags`); a mismatch returns `404` (not `403`) so existence is not leaked. An execution key for one app cannot read or drive another app's sessions. On create, the session is bound to the app's own Harness + Agent — the caller cannot select an arbitrary agent or pass management-only fields | MITIGATED |
+| TM-APIKEY-003 | DoS via runaway execution-key client | Medium | App owners configure a per-app, per-IP cap via `ApiEndpointChannelConfig::rate_limit_per_minute`, enforced in `app_api::authenticate_request` after the key comparison so an unauthenticated caller cannot grow the limiter cache or probe channel existence. Backed by the shared `ChannelRateLimiter` with a dedicated `apikey` namespace (disjoint from `agui` / `a2a` / `fcp`); scope is `app_id:channel_id` so multiple keys on one app keep independent buckets. Field capped at `1_000_000`; `0` / `None` falls back to the global API limit. Same fail-open behavior on Valkey outage as TM-A2A-013 | MITIGATED |
+| TM-APIKEY-004 | Execution key reads raw internal tool detail | Medium | `GET .../sessions/{id}` returns only completed, non-Commentary assistant messages (`output.message.completed`) plus a derived turn status. Raw tool names, arguments, results, and internal event bodies are never returned to the key — the same safe projection AG-UI applies to public streams, achieved here by returning final messages rather than a raw event feed | MITIGATED |
+| TM-APIKEY-005 | Anonymous ingress to draft / disabled channels | High | Published-app + enabled-channel + channel-type checks run before key validation in `authenticate_request`; draft/disabled/unknown all collapse to generic 403/404 so the endpoint is not a probe oracle | MITIGATED |
+| TM-APIKEY-006 | Cross-org session reuse via tag spoofing | High | Inherits the shared app-invocation mitigation (TM-A2A-007): shared sessions are matched by org + owner principal + tag set in `find_app_session_by_tags_and_owner`, so a user cannot pre-seed an `app:` / `app_channel:` tagged session for an execution-key invocation to reuse | MITIGATED |
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)

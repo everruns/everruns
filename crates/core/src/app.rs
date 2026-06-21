@@ -112,6 +112,10 @@ pub enum ChannelType {
     /// optional handshake. See `specs/fcp-channel.md` and the upstream FCP
     /// specification.
     Fcp,
+    /// App-scoped, execution-only API key over native session routes.
+    /// See `specs/app-api-keys.md`.
+    #[serde(rename = "api_endpoint")]
+    ApiEndpoint,
 }
 
 impl std::fmt::Display for ChannelType {
@@ -123,6 +127,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Webhook => write!(f, "webhook"),
             ChannelType::A2a => write!(f, "a2a"),
             ChannelType::Fcp => write!(f, "fcp"),
+            ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
         }
     }
 }
@@ -136,6 +141,7 @@ impl ChannelType {
             "webhook" => Some(ChannelType::Webhook),
             "a2a" => Some(ChannelType::A2a),
             "fcp" => Some(ChannelType::Fcp),
+            "api_endpoint" => Some(ChannelType::ApiEndpoint),
             _ => None,
         }
     }
@@ -295,6 +301,15 @@ impl AppChannel {
         }
         serde_json::from_value(self.channel_config.clone()).ok()
     }
+
+    /// Parse channel_config as ApiEndpointChannelConfig. Returns None if not an
+    /// api_endpoint channel or if the config is invalid.
+    pub fn api_endpoint_config(&self) -> Option<ApiEndpointChannelConfig> {
+        if self.channel_type != ChannelType::ApiEndpoint {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }
 
 impl App {
@@ -338,6 +353,13 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::A2a && ch.enabled)
+    }
+
+    /// Find the first enabled api_endpoint channel on this app.
+    pub fn api_endpoint_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::ApiEndpoint && ch.enabled)
     }
 
     /// Find a channel by its public ID.
@@ -783,6 +805,37 @@ pub struct A2aChannelConfig {
     /// `signing_secret` adds replay protection on top.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub signing_secret: Option<String>,
+}
+
+/// Typed api_endpoint channel configuration.
+///
+/// Exposes an app-scoped, execution-only API key over native session routes
+/// mounted under the app (`/v1/apps/{app_id}/api/{channel_id}/...`). The key is
+/// structurally execution-only: it reaches only these app-mounted routes and
+/// has no path to any management API. The plaintext key is **never** stored —
+/// only the SHA-256 hex hash and a non-secret display prefix are persisted, and
+/// the plaintext is returned exactly once at create / regenerate time. See
+/// `specs/app-api-keys.md`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ApiEndpointChannelConfig {
+    /// SHA-256 hex digest of the API key.
+    pub api_key_hash: String,
+    /// Public, non-secret display prefix (e.g. `evr_app_abc1...`).
+    pub api_key_prefix: String,
+    /// Whether invocations reuse a stable session or create a new one.
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    /// Optional per-IP rate limit applied to this app's api_endpoint, in
+    /// requests per minute. `None` or `Some(0)` disables the per-channel limit
+    /// (the global API limit still applies). Mirrors
+    /// `A2aChannelConfig::rate_limit_per_minute`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
+    /// Optional inline auth config for this endpoint. When omitted, the
+    /// generated per-channel API-key bearer scheme applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AppEndpointAuthConfig>,
 }
 
 #[cfg(test)]

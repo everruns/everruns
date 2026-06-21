@@ -71,7 +71,8 @@ machine credential.
   full access (hence the "Full account access" warning in the UI). It is not a
   way to grant narrow, org-scoped, or non-human access. If org-scoped or
   service credentials are ever needed, they would be a new, separate concept —
-  not a variant of this one.
+  not a variant of this one. The first such concept is the app-scoped,
+  execution-only **App API key**; see [`app-api-keys.md`](app-api-keys.md).
 
 The naming reinforces this: "personal access token" (and the `evr_pat_`
 prefix) signals user ownership, and disambiguates it from the unrelated

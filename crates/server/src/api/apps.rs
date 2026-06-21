@@ -9,7 +9,8 @@ use crate::domains::apps::types::{
 };
 use crate::domains::apps::{
     APP_DANGEROUS, APP_MANAGE, APP_VIEW, AddA2aChannelCmd, AddA2aChannelOutput,
-    RegenerateA2aApiKeyCmd, RegenerateA2aApiKeyOutput,
+    AddApiEndpointChannelCmd, AddApiEndpointChannelOutput, RegenerateA2aApiKeyCmd,
+    RegenerateA2aApiKeyOutput, RegenerateApiEndpointApiKeyCmd, RegenerateApiEndpointApiKeyOutput,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -130,6 +131,16 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key",
             post(regenerate_a2a_key),
+        )
+        // api_endpoint channel sub-routes — same rationale as A2A: the
+        // execution API key is generated server-side and returned once.
+        .route(
+            "/v1/apps/{app_id}/api-endpoint-channels",
+            post(add_api_endpoint_channel),
+        )
+        .route(
+            "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key",
+            post(regenerate_api_endpoint_key),
         )
         .with_state(state)
 }
@@ -540,6 +551,83 @@ pub async fn regenerate_a2a_key(
     Path((app_id, channel_id)): Path<(String, String)>,
 ) -> Result<Json<RegenerateA2aApiKeyOutput>, (StatusCode, Json<ErrorResponse>)> {
     let output = RegenerateA2aApiKeyCmd { app_id, channel_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(output))
+}
+
+/// Request body for the `add_api_endpoint_channel_http` operation.
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct AddApiEndpointChannelHttpRequest {
+    /// How invocations route into sessions (`shared_session` to reuse one
+    /// durable session, or `session_per_invocation` for a fresh session).
+    #[serde(default)]
+    pub session_mode: everruns_core::app::InvocationSessionMode,
+    /// Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`.
+    #[serde(default)]
+    pub auth: Option<everruns_core::AppEndpointAuthConfig>,
+    /// Whether this resource is enabled.
+    #[schema(example = true)]
+    pub enabled: Option<bool>,
+}
+
+/// POST /v1/apps/{app_id}/api-endpoint-channels - Add an api_endpoint channel (returns plaintext key once).
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/api-endpoint-channels",
+    params(
+        ("app_id" = String, Path, description = "App ID")
+    ),
+    request_body = AddApiEndpointChannelHttpRequest,
+    responses(
+        (status = 201, description = "api_endpoint channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.", body = AddApiEndpointChannelOutput),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "App not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn add_api_endpoint_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+    Json(req): Json<AddApiEndpointChannelHttpRequest>,
+) -> Result<(StatusCode, Json<AddApiEndpointChannelOutput>), (StatusCode, Json<ErrorResponse>)> {
+    let output = AddApiEndpointChannelCmd {
+        app_id,
+        session_mode: req.session_mode,
+        auth: req.auth,
+        enabled: req.enabled,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok((StatusCode::CREATED, Json(output)))
+}
+
+/// Regenerate an api_endpoint channel API key. Returns the new plaintext key exactly once and invalidates the previous key.
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/api-endpoint-channels/{channel_id}/regenerate-key",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "api_endpoint channel ID")
+    ),
+    responses(
+        (status = 200, description = "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.", body = RegenerateApiEndpointApiKeyOutput),
+        (status = 400, description = "Invalid app/channel ID or channel is not an api_endpoint channel", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "App or api_endpoint channel not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn regenerate_api_endpoint_key(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> Result<Json<RegenerateApiEndpointApiKeyOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let output = RegenerateApiEndpointApiKeyCmd { app_id, channel_id }
         .run(&state.ctx(&org))
         .await?;
     Ok(Json(output))

@@ -19,6 +19,28 @@ This document records technical options that were considered but dismissed for s
 - The runtime remains the source of truth; AG-UI events are translated from internal events
 - Follow-up work may add authenticated or scoped access controls
 
+## App API key: project through the global /v1/sessions surface
+
+**Status**: Dismissed for the launch
+
+**What it was**: Making the existing `/v1/sessions/*` management endpoints accept
+the app-scoped execution key (`evr_app_...`) by threading an app-execution
+identity through the core auth middleware, the `Caller` / permission resolver,
+and every session command policy — a new `OrgSessionsExecute` permission plus a
+confinement `Rule` pinning the key to its App's sessions.
+
+**Why dismissed**: High blast radius across the shared auth and permission path
+for the same user-visible capability that app-mounted routes
+(`/v1/apps/{app_id}/api/{channel_id}/...`) deliver with near-zero blast radius,
+reusing the proven A2A / AG-UI ingress pattern. The native REST routes under the
+App are inherently execution-only (no route to management APIs), self-confining
+(tag-based ownership check), and self-redacting (reads return only completed
+assistant messages). See `specs/app-api-keys.md`.
+
+**What could change it**: A concrete need to expose the full management session
+surface (arbitrary agent selection, cross-App listing, raw event/SSE feeds) to
+execution keys.
+
 ## Temporal Workflow Engine
 
 **Status**: Dismissed (implemented then removed)
