@@ -20,7 +20,6 @@ use tracing::error;
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
-use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
@@ -1133,37 +1132,22 @@ impl Tool for SpawnBackgroundTool {
                 );
             };
 
-            match schedule_store
-                .count_active_schedules(context.session_id)
-                .await
+            // Enforce per-session cap, per-org cap, and minimum recurring cron
+            // interval (shared with the create_schedule tool).
+            match crate::session_schedule::enforce_create_limits(
+                schedule_store.as_ref(),
+                context.session_id,
+                schedule_request.cron_expression.as_deref(),
+            )
+            .await
             {
-                Ok(count) if count >= MAX_ACTIVE_SCHEDULES_PER_SESSION => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Maximum {MAX_ACTIVE_SCHEDULES_PER_SESSION} active schedules per session. Cancel an existing schedule first."
-                    ));
+                Ok(()) => {}
+                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
+                    return ToolExecutionResult::internal_error(err);
                 }
-                Err(err) => return ToolExecutionResult::internal_error(err),
-                _ => {}
-            }
-
-            // Per-org cap: bounds total active schedules across all of an org's
-            // sessions, not just the current one.
-            let max_per_org = crate::session_schedule::max_active_schedules_per_org();
-            match schedule_store.count_active_org_schedules().await {
-                Ok(count) if i64::from(count) >= max_per_org => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
-                    ));
+                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+                    return ToolExecutionResult::tool_error(msg);
                 }
-                Err(err) => return ToolExecutionResult::internal_error(err),
-                _ => {}
-            }
-
-            // Minimum cron interval for recurring monitors.
-            if let Some(cron) = schedule_request.cron_expression.as_deref()
-                && let Err(msg) = crate::session_schedule::validate_cron_min_interval(cron)
-            {
-                return ToolExecutionResult::tool_error(msg);
             }
 
             let description = build_background_schedule_description(

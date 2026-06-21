@@ -57,8 +57,10 @@ pub fn max_active_schedules_per_org() -> i64 {
 /// or fires fewer than twice.
 ///
 /// Accepts 5-field (`min hour dom mon dow`) and 6/7-field cron forms; 5-field is
-/// normalized to the seconds-aware form the `cron` crate expects (sec=0, year=*),
-/// mirroring `normalize_cron_expression` in the app schedule channel.
+/// normalized to the seconds-aware form the `cron` crate expects (sec=0, year=*).
+/// This is more permissive than the app schedule channel's
+/// `normalize_cron_expression` (which accepts only 5 or 7 fields): here we also
+/// accept the 6-field seconds form the agent may already pass through to the store.
 pub fn cron_min_interval_seconds(cron_expression: &str) -> Option<i64> {
     use std::str::FromStr;
     let fields: Vec<&str> = cron_expression.split_whitespace().collect();
@@ -94,6 +96,58 @@ pub fn validate_cron_min_interval(cron_expression: &str) -> Result<(), String> {
             min_limit / 60
         ));
     }
+    Ok(())
+}
+
+/// Outcome of a failed session-schedule limit check.
+///
+/// Distinguishes a store/count failure (surface as an internal error) from a
+/// limit rejection (surface as a user-facing tool error) so callers preserve the
+/// same behavior they had with the inline checks.
+pub enum ScheduleLimitError {
+    /// Counting active schedules failed.
+    Store(crate::error::AgentLoopError),
+    /// A limit was exceeded; carries the user-facing message.
+    Rejected(String),
+}
+
+/// Enforce the create-time session-schedule limits shared by every agent entry
+/// point (`create_schedule` and `spawn_background` with a `schedule` arg):
+/// per-session cap, per-org cap, and minimum recurring cron interval. Pass the
+/// recurring `cron_expression` (None for one-shot schedules, which skip the
+/// interval gate). Each fire dispatches a real worker turn, so these bound
+/// operator compute on open-signup deployments (see `specs/threat-model.md`
+/// TM-SCHED-001).
+pub async fn enforce_create_limits(
+    store: &dyn crate::traits::SessionScheduleStore,
+    session_id: SessionId,
+    cron_expression: Option<&str>,
+) -> std::result::Result<(), ScheduleLimitError> {
+    let per_session = store
+        .count_active_schedules(session_id)
+        .await
+        .map_err(ScheduleLimitError::Store)?;
+    if per_session >= MAX_ACTIVE_SCHEDULES_PER_SESSION {
+        return Err(ScheduleLimitError::Rejected(format!(
+            "Maximum {MAX_ACTIVE_SCHEDULES_PER_SESSION} active schedules per session. Cancel an existing schedule first."
+        )));
+    }
+
+    let max_per_org = max_active_schedules_per_org();
+    let per_org = store
+        .count_active_org_schedules()
+        .await
+        .map_err(ScheduleLimitError::Store)?;
+    if i64::from(per_org) >= max_per_org {
+        return Err(ScheduleLimitError::Rejected(format!(
+            "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+        )));
+    }
+
+    if let Some(cron) = cron_expression {
+        validate_cron_min_interval(cron).map_err(ScheduleLimitError::Rejected)?;
+    }
+
     Ok(())
 }
 
@@ -167,23 +221,45 @@ impl SessionSchedule {
     }
 }
 
+/// Test-only RAII guard that saves a process-global env var, applies a change,
+/// and restores the original value (or absence) on drop. Env is shared across the
+/// parallel test binary, so saving/restoring keeps env-reading tests independent
+/// of each other and of the environment the suite was launched with.
+#[cfg(test)]
+pub(crate) struct EnvVarGuard {
+    key: &'static str,
+    prev: Option<String>,
+}
+
+#[cfg(test)]
+impl EnvVarGuard {
+    /// Save the current value and unset the var.
+    pub(crate) fn unset(key: &'static str) -> Self {
+        let prev = std::env::var(key).ok();
+        unsafe { std::env::remove_var(key) };
+        Self { key, prev }
+    }
+}
+
+#[cfg(test)]
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        match &self.prev {
+            Some(v) => unsafe { std::env::set_var(self.key, v) },
+            None => unsafe { std::env::remove_var(self.key) },
+        }
+    }
+}
+
 #[cfg(test)]
 mod limit_tests {
     use super::*;
 
-    // Env-backed getters touch process-global state; keep them in one test each
-    // and always restore so parallel tests in the crate are not affected.
     #[test]
     fn min_interval_default_is_300() {
-        unsafe { std::env::remove_var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS") };
+        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         assert_eq!(min_interval_seconds(), DEFAULT_MIN_INTERVAL_SECONDS);
     }
-
-    // NOTE: the per-org cap env var (`RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`)
-    // and its enforcement are exercised by the single `create_schedule_enforces_per_org_cap`
-    // tool test in `capabilities/session_schedule.rs`. Process env is global and core
-    // tests run in parallel, so we deliberately keep exactly one test mutating that
-    // var to avoid a set/remove race with a default-reading test.
 
     #[test]
     fn cron_interval_every_minute_is_60() {
@@ -210,13 +286,13 @@ mod limit_tests {
 
     #[test]
     fn validate_rejects_every_minute_at_default() {
-        unsafe { std::env::remove_var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS") };
+        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         assert!(validate_cron_min_interval("* * * * *").is_err());
     }
 
     #[test]
     fn validate_accepts_daily() {
-        unsafe { std::env::remove_var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS") };
+        let _g = EnvVarGuard::unset("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS");
         assert!(validate_cron_min_interval("0 3 * * *").is_ok());
     }
 
