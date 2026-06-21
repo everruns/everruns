@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCreateApp } from "@/hooks/use-apps";
 import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
@@ -46,12 +46,15 @@ import {
 export default function NewAppPage() {
   usePageTitle("New App", "Apps");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const createApp = useCreateApp();
 
+  // Prefill harness/agent when arriving via a "Create app" shortcut from a
+  // harness or agent detail page (e.g. /apps/new?harness_id=...&agent_id=...).
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [agentId, setAgentId] = useState("");
-  const [harnessId, setHarnessId] = useState("");
+  const [agentId, setAgentId] = useState(() => searchParams.get("agent_id") ?? "");
+  const [harnessId, setHarnessId] = useState(() => searchParams.get("harness_id") ?? "");
   const [agentIdentityId, setAgentIdentityId] = useState("");
   const [channelType, setChannelType] = useState<ChannelType | "">("");
   const [slackSigningSecret, setSlackSigningSecret] = useState("");

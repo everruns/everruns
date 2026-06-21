@@ -24,7 +24,16 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
-import { ArrowLeft, Pencil, Copy, Trash2, Eye, LayoutDashboard, BarChart3 } from "lucide-react";
+import {
+  ArrowLeft,
+  Pencil,
+  Copy,
+  Trash2,
+  Eye,
+  LayoutDashboard,
+  BarChart3,
+  Rocket,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import type { Capability, ModelWithProvider } from "@/lib/api/types";
@@ -142,6 +151,14 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           </h1>
         </div>
         <div className="flex gap-2">
+          {harness.status === "active" && (
+            <Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }}>
+              <Button variant="accent">
+                <Rocket className="w-4 h-4 mr-2" />
+                Create app
+              </Button>
+            </Link>
+          )}
           <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
             <Copy className="w-4 h-4 mr-2" />
             {copyHarness.isPending ? "Copying..." : "Copy"}
