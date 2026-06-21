@@ -46,9 +46,11 @@ rand.workspace = true
 # Cron parsing for session-schedule minimum-interval enforcement
 cron = "0.15"
 
-# Tracing
+# Tracing. `tracing` instrumentation is unconditional; the `tracing-subscriber`
+# registry/fmt layers are only used by telemetry init, so the dep is optional
+# and pulled in by the `telemetry` feature.
 tracing.workspace = true
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, optional = true }
 
 # OpenTelemetry (optional; behind the `telemetry` feature). The OTLP exporter
 # pulls a large dependency subtree, so provider crates that opt out of core
@@ -142,6 +144,7 @@ telemetry = [
     "dep:opentelemetry_sdk",
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
+    "dep:tracing-subscriber",
 ]
 # Outbound A2A agent delegation (tonic/prost gRPC stack).
 a2a = ["dep:a2a", "dep:a2a-client"]

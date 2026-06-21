@@ -1278,6 +1278,9 @@ impl CapabilityRegistry {
         // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
         if crate::FeatureFlags::from_env(&grade).agent_delegation {
             registry.register(AgentHandoffCapability);
+            // Additionally compile-gated behind the `a2a` cargo feature: in
+            // provider builds that disable core defaults the delegation
+            // capability is absent even when FEATURE_AGENT_DELEGATION is set.
             #[cfg(feature = "a2a")]
             registry.register(A2aAgentDelegationCapability);
         }

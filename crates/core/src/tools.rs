@@ -639,7 +639,9 @@ impl ToolRegistry {
     /// - TestWeather tools: get_weather, get_forecast
     /// - TaskList tools: write_todos
     /// - FileSystem tools: read_file, write_file, edit_file, list_directory, grep_files, delete_file, stat_file
-    /// - WebFetch tools: web_fetch
+    /// - WebFetch tools: web_fetch — only when the `web-fetch` cargo feature is
+    ///   enabled (on by default; absent in provider builds that disable core
+    ///   default features)
     pub fn with_defaults() -> Self {
         use crate::capabilities::{
             AddTool, DeleteFileTool, DivideTool, EditFileTool, GetCurrentTimeTool, GetForecastTool,
