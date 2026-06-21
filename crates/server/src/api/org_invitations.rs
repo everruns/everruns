@@ -470,7 +470,6 @@ pub async fn accept_invitation(
     db: &StorageBackend,
     token: &str,
     user_id: Uuid,
-    user_email: &str,
     max_members: i64,
 ) -> Result<AcceptedInvitation, InviteError> {
     let invalid = || {
@@ -515,9 +514,33 @@ pub async fn accept_invitation(
         ));
     }
 
-    // Authenticated email must match the invited email under the same
+    let user = db
+        .get_user(user_id)
+        .await
+        .map_err(|e| internal("lookup accepting user", e))?
+        .ok_or_else(|| {
+            InviteError::new(
+                StatusCode::UNAUTHORIZED,
+                "user_not_found",
+                "Authenticated user not found",
+            )
+        })?;
+
+    // Re-load the user row instead of trusting the authenticated session/JWT
+    // email claim. Invite acceptance grants tenant membership, so the matching
+    // address must be verified mailbox ownership, not a self-asserted local
+    // signup address (TM-AUTH-023, TM-TENANT-011).
+    if !user.email_verified {
+        return Err(InviteError::new(
+            StatusCode::FORBIDDEN,
+            "invite_email_unverified",
+            "Verify your email address before accepting this invitation",
+        ));
+    }
+
+    // Authenticated, verified email must match the invited email under the same
     // normalization used at creation.
-    if normalize_email(user_email) != row.email {
+    if normalize_email(&user.email) != row.email {
         return Err(InviteError::new(
             StatusCode::FORBIDDEN,
             "invite_email_mismatch",
@@ -678,7 +701,6 @@ pub async fn accept_invite(
         &state.db,
         &token,
         user.id,
-        &user.email,
         state.resource_limits.max_members_per_org,
     )
     .await?;
@@ -713,6 +735,14 @@ mod tests {
     }
 
     async fn seed_user(db: &StorageBackend, email: &str) -> Uuid {
+        seed_user_with_verification(db, email, true).await
+    }
+
+    async fn seed_user_with_verification(
+        db: &StorageBackend,
+        email: &str,
+        email_verified: bool,
+    ) -> Uuid {
         let user = db
             .create_user(crate::storage::models::CreateUserRow {
                 email: email.to_string(),
@@ -720,8 +750,8 @@ mod tests {
                 avatar_url: None,
                 roles: vec![],
                 password_hash: None,
-                email_verified: true,
-                auth_provider: None,
+                email_verified,
+                auth_provider: Some("local".to_string()),
                 auth_provider_id: None,
                 external_id: None,
             })
@@ -987,7 +1017,7 @@ mod tests {
         .expect("create invite");
         let token = created.invite_url.rsplit('/').next().unwrap().to_string();
 
-        let accepted = accept_invitation(&db, &token, invitee, "Invitee@example.com", 50)
+        let accepted = accept_invitation(&db, &token, invitee, 50)
             .await
             .expect("accept invite");
         assert_eq!(accepted.role, "admin");
@@ -1018,6 +1048,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn accept_unverified_local_email_rejected() {
+        let db = db();
+        let org_id = seed_org(&db).await;
+        let inviter = seed_user(&db, "admin@acme.test").await;
+        let invitee = seed_user_with_verification(&db, "invitee@example.com", false).await;
+        let token = make_token(&db, org_id, inviter, "invitee@example.com").await;
+
+        let err = accept_invitation(&db, &token, invitee, 50)
+            .await
+            .expect_err("unverified local account rejected");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+        assert_eq!(err.code, "invite_email_unverified");
+        assert!(!db.is_organization_member(org_id, invitee).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn accept_unverified_case_normalized_duplicate_email_rejected() {
+        let db = db();
+        let org_id = seed_org(&db).await;
+        let inviter = seed_user(&db, "admin@acme.test").await;
+        let invitee = seed_user_with_verification(&db, "Invitee@Example.com", false).await;
+        let token = make_token(&db, org_id, inviter, "invitee@example.com").await;
+
+        let err = accept_invitation(&db, &token, invitee, 50)
+            .await
+            .expect_err("case-normalized unverified account rejected");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+        assert_eq!(err.code, "invite_email_unverified");
+        assert!(!db.is_organization_member(org_id, invitee).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn accept_wrong_email_rejected() {
         let db = db();
         let org_id = seed_org(&db).await;
@@ -1025,7 +1087,7 @@ mod tests {
         let other = seed_user(&db, "other@example.com").await;
         let token = make_token(&db, org_id, inviter, "invitee@example.com").await;
 
-        let err = accept_invitation(&db, &token, other, "other@example.com", 50)
+        let err = accept_invitation(&db, &token, other, 50)
             .await
             .expect_err("wrong email rejected");
         assert_eq!(err.status, StatusCode::FORBIDDEN);
@@ -1060,7 +1122,7 @@ mod tests {
                 .unwrap()
         );
 
-        let err = accept_invitation(&db, &token, invitee, "invitee@example.com", 50)
+        let err = accept_invitation(&db, &token, invitee, 50)
             .await
             .expect_err("revoked rejected");
         assert_eq!(err.status, StatusCode::CONFLICT);
@@ -1075,10 +1137,10 @@ mod tests {
         let invitee = seed_user(&db, "invitee@example.com").await;
         let token = make_token(&db, org_id, inviter, "invitee@example.com").await;
 
-        accept_invitation(&db, &token, invitee, "invitee@example.com", 50)
+        accept_invitation(&db, &token, invitee, 50)
             .await
             .expect("first accept");
-        let err = accept_invitation(&db, &token, invitee, "invitee@example.com", 50)
+        let err = accept_invitation(&db, &token, invitee, 50)
             .await
             .expect_err("second accept rejected");
         assert_eq!(err.code, "invite_already_accepted");
@@ -1088,7 +1150,7 @@ mod tests {
     async fn accept_unknown_token_is_invalid() {
         let db = db();
         let invitee = seed_user(&db, "invitee@example.com").await;
-        let err = accept_invitation(&db, "evrinv_deadbeef", invitee, "invitee@example.com", 50)
+        let err = accept_invitation(&db, "evrinv_deadbeef", invitee, 50)
             .await
             .expect_err("unknown token");
         assert_eq!(err.status, StatusCode::NOT_FOUND);
@@ -1099,7 +1161,7 @@ mod tests {
     async fn accept_malformed_token_is_invalid() {
         let db = db();
         let invitee = seed_user(&db, "invitee@example.com").await;
-        let err = accept_invitation(&db, "not-a-token", invitee, "invitee@example.com", 50)
+        let err = accept_invitation(&db, "not-a-token", invitee, 50)
             .await
             .expect_err("malformed token");
         assert_eq!(err.code, "invite_invalid");
