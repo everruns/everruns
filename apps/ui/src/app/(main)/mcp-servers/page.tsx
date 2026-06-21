@@ -705,7 +705,7 @@ export default function McpServersPage() {
         </div>
         <div className="flex items-center gap-2">
           <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-          <Button onClick={() => setAddServerOpen(true)}>
+          <Button variant="accent" onClick={() => setAddServerOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Server
           </Button>
@@ -731,7 +731,7 @@ export default function McpServersPage() {
             <p className="mb-4 text-muted-foreground">
               Add an MCP server to extend your agents with external tools and resources.
             </p>
-            <Button onClick={() => setAddServerOpen(true)}>
+            <Button variant="accent" onClick={() => setAddServerOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />
               Add Server
             </Button>
