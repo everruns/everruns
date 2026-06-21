@@ -152,9 +152,9 @@ export function EntityCardFooter({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between", className)}>
-      {meta ? <div className="min-w-0 text-xs text-muted-foreground">{meta}</div> : <div />}
-      {actions}
+    <div className={cn("flex items-center gap-2", className)}>
+      {meta && <div className="min-w-0 text-xs text-muted-foreground">{meta}</div>}
+      {actions && <div className="ml-auto">{actions}</div>}
     </div>
   );
 }
