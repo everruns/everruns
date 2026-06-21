@@ -9,7 +9,10 @@
 //! and must run the trust gate before attaching.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
+use everruns_core::network_access::NetworkAccessList;
+use everruns_core::{EgressRequest, EgressRequestKind, EgressService};
 use serde::{Deserialize, Serialize};
 
 /// IANA media type for an MCP server catalog entry.
@@ -276,7 +279,11 @@ impl ArdRegistryClient {
         Self {
             base_url: base_url.into().trim_end_matches('/').to_string(),
             auth_token,
-            http: reqwest::Client::new(),
+            http: reqwest::Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .build()
+                .expect("build ARD registry HTTP client"),
         }
     }
 
@@ -313,6 +320,44 @@ impl ArdRegistryClient {
             .map_err(|e| format!("failed to parse ARD search response: {e}"))
     }
 
+    /// `POST /search` through the platform egress boundary.
+    pub async fn search_with_egress(
+        &self,
+        body: &SearchRequest,
+        egress: Arc<dyn EgressService>,
+        network_access: Option<NetworkAccessList>,
+        dns_pinning_required: bool,
+    ) -> Result<SearchResponse, String> {
+        let url = format!("{}/search", self.base_url);
+        let request_body = serde_json::to_vec(body)
+            .map_err(|e| format!("failed to encode ARD search request: {e}"))?;
+        let mut request = EgressRequest::new("POST", url, EgressRequestKind::Integration)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .body(request_body)
+            .network_access(network_access);
+        if dns_pinning_required {
+            request = request.require_dns_pinning();
+        }
+        if let Some(token) = &self.auth_token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+        let resp = egress
+            .send(request)
+            .await
+            .map_err(|e| format!("ARD registry search request failed: {e}"))?;
+        if !(200..300).contains(&resp.status) {
+            let detail = String::from_utf8_lossy(&resp.body);
+            return Err(format!(
+                "ARD registry search returned HTTP {}: {}",
+                resp.status,
+                truncate(&detail, 500)
+            ));
+        }
+        serde_json::from_slice::<SearchResponse>(&resp.body)
+            .map_err(|e| format!("failed to parse ARD search response: {e}"))
+    }
+
     /// Fetch an artifact document referenced by an entry `url`. The URL MUST be
     /// SSRF-validated by the caller before invoking this.
     pub async fn fetch_artifact(
@@ -322,7 +367,9 @@ impl ArdRegistryClient {
     ) -> Result<serde_json::Value, String> {
         // Pin the connection to the validated IPs to close the DNS-rebinding
         // TOCTOU window (mirrors the scoped-MCP path).
-        let mut builder = reqwest::Client::builder();
+        let mut builder = reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none());
         if let (Ok(parsed), false) = (url::Url::parse(url), resolved_addrs.is_empty())
             && let Some(host) = parsed.host_str()
         {
@@ -344,6 +391,41 @@ impl ArdRegistryClient {
         }
         resp.json::<serde_json::Value>()
             .await
+            .map_err(|e| format!("failed to parse artifact document: {e}"))
+    }
+
+    /// Fetch an artifact document through the platform egress boundary.
+    pub async fn fetch_artifact_with_egress(
+        &self,
+        url: &str,
+        resolved_addrs: &[std::net::SocketAddr],
+        egress: Arc<dyn EgressService>,
+        network_access: Option<NetworkAccessList>,
+    ) -> Result<serde_json::Value, String> {
+        let mut request = EgressRequest::new("GET", url, EgressRequestKind::Integration)
+            .header("Accept", "application/json")
+            .network_access(network_access);
+        if let Ok(parsed) = url::Url::parse(url)
+            && let Some(host) = parsed.host_str()
+        {
+            request = request.pinned_addrs(host, resolved_addrs.to_vec());
+        }
+        if let Some(token) = &self.auth_token {
+            request = request.header("Authorization", format!("Bearer {token}"));
+        }
+        let resp = egress
+            .send(request)
+            .await
+            .map_err(|e| format!("artifact fetch failed: {e}"))?;
+        if !(200..300).contains(&resp.status) {
+            let detail = String::from_utf8_lossy(&resp.body);
+            return Err(format!(
+                "artifact fetch returned HTTP {}: {}",
+                resp.status,
+                truncate(&detail, 500)
+            ));
+        }
+        serde_json::from_slice::<serde_json::Value>(&resp.body)
             .map_err(|e| format!("failed to parse artifact document: {e}"))
     }
 }
