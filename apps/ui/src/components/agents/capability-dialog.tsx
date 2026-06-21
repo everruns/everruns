@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -14,7 +14,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Plus, Search, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
+import { Plus, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -121,18 +121,14 @@ export function CapabilityDialog({
         </DialogHeader>
 
         {/* Search input */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            // eslint-disable-next-line jsx-a11y/no-autofocus -- search-input inside an opened dialog is a deliberate focus target
-            autoFocus
-            placeholder="Search capabilities..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-            aria-label="Search capabilities"
-          />
-        </div>
+        <SearchInput
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- search-input inside an opened dialog is a deliberate focus target
+          autoFocus
+          placeholder="Search capabilities..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          aria-label="Search capabilities"
+        />
 
         {/* Capability list */}
         <div className="flex-1 overflow-y-auto min-h-0 -mx-6 px-6">

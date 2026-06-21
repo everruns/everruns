@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -27,7 +27,7 @@ import {
   useUploadSkill,
 } from "@/hooks/use-skills";
 import { usePolicies } from "@/hooks/use-policies";
-import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box, Eye, Search } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box, Eye } from "lucide-react";
 import type { Skill, SkillUsage } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { ArchiveFilter } from "@/components/archive-filter";
@@ -284,16 +284,13 @@ export default function SkillsPageClient() {
       <div className="flex items-center justify-between mb-6 gap-2 flex-wrap">
         <h1 className="text-2xl font-bold">Skills</h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search skills..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 w-64"
-              aria-label="Search skills"
-            />
-          </div>
+          <SearchInput
+            containerClassName="w-64"
+            placeholder="Search skills..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search skills"
+          />
           <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
             <Upload className="h-4 w-4 mr-2" />
