@@ -11,7 +11,6 @@ import {
   Pencil,
   Plus,
   RefreshCw,
-  Search,
 } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ArchiveFilter } from "@/components/archive-filter";
@@ -22,7 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import {
   useArchiveKnowledgeIndex,
   useCreateKnowledgeIndex,
@@ -66,16 +65,13 @@ export default function KnowledgeIndexesPage() {
       <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <h1 className="flex items-center gap-3 text-2xl font-bold">Knowledge Indexes</h1>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative sm:w-64">
-            <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search knowledge indexes"
-              className="pl-8"
-              aria-label="Search knowledge indexes"
-            />
-          </div>
+          <SearchInput
+            containerClassName="sm:w-64"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search knowledge indexes"
+            aria-label="Search knowledge indexes"
+          />
           <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4" />

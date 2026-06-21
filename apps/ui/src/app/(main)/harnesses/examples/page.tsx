@@ -10,8 +10,8 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ArrowLeft, Search } from "lucide-react";
+import { SearchInput } from "@/components/ui/search-input";
+import { ArrowLeft } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { HarnessExampleCard } from "@/components/harnesses";
 
@@ -62,15 +62,12 @@ export default function AllHarnessExamplesPage() {
           </Link>
           <h1 className="text-2xl font-bold">Example Harnesses</h1>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search examples..."
-            value={exampleSearch}
-            onChange={(e) => setExampleSearch(e.target.value)}
-            className="pl-8 w-64"
-          />
-        </div>
+        <SearchInput
+          containerClassName="w-64"
+          placeholder="Search examples..."
+          value={exampleSearch}
+          onChange={(e) => setExampleSearch(e.target.value)}
+        />
       </div>
 
       <QueryStateWrapper

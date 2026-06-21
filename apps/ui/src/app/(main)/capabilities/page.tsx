@@ -10,10 +10,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Search as SearchIcon, Bot, Layers, X, Plus, Pencil } from "lucide-react";
+import { CircleOff, Bot, Layers, X, Plus, Pencil } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -331,14 +331,13 @@ export default function CapabilitiesPage() {
       )}
 
       {/* Search */}
-      <div className="relative max-w-xl">
-        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search by name, description, ID, or category..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9 pr-9"
-        />
+      <SearchInput
+        containerClassName="max-w-xl"
+        className="pr-9"
+        placeholder="Search by name, description, ID, or category..."
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      >
         {searchQuery && (
           <button
             type="button"
@@ -349,7 +348,7 @@ export default function CapabilitiesPage() {
             <X className="w-4 h-4" />
           </button>
         )}
-      </div>
+      </SearchInput>
 
       {/* Category filter */}
       {!isLoading && (
