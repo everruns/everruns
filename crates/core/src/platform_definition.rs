@@ -423,9 +423,7 @@ impl Default for PlatformDefinitionBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::connector::{
-        ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField,
-    };
+    use crate::connector::{ConnectorFormSchema, ConnectorType, ConnectorValidation, FormField};
     use crate::{CapabilityStatus, CurrentTimeCapability};
     use async_trait::async_trait;
 
