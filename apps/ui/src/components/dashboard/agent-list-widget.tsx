@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Boxes, Plus } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -54,54 +54,48 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
               const agentCapabilities = agent.capabilities ?? [];
 
               return (
-                <Link
+                <EntityCard
                   key={agent.id}
+                  variant="row"
                   href={`/agents/${agent.id}`}
-                  className="flex items-center justify-between border bg-card p-3 transition-colors hover:bg-muted/50"
+                  title={getDisplayName(agent)}
+                  copyValue={agent.id}
+                  icon={<Boxes className="icon-sharp h-5 w-5 text-muted-foreground" />}
+                  headerActions={
+                    <Badge variant="outline" className="border-border bg-muted text-foreground">
+                      Active
+                    </Badge>
+                  }
                 >
-                  <div className="flex items-center gap-3">
-                    <Boxes className="icon-sharp h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <div className="flex items-center gap-1">
-                        <p className="font-medium">{getDisplayName(agent)}</p>
-                        <CopyButton value={agent.id} />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {/* Capabilities icons */}
-                        {agentCapabilities.length > 0 && (
-                          <TooltipProvider>
-                            <div className="flex gap-0.5">
-                              {agentCapabilities.slice(0, 3).map((capConfig) => {
-                                const cap = getCapabilityInfo(capConfig.ref);
-                                if (!cap) return null;
-                                const IconComponent = getCapabilityIcon(cap.icon);
+                  {/* Capabilities icons */}
+                  {agentCapabilities.length > 0 && (
+                    <TooltipProvider>
+                      <div className="mt-1 flex gap-0.5">
+                        {agentCapabilities.slice(0, 3).map((capConfig) => {
+                          const cap = getCapabilityInfo(capConfig.ref);
+                          if (!cap) return null;
+                          const IconComponent = getCapabilityIcon(cap.icon);
 
-                                return (
-                                  <Tooltip key={capConfig.ref}>
-                                    <TooltipTrigger className="cursor-default border bg-muted p-0.5">
-                                      <IconComponent className="icon-sharp h-3 w-3 text-muted-foreground" />
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>{localizedCapabilityName(cap, locale)}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                );
-                              })}
-                              {agentCapabilities.length > 3 && (
-                                <span className="text-xs text-muted-foreground ml-1">
-                                  +{agentCapabilities.length - 3}
-                                </span>
-                              )}
-                            </div>
-                          </TooltipProvider>
+                          return (
+                            <Tooltip key={capConfig.ref}>
+                              <TooltipTrigger className="cursor-default border bg-muted p-0.5">
+                                <IconComponent className="icon-sharp h-3 w-3 text-muted-foreground" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>{localizedCapabilityName(cap, locale)}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          );
+                        })}
+                        {agentCapabilities.length > 3 && (
+                          <span className="text-xs text-muted-foreground ml-1">
+                            +{agentCapabilities.length - 3}
+                          </span>
                         )}
                       </div>
-                    </div>
-                  </div>
-                  <Badge variant="outline" className="border-border bg-muted text-foreground">
-                    Active
-                  </Badge>
-                </Link>
+                    </TooltipProvider>
+                  )}
+                </EntityCard>
               );
             })}
             <Link

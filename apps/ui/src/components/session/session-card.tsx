@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   Info,
   MessageSquare,
@@ -12,6 +11,7 @@ import {
   Download,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { EntityCard } from "@/components/ui/entity-card";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { cn, shortenId } from "@/lib/utils";
@@ -159,117 +159,108 @@ export function SessionCard({
   const isPinned = session.is_pinned === true;
 
   return (
-    <Link
+    <EntityCard
+      variant="row"
       href={sessionUrl}
-      className="flex items-start justify-between p-3 border hover:bg-muted transition-colors group"
-    >
-      <div className="flex items-start gap-3 flex-1 min-w-0">
-        <div className="flex-shrink-0 mt-0.5">
-          {statusInfo.isRunning ? (
-            <Loader2 className="w-4 h-4 text-primary animate-spin" />
-          ) : (
-            <MessageSquare className="w-4 h-4 text-muted-foreground" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-medium truncate">{displayTitle}</p>
-            <CopyButton value={session.id} />
-            <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
-              {statusInfo.label}
-            </Badge>
-            {agentName && (
-              <Badge variant="outline" className="flex-shrink-0 text-xs">
-                <span className={getEntityReferenceClassName(agentStatus)}>
-                  {getEntityReferenceLabel({
-                    kind: "Agent",
-                    name: agentName,
-                    status: agentStatus,
-                  })}
-                </span>
-              </Badge>
-            )}
-          </div>
-          {/* Input preview: first user message */}
-          {inputPreview && (
-            <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
-              {truncateToLines(inputPreview, 1)}
-            </p>
-          )}
-          {/* Output preview: last assistant response */}
-          {outputPreview && (
-            <p className="text-sm text-muted-foreground/70 mt-0.5 line-clamp-1 italic">
-              {truncateToLines(outputPreview, 1)}
-            </p>
-          )}
-          <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-            <span>{formatRelativeTime(session.created_at)}</span>
-            {session.usage &&
-              (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
-                <span className="flex items-center gap-1" title="Token usage">
-                  <Zap className="w-3 h-3" />
-                  {formatTotalTokens(session.usage)}
-                </span>
-              )}
-            {(session.active_schedule_count ?? 0) > 0 && (
-              <span className="flex items-center gap-1" title="Active schedules">
-                <CalendarClock className="w-3 h-3" />
-                {session.active_schedule_count}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-        {model && (
-          <Badge variant="outline" className="gap-1 text-xs">
-            <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
-            {model.display_name}
+      title={displayTitle}
+      copyValue={session.id}
+      icon={
+        statusInfo.isRunning ? (
+          <Loader2 className="w-4 h-4 text-primary animate-spin" />
+        ) : (
+          <MessageSquare className="w-4 h-4 text-muted-foreground" />
+        )
+      }
+      inlineBadges={
+        <>
+          <Badge variant={statusInfo.variant} className="flex-shrink-0 text-xs">
+            {statusInfo.label}
           </Badge>
+          {agentName && (
+            <Badge variant="outline" className="flex-shrink-0 text-xs">
+              <span className={getEntityReferenceClassName(agentStatus)}>
+                {getEntityReferenceLabel({
+                  kind: "Agent",
+                  name: agentName,
+                  status: agentStatus,
+                })}
+              </span>
+            </Badge>
+          )}
+        </>
+      }
+      headerActions={
+        <>
+          {model && (
+            <Badge variant="outline" className="gap-1 text-xs">
+              <ProviderIcon providerType={model.provider_type} size="sm" showBackground={false} />
+              {model.display_name}
+            </Badge>
+          )}
+          {onExport && (
+            <Tooltip>
+              <TooltipTrigger
+                className={cn(
+                  "p-0.5 rounded transition-colors flex-shrink-0",
+                  "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
+                )}
+                aria-label="Export session as JSONL"
+                onClick={() => onExport(session.id)}
+              >
+                <Download className="w-3.5 h-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>Export JSONL</TooltipContent>
+            </Tooltip>
+          )}
+          {onTogglePin && (
+            <Tooltip>
+              <TooltipTrigger
+                className={cn(
+                  "p-0.5 rounded transition-colors flex-shrink-0",
+                  isPinned
+                    ? "text-primary hover:text-primary/80 hover:bg-muted/80"
+                    : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
+                )}
+                aria-label={isPinned ? "Unpin session" : "Pin session"}
+                onClick={() => onTogglePin(session.id, !isPinned)}
+              >
+                {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+              </TooltipTrigger>
+              <TooltipContent>{isPinned ? "Unpin session" : "Pin session"}</TooltipContent>
+            </Tooltip>
+          )}
+          <SessionInfoIcon session={session} />
+        </>
+      }
+    >
+      {/* Input preview: first user message */}
+      {inputPreview && (
+        <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+          {truncateToLines(inputPreview, 1)}
+        </p>
+      )}
+      {/* Output preview: last assistant response */}
+      {outputPreview && (
+        <p className="text-sm text-muted-foreground/70 mt-0.5 line-clamp-1 italic">
+          {truncateToLines(outputPreview, 1)}
+        </p>
+      )}
+      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+        <span>{formatRelativeTime(session.created_at)}</span>
+        {session.usage && (session.usage.input_tokens > 0 || session.usage.output_tokens > 0) && (
+          <span className="flex items-center gap-1" title="Token usage">
+            <Zap className="w-3 h-3" />
+            {formatTotalTokens(session.usage)}
+          </span>
         )}
-        {onExport && (
-          <Tooltip>
-            <TooltipTrigger
-              className={cn(
-                "p-0.5 rounded transition-colors flex-shrink-0",
-                "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
-              )}
-              aria-label="Export session as JSONL"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onExport(session.id);
-              }}
-            >
-              <Download className="w-3.5 h-3.5" />
-            </TooltipTrigger>
-            <TooltipContent>Export JSONL</TooltipContent>
-          </Tooltip>
+        {(session.active_schedule_count ?? 0) > 0 && (
+          <span className="flex items-center gap-1" title="Active schedules">
+            <CalendarClock className="w-3 h-3" />
+            {session.active_schedule_count}
+          </span>
         )}
-        {onTogglePin && (
-          <Tooltip>
-            <TooltipTrigger
-              className={cn(
-                "p-0.5 rounded transition-colors flex-shrink-0",
-                isPinned
-                  ? "text-primary hover:text-primary/80 hover:bg-muted/80"
-                  : "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
-              )}
-              aria-label={isPinned ? "Unpin session" : "Pin session"}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                onTogglePin(session.id, !isPinned);
-              }}
-            >
-              {isPinned ? <PinOff className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
-            </TooltipTrigger>
-            <TooltipContent>{isPinned ? "Unpin session" : "Pin session"}</TooltipContent>
-          </Tooltip>
-        )}
-        <SessionInfoIcon session={session} />
       </div>
-    </Link>
+    </EntityCard>
   );
 }
 

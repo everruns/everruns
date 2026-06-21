@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -27,7 +27,7 @@ import {
   useUploadSkill,
 } from "@/hooks/use-skills";
 import { usePolicies } from "@/hooks/use-policies";
-import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box, Eye } from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box } from "lucide-react";
 import type { Skill, SkillUsage } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { ArchiveFilter } from "@/components/archive-filter";
@@ -49,67 +49,64 @@ function SkillCard({
   const isDeleted = skill.status === "deleted";
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
-            {skill.source_type === "archive" ? (
-              <Archive className="h-5 w-5 text-primary" />
-            ) : (
-              <FileText className="h-5 w-5 text-primary" />
-            )}
-          </div>
-          <div>
-            <CardTitle className={`text-lg ${getEntityNameClassName(skill.status)}`}>
-              {skill.name}
-            </CardTitle>
-            <CardDescription className="text-sm">{skill.description}</CardDescription>
-          </div>
+    <EntityCard
+      icon={
+        <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
+          {skill.source_type === "archive" ? (
+            <Archive className="h-5 w-5 text-primary" />
+          ) : (
+            <FileText className="h-5 w-5 text-primary" />
+          )}
         </div>
+      }
+      title={skill.name}
+      href={`/skills/${skill.id}`}
+      titleClassName={getEntityNameClassName(skill.status)}
+      subtitle={<span className="text-sm text-muted-foreground">{skill.description}</span>}
+      headerActions={
         <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">
-              {skill.source_type}
-            </Badge>
-            <span className="text-muted-foreground">v{skill.version}</span>
-          </div>
-          {skill.license && <div className="text-muted-foreground">License: {skill.license}</div>}
-          {skill.allowed_tools && (
-            <div className="text-muted-foreground">Tools: {skill.allowed_tools}</div>
-          )}
-          <SkillUsageRow usage={usage} />
+      }
+      footer={
+        <EntityCardFooter
+          className="mt-4"
+          actions={
+            <div className="flex items-center gap-2">
+              {!isArchived && !isDeleted && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => updateSkill.mutate({ status: "archived" })}
+                  disabled={updateSkill.isPending}
+                >
+                  <Archive className="h-4 w-4 mr-1" />
+                  {updateSkill.isPending ? "Archiving..." : "Archive"}
+                </Button>
+              )}
+              {isArchived && canDestroy && (
+                <Button variant="destructive" size="sm" onClick={() => onDelete(skill)}>
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete
+                </Button>
+              )}
+            </div>
+          }
+        />
+      }
+    >
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-xs">
+            {skill.source_type}
+          </Badge>
+          <span className="text-muted-foreground">v{skill.version}</span>
         </div>
-        <div className="flex items-center justify-end gap-2 mt-4">
-          <Link
-            href={`/skills/${skill.id}`}
-            className={buttonVariants({ variant: "outline", size: "sm" })}
-          >
-            <Eye className="h-4 w-4 mr-1" />
-            View
-          </Link>
-          {!isArchived && !isDeleted && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => updateSkill.mutate({ status: "archived" })}
-              disabled={updateSkill.isPending}
-            >
-              <Archive className="h-4 w-4 mr-1" />
-              {updateSkill.isPending ? "Archiving..." : "Archive"}
-            </Button>
-          )}
-          {isArchived && canDestroy && (
-            <Button variant="destructive" size="sm" onClick={() => onDelete(skill)}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              Delete
-            </Button>
-          )}
-        </div>
-      </CardContent>
-    </Card>
+        {skill.license && <div className="text-muted-foreground">License: {skill.license}</div>}
+        {skill.allowed_tools && (
+          <div className="text-muted-foreground">Tools: {skill.allowed_tools}</div>
+        )}
+        <SkillUsageRow usage={usage} />
+      </div>
+    </EntityCard>
   );
 }
 
