@@ -200,17 +200,17 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         return true;
     }
 
-    let billing_words = e.contains("billing")
-        || e.contains("exceeded")
-        || e.contains("credit")
-        || e.contains("out of quota");
-    if e.contains("quota") && billing_words {
+    let quota_signal = e.contains("quota") || e.contains("out of quota");
+    let billing_signal = e.contains("billing") || e.contains("credit");
+    let exceeded_signal = e.contains("exceeded");
+    if quota_signal && (billing_signal || exceeded_signal) {
         return true;
     }
 
-    // HTTP 429 only counts when paired with a quota/billing signal, so plain
-    // rate limiting (which should be retried/flagged, not skipped) still fails.
-    if e.contains("429") && (e.contains("quota") || billing_words) {
+    // HTTP 429 only counts when paired with an explicit quota/billing signal,
+    // so plain rate limiting (which should be retried/flagged, not skipped)
+    // still fails even if the provider says a rate limit was "exceeded".
+    if e.contains("429") && (quota_signal || billing_signal) {
         return true;
     }
 
@@ -301,6 +301,12 @@ mod quota_detector_tests {
         assert!(!is_quota_exhausted(""));
         // Plain rate limiting (no billing/quota signal) should NOT be skipped.
         assert!(!is_quota_exhausted("HTTP 429 Too Many Requests: slow down"));
+        assert!(!is_quota_exhausted(
+            "HTTP 429 Too Many Requests: rate limit exceeded"
+        ));
+        assert!(!is_quota_exhausted(
+            "HTTP 429 Too Many Requests: requests per minute exceeded"
+        ));
         assert!(!is_quota_exhausted("rate_limit_exceeded"));
         // Auth/permission failures must never be swallowed as quota.
         assert!(!is_quota_exhausted("401 Unauthorized: invalid api key"));
