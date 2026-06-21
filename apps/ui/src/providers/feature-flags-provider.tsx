@@ -21,6 +21,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   agent_versions: false,
   voice: false,
   agent_delegation: false,
+  observers: false,
 };
 
 export interface FeatureFlagsContextValue {
