@@ -25,9 +25,11 @@ use everruns_core::{
     Caller, DriverId, DriverOAuthFlow, DriverRegistry, Policy, ProviderStatus,
     ResourceConfigResponse, evaluate_policies_with,
 };
+use hmac::{Hmac, Mac};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+type HmacSha256 = Hmac<Sha256>;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -419,9 +421,8 @@ pub async fn oauth_authorize(
     };
     let cookie = Cookie::build((
         oauth_state_cookie_name(&id),
-        URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&pending).map_err(|e| internal("OAuth provider connection", &e))?,
-        ),
+        encode_pending_oauth(&pending, &state.auth.config.jwt.secret)
+            .map_err(|e| internal("OAuth provider connection", &e))?,
     ))
     .path("/")
     .http_only(true)
@@ -471,8 +472,23 @@ pub async fn oauth_callback(
     Query(query): Query<ProviderOAuthCallbackQuery>,
 ) -> Result<(CookieJar, Redirect), (StatusCode, String)> {
     let caller = require_provider_manage(&state, &org)?;
-    let pending = validate_pending_oauth(&jar, &id, org.org_id, query.state.as_deref())?;
-    let clear_cookie = jar.remove(Cookie::from(oauth_state_cookie_name(&id)));
+    let pending = validate_pending_oauth(
+        &jar,
+        &id,
+        org.org_id,
+        query.state.as_deref(),
+        &state.auth.config.jwt.secret,
+    )?;
+    // A `__Host-`-prefixed cookie is only deleted if the removal Set-Cookie also
+    // carries Secure and Path=/, so build the removal cookie with those attributes
+    // rather than relying on a bare name (which browsers would reject and ignore).
+    let clear_cookie = jar.remove(
+        Cookie::build(oauth_state_cookie_name(&id))
+            .path("/")
+            .secure(true)
+            .http_only(true)
+            .build(),
+    );
 
     let (provider, oauth) = resolve_oauth_provider(&state, &caller, &id).await?;
     // Storing the obtained key requires encryption; fail fast with the canonical
@@ -627,16 +643,13 @@ fn validate_pending_oauth(
     provider_id: &str,
     org_id: i64,
     query_state: Option<&str>,
+    signing_secret: &str,
 ) -> Result<PendingProviderOAuth, (StatusCode, String)> {
     let cookie = jar.get(&oauth_state_cookie_name(provider_id)).ok_or((
         StatusCode::BAD_REQUEST,
         "Invalid or expired OAuth state".to_string(),
     ))?;
-    let decoded = URL_SAFE_NO_PAD
-        .decode(cookie.value())
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
-    let pending: PendingProviderOAuth = serde_json::from_slice(&decoded)
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let pending = decode_pending_oauth(cookie.value(), signing_secret)?;
     let callback_state = query_state.ok_or((
         StatusCode::BAD_REQUEST,
         "Missing state parameter".to_string(),
@@ -650,9 +663,47 @@ fn validate_pending_oauth(
     Ok(pending)
 }
 
+fn encode_pending_oauth(
+    pending: &PendingProviderOAuth,
+    signing_secret: &str,
+) -> Result<String, serde_json::Error> {
+    let payload = serde_json::to_vec(pending)?;
+    let mut mac = HmacSha256::new_from_slice(signing_secret.as_bytes())
+        .expect("HMAC accepts signing keys of any length");
+    mac.update(&payload);
+    let signature = mac.finalize().into_bytes();
+    Ok(format!(
+        "{}.{}",
+        URL_SAFE_NO_PAD.encode(payload),
+        URL_SAFE_NO_PAD.encode(signature)
+    ))
+}
+
+fn decode_pending_oauth(
+    value: &str,
+    signing_secret: &str,
+) -> Result<PendingProviderOAuth, (StatusCode, String)> {
+    let (payload, signature) = value
+        .split_once('.')
+        .ok_or((StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let payload = URL_SAFE_NO_PAD
+        .decode(payload)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let signature = URL_SAFE_NO_PAD
+        .decode(signature)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    let mut mac = HmacSha256::new_from_slice(signing_secret.as_bytes())
+        .expect("HMAC accepts signing keys of any length");
+    mac.update(&payload);
+    mac.verify_slice(&signature)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))?;
+    serde_json::from_slice(&payload)
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid OAuth state".to_string()))
+}
+
 fn oauth_state_cookie_name(provider_id: &str) -> String {
     format!(
-        "provider_oauth_state_{}",
+        "__Host-provider_oauth_state_{}",
         provider_id.replace([':', '/'], "_")
     )
 }
@@ -700,8 +751,10 @@ pub fn routes(state: AppState) -> Router {
 mod oauth_tests {
     use super::*;
 
+    const TEST_SIGNING_SECRET: &str = "test-oauth-cookie-signing-secret";
+
     fn jar_with_pending(pending: &PendingProviderOAuth) -> CookieJar {
-        let value = URL_SAFE_NO_PAD.encode(serde_json::to_vec(pending).unwrap());
+        let value = encode_pending_oauth(pending, TEST_SIGNING_SECRET).unwrap();
         CookieJar::new().add(Cookie::new(
             oauth_state_cookie_name(&pending.provider_id),
             value,
@@ -731,7 +784,7 @@ mod oauth_tests {
     fn cookie_name_sanitizes_separators() {
         assert_eq!(
             oauth_state_cookie_name("mcp:oauth/id"),
-            "provider_oauth_state_mcp_oauth_id"
+            "__Host-provider_oauth_state_mcp_oauth_id"
         );
     }
 
@@ -739,14 +792,23 @@ mod oauth_tests {
     fn validate_pending_accepts_matching_state() {
         let pending = sample_pending();
         let jar = jar_with_pending(&pending);
-        let result = validate_pending_oauth(&jar, "provider_abc", 42, Some("csrf-token")).unwrap();
+        let result = validate_pending_oauth(
+            &jar,
+            "provider_abc",
+            42,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap();
         assert_eq!(result.code_verifier, "verifier");
     }
 
     #[test]
     fn validate_pending_rejects_state_mismatch() {
         let jar = jar_with_pending(&sample_pending());
-        let err = validate_pending_oauth(&jar, "provider_abc", 42, Some("wrong")).unwrap_err();
+        let err =
+            validate_pending_oauth(&jar, "provider_abc", 42, Some("wrong"), TEST_SIGNING_SECRET)
+                .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
@@ -754,7 +816,14 @@ mod oauth_tests {
     fn validate_pending_rejects_org_mismatch() {
         // A cookie minted for another org must not authorize this org's provider.
         let jar = jar_with_pending(&sample_pending());
-        let err = validate_pending_oauth(&jar, "provider_abc", 99, Some("csrf-token")).unwrap_err();
+        let err = validate_pending_oauth(
+            &jar,
+            "provider_abc",
+            99,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
@@ -762,22 +831,71 @@ mod oauth_tests {
     fn validate_pending_rejects_provider_mismatch() {
         let jar = jar_with_pending(&sample_pending());
         // Cookie name is per-provider, so a different provider id finds no cookie.
-        let err =
-            validate_pending_oauth(&jar, "provider_other", 42, Some("csrf-token")).unwrap_err();
+        let err = validate_pending_oauth(
+            &jar,
+            "provider_other",
+            42,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn validate_pending_requires_query_state() {
         let jar = jar_with_pending(&sample_pending());
-        let err = validate_pending_oauth(&jar, "provider_abc", 42, None).unwrap_err();
+        let err = validate_pending_oauth(&jar, "provider_abc", 42, None, TEST_SIGNING_SECRET)
+            .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn validate_pending_rejects_missing_cookie() {
-        let err = validate_pending_oauth(&CookieJar::new(), "provider_abc", 42, Some("csrf-token"))
-            .unwrap_err();
+        let err = validate_pending_oauth(
+            &CookieJar::new(),
+            "provider_abc",
+            42,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_rejects_unsigned_cookie() {
+        let pending = sample_pending();
+        let forged_value = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&pending).unwrap());
+        let jar = CookieJar::new().add(Cookie::new(
+            oauth_state_cookie_name("provider_abc"),
+            forged_value,
+        ));
+        let err = validate_pending_oauth(
+            &jar,
+            "provider_abc",
+            42,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn validate_pending_rejects_tampered_signature() {
+        let pending = sample_pending();
+        let mut value = encode_pending_oauth(&pending, TEST_SIGNING_SECRET).unwrap();
+        value.push('A');
+        let jar = CookieJar::new().add(Cookie::new(oauth_state_cookie_name("provider_abc"), value));
+        let err = validate_pending_oauth(
+            &jar,
+            "provider_abc",
+            42,
+            Some("csrf-token"),
+            TEST_SIGNING_SECRET,
+        )
+        .unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
