@@ -169,6 +169,10 @@ mod tests {
             Ok(0)
         }
 
+        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+            Ok(0)
+        }
+
         async fn list_schedules(
             &self,
             _session_id: SessionId,

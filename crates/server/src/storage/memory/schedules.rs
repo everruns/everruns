@@ -122,6 +122,15 @@ impl InMemoryDatabase {
         Ok(count as u32)
     }
 
+    pub async fn count_active_org_session_schedules(&self, org_id: i64) -> Result<u32> {
+        let schedules = self.session_schedules.read();
+        let count = schedules
+            .values()
+            .filter(|r| r.org_id == org_id && r.enabled)
+            .count();
+        Ok(count as u32)
+    }
+
     pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
         let now = Self::now();
         let schedules = self.session_schedules.read();

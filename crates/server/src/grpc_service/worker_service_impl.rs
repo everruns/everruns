@@ -3144,6 +3144,21 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(CountActiveSessionSchedulesResponse { count }))
     }
 
+    async fn count_active_org_schedules(
+        &self,
+        request: Request<CountActiveOrgSchedulesRequest>,
+    ) -> Result<Response<CountActiveOrgSchedulesResponse>, Status> {
+        let req = request.into_inner();
+        let store = self.schedule_store(req.org_id)?;
+
+        let count = store.count_active_org_schedules().await.map_err(|e| {
+            tracing::error!("Failed to count active org schedules: {}", e);
+            Status::internal(format!("Failed to count active org schedules: {}", e))
+        })?;
+
+        Ok(Response::new(CountActiveOrgSchedulesResponse { count }))
+    }
+
     // ========================================================================
     // Session SQL database operations
     // ========================================================================

@@ -56,6 +56,8 @@ use everruns_internal_protocol::proto::{
     CompleteDurableTaskResponse,
     CountActiveDurableWorkflowsRequest,
     CountActiveDurableWorkflowsResponse,
+    CountActiveOrgSchedulesRequest,
+    CountActiveOrgSchedulesResponse,
     CountActiveSessionSchedulesRequest,
     CountActiveSessionSchedulesResponse,
     CreateDurableWorkflowRequest,

@@ -915,6 +915,12 @@ pub trait SessionScheduleStore: Send + Sync {
 
     /// Count active (enabled) schedules for a session.
     async fn count_active_schedules(&self, session_id: SessionId) -> Result<u32>;
+
+    /// Count active (enabled) schedules across the whole org this store is
+    /// scoped to. Used to enforce a per-org cap independent of session count:
+    /// `count_active_schedules` only bounds one session, so unlimited sessions
+    /// would otherwise imply unlimited active schedules per org.
+    async fn count_active_org_schedules(&self) -> Result<u32>;
 }
 
 // ============================================================================

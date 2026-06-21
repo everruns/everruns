@@ -21,6 +21,13 @@ pub struct ResourceLimitsConfig {
     pub max_harnesses_per_org: i64,
     pub max_agents_per_org: i64,
     pub max_sessions_per_org: i64,
+    /// Max active (enabled) session schedules per org. Enforced worker-side in
+    /// the schedule tools (`crates/core/src/capabilities/session_schedule.rs`,
+    /// `crates/core/src/tools.rs`) from `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG`,
+    /// because session schedules are created on the worker rather than via a
+    /// server command. Carried here so the limit lives with its `RESOURCE_LIMIT_*`
+    /// siblings and SaaS sets it per plan via `PlanResourceLimits::apply_to_env`.
+    pub max_session_schedules_per_org: i64,
 }
 
 impl Default for ResourceLimitsConfig {
@@ -32,6 +39,8 @@ impl Default for ResourceLimitsConfig {
             max_harnesses_per_org: 50,
             max_agents_per_org: 500,
             max_sessions_per_org: 10000,
+            max_session_schedules_per_org:
+                everruns_core::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG,
         }
     }
 }
@@ -48,6 +57,10 @@ impl ResourceLimitsConfig {
             max_harnesses_per_org: env_or("RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG", 50),
             max_agents_per_org: env_or("RESOURCE_LIMIT_MAX_AGENTS_PER_ORG", 500),
             max_sessions_per_org: env_or("RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG", 10000),
+            max_session_schedules_per_org: env_or(
+                "RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG",
+                everruns_core::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG,
+            ),
         }
     }
 }

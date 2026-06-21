@@ -1146,6 +1146,26 @@ impl Tool for SpawnBackgroundTool {
                 _ => {}
             }
 
+            // Per-org cap: bounds total active schedules across all of an org's
+            // sessions, not just the current one.
+            let max_per_org = crate::session_schedule::max_active_schedules_per_org();
+            match schedule_store.count_active_org_schedules().await {
+                Ok(count) if i64::from(count) >= max_per_org => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+                    ));
+                }
+                Err(err) => return ToolExecutionResult::internal_error(err),
+                _ => {}
+            }
+
+            // Minimum cron interval for recurring monitors.
+            if let Some(cron) = schedule_request.cron_expression.as_deref()
+                && let Err(msg) = crate::session_schedule::validate_cron_min_interval(cron)
+            {
+                return ToolExecutionResult::tool_error(msg);
+            }
+
             let description = build_background_schedule_description(
                 tool_name,
                 &tool_args,
@@ -2701,6 +2721,17 @@ mod tests {
                 .unwrap()
                 .iter()
                 .filter(|schedule| schedule.session_id == session_id && schedule.enabled)
+                .count() as u32)
+        }
+
+        async fn count_active_org_schedules(&self) -> crate::Result<u32> {
+            // Test store is single-org; count all enabled schedules.
+            Ok(self
+                .schedules
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|schedule| schedule.enabled)
                 .count() as u32)
         }
     }

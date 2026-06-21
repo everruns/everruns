@@ -2985,6 +2985,10 @@ impl StorageBackend {
         dispatch!(self, count_active_session_schedules, session_id)
     }
 
+    pub async fn count_active_org_session_schedules(&self, org_id: i64) -> Result<u32> {
+        dispatch!(self, count_active_org_session_schedules, org_id)
+    }
+
     pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {
         dispatch!(self, claim_due_session_schedules, limit)
     }

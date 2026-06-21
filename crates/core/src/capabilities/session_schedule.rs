@@ -160,7 +160,7 @@ impl Tool for CreateScheduleTool {
             return ToolExecutionResult::tool_error("Schedule store not available in this context");
         };
 
-        // Check max active limit
+        // Check max active limit (per session)
         match store.count_active_schedules(context.session_id).await {
             Ok(count) if count >= MAX_ACTIVE_SCHEDULES_PER_SESSION => {
                 return ToolExecutionResult::tool_error(format!(
@@ -169,6 +169,27 @@ impl Tool for CreateScheduleTool {
             }
             Err(e) => return ToolExecutionResult::internal_error(e),
             _ => {}
+        }
+
+        // Per-org cap: independent of the per-session count, so an open-signup
+        // org cannot fan out unlimited schedules across many sessions.
+        let max_per_org = crate::session_schedule::max_active_schedules_per_org();
+        match store.count_active_org_schedules().await {
+            Ok(count) if i64::from(count) >= max_per_org => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+                ));
+            }
+            Err(e) => return ToolExecutionResult::internal_error(e),
+            _ => {}
+        }
+
+        // Minimum cron interval for recurring schedules: each fire dispatches a
+        // real worker turn, so reject crons that fire too frequently.
+        if let Some(cron) = cron_expression.as_deref()
+            && let Err(msg) = crate::session_schedule::validate_cron_min_interval(cron)
+        {
+            return ToolExecutionResult::tool_error(msg);
         }
 
         match store
@@ -444,6 +465,11 @@ mod tests {
                 .filter(|s| s.session_id == session_id && s.enabled)
                 .count() as u32)
         }
+
+        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+            let schedules = self.schedules.lock().unwrap();
+            Ok(schedules.iter().filter(|s| s.enabled).count() as u32)
+        }
     }
 
     #[tokio::test]
@@ -551,6 +577,77 @@ mod tests {
             )
             .await;
         assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+    }
+
+    #[tokio::test]
+    async fn create_schedule_rejects_frequent_cron() {
+        // Uses the default minimum interval (300s); only reads the env var.
+        unsafe { std::env::remove_var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS") };
+        let store = MockScheduleStore::new();
+        let session_id = SessionId::new();
+        let mut context = ToolContext::new(session_id);
+        context.schedule_store = Some(Arc::new(store));
+
+        let tool = CreateScheduleTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "description": "Too frequent",
+                    "cron_expression": "* * * * *"
+                }),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("no more than once"), "unexpected msg: {msg}");
+            }
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn create_schedule_enforces_per_org_cap() {
+        // Uses the DEFAULT per-org cap so this test never mutates global env —
+        // setting the var would race with other parallel CreateScheduleTool tests
+        // in this binary that read the same limit. Fill the cap across many
+        // sessions (5 each, under the per-session cap) so the per-org cap, not the
+        // per-session cap, is what rejects the final create.
+        unsafe { std::env::remove_var("RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG") };
+        let cap = crate::session_schedule::DEFAULT_MAX_SCHEDULES_PER_ORG as usize;
+
+        let store = MockScheduleStore::new();
+        let tool = CreateScheduleTool;
+        let one_shot = json!({"description": "x", "scheduled_at": "2026-12-01T00:00:00Z"});
+
+        let mut created = 0usize;
+        while created < cap {
+            let mut ctx = ToolContext::new(SessionId::new());
+            ctx.schedule_store = Some(Arc::new(store.clone()));
+            for _ in 0..MAX_ACTIVE_SCHEDULES_PER_SESSION {
+                if created >= cap {
+                    break;
+                }
+                let r = tool.execute_with_context(one_shot.clone(), &ctx).await;
+                assert!(
+                    matches!(r, ToolExecutionResult::Success(_)),
+                    "create #{created} should succeed, got {r:?}"
+                );
+                created += 1;
+            }
+        }
+
+        // Org is at the cap; a create in a fresh session is rejected org-wide even
+        // though that session is empty (well under the per-session cap).
+        let mut ctx = ToolContext::new(SessionId::new());
+        ctx.schedule_store = Some(Arc::new(store.clone()));
+        match tool.execute_with_context(one_shot, &ctx).await {
+            ToolExecutionResult::ToolError(msg) => {
+                assert!(msg.contains("per org"), "unexpected msg: {msg}");
+            }
+            other => panic!("expected tool error, got: {other:?}"),
+        }
     }
 
     #[tokio::test]

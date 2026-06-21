@@ -191,6 +191,7 @@ service WorkerService {
     rpc CancelSessionSchedule(CancelSessionScheduleRequest) returns (CancelSessionScheduleResponse);
     rpc ListSessionSchedules(ListSessionSchedulesRequest) returns (ListSessionSchedulesResponse);
     rpc CountActiveSessionSchedules(CountActiveSessionSchedulesRequest) returns (CountActiveSessionSchedulesResponse);
+    rpc CountActiveOrgSchedules(CountActiveOrgSchedulesRequest) returns (CountActiveOrgSchedulesResponse);
 
     // === Session storage operations ===
     // Key/value and secret storage for session-scoped data
@@ -1441,6 +1442,14 @@ message CountActiveSessionSchedulesRequest {
 }
 
 message CountActiveSessionSchedulesResponse {
+    uint32 count = 1;
+}
+
+message CountActiveOrgSchedulesRequest {
+    int64 org_id = 1;
+}
+
+message CountActiveOrgSchedulesResponse {
     uint32 count = 1;
 }
 

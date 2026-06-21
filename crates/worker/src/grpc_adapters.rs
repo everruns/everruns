@@ -2623,6 +2623,18 @@ impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
             .map_err(grpc_status_to_error)?;
         Ok(response.into_inner().count)
     }
+
+    async fn count_active_org_schedules(&self) -> Result<u32> {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CountActiveOrgSchedulesRequest {
+            org_id: self.org_id,
+        };
+        let response = client
+            .count_active_org_schedules(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        Ok(response.into_inner().count)
+    }
 }
 
 // ============================================================================

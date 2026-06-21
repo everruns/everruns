@@ -246,6 +246,12 @@ Scheduled monitors:
 - Instead it creates a session schedule using the existing session-scheduling infrastructure.
 - When that schedule fires, the session receives a synthetic user message instructing the agent to start the requested background run with the original `tool`, `args`, `title`, and `signal_on_completion` values.
 
+Session schedule limits (apply to both `spawn_background` with a `schedule` arg and the `create_schedule` tool, since each schedule fire dispatches a real worker turn):
+- Per session: at most `MAX_ACTIVE_SCHEDULES_PER_SESSION` (5) active schedules.
+- Per org: at most `RESOURCE_LIMIT_MAX_SESSION_SCHEDULES_PER_ORG` (default 100) active schedules across all of the org's sessions. Uses the `RESOURCE_LIMIT_*` env family so the SaaS wrapper sets it per plan; carried on `ResourceLimitsConfig.max_session_schedules_per_org` for discoverability. Enforced worker-side because session schedules are created on the worker, not via a server command.
+- Minimum cron interval: recurring crons that fire more often than `SESSION_SCHEDULE_MIN_INTERVAL_SECONDS` (default 300s / 5 min) are rejected — the session-schedule sibling of the app channel's `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`. One-shot (`scheduled_at`) schedules are unaffected.
+- All three are rejected at create time with a clear tool error.
+
 V1 limitation:
 - Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.
 - This is intentional for the first iteration; durable resumption can be layered later without changing the tool contract.
