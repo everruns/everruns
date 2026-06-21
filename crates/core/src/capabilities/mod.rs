@@ -123,6 +123,7 @@ mod openrouter_server_tools;
 mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
+mod parallel_tool_calls;
 mod platform_management;
 mod prompt_caching;
 mod prompt_canary_guardrail;
@@ -266,6 +267,10 @@ pub use openrouter_workspace::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
+pub use parallel_tool_calls::{
+    PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
+    parallel_tool_calls_from_config,
+};
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
     PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
@@ -1253,6 +1258,9 @@ impl CapabilityRegistry {
         registry.register(AutoToolSearchCapability::new());
         registry.register(PromptCachingCapability::new());
 
+        // Request-level parallel tool calls preference (none/prefer/avoid).
+        registry.register(ParallelToolCallsCapability);
+
         // Skills (filesystem-based discovery + activation, all environments)
         registry.register(SkillsCapability);
 
@@ -1568,6 +1576,10 @@ pub struct CollectedCapabilities {
     /// OpenRouter routing controls (set when the `openrouter_server_tools`
     /// capability is present). Carries provider-executed server tools.
     pub openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig>,
+    /// Request-level parallel tool calls preference (set when the
+    /// `parallel_tool_calls` capability is present with mode `prefer`/`avoid`).
+    /// `None` when absent or mode `none`.
+    pub parallel_tool_calls: Option<bool>,
     /// Hooks that transform the final runtime tool definition list.
     pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
     /// Hooks that inspect or transform model-produced tool calls.
@@ -2212,6 +2224,7 @@ pub async fn collect_capabilities_with_configs(
     let mut tool_search: Option<crate::driver_registry::ToolSearchConfig> = None;
     let mut prompt_cache: Option<crate::driver_registry::PromptCacheConfig> = None;
     let mut openrouter_routing: Option<crate::driver_registry::OpenRouterRoutingConfig> = None;
+    let mut parallel_tool_calls: Option<bool> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     // Per-capability narration adapters, appended after explicit tool-call
@@ -2367,6 +2380,11 @@ pub async fn collect_capabilities_with_configs(
                 });
             }
 
+            if cap_id == PARALLEL_TOOL_CALLS_CAPABILITY_ID {
+                parallel_tool_calls =
+                    parallel_tool_calls::parallel_tool_calls_from_config(&cap_config.config);
+            }
+
             if cap_id == OPENROUTER_SERVER_TOOLS_CAPABILITY_ID {
                 let server_tools =
                     openrouter_server_tools::server_tools_from_config(&cap_config.config);
@@ -2456,6 +2474,7 @@ pub async fn collect_capabilities_with_configs(
         tool_search,
         prompt_cache,
         openrouter_routing,
+        parallel_tool_calls,
         tool_definition_hooks,
         tool_call_hooks,
         mcp_servers,
@@ -2549,7 +2568,11 @@ pub async fn apply_capabilities(
         prompt_cache: collected.prompt_cache,
         openrouter_routing: collected.openrouter_routing,
         network_access: base_runtime_agent.network_access,
-        parallel_tool_calls: base_runtime_agent.parallel_tool_calls,
+        // Explicit request-level preference (escape hatch) wins; otherwise the
+        // `parallel_tool_calls` capability supplies the preference.
+        parallel_tool_calls: base_runtime_agent
+            .parallel_tool_calls
+            .or(collected.parallel_tool_calls),
     };
 
     AppliedCapabilities {
@@ -5061,6 +5084,75 @@ mod tests {
             prompt_cache.gemini_cached_content.as_deref(),
             Some("cachedContents/demo-cache")
         );
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_parallel_tool_calls_modes() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Default (no explicit mode) => prefer => Some(true).
+        let collected = collect_capabilities_with_configs(
+            &[AgentCapabilityConfig::new("parallel_tool_calls")],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(collected.parallel_tool_calls, Some(true));
+
+        // avoid => Some(false).
+        let collected = collect_capabilities_with_configs(
+            &[AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("parallel_tool_calls"),
+                config: serde_json::json!({"mode": "avoid"}),
+            }],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(collected.parallel_tool_calls, Some(false));
+
+        // none => None (provider default).
+        let collected = collect_capabilities_with_configs(
+            &[AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("parallel_tool_calls"),
+                config: serde_json::json!({"mode": "none"}),
+            }],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(collected.parallel_tool_calls, None);
+
+        // Capability absent => None.
+        let collected = collect_capabilities_with_configs(&[], &registry, &test_ctx()).await;
+        assert_eq!(collected.parallel_tool_calls, None);
+    }
+
+    #[tokio::test]
+    async fn test_apply_capabilities_parallel_tool_calls_precedence() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        // Capability supplies the preference when no explicit field is set.
+        let applied = apply_capabilities(
+            RuntimeAgent::new("p", "gpt-5.2"),
+            &["parallel_tool_calls".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(applied.runtime_agent.parallel_tool_calls, Some(true));
+
+        // Explicit field (escape hatch) wins over the capability.
+        let mut base = RuntimeAgent::new("p", "gpt-5.2");
+        base.parallel_tool_calls = Some(false);
+        let applied = apply_capabilities(
+            base,
+            &["parallel_tool_calls".to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+        assert_eq!(applied.runtime_agent.parallel_tool_calls, Some(false));
     }
 
     // ========================================================================

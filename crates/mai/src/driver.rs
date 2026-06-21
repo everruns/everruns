@@ -130,6 +130,15 @@ impl ChatDriver for MaiChatDriver {
         self.ready()?.chat_completion_stream(messages, config).await
     }
 
+    fn supports_parallel_tool_calls(&self, model: &str) -> bool {
+        // MAI is OpenAI-compatible Chat Completions; the inner protocol driver
+        // maps the preference onto the wire when the provider is configured.
+        match self.ready() {
+            Ok(inner) => inner.supports_parallel_tool_calls(model),
+            Err(_) => false,
+        }
+    }
+
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
         let DriverState::Ready {
             inner,

@@ -29,6 +29,10 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
         BuiltInCapabilityDefinition::with_config(
+            "parallel_tool_calls",
+            serde_json::json!({"mode": "prefer"}),
+        ),
+        BuiltInCapabilityDefinition::with_config(
             "compaction",
             serde_json::json!({
                 "strategy": "auto",

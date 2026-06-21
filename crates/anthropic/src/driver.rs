@@ -562,7 +562,10 @@ impl ChatDriver for AnthropicChatDriver {
         // `tool_choice.disable_parallel_tool_use`. `tool_choice` is only valid
         // when tools are present, so skip it for tool-less requests.
         let tool_choice = if tools.is_some() {
-            AnthropicToolChoice::from_parallel_preference(config.parallel_tool_calls)
+            AnthropicToolChoice::from_parallel_preference(
+                config
+                    .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
+            )
         } else {
             None
         };
@@ -976,6 +979,12 @@ impl ChatDriver for AnthropicChatDriver {
         }));
 
         Ok(converted_stream)
+    }
+
+    /// Anthropic maps the preference onto `tool_choice.disable_parallel_tool_use`
+    /// for every tool-capable Claude model.
+    fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        true
     }
 
     async fn list_models(&self) -> Result<Option<Vec<DiscoveredModel>>> {
@@ -1832,8 +1841,15 @@ impl AnthropicModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::driver_registry::ChatDriver;
     use everruns_core::model::Modality;
     use everruns_core::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+
+    #[test]
+    fn supports_parallel_tool_calls_is_true() {
+        let driver = AnthropicChatDriver::new("test-key");
+        assert!(driver.supports_parallel_tool_calls("claude-opus-4-8"));
+    }
 
     // These tests verify that empty text blocks are filtered out to avoid
     // Anthropic API error: "text content blocks must be non-empty"

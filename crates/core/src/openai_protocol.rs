@@ -395,7 +395,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 include_usage: true,
             }),
             tools,
-            parallel_tool_calls: config.parallel_tool_calls,
+            parallel_tool_calls: config
+                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
             // Skip "none" — sending reasoning_effort to non-thinking models causes API errors
             reasoning_effort: config
                 .reasoning_effort
@@ -685,6 +686,13 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         );
 
         Ok(converted_stream)
+    }
+
+    /// OpenAI-compatible Chat Completions accept the top-level
+    /// `parallel_tool_calls` boolean, so the preference maps directly onto the
+    /// wire for every model served through this protocol.
+    fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        true
     }
 }
 

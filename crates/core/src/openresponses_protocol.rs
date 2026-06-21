@@ -883,7 +883,8 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             reasoning,
             metadata,
             prompt_cache_key,
-            parallel_tool_calls: config.parallel_tool_calls,
+            parallel_tool_calls: config
+                .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
         };
 
         // Log request details for debugging LLM errors.
@@ -1367,6 +1368,11 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
     fn supports_compact(&self) -> bool {
         // Delegate to the inherent method
         OpenResponsesProtocolChatDriver::supports_compact(self)
+    }
+
+    /// The Responses API accepts the top-level `parallel_tool_calls` boolean.
+    fn supports_parallel_tool_calls(&self, _model: &str) -> bool {
+        true
     }
 
     async fn compact(
