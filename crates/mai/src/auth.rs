@@ -73,14 +73,13 @@ impl MaiAuth {
     /// Precedence:
     /// 1. An Entra OAuth block in `metadata.extra` (the in-process / embedder
     ///    path, where credentials arrive as [`ProviderMetadata`]).
-    /// 2. The credential in `api_key`. Server-stored providers carry their
-    ///    secret here (the encrypted credential field): it is either a plain
-    ///    Azure AI Foundry key, or an Entra OAuth **JSON document**
-    ///    (`{tenant_id, client_id, client_secret}`) — mirroring how Bedrock
-    ///    stores its multi-field credential. Carrying OAuth in the credential
-    ///    field means it flows through every existing path (chat execution and
-    ///    model sync) with no provider-metadata plumbing, and keeps the
-    ///    fail-closed contract (a credential is still required).
+    /// 2. The driver's typed credential fields. Entra ID OAuth is declared as
+    ///    discrete fields (`tenant_id`, `client_id`, `client_secret`, optional
+    ///    `scope`/`authority`); a plain Azure AI Foundry key is the `api_key`
+    ///    field. Server-stored providers carry these in the encrypted
+    ///    credential document, which is parsed into typed fields once in
+    ///    [`DriverConfig`], so OAuth flows through every existing path (chat
+    ///    execution and model sync) and keeps the fail-closed contract.
     ///
     /// Returns an error when no credential is present so misconfiguration fails
     /// with a clear message rather than an opaque 401 at call time.
@@ -91,30 +90,19 @@ impl MaiAuth {
             return Ok(MaiAuth::EntraOAuth(oauth));
         }
 
-        match config.api_key.as_deref() {
-            Some(key) if !key.is_empty() => Self::from_credential_str(key),
-            _ => Err(AgentLoopError::llm(
+        let oauth_fields = oauth_value_from_credentials(&config.credentials);
+        if let Some(oauth) = EntraOAuthConfig::from_extra(&oauth_fields)? {
+            return Ok(MaiAuth::EntraOAuth(oauth));
+        }
+
+        match config.credential("api_key") {
+            Some(key) => Ok(MaiAuth::ApiKey(key.to_string())),
+            None => Err(AgentLoopError::llm(
                 "Microsoft MAI provider is not authenticated: configure an Azure AI \
                  Foundry API key, or Entra ID OAuth credentials (tenant_id, client_id, \
-                 client_secret) in the provider metadata.",
+                 client_secret).",
             )),
         }
-    }
-
-    /// Interpret a stored credential string: an Entra OAuth JSON document, or a
-    /// plain Foundry API key. A plain key is not a JSON object, so it falls
-    /// through to [`MaiAuth::ApiKey`]; a JSON object that looks like an Entra
-    /// config but is malformed surfaces a clear error.
-    fn from_credential_str(credential: &str) -> Result<Self> {
-        if let Ok(serde_json::Value::Object(map)) =
-            serde_json::from_str::<serde_json::Value>(credential)
-        {
-            let value = serde_json::Value::Object(map);
-            if let Some(oauth) = EntraOAuthConfig::from_extra(&value)? {
-                return Ok(MaiAuth::EntraOAuth(oauth));
-            }
-        }
-        Ok(MaiAuth::ApiKey(credential.to_string()))
     }
 
     /// Build the [`AuthHeaderProvider`] this strategy resolves to.
@@ -144,6 +132,22 @@ impl AuthHeaderProvider for ApiKeyAuth {
     async fn auth_header(&self) -> Result<(String, String)> {
         Ok(("api-key".to_string(), self.key.clone()))
     }
+}
+
+/// Collect the Entra OAuth credential fields into a JSON object so they can be
+/// detected and validated by [`EntraOAuthConfig::from_extra`], the same code
+/// path used for the embedder (`metadata.extra`) case. Empty fields are
+/// omitted so unset optional values fall back to their defaults.
+fn oauth_value_from_credentials(
+    credentials: &std::collections::BTreeMap<String, String>,
+) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    for key in ["tenant_id", "client_id", "client_secret", "scope", "authority"] {
+        if let Some(value) = credentials.get(key).filter(|v| !v.is_empty()) {
+            obj.insert(key.to_string(), serde_json::Value::String(value.clone()));
+        }
+    }
+    serde_json::Value::Object(obj)
 }
 
 /// Microsoft Entra ID client-credentials configuration.
@@ -375,9 +379,13 @@ mod tests {
     use super::*;
     use everruns_core::driver_registry::{DriverId, ProviderMetadata};
 
+    /// Build a config the way the server does: the stored credential document
+    /// (`api_key`) is parsed into the typed credential map, mirroring
+    /// `DriverConfig::from_provider_config`.
     fn driver_config(api_key: Option<&str>, extra: Option<serde_json::Value>) -> DriverConfig {
         DriverConfig {
             provider_type: DriverId::Mai,
+            credentials: everruns_core::credential_schema::parse_credential_document(api_key),
             api_key: api_key.map(str::to_string),
             base_url: Some("https://example.services.ai.azure.com".to_string()),
             metadata: ProviderMetadata {
@@ -440,10 +448,10 @@ mod tests {
     }
 
     #[test]
-    fn plain_string_credential_stays_api_key() {
-        // A normal Foundry key is not JSON, so it must remain an api-key.
-        let auth =
-            MaiAuth::from_credential_str("sk-foundry-plain-key").expect("plain key is valid");
+    fn plain_key_credential_is_api_key() {
+        // A normal Foundry key parses to a lone `api_key` field → api-key auth.
+        let auth = MaiAuth::from_driver_config(&driver_config(Some("sk-foundry-plain-key"), None))
+            .expect("plain key is valid");
         assert!(matches!(auth, MaiAuth::ApiKey(k) if k == "sk-foundry-plain-key"));
     }
 
@@ -453,14 +461,6 @@ mod tests {
         let credential = serde_json::json!({ "tenant_id": "t", "client_id": "c" }).to_string();
         let err = MaiAuth::from_driver_config(&driver_config(Some(&credential), None)).unwrap_err();
         assert!(err.to_string().contains("Entra ID OAuth config"));
-    }
-
-    #[test]
-    fn non_oauth_json_credential_falls_through_to_api_key() {
-        // A JSON object that is not an Entra config is treated as an opaque key.
-        let credential = r#"{"foo":"bar"}"#;
-        let auth = MaiAuth::from_credential_str(credential).unwrap();
-        assert!(matches!(auth, MaiAuth::ApiKey(k) if k == credential));
     }
 
     #[test]

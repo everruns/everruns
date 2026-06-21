@@ -36,14 +36,11 @@ impl Connector for SpritesConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "API Token".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("your-sprites-api-token".to_string()),
-                help_text: None,
-            }],
+            fields: vec![
+                FormField::password("api_key", "API Token")
+                    .required()
+                    .with_placeholder("your-sprites-api-token"),
+            ],
             instructions_markdown: "\
 1. Install the Sprites CLI: `curl https://sprites.dev/install.sh | bash`\n\
 2. Run `sprite login` to authenticate\n\

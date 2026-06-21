@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   getProviders,
   getProvider,
+  getProvidersConfig,
   createProvider,
   updateProvider,
   deleteProvider,
@@ -54,6 +55,25 @@ export function useProvider(providerId: string) {
   });
 
   // Include org loading state so pages show skeleton while org initializes
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+// Per-driver credential schemas (and caller policies), used to render the
+// provider credential forms as discrete typed inputs.
+export function useProvidersConfig() {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: [...queryKeys.providers.all, "config", org],
+    queryFn: () => getProvidersConfig(),
+    enabled: !!org,
+    staleTime: 300000,
+  });
+
   return {
     ...query,
     isLoading: orgLoading || query.isLoading,

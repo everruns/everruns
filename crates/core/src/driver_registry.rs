@@ -1601,13 +1601,49 @@ impl ProviderConfig {
 pub struct DriverConfig {
     /// Provider type being created.
     pub provider_type: DriverId,
-    /// API key, when one is configured. `None` for keyless providers (LlmSim,
-    /// or external providers that authenticate via [`ProviderMetadata`]).
+    /// Raw credential document, when one is configured. `None` for keyless
+    /// providers (LlmSim, or external providers that authenticate via
+    /// [`ProviderMetadata`]). For single-key drivers this is the API key
+    /// verbatim; multi-field drivers should read [`DriverConfig::credentials`]
+    /// instead of parsing this string.
     pub api_key: Option<String>,
+    /// Typed credential fields parsed from the stored credential document (see
+    /// [`crate::credential_schema::parse_credential_document`]). Multi-field
+    /// drivers (Bedrock AWS keys, MAI Entra OAuth) read their declared fields
+    /// from here instead of hand-parsing JSON out of `api_key`. Empty for
+    /// keyless providers.
+    pub credentials: std::collections::BTreeMap<String, String>,
     /// Base URL override, when configured.
     pub base_url: Option<String>,
     /// Extra provider-specific metadata.
     pub metadata: ProviderMetadata,
+}
+
+impl DriverConfig {
+    /// Build a driver config from a resolved [`ProviderConfig`], parsing the
+    /// credential document into the typed [`DriverConfig::credentials`] map.
+    /// This is the single point where the stored credential string becomes
+    /// typed fields, so every driver-creation path (server, worker, sync, dev)
+    /// gets the same typed view.
+    pub fn from_provider_config(config: &ProviderConfig) -> Self {
+        Self {
+            provider_type: config.provider_type.clone(),
+            credentials: crate::credential_schema::parse_credential_document(
+                config.api_key.as_deref(),
+            ),
+            api_key: config.api_key.clone(),
+            base_url: config.base_url.clone(),
+            metadata: config.metadata.clone(),
+        }
+    }
+
+    /// A declared credential field's non-empty value, if present.
+    pub fn credential(&self, name: &str) -> Option<&str> {
+        self.credentials
+            .get(name)
+            .map(String::as_str)
+            .filter(|s| !s.is_empty())
+    }
 }
 
 impl From<&crate::traits::ResolvedModel> for ProviderConfig {
@@ -1979,12 +2015,7 @@ impl DriverRegistry {
         })?;
 
         // Create the driver using the factory
-        let driver_config = DriverConfig {
-            provider_type: config.provider_type.clone(),
-            api_key: config.api_key.clone(),
-            base_url: config.base_url.clone(),
-            metadata: config.metadata.clone(),
-        };
+        let driver_config = DriverConfig::from_provider_config(config);
         Ok(factory(&driver_config))
     }
 
@@ -2051,12 +2082,7 @@ impl DriverRegistry {
                 config.provider_type
             ))
         })?;
-        let driver_config = DriverConfig {
-            provider_type: config.provider_type.clone(),
-            api_key: config.api_key.clone(),
-            base_url: config.base_url.clone(),
-            metadata: config.metadata.clone(),
-        };
+        let driver_config = DriverConfig::from_provider_config(config);
         Ok(factory(&driver_config))
     }
 }

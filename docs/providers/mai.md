@@ -27,10 +27,12 @@ mainly because of its authentication options.
 2. Choose **Microsoft MAI**.
 3. Set the **base URL** to your Azure AI Foundry resource
    (e.g. `https://<resource>.services.ai.azure.com`).
-4. Provide credentials using one of:
+4. Provide credentials for one of the two methods, entered as discrete fields:
    - **API key** — your Azure AI Foundry resource key.
-   - **Entra ID (OAuth)** — a client-credentials service principal
-     (`tenant_id`, `client_id`, `client_secret`).
+   - **Entra ID (OAuth)** — a client-credentials service principal: `tenant_id`,
+     `client_id`, and `client_secret` (with optional `scope` and `authority`,
+     which default to the Azure Cognitive Services scope and public Microsoft
+     Entra authority).
 5. Save.
 
 Authentication is fail-closed: a stored credential is always required, and OAuth

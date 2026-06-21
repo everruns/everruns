@@ -38,14 +38,11 @@ impl Connector for DaytonaConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "API Key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("your-daytona-api-key".to_string()),
-                help_text: None,
-            }],
+            fields: vec![
+                FormField::password("api_key", "API Key")
+                    .required()
+                    .with_placeholder("your-daytona-api-key"),
+            ],
             instructions_markdown: "\
 1. Go to [Daytona Dashboard](https://app.daytona.io)\n\
 2. Navigate to **API Keys** in your account settings\n\

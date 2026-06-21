@@ -38,14 +38,11 @@ impl Connector for BrowserlessConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "API Token".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("your-browserless-api-token".to_string()),
-                help_text: None,
-            }],
+            fields: vec![
+                FormField::password("api_key", "API Token")
+                    .required()
+                    .with_placeholder("your-browserless-api-token"),
+            ],
             instructions_markdown: "\
 1. Go to [Browserless Dashboard](https://www.browserless.io/account/home)\n\
 2. Navigate to **API Keys** in your account settings\n\

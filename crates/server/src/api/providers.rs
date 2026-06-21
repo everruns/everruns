@@ -23,7 +23,7 @@ use everruns_core::typed_id::ProviderId;
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{
     Caller, DriverId, DriverOAuthFlow, DriverRegistry, Policy, ProviderStatus,
-    ResourceConfigResponse, evaluate_policies_with,
+    evaluate_policies_with,
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -106,8 +106,16 @@ pub struct CreateProviderRequest {
     pub base_url: Option<String>,
     /// API key for authenticating with the provider.
     /// Will be encrypted at rest if encryption is configured.
+    ///
+    /// Single-field convenience for simple providers and programmatic clients.
+    /// Multi-field drivers (Bedrock, MAI) should send `credentials` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Typed credential fields keyed by the driver's declared credential-schema
+    /// field names. Validated against the schema and assembled into the stored
+    /// credential document. Takes precedence over `api_key` when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<std::collections::BTreeMap<String, String>>,
     /// Trace/observability link configuration. Stored as a per-provider override
     /// of the driver's default templates; omit to keep driver defaults.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,8 +155,16 @@ pub struct UpdateProviderRequest {
     pub base_url: Option<String>,
     /// API key for authenticating with the provider.
     /// Will be encrypted at rest if encryption is configured.
+    ///
+    /// Single-field convenience for simple providers and programmatic clients.
+    /// Multi-field drivers (Bedrock, MAI) should send `credentials` instead.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_key: Option<String>,
+    /// Typed credential fields keyed by the driver's declared credential-schema
+    /// field names. Validated against the schema and assembled into the stored
+    /// credential document. Takes precedence over `api_key` when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub credentials: Option<std::collections::BTreeMap<String, String>>,
     /// The status of the provider. Set to "inactive" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<ProviderStatus>,
@@ -175,16 +191,49 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateProviderRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Provider>>), (StatusCode, Json<ErrorResponse>)> {
+    let api_key = resolve_credential_document(
+        &state.driver_registry,
+        Some(&req.provider_type),
+        req.credentials.as_ref(),
+        req.api_key,
+    )?;
     state
         .dispatcher(&org)
         .run_created_with_urls(CreateProvider {
             name: req.name,
             provider_type: req.provider_type,
             base_url: req.base_url,
-            api_key: req.api_key,
+            api_key,
             trace: req.trace,
         })
         .await
+}
+
+/// Resolve the credential document to store from a request.
+///
+/// When typed `credentials` are supplied they are validated against the
+/// driver's declared credential schema (when the driver is known) and assembled
+/// into the single credential document that is encrypted at rest. Otherwise the
+/// legacy single-field `api_key` is used verbatim. Validation failures surface
+/// as `400 Bad Request` rather than a generic error.
+fn resolve_credential_document(
+    registry: &DriverRegistry,
+    provider_type: Option<&DriverId>,
+    credentials: Option<&std::collections::BTreeMap<String, String>>,
+    api_key: Option<String>,
+) -> Result<Option<String>, (StatusCode, Json<ErrorResponse>)> {
+    let Some(fields) = credentials else {
+        return Ok(api_key);
+    };
+
+    if let Some(descriptor) = provider_type.and_then(|pt| registry.descriptor(pt)) {
+        let errors = descriptor.credential_schema.validate(fields);
+        if !errors.is_empty() {
+            return Err(ErrorResponse::new(errors.join(" ")).into_response(StatusCode::BAD_REQUEST));
+        }
+    }
+
+    Ok(everruns_core::assemble_credential_document(fields))
 }
 
 /// List all LLM providers
@@ -252,6 +301,12 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> ApiResult<WithUrls<Provider>> {
+    let api_key = resolve_credential_document(
+        &state.driver_registry,
+        req.provider_type.as_ref(),
+        req.credentials.as_ref(),
+        req.api_key,
+    )?;
     state
         .dispatcher(&org)
         .run_with_urls(UpdateProvider {
@@ -259,7 +314,7 @@ pub async fn update_provider(
             name: req.name,
             provider_type: req.provider_type,
             base_url: req.base_url,
-            api_key: req.api_key,
+            api_key,
             status: req.status,
             trace: req.trace,
         })
@@ -317,26 +372,65 @@ pub async fn sync_models(
     Ok(Json(SyncProviderModels { id }.run(&state.ctx(&org)).await?))
 }
 
+/// A driver's declared credential schema, so the Settings UI can render
+/// discrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of
+/// one opaque password field.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DriverCredentialInfo {
+    /// Driver id (e.g. `openai`, `bedrock`, `mai`).
+    pub driver: String,
+    /// The fields and instructions to render for this driver's credential.
+    pub credential_schema: everruns_core::CredentialFormSchema,
+    /// Whether the driver declares an interactive "Connect with …" OAuth flow.
+    pub supports_oauth: bool,
+}
+
+/// Provider resource config: caller policies plus the credential schemas the UI
+/// renders per driver.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ProvidersConfigResponse {
+    /// Map of policy ID → whether the caller satisfies it.
+    pub policies: std::collections::HashMap<String, bool>,
+    /// Per-driver credential schemas, ordered by driver id.
+    pub drivers: Vec<DriverCredentialInfo>,
+}
+
 /// GET /v1/providers/config
 #[utoipa::path(
     get,
     path = "/v1/providers/config",
     responses(
-        (status = 200, description = "Resource config for LLM providers", body = ResourceConfigResponse),
+        (status = 200, description = "Resource config for providers", body = ProvidersConfigResponse),
     ),
     tag = "providers"
 )]
 pub async fn provider_config(
-    State(auth): State<AuthState>,
+    State(state): State<AppState>,
     org: ResolvedOrg,
-) -> Json<ResourceConfigResponse> {
+) -> Json<ProvidersConfigResponse> {
     let caller = Caller::from(&org);
     let policies = evaluate_policies_with(
-        auth.permission_resolver.as_ref(),
+        state.auth.permission_resolver.as_ref(),
         &caller,
         &[&LLM_PROVIDER_VIEW, &LLM_PROVIDER_MANAGE],
     );
-    Json(ResourceConfigResponse { policies })
+
+    let mut drivers: Vec<DriverCredentialInfo> = state
+        .driver_registry
+        .registered_providers()
+        .into_iter()
+        .filter_map(|id| {
+            let descriptor = state.driver_registry.descriptor(&id)?;
+            Some(DriverCredentialInfo {
+                driver: id.to_string(),
+                credential_schema: descriptor.credential_schema.clone(),
+                supports_oauth: descriptor.oauth.is_some(),
+            })
+        })
+        .collect();
+    drivers.sort_by(|a, b| a.driver.cmp(&b.driver));
+
+    Json(ProvidersConfigResponse { policies, drivers })
 }
 
 // ============================================================================

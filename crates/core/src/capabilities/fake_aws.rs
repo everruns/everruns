@@ -70,14 +70,12 @@ impl Connector for FakeAwsConnector {
 
     fn form_schema(&self) -> Option<ConnectorFormSchema> {
         Some(ConnectorFormSchema {
-            fields: vec![FormField {
-                name: "api_key".to_string(),
-                label: "Fake AWS API key".to_string(),
-                field_type: FieldType::Password,
-                required: true,
-                placeholder: Some("fake_aws_...".to_string()),
-                help_text: Some("Any non-empty value is accepted for local fake AWS testing.".to_string()),
-            }],
+            fields: vec![
+                FormField::password("api_key", "Fake AWS API key")
+                    .required()
+                    .with_placeholder("fake_aws_...")
+                    .with_help("Any non-empty value is accepted for local fake AWS testing."),
+            ],
             instructions_markdown:
                 "Use any non-empty value for local fake AWS handoff testing. Real providers should validate credentials against their upstream API."
                     .to_string(),

@@ -203,6 +203,8 @@ export interface CreateProviderRequest {
   provider_type: DriverId;
   base_url?: string;
   api_key?: string;
+  /** Typed credential fields keyed by the driver's credential-schema field names. */
+  credentials?: Record<string, string>;
   trace?: ProviderTraceConfig;
 }
 
@@ -211,8 +213,43 @@ export interface UpdateProviderRequest {
   provider_type?: DriverId;
   base_url?: string;
   api_key?: string;
+  /** Typed credential fields keyed by the driver's credential-schema field names. */
+  credentials?: Record<string, string>;
   status?: ProviderStatus;
   trace?: ProviderTraceConfig;
+}
+
+/** A single declared credential field (mirrors core `FormField`). */
+export interface CredentialFormField {
+  name: string;
+  label: string;
+  field_type: "password" | "text" | "url";
+  required: boolean;
+  placeholder?: string;
+  help_text?: string;
+  /** Default value the form pre-fills (e.g. an OAuth scope or AWS region). */
+  default_value?: string;
+  /** Mutually-exclusive group label; fields sharing it are one credential method. */
+  group?: string;
+}
+
+/** A driver's declared credential schema (mirrors core `CredentialFormSchema`). */
+export interface CredentialFormSchema {
+  fields: CredentialFormField[];
+  instructions_markdown: string;
+}
+
+/** Per-driver credential schema from `GET /v1/providers/config`. */
+export interface DriverCredentialInfo {
+  driver: DriverId;
+  credential_schema: CredentialFormSchema;
+  supports_oauth: boolean;
+}
+
+/** Response shape of `GET /v1/providers/config`. */
+export interface ProvidersConfigResponse {
+  policies: Record<string, boolean>;
+  drivers: DriverCredentialInfo[];
 }
 
 export interface CreateModelRequest {

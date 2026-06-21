@@ -301,7 +301,9 @@ pub use tools::{
 };
 
 // Shared credential form schema (provider drivers + connection providers)
-pub use credential_schema::CredentialFormSchema;
+pub use credential_schema::{
+    CredentialFormSchema, assemble_credential_document, parse_credential_document,
+};
 
 // Pluggable provider credential source (drivers never read env directly).
 pub use credential_provider::{CredentialProvider, EnvCredentialProvider, ProviderCredentials};
