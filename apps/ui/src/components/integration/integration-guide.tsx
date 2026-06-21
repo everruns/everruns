@@ -30,8 +30,7 @@ export function IntegrationGuide({ kind, id, name }: IntegrationGuideProps) {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   const sdkSamples = useMemo(
-    () =>
-      sdkSessionSamples(kind === "agent" ? { origin, agentId: id } : { origin, harnessId: id }),
+    () => sdkSessionSamples(kind === "agent" ? { origin, agentId: id } : { origin, harnessId: id }),
     [origin, kind, id],
   );
 
