@@ -380,6 +380,10 @@ jobs:
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
           cargo test -p everruns-runtime --test in_process_runtime_test --test runtime_host_test -- --test-threads=1
+          # Doctests are excluded by the target-filtered runs above (--test/--lib
+          # skip the Doc-tests target), so run them explicitly to guard the
+          # crate-level embedding example in crates/runtime/src/lib.rs.
+          cargo test -p everruns-runtime --doc
           # Lua code-mode capability: compiles the mlua engine (`lua` feature) and
           # exercises the end-to-end routing contract + runnable example.
           cargo test -p everruns-runtime --features lua --test lua_code_mode_test -- --test-threads=1
