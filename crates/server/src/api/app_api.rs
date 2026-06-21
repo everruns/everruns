@@ -28,19 +28,20 @@ use everruns_core::message::ExecutionPhase;
 use serde::{Deserialize, Serialize};
 
 use crate::api::app_endpoint_auth::{
-    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
+    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth, extract_bearer,
 };
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
     ApiInvocationRequest, hash_app_api_key, invoke_api_app_channel, post_api_app_channel_message,
-    queries as app_queries, session_has_app_channel_tags,
+    resolve_api_app_channel, session_has_app_channel_tags,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
+use crate::storage::models::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
 #[derive(Clone)]
@@ -99,28 +100,29 @@ pub fn routes(state: AppApiState) -> Router {
         .with_state(state)
 }
 
-#[derive(Debug, Deserialize)]
-struct MessageBody {
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct MessageBody {
     /// Message text dispatched to the agent.
+    #[schema(example = "Summarize the latest support tickets.")]
     message: String,
 }
 
-#[derive(Debug, Serialize)]
-struct SessionRef {
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct SessionRef {
     session_id: String,
     status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
     created_session: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
-struct AgentMessage {
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct AgentMessage {
     role: &'static str,
     text: String,
 }
 
-#[derive(Debug, Serialize)]
-struct SessionStatus {
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct SessionStatus {
     session_id: String,
     status: &'static str,
     messages: Vec<AgentMessage>,
@@ -136,7 +138,24 @@ struct AuthorizedApi {
 }
 
 /// POST /v1/apps/{app_id}/api/{channel_id}/sessions
-async fn create_session(
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/api/{channel_id}/sessions",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "api_endpoint channel ID")
+    ),
+    request_body = MessageBody,
+    responses(
+        (status = 201, description = "Session created and message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "App or channel not found", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn create_session(
     State(state): State<AppApiState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<Extension<RequestId>>,
@@ -180,7 +199,25 @@ async fn create_session(
 }
 
 /// POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages
-async fn post_message(
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/messages",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body = MessageBody,
+    responses(
+        (status = 202, description = "Follow-up message dispatched", body = SessionRef),
+        (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found / not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn post_message(
     State(state): State<AppApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     req_id: Option<Extension<RequestId>>,
@@ -226,7 +263,24 @@ async fn post_message(
 }
 
 /// GET /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}
-async fn get_session(
+#[utoipa::path(
+    get,
+    path = "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Derived status and the agent's completed messages (no raw tool detail)", body = SessionStatus),
+        (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found / not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn get_session(
     State(state): State<AppApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     headers: HeaderMap,
@@ -268,7 +322,24 @@ async fn get_session(
 }
 
 /// POST /v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel
-async fn cancel_session(
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/api/{channel_id}/sessions/{session_id}/cancel",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "api_endpoint channel ID"),
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "In-flight turn canceled", body = SessionRef),
+        (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
+        (status = 403, description = "App not published or channel disabled", body = ErrorResponse),
+        (status = 404, description = "Channel or session not found / not owned by this channel", body = ErrorResponse),
+        (status = 429, description = "Per-channel rate limit exceeded", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
+pub async fn cancel_session(
     State(state): State<AppApiState>,
     Path((app_id, channel_id, session_id)): Path<(String, String, String)>,
     headers: HeaderMap,
@@ -315,27 +386,14 @@ async fn authenticate_request(
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedApi, (StatusCode, Json<ErrorResponse>)> {
-    let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
-        .await
-        .map_err(internal_error)?
-        .ok_or_else(not_found)?;
-
-    if app.status != everruns_core::AppStatus::Published {
-        return Err(forbidden("App is not published"));
-    }
-
-    let channel_id_typed = channel_id
-        .parse::<everruns_core::typed_id::AppChannelId>()
-        .map_err(|e| bad_request(format!("Invalid channel ID: {e}")))?;
-    let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
-    if channel.channel_type != everruns_core::ChannelType::ApiEndpoint {
-        return Err(not_found());
-    }
-    // THREAT[TM-APIKEY-001]: anonymous ingress must never reach a draft or
-    // disabled channel, and every request must present the per-channel key.
-    if !channel.enabled {
-        return Err(forbidden("api_endpoint channel is disabled"));
-    }
+    // THREAT[TM-APIKEY-001/005]: published-app + enabled-channel + channel-type
+    // gate. Shared with the command layer (`invoke_api_app_channel` /
+    // `post_api_app_channel_message`) via `resolve_api_app_channel` so the gate
+    // lives in one place and cannot drift between HTTP and command paths.
+    let (app, channel) =
+        resolve_api_app_channel(&state.db, state.encryption.as_ref(), app_id, channel_id)
+            .await
+            .map_err(command_error_response)?;
 
     let config = channel
         .api_endpoint_config()
@@ -370,7 +428,7 @@ async fn authenticate_request(
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
-        let scope = format!("{}:{}", app.public_id, channel_id_typed);
+        let scope = format!("{}:{}", app.public_id, channel.public_id);
         let client_ip = extract_client_ip_from_parts(peer_addr, headers);
         if state
             .rate_limiter
@@ -387,7 +445,7 @@ async fn authenticate_request(
     Ok(AuthorizedApi {
         org_id: app.org_id,
         app_public_id: app.public_id.to_string(),
-        channel_public_id: channel_id_typed.to_string(),
+        channel_public_id: channel.public_id.to_string(),
     })
 }
 
@@ -396,22 +454,17 @@ fn verify_api_key(
     expected_hash: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     // THREAT[TM-APIKEY-001]: keys are stored as SHA-256 hashes; plaintext is
-    // never persisted. Hash the inbound key and constant-time compare.
-    let provided_key = extract_api_key(headers).ok_or_else(unauthorized)?;
-    let provided_hash = hash_app_api_key(&provided_key);
+    // never persisted. Hash the inbound key and constant-time compare. Parse
+    // the bearer scheme case-insensitively with whitespace trimming (RFC 7235)
+    // via the shared `extract_bearer` helper, matching the rest of the
+    // app-endpoint auth stack.
+    let provided_key = extract_bearer(headers).ok_or_else(unauthorized)?;
+    let provided_hash = hash_app_api_key(provided_key);
     if constant_time_eq(provided_hash.as_bytes(), expected_hash.as_bytes()) {
         Ok(())
     } else {
         Err(unauthorized())
     }
-}
-
-fn extract_api_key(headers: &HeaderMap) -> Option<String> {
-    let auth = headers
-        .get(axum::http::header::AUTHORIZATION)?
-        .to_str()
-        .ok()?;
-    auth.strip_prefix("Bearer ").map(ToOwned::to_owned)
 }
 
 // THREAT[TM-APIKEY-001]: constant-time comparison of the SHA-256 hex digests
@@ -444,10 +497,19 @@ async fn read_session_output(
     let events = db
         .list_events(session_id, None, None, &filter_types, &[], None, Some(500))
         .await?;
+    Ok(project_session_output(&events))
+}
 
+/// Pure projection of a session's filtered event tail into a derived turn
+/// status plus the agent's completed messages. This is the primary
+/// TM-APIKEY-004 mitigation: it surfaces only **final** (non-Commentary),
+/// **text-only** assistant content. Commentary-phase messages, non-text
+/// content parts (tool calls, images), and any non-message event are dropped,
+/// so raw tool names, arguments, and results never reach the execution key.
+fn project_session_output(events: &[EventRow]) -> (&'static str, Vec<AgentMessage>) {
     let mut status = "submitted";
     let mut messages = Vec::new();
-    for evt in &events {
+    for evt in events {
         match evt.event_type.as_str() {
             TURN_STARTED => status = "working",
             TURN_COMPLETED => status = "completed",
@@ -474,7 +536,7 @@ async fn read_session_output(
             _ => {}
         }
     }
-    Ok((status, messages))
+    (status, messages)
 }
 
 fn content_parts_to_text(parts: &[ContentPart]) -> String {
@@ -600,18 +662,88 @@ mod tests {
     }
 
     #[test]
-    fn extract_api_key_reads_bearer() {
-        let mut headers = HeaderMap::new();
-        headers.insert(
+    fn verify_api_key_accepts_case_insensitive_bearer() {
+        let hash = hash_app_api_key("evr_app_secret");
+        for header in ["Bearer evr_app_secret", "bearer evr_app_secret"] {
+            let mut headers = HeaderMap::new();
+            headers.insert(axum::http::header::AUTHORIZATION, header.parse().unwrap());
+            assert!(verify_api_key(&headers, &hash).is_ok(), "header: {header}");
+        }
+        // Wrong key and missing header are rejected.
+        let mut wrong = HeaderMap::new();
+        wrong.insert(
             axum::http::header::AUTHORIZATION,
-            "Bearer evr_app_abc".parse().unwrap(),
+            "Bearer evr_app_other".parse().unwrap(),
         );
-        assert_eq!(extract_api_key(&headers).as_deref(), Some("evr_app_abc"));
+        assert!(verify_api_key(&wrong, &hash).is_err());
+        assert!(verify_api_key(&HeaderMap::new(), &hash).is_err());
     }
 
+    /// TM-APIKEY-004: reads must surface only final assistant text — never
+    /// commentary, tool calls, or other internal detail.
     #[test]
-    fn extract_api_key_rejects_missing() {
-        let headers = HeaderMap::new();
-        assert!(extract_api_key(&headers).is_none());
+    fn project_session_output_returns_only_final_assistant_text() {
+        use chrono::Utc;
+        use everruns_core::ContentPart;
+        use everruns_core::message::{ExecutionPhase, Message};
+        use everruns_core::typed_id::{EventId, SessionId};
+        use serde_json::json;
+
+        let sid = SessionId::new();
+        let mut seq = 0;
+        let mut output_event = |msg: &Message| {
+            seq += 1;
+            EventRow {
+                id: EventId::new(),
+                session_id: sid,
+                sequence: seq,
+                event_type: OUTPUT_MESSAGE_COMPLETED.to_string(),
+                ts: Utc::now(),
+                context: json!({}),
+                data: json!({ "message": serde_json::to_value(msg).unwrap() }),
+                metadata: None,
+                tags: None,
+                created_at: Utc::now(),
+            }
+        };
+
+        // Intermediate commentary — must be excluded.
+        let commentary =
+            Message::assistant("internal commentary").with_phase(ExecutionPhase::Commentary);
+        // Final answer that also carries a tool call part — only the text
+        // should survive; the tool name must never leak.
+        let mut final_msg = Message::assistant("the final answer");
+        final_msg.content.push(ContentPart::tool_call(
+            "call_1",
+            "secret_internal_tool",
+            json!({ "arg": "sensitive" }),
+        ));
+        final_msg.phase = Some(ExecutionPhase::FinalAnswer);
+
+        let commentary_evt = output_event(&commentary);
+        let final_evt = output_event(&final_msg);
+        let turn_done = EventRow {
+            id: EventId::new(),
+            session_id: sid,
+            sequence: 99,
+            event_type: TURN_COMPLETED.to_string(),
+            ts: Utc::now(),
+            context: json!({}),
+            data: json!({}),
+            metadata: None,
+            tags: None,
+            created_at: Utc::now(),
+        };
+
+        let (status, messages) = project_session_output(&[commentary_evt, final_evt, turn_done]);
+
+        assert_eq!(status, "completed");
+        assert_eq!(messages.len(), 1, "only the final assistant message");
+        assert_eq!(messages[0].role, "agent");
+        assert_eq!(messages[0].text, "the final answer");
+        // Neither commentary nor tool detail may appear anywhere.
+        let all = messages.iter().map(|m| m.text.as_str()).collect::<String>();
+        assert!(!all.contains("commentary"));
+        assert!(!all.contains("secret_internal_tool"));
     }
 }

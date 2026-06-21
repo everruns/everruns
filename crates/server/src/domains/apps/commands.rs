@@ -1606,8 +1606,10 @@ pub struct ApiInvocationRequest {
 
 /// Resolve the published app + enabled api_endpoint channel for an
 /// execution-key request. Shared by the create-session and post-message paths
-/// so lifecycle and channel-type checks live in one place.
-async fn resolve_api_app_channel(
+/// **and** by the HTTP auth layer (`api::app_api::authenticate_request`) so the
+/// published / enabled / channel-type gate lives in exactly one place and
+/// cannot drift between the two.
+pub async fn resolve_api_app_channel(
     db: &Arc<crate::storage::StorageBackend>,
     encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
     app_id: &str,
