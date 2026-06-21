@@ -3,6 +3,7 @@
 // On create/update/delete, the LLM resolver cache is invalidated so that
 // subsequent model resolutions pick up the new provider config.
 
+use crate::errors::BadRequestError;
 use crate::services::ProviderResolverService;
 use crate::storage::{
     EncryptionService, StorageBackend,
@@ -270,16 +271,17 @@ fn resolve_trace_config(
 fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     let raw = provider_type.as_str();
     if raw.trim().is_empty() {
-        return Err(anyhow!("Provider type cannot be empty"));
+        return Err(BadRequestError::new("Provider type cannot be empty").into());
     }
     // `DriverId::external` preserves the string verbatim, so a padded id like
     // " openai " is non-empty here but later fails driver-registry lookup and
     // persists as a corrupt row. Reject surrounding whitespace outright rather
     // than silently normalizing it.
     if raw != raw.trim() {
-        return Err(anyhow!(
-            "Provider type cannot have leading or trailing whitespace"
-        ));
+        return Err(BadRequestError::new(
+            "Provider type cannot have leading or trailing whitespace",
+        )
+        .into());
     }
     Ok(())
 }
@@ -330,6 +332,7 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{resolve_trace_config, validate_provider_base_url, validate_provider_type};
+    use crate::errors::BadRequestError;
     use everruns_core::DriverId;
     use everruns_core::url_validation::validate_safe_url;
 
@@ -393,12 +396,14 @@ mod tests {
     fn provider_type_rejects_empty_external_id() {
         let err = validate_provider_type(&DriverId::external("")).unwrap_err();
         assert!(err.to_string().contains("Provider type cannot be empty"));
+        assert!(err.downcast_ref::<BadRequestError>().is_some());
     }
 
     #[test]
     fn provider_type_rejects_whitespace_external_id() {
         let err = validate_provider_type(&DriverId::external(" \t\n")).unwrap_err();
         assert!(err.to_string().contains("Provider type cannot be empty"));
+        assert!(err.downcast_ref::<BadRequestError>().is_some());
     }
 
     #[test]
@@ -410,6 +415,7 @@ mod tests {
             err.to_string()
                 .contains("Provider type cannot have leading or trailing whitespace")
         );
+        assert!(err.downcast_ref::<BadRequestError>().is_some());
     }
 
     #[test]
