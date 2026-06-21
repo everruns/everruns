@@ -1,8 +1,8 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Import } from "lucide-react";
 import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
@@ -31,70 +31,71 @@ export function ExampleCard({
     allCapabilities?.find((c) => c.id === capabilityId);
 
   return (
-    <Card className="bg-background transition-colors hover:bg-card">
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <CardTitle className="text-lg">{example.display_name}</CardTitle>
-        {example.dev_only && (
+    <EntityCard
+      title={example.display_name}
+      headerActions={
+        example.dev_only && (
           <Badge variant="outline" className="text-xs">
             dev
           </Badge>
-        )}
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{example.description}</p>
+        )
+      }
+      footer={
+        <EntityCardFooter
+          actions={
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => onImport(example.name)}
+              disabled={adopting}
+            >
+              <Import className="w-4 h-4 mr-2" />
+              {adopting ? "Importing..." : "Import"}
+            </Button>
+          }
+        />
+      }
+    >
+      <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{example.description}</p>
 
-        {/* Capabilities display */}
-        {example.capabilities.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            <TooltipProvider>
-              {example.capabilities.map((capConfig) => {
-                const cap = getCapabilityInfo(capConfig.ref);
-                if (!cap) return null;
-                const IconComponent = getCapabilityIcon(cap.icon);
+      {/* Capabilities display */}
+      {example.capabilities.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          <TooltipProvider>
+            {example.capabilities.map((capConfig) => {
+              const cap = getCapabilityInfo(capConfig.ref);
+              if (!cap) return null;
+              const IconComponent = getCapabilityIcon(cap.icon);
 
-                return (
-                  <Tooltip key={capConfig.ref}>
-                    <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                      <IconComponent className="icon-sharp h-3 w-3" />
-                      <span>{localizedCapabilityName(cap, locale)}</span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {localizedCapabilityDescription(cap, locale)}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </TooltipProvider>
-          </div>
-        )}
-
-        {/* Tags */}
-        {example.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1 mb-3">
-            {example.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* Import button */}
-        <div className="flex items-center justify-end">
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={() => onImport(example.name)}
-            disabled={adopting}
-          >
-            <Import className="w-4 h-4 mr-2" />
-            {adopting ? "Importing..." : "Import"}
-          </Button>
+              return (
+                <Tooltip key={capConfig.ref}>
+                  <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
+                    <IconComponent className="icon-sharp h-3 w-3" />
+                    <span>{localizedCapabilityName(cap, locale)}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-medium">{localizedCapabilityName(cap, locale)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {localizedCapabilityDescription(cap, locale)}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+          </TooltipProvider>
         </div>
-      </CardContent>
-    </Card>
+      )}
+
+      {/* Tags */}
+      {example.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {example.tags.map((tag) => (
+            <Badge key={tag} variant="outline" className="text-xs">
+              {tag}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </EntityCard>
   );
 }
