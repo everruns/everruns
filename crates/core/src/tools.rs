@@ -644,11 +644,11 @@ impl ToolRegistry {
         use crate::capabilities::{
             AddTool, DeleteFileTool, DivideTool, EditFileTool, GetCurrentTimeTool, GetForecastTool,
             GetWeatherTool, GrepFilesTool, ListDirectoryTool, MultiplyTool, ReadFileTool,
-            StatFileTool, SubtractTool, WebFetchTool, WriteFileTool, WriteTodosTool,
+            StatFileTool, SubtractTool, WriteFileTool, WriteTodosTool,
         };
         use crate::progress_reporting::ReportProgressTool;
 
-        ToolRegistry::builder()
+        let builder = ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
             .tool(EchoTool)
             // NOTE: `spawn_background` is intentionally NOT a default tool —
@@ -678,10 +678,14 @@ impl ToolRegistry {
             .tool(ListDirectoryTool)
             .tool(GrepFilesTool)
             .tool(DeleteFileTool)
-            .tool(StatFileTool)
-            // WebFetch capability tools
-            .tool(WebFetchTool::default())
-            .build()
+            .tool(StatFileTool);
+
+        // WebFetch capability tools (gated behind the `web-fetch` feature so
+        // provider crates that opt out of core defaults skip the fetchkit tree).
+        #[cfg(feature = "web-fetch")]
+        let builder = builder.tool(crate::capabilities::WebFetchTool::default());
+
+        builder.build()
     }
 
     /// Register a tool with the registry.

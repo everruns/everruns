@@ -82,6 +82,7 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
+#[cfg(feature = "a2a")]
 mod a2a_delegation;
 #[cfg(feature = "ui-capabilities")]
 mod a2ui;
@@ -147,12 +148,20 @@ mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
+#[cfg(feature = "web-fetch")]
 mod web_fetch;
 
 // Re-export capabilities
-pub use a2a_delegation::{
-    A2A_AGENT_DELEGATION_CAPABILITY_ID, A2aAgentDelegationCapability, SpawnAgentTool,
-};
+/// Capability ID for outbound A2A agent delegation. Defined ungated so session
+/// attachment logic can reference it even when the `a2a` feature (and the
+/// delegation implementation) is compiled out.
+pub const A2A_AGENT_DELEGATION_CAPABILITY_ID: &str = "a2a_agent_delegation";
+/// KV key prefix for A2A delegation run records. Defined ungated so the
+/// session-storage internal-prefix reservation (a TM-TOOL/TM-AGENT mitigation
+/// against forged attachments) holds even when the `a2a` feature is compiled out.
+pub(crate) const AGENT_RUN_KEY_PREFIX: &str = "agent_run:";
+#[cfg(feature = "a2a")]
+pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_handoff::{
@@ -334,6 +343,7 @@ pub use tool_search::{
     TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchCapability, ToolSearchTool,
 };
 pub use user_hooks::{USER_HOOKS_CAPABILITY_ID, UserHooksCapability};
+#[cfg(feature = "web-fetch")]
 pub use web_fetch::{
     BotAuthPublicKey, WEB_FETCH_CAPABILITY_ID, WebFetchCapability, WebFetchTool,
     derive_bot_auth_public_key,
@@ -1232,6 +1242,7 @@ impl CapabilityRegistry {
         registry.register(TestMathCapability);
         registry.register(TestWeatherCapability);
         registry.register(StatelessTodoListCapability);
+        #[cfg(feature = "web-fetch")]
         registry.register(WebFetchCapability::from_env());
         registry.register(BashkitShellCapability);
         registry.register(BackgroundExecutionCapability);
@@ -1267,6 +1278,7 @@ impl CapabilityRegistry {
         // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
         if crate::FeatureFlags::from_env(&grade).agent_delegation {
             registry.register(AgentHandoffCapability);
+            #[cfg(feature = "a2a")]
             registry.register(A2aAgentDelegationCapability);
         }
 
