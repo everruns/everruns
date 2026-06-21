@@ -18,6 +18,10 @@ categories = ["development-tools", "database"]
 rusqlite = { version = "0.39", features = ["bundled"] }
 
 # Everruns crates
+# NOTE: core defaults are intentionally NOT disabled here. everruns-local pulls
+# in everruns-runtime (and via it everruns-mcp), which depend on core with full
+# defaults, so feature unification re-enables the heavy subtrees regardless —
+# default-features = false would be a no-op. This is not a thin provider crate.
 everruns-core.workspace = true
 everruns-runtime.workspace = true
 
