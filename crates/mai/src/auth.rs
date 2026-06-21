@@ -142,7 +142,13 @@ fn oauth_value_from_credentials(
     credentials: &std::collections::BTreeMap<String, String>,
 ) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
-    for key in ["tenant_id", "client_id", "client_secret", "scope", "authority"] {
+    for key in [
+        "tenant_id",
+        "client_id",
+        "client_secret",
+        "scope",
+        "authority",
+    ] {
         if let Some(value) = credentials.get(key).filter(|v| !v.is_empty()) {
             obj.insert(key.to_string(), serde_json::Value::String(value.clone()));
         }

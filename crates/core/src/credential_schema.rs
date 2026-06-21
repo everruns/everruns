@@ -102,11 +102,12 @@ impl CredentialFormSchema {
                 .filter(|f| f.group.as_deref() == Some(label))
                 .collect();
             let touched = group_fields.iter().any(|f| filled(&f.name));
-            let complete = group_fields
-                .iter()
-                .all(|f| !f.required || filled(&f.name));
+            let complete = group_fields.iter().all(|f| !f.required || filled(&f.name));
             if touched && !complete {
-                for field in group_fields.iter().filter(|f| f.required && !filled(&f.name)) {
+                for field in group_fields
+                    .iter()
+                    .filter(|f| f.required && !filled(&f.name))
+                {
                     errors.push(format!("{} ({}) is required.", field.label, label));
                 }
             }
@@ -259,7 +260,8 @@ pub fn parse_credential_document(document: Option<&str>) -> BTreeMap<String, Str
         return BTreeMap::new();
     };
 
-    if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(document) {
+    if let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(document)
+    {
         let mut fields = BTreeMap::new();
         for (key, value) in map {
             if let serde_json::Value::String(s) = value {

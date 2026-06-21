@@ -591,6 +591,7 @@ pub async fn oauth_callback(
                 provider_type: None,
                 base_url: None,
                 api_key: Some(api_key),
+                credentials: None,
                 status: None,
                 trace: None,
             },

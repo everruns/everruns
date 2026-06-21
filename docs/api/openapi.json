@@ -8938,11 +8938,11 @@
         "operationId": "provider_config",
         "responses": {
           "200": {
-            "description": "Resource config for LLM providers",
+            "description": "Resource config for providers",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                  "$ref": "#/components/schemas/ProvidersConfigResponse"
                 }
               }
             }
@@ -17228,7 +17228,7 @@
               "string",
               "null"
             ],
-            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured.\n\nSingle-field convenience for simple providers and programmatic clients.\nMulti-field drivers (Bedrock, MAI) should send `credentials` instead."
           },
           "base_url": {
             "type": [
@@ -17237,6 +17237,19 @@
             ],
             "description": "Base URL for the provider's API. Required for custom endpoints.\nFor standard providers, this can be omitted to use the default URL.",
             "example": "https://api.openai.com/v1"
+          },
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Typed credential fields keyed by the driver's declared credential-schema\nfield names. Validated against the schema and assembled into the stored\ncredential document. Takes precedence over `api_key` when present.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "name": {
             "type": "string",
@@ -17617,6 +17630,27 @@
           }
         }
       },
+      "CredentialFormSchema": {
+        "type": "object",
+        "description": "Describes the form fields and instructions for entering a credential.",
+        "required": [
+          "fields",
+          "instructions_markdown"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FormField"
+            },
+            "description": "Input fields to render."
+          },
+          "instructions_markdown": {
+            "type": "string",
+            "description": "Markdown instructions shown above the form (how to get the key, etc.)."
+          }
+        }
+      },
       "DatabaseInfoResponse": {
         "type": "object",
         "description": "Database info response.",
@@ -17977,6 +18011,29 @@
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
+          }
+        }
+      },
+      "DriverCredentialInfo": {
+        "type": "object",
+        "description": "A driver's declared credential schema, so the Settings UI can render\ndiscrete typed inputs (multi-field AWS keys, Entra OAuth fields) instead of\none opaque password field.",
+        "required": [
+          "driver",
+          "credential_schema",
+          "supports_oauth"
+        ],
+        "properties": {
+          "credential_schema": {
+            "$ref": "#/components/schemas/CredentialFormSchema",
+            "description": "The fields and instructions to render for this driver's credential."
+          },
+          "driver": {
+            "type": "string",
+            "description": "Driver id (e.g. `openai`, `bedrock`, `mai`)."
+          },
+          "supports_oauth": {
+            "type": "boolean",
+            "description": "Whether the driver declares an interactive \"Connect with …\" OAuth flow."
           }
         }
       },
@@ -18791,6 +18848,15 @@
           "type": "string"
         }
       },
+      "FieldType": {
+        "type": "string",
+        "description": "Input field type for rendering.",
+        "enum": [
+          "password",
+          "text",
+          "url"
+        ]
+      },
       "FileInfo": {
         "type": "object",
         "description": "File metadata without content",
@@ -19065,6 +19131,62 @@
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages.",
             "example": "support-agent-experimental"
+          }
+        }
+      },
+      "FormField": {
+        "type": "object",
+        "description": "A single form field.",
+        "required": [
+          "name",
+          "label",
+          "field_type",
+          "required"
+        ],
+        "properties": {
+          "default_value": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default value the UI pre-fills (e.g. an OAuth scope or AWS region). The\nstored credential omits unfilled optional fields, so drivers still apply\ntheir own defaults; this only seeds the form input."
+          },
+          "field_type": {
+            "$ref": "#/components/schemas/FieldType",
+            "description": "Input type."
+          },
+          "group": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Mutually-exclusive group label this field belongs to. Fields sharing a\nlabel are one alternative credential method (e.g. \"API key\" vs \"OAuth\");\nungrouped fields are always part of the credential. `None` for the\ncommon single-method case."
+          },
+          "help_text": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Help text shown below the input."
+          },
+          "label": {
+            "type": "string",
+            "description": "Label shown next to the input."
+          },
+          "name": {
+            "type": "string",
+            "description": "Field name used as the key when submitting (e.g. \"api_key\")."
+          },
+          "placeholder": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Placeholder text inside the input."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Whether the field is required."
           }
         }
       },
@@ -28656,6 +28778,33 @@
           }
         }
       },
+      "ProvidersConfigResponse": {
+        "type": "object",
+        "description": "Provider resource config: caller policies plus the credential schemas the UI\nrenders per driver.",
+        "required": [
+          "policies",
+          "drivers"
+        ],
+        "properties": {
+          "drivers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DriverCredentialInfo"
+            },
+            "description": "Per-driver credential schemas, ordered by driver id."
+          },
+          "policies": {
+            "type": "object",
+            "description": "Map of policy ID → whether the caller satisfies it.",
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "ReasonCompletedData": {
         "type": "object",
         "description": "Data for reason.completed event",
@@ -33658,7 +33807,7 @@
               "string",
               "null"
             ],
-            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured."
+            "description": "API key for authenticating with the provider.\nWill be encrypted at rest if encryption is configured.\n\nSingle-field convenience for simple providers and programmatic clients.\nMulti-field drivers (Bedrock, MAI) should send `credentials` instead."
           },
           "base_url": {
             "type": [
@@ -33667,6 +33816,19 @@
             ],
             "description": "Base URL for the provider's API.",
             "example": "https://api.openai.com/v1"
+          },
+          "credentials": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Typed credential fields keyed by the driver's declared credential-schema\nfield names. Validated against the schema and assembled into the stored\ncredential document. Takes precedence over `api_key` when present.",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
           },
           "name": {
             "type": [
