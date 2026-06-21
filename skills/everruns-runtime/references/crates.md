@@ -16,13 +16,14 @@ driver, then point `default_model.provider_type` at the matching `DriverId`.
 
 | Crate | `DriverId` | Notes |
 |---|---|---|
-| `everruns-openai` | `DriverId::OpenAI` (Responses API), `DriverId::OpenAICompletions` (Chat Completions) | Also covers Azure OpenAI and OpenAI-compatible endpoints via `base_url` |
+| `everruns-openai` | `DriverId::OpenAI` (Responses API), `DriverId::AzureOpenAI` (Azure OpenAI Responses API), `DriverId::OpenAICompletions` (Chat Completions) | One `register_driver` call registers all three; also reaches OpenAI-compatible endpoints via `base_url` |
 | `everruns-anthropic` | `DriverId::Anthropic` | Supports prompt caching |
 | `everruns-gemini` | `DriverId::Gemini` | Google Gemini |
 | `everruns-openrouter` | `DriverId::OpenRouter` | OpenRouter model gateway |
-| `everruns-mai` | `DriverId::Mai` | — |
+| `everruns-fireworks` | `DriverId::Fireworks` | Fireworks AI — open-model inference (Llama, Qwen, DeepSeek, GLM, …) |
+| `everruns-mai` | `DriverId::Mai` | Microsoft MAI |
 | `everruns-bedrock` | `DriverId::Bedrock` | AWS Bedrock |
-| built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no API key |
+| built into `everruns-core` | `DriverId::LlmSim` | Deterministic simulator for tests/examples; no real API key |
 
 Registration pattern:
 

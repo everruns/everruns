@@ -57,7 +57,8 @@ The runtime ships in-memory by default, so the smallest useful host is a single
 ## Quickstart
 
 Build an in-process runtime with an in-memory backend and the deterministic LLM
-simulator (no API key needed), then run a turn:
+simulator (no *real* API key needed — `llmsim` ignores it, so any placeholder
+works), then run a turn:
 
 ```rust
 use everruns_core::{
@@ -145,10 +146,12 @@ let runtime = InProcessRuntimeBuilder::new()
 
 Swap `everruns-openai` for any provider crate, matching the crate to its
 `DriverId` (`everruns-anthropic` → `DriverId::Anthropic`, etc. — see
-[`references/crates.md`](references/crates.md)). To reach an OpenAI-compatible
-endpoint (a local gateway, Ollama, …), set `base_url` and pick the `DriverId`
-matching the API the server speaks: `DriverId::OpenAI` (Responses API) or
-`DriverId::OpenAICompletions` (Chat Completions API).
+[`references/crates.md`](references/crates.md)). `everruns-openai::register_driver`
+actually registers three drivers — `DriverId::OpenAI` (Responses API),
+`DriverId::AzureOpenAI` (Azure OpenAI Responses API), and
+`DriverId::OpenAICompletions` (Chat Completions API) — so select the one matching
+your deployment. To reach an OpenAI-compatible endpoint (a local gateway, Ollama,
+…), set `base_url` and pick the `DriverId` matching the API the server speaks.
 
 ## Register capabilities (tools)
 
@@ -180,8 +183,9 @@ The runtime is provider- and tool-neutral; you pull in only what you use. The
 full catalog with crate names, `DriverId`s, and capability names is in
 [`references/crates.md`](references/crates.md). Highlights:
 
-- **LLM providers**: `everruns-openai`, `everruns-anthropic`, `everruns-gemini`,
-  `everruns-openrouter`, `everruns-mai`, `everruns-bedrock`.
+- **LLM providers**: `everruns-openai` (OpenAI + Azure OpenAI + Chat
+  Completions), `everruns-anthropic`, `everruns-gemini`, `everruns-openrouter`,
+  `everruns-fireworks`, `everruns-mai`, `everruns-bedrock`.
 - **Sandbox / compute integrations**: `everruns-integrations-daytona` (Daytona
   cloud sandbox), `everruns-integrations-e2b` (E2B), `everruns-integrations-docker`,
   `everruns-integrations-deno`, `everruns-integrations-sprites`,
