@@ -71,6 +71,20 @@ impl Command for CreateSession {
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
 
+        // Enforce per-org session cap before doing any creation work. Sessions
+        // are hard-deleted, so the count reflects only live rows.
+        let max = ctx.resource_limits.max_sessions_per_org;
+        let count = ctx
+            .db
+            .count_sessions_for_org(ctx.org_id())
+            .await
+            .map_err(classify_anyhow)?;
+        if count >= max {
+            return Err(CommandError::conflict(format!(
+                "Session limit reached (max {max})"
+            )));
+        }
+
         if req.harness_id.is_some() && req.harness_name.is_some() {
             return Err(CommandError::bad_request(
                 "Cannot specify both harness_id and harness_name",
@@ -374,6 +388,11 @@ fn parse_provider_type(provider: &str) -> Option<DriverId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domains::harnesses::CreateHarness;
+    use crate::domains::harnesses::types::CreateHarnessRequest;
+    use crate::storage::StorageBackend;
+    use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId};
+    use std::sync::Arc;
 
     #[test]
     fn parse_provider_type_accepts_mixed_case_known_values() {
@@ -382,6 +401,88 @@ mod tests {
             parse_provider_type("AZURE_OPENAI"),
             Some(DriverId::AzureOpenAI)
         );
+    }
+
+    fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
+        let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
+        let capability_service =
+            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
+        // Internal caller: the owner principal resolves to the system principal,
+        // avoiding a user lookup the in-memory store cannot satisfy.
+        let mut ctx = Ctx::new(
+            Caller::internal(DEFAULT_ORG_ID),
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        )
+        .with_session_service(session_service);
+        ctx.resource_limits.max_sessions_per_org = max_sessions_per_org;
+        ctx
+    }
+
+    fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
+        CreateSessionRequest {
+            workspace_id: None,
+            harness_id: Some(harness_id),
+            harness_name: None,
+            agent_id: None,
+            agent_identity_id: None,
+            title: Some("Test Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            parent_session_id: None,
+        }
+    }
+
+    async fn seed_harness(ctx: &Ctx) -> HarnessId {
+        CreateHarness(CreateHarnessRequest {
+            name: "limit-harness".to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: Some("prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(ctx)
+        .await
+        .expect("seed harness")
+        .id
+    }
+
+    #[tokio::test]
+    async fn session_creation_rejected_at_limit_and_allowed_below() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 1);
+        let harness_id = seed_harness(&ctx).await;
+
+        CreateSession(create_request(harness_id))
+            .execute(&ctx)
+            .await
+            .expect("first session below limit");
+
+        let err = CreateSession(create_request(harness_id))
+            .execute(&ctx)
+            .await
+            .expect_err("second session exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+        assert!(err.message().contains("Session limit reached"));
     }
 }
 

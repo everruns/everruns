@@ -164,6 +164,17 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Count non-deleted agents in an org (for resource limits).
+    /// Includes active and archived; excludes soft-deleted rows.
+    pub async fn count_agents_for_org(&self, org_id: i64) -> Result<i64> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .filter(|a| a.org_id == org_id && a.status != "deleted")
+            .count() as i64)
+    }
+
     pub async fn list_agents(
         &self,
         org_id: i64,

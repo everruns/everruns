@@ -143,6 +143,19 @@ impl Command for CreateHarness {
         q::validate_harness_name(&req.name)?;
         validate_create_limits(&req)?;
 
+        // Enforce per-org harness cap (excludes soft-deleted) before insert.
+        let max = ctx.resource_limits.max_harnesses_per_org;
+        let count = ctx
+            .db
+            .count_harnesses_for_org(ctx.org_id())
+            .await
+            .map_err(classify_anyhow)?;
+        if count >= max {
+            return Err(CommandError::conflict(format!(
+                "Harness limit reached (max {max})"
+            )));
+        }
+
         // Business rules
         q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
         let caps = normalize_capability_refs(
@@ -887,3 +900,152 @@ impl Command for CheckHarnessName {
 }
 
 inventory::submit! { CommandDescriptor::of::<CheckHarnessName>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
+    };
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn test_ctx(db: Arc<StorageBackend>, max_harnesses_per_org: i64) -> Ctx {
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        let mut ctx = Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                user_id: Some(Uuid::nil()),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        );
+        ctx.resource_limits.max_harnesses_per_org = max_harnesses_per_org;
+        ctx
+    }
+
+    fn basic_request(name: &str) -> CreateHarnessRequest {
+        CreateHarnessRequest {
+            name: name.to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: Some("prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        }
+    }
+
+    #[tokio::test]
+    async fn harness_creation_rejected_at_limit_and_allowed_below() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 2);
+
+        CreateHarness(basic_request("h1"))
+            .execute(&ctx)
+            .await
+            .expect("first harness below limit");
+        CreateHarness(basic_request("h2"))
+            .execute(&ctx)
+            .await
+            .expect("second harness at limit boundary");
+
+        let err = CreateHarness(basic_request("h3"))
+            .execute(&ctx)
+            .await
+            .expect_err("third harness exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+        assert!(err.message().contains("Harness limit reached"));
+    }
+
+    #[tokio::test]
+    async fn soft_deleted_harnesses_do_not_count_toward_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 1);
+
+        let h1 = CreateHarness(basic_request("h1"))
+            .execute(&ctx)
+            .await
+            .expect("first harness below limit");
+
+        // At the cap: a second create is rejected.
+        let err = CreateHarness(basic_request("h2"))
+            .execute(&ctx)
+            .await
+            .expect_err("second harness exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+
+        // Soft-delete h1 (archive then mark deleted). A deleted row must not
+        // count toward the cap, so creation succeeds again.
+        DeleteHarness {
+            id: h1.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("archive h1");
+        DestroyHarness {
+            id: h1.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("mark h1 deleted");
+
+        CreateHarness(basic_request("h2"))
+            .execute(&ctx)
+            .await
+            .expect("creation allowed once the deleted harness is excluded");
+    }
+
+    #[tokio::test]
+    async fn built_in_harnesses_do_not_count_toward_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 1);
+
+        // Seed a system harness (is_built_in = true), as platform bootstrap does.
+        db.create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: "seeded-system".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: None,
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                embedder_metadata: serde_json::json!({}),
+                is_built_in: true,
+            },
+        )
+        .await
+        .expect("seed built-in harness");
+
+        // The built-in must not consume the cap, so a user harness still fits.
+        CreateHarness(basic_request("h1"))
+            .execute(&ctx)
+            .await
+            .expect("user harness allowed despite a built-in present");
+
+        // ...but the next user harness is now at the cap.
+        let err = CreateHarness(basic_request("h2"))
+            .execute(&ctx)
+            .await
+            .expect_err("second user harness exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+    }
+}

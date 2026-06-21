@@ -170,6 +170,17 @@ impl InMemoryDatabase {
             .count() as u64)
     }
 
+    /// Count sessions in an org (for resource limits). Sessions are hard-deleted
+    /// (no soft-delete status), so every stored row counts toward the cap.
+    pub async fn count_sessions_for_org(&self, org_id: i64) -> Result<i64> {
+        Ok(self
+            .sessions
+            .read()
+            .values()
+            .filter(|s| s.org_id == org_id)
+            .count() as i64)
+    }
+
     /// List child sessions (subagents) for a parent session.
     pub async fn list_child_sessions(
         &self,

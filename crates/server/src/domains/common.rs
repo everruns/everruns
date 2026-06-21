@@ -337,6 +337,10 @@ pub struct Ctx {
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
     /// Agent health check service (specs/agent-checks.md, tier-3).
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
+    /// Per-org/per-user resource caps enforced in create paths (harnesses,
+    /// agents, sessions). Resolved from env so SaaS plan overrides apply across
+    /// every entry path (HTTP/MCP/gRPC). Tests may override the fields directly.
+    pub resource_limits: crate::server::ResourceLimitsConfig,
 }
 
 impl Ctx {
@@ -390,6 +394,7 @@ impl Ctx {
             egress_service: None,
             utility_llm_service: None,
             health_check_service: None,
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }
     }
 

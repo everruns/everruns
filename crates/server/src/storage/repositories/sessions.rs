@@ -246,6 +246,17 @@ impl Database {
         Ok(count as u64)
     }
 
+    /// Count sessions in an org (for resource limits). Sessions are hard-deleted
+    /// (no soft-delete status), so every stored row counts toward the cap.
+    pub async fn count_sessions_for_org(&self, org_id: i64) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1")
+            .bind(org_id)
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(count)
+    }
+
     /// List child sessions (subagents) for a parent session.
     pub async fn list_child_sessions(
         &self,
