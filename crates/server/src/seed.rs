@@ -2996,7 +2996,7 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 20);
+        assert_eq!(cap_ids.len(), 21);
         assert!(cap_ids.contains(&"human_intent"));
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"bashkit_shell"));
@@ -3017,6 +3017,7 @@ mod tests {
         assert!(cap_ids.contains(&"compaction"));
         assert!(cap_ids.contains(&"tool_output_persistence"));
         assert!(cap_ids.contains(&"tool_output_distillation"));
+        assert!(cap_ids.contains(&"parallel_tool_calls"));
         // Verify compaction default config
         let compaction_cap = generic
             .capabilities

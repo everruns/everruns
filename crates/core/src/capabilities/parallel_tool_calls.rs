@@ -64,16 +64,26 @@ impl ParallelToolCallsMode {
 }
 
 /// Resolve the `parallel_tool_calls` capability config into a request-level
-/// preference. Returns `None` when the capability is absent, when its mode is
-/// `none`, or when the config is malformed. When the capability is present
-/// without an explicit `mode`, the default is `prefer`.
+/// preference.
+///
+/// - Capability present with no explicit `mode` (empty/`null` config) → `prefer`.
+/// - Valid `mode` → that mode (`none` resolves to no preference).
+/// - Malformed config (not an object) or an invalid/non-string `mode` → `None`,
+///   so a bad runtime config neutralizes the capability rather than silently
+///   enabling parallel tool calls. (`validate_config` already rejects these on
+///   the write path; this is the defensive runtime fallback.)
 pub fn parallel_tool_calls_from_config(config: &serde_json::Value) -> Option<bool> {
-    let mode = config
-        .get("mode")
-        .and_then(|value| value.as_str())
-        .and_then(ParallelToolCallsMode::parse)
-        .unwrap_or(ParallelToolCallsMode::Prefer);
-    mode.to_preference()
+    if config.is_null() {
+        return ParallelToolCallsMode::Prefer.to_preference();
+    }
+    let object = config.as_object()?;
+    match object.get("mode") {
+        None => ParallelToolCallsMode::Prefer.to_preference(),
+        Some(serde_json::Value::String(mode)) => {
+            ParallelToolCallsMode::parse(mode).and_then(ParallelToolCallsMode::to_preference)
+        }
+        Some(_) => None,
+    }
 }
 
 /// Parallel tool calls capability.
@@ -227,6 +237,24 @@ mod tests {
         );
         assert_eq!(
             parallel_tool_calls_from_config(&serde_json::json!({"mode": "none"})),
+            None
+        );
+    }
+
+    #[test]
+    fn from_config_malformed_neutralizes() {
+        // Invalid/non-string mode and non-object configs do not silently enable
+        // parallel tool calls — they resolve to no preference.
+        assert_eq!(
+            parallel_tool_calls_from_config(&serde_json::json!({"mode": "loud"})),
+            None
+        );
+        assert_eq!(
+            parallel_tool_calls_from_config(&serde_json::json!({"mode": 5})),
+            None
+        );
+        assert_eq!(
+            parallel_tool_calls_from_config(&serde_json::json!([])),
             None
         );
     }

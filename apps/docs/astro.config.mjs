@@ -246,6 +246,7 @@ export default defineConfig({
                         { label: "Tool Search", slug: "capabilities/tool-search" },
                         { label: "Budgeting", slug: "capabilities/budgeting" },
                         { label: "Self-Budget", slug: "capabilities/self-budget" },
+                        { label: "Parallel Tool Calls", slug: "capabilities/parallel-tool-calls" },
                       ],
                     },
                     {

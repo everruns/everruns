@@ -2637,6 +2637,7 @@ mod tests {
             "tool_search",
             "auto_tool_search",
             "prompt_caching",
+            "parallel_tool_calls",
             "session_tasks",
             "skills",
             "subagents",
