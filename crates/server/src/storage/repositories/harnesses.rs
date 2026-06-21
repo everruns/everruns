@@ -179,6 +179,20 @@ impl Database {
         Ok(query.fetch_all(&self.pool).await?)
     }
 
+    /// Count user-created harnesses in an org (for resource limits). Includes
+    /// active and archived; excludes soft-deleted rows. Built-in harnesses are
+    /// system-seeded into every org and undeletable, so they must not consume a
+    /// user's (or SaaS plan's) per-org budget.
+    pub async fn count_harnesses_for_org(&self, org_id: i64) -> Result<i64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM harnesses WHERE org_id = $1 AND status != 'deleted' AND is_built_in = false",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
+    }
+
     pub async fn update_harness(
         &self,
         org_id: i64,

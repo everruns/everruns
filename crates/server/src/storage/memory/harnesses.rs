@@ -133,6 +133,19 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Count user-created harnesses in an org (for resource limits). Includes
+    /// active and archived; excludes soft-deleted rows. Built-in harnesses are
+    /// system-seeded into every org and undeletable, so they must not consume a
+    /// user's (or SaaS plan's) per-org budget.
+    pub async fn count_harnesses_for_org(&self, org_id: i64) -> Result<i64> {
+        Ok(self
+            .harnesses
+            .read()
+            .values()
+            .filter(|h| h.org_id == org_id && h.status != "deleted" && !h.is_built_in)
+            .count() as i64)
+    }
+
     pub async fn list_harnesses(
         &self,
         org_id: i64,

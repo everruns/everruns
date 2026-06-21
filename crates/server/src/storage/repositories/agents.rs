@@ -210,6 +210,17 @@ impl Database {
         Ok((rows, total.0 as u32))
     }
 
+    /// Count non-deleted agents in an org (for resource limits).
+    /// Includes active and archived; excludes soft-deleted rows.
+    pub async fn count_agents_for_org(&self, org_id: i64) -> Result<i64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM agents WHERE org_id = $1 AND status != 'deleted'")
+                .bind(org_id)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count)
+    }
+
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"

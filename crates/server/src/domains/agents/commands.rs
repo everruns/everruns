@@ -170,6 +170,19 @@ impl Command for CreateAgent {
         validate_create_limits(&req)?;
         check_high_risk_caps(ctx, &req.capabilities).await?;
 
+        // Enforce per-org agent cap (excludes soft-deleted) before insert.
+        let max = ctx.resource_limits.max_agents_per_org;
+        let count = ctx
+            .db
+            .count_agents_for_org(ctx.org_id())
+            .await
+            .map_err(classify_anyhow)?;
+        if count >= max {
+            return Err(CommandError::conflict(format!(
+                "Agent limit reached (max {max})"
+            )));
+        }
+
         // Business rules
         q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
         let caps = normalize_capability_refs(
@@ -2273,6 +2286,66 @@ mod tests {
         .run(&owner_ctx)
         .await
         .expect("owner can roll back to high-risk version");
+    }
+
+    #[tokio::test]
+    async fn agent_creation_rejected_at_limit_and_allowed_below() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut ctx = ctx_with_role(db, OrgRole::Owner);
+        ctx.resource_limits.max_agents_per_org = 2;
+
+        CreateAgent(basic_agent_request("a1"))
+            .execute(&ctx)
+            .await
+            .expect("first agent below limit");
+        CreateAgent(basic_agent_request("a2"))
+            .execute(&ctx)
+            .await
+            .expect("second agent at limit boundary");
+
+        let err = CreateAgent(basic_agent_request("a3"))
+            .execute(&ctx)
+            .await
+            .expect_err("third agent exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+        assert!(err.message().contains("Agent limit reached"));
+    }
+
+    #[tokio::test]
+    async fn soft_deleted_agents_do_not_count_toward_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut ctx = ctx_with_role(db, OrgRole::Owner);
+        ctx.resource_limits.max_agents_per_org = 1;
+
+        let a1 = CreateAgent(basic_agent_request("a1"))
+            .execute(&ctx)
+            .await
+            .expect("first agent below limit");
+
+        let err = CreateAgent(basic_agent_request("a2"))
+            .execute(&ctx)
+            .await
+            .expect_err("second agent exceeds the cap");
+        assert_eq!(err.status().as_u16(), 409);
+
+        // Archive then mark deleted; a deleted row must not count toward the cap.
+        DeleteAgent {
+            id: a1.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("archive a1");
+        DestroyAgent {
+            id: a1.public_id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("mark a1 deleted");
+
+        CreateAgent(basic_agent_request("a2"))
+            .execute(&ctx)
+            .await
+            .expect("creation allowed once the deleted agent is excluded");
     }
 }
 

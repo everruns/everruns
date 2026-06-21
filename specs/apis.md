@@ -604,8 +604,16 @@ Configurable limits on resource creation. See `crates/server/src/server.rs` for 
 |----------|---------|---------|
 | Orgs per user | 5 | `RESOURCE_LIMIT_MAX_ORGS_PER_USER` |
 | Members per org | 50 | `RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG` |
+| Personal access tokens per user | 25 | `RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER` |
+| Harnesses per org | 50 | `RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG` |
+| Agents per org | 500 | `RESOURCE_LIMIT_MAX_AGENTS_PER_ORG` |
+| Sessions per org | 10000 | `RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG` |
 
-Returns `409 Conflict` when a limit is exceeded.
+Returns `409 Conflict` when a limit is exceeded. Harness, agent, and session
+caps are per org and enforced in the create commands (covering HTTP, MCP, and
+gRPC entry paths); counts exclude soft-deleted rows. The harness cap counts only
+user-created harnesses — built-in (system-seeded) harnesses do not consume the
+budget.
 
 ### Error Responses
 

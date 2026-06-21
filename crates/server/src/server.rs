@@ -18,6 +18,9 @@ pub struct ResourceLimitsConfig {
     pub max_orgs_per_user: i64,
     pub max_members_per_org: i64,
     pub max_personal_access_tokens_per_user: i64,
+    pub max_harnesses_per_org: i64,
+    pub max_agents_per_org: i64,
+    pub max_sessions_per_org: i64,
 }
 
 impl Default for ResourceLimitsConfig {
@@ -26,6 +29,9 @@ impl Default for ResourceLimitsConfig {
             max_orgs_per_user: 5,
             max_members_per_org: 50,
             max_personal_access_tokens_per_user: 25,
+            max_harnesses_per_org: 50,
+            max_agents_per_org: 500,
+            max_sessions_per_org: 10000,
         }
     }
 }
@@ -39,6 +45,9 @@ impl ResourceLimitsConfig {
                 "RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER",
                 25,
             ),
+            max_harnesses_per_org: env_or("RESOURCE_LIMIT_MAX_HARNESSES_PER_ORG", 50),
+            max_agents_per_org: env_or("RESOURCE_LIMIT_MAX_AGENTS_PER_ORG", 500),
+            max_sessions_per_org: env_or("RESOURCE_LIMIT_MAX_SESSIONS_PER_ORG", 10000),
         }
     }
 }
