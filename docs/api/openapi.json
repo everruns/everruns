@@ -8211,7 +8211,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FeatureFlags"
+                  "$ref": "#/components/schemas/FeatureFlagMap"
                 }
               }
             }
@@ -8269,7 +8269,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FeatureFlags"
+                  "$ref": "#/components/schemas/FeatureFlagMap"
                 }
               }
             }
@@ -18781,57 +18781,14 @@
           }
         }
       },
-      "FeatureFlags": {
+      "FeatureFlagMap": {
         "type": "object",
-        "description": "Feature flags exposed via `GET /v1/feature-flags` and consumed by the frontend.\n\nCurrently backed by environment variables and deployment grade.\nFuture: per-org flags, per-user flags, external providers.",
-        "required": [
-          "global_chat",
-          "notifications",
-          "mcp_endpoint",
-          "evals",
-          "app_budgets",
-          "agent_versions",
-          "voice",
-          "agent_delegation",
-          "observers"
-        ],
-        "properties": {
-          "agent_delegation": {
-            "type": "boolean",
-            "description": "Outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`).\nExperimental: auto-enabled in dev, off in prod by default.\nWhen off, these capabilities are not registered and cannot be assigned to agents."
-          },
-          "agent_versions": {
-            "type": "boolean",
-            "description": "Immutable agent versions, snapshots, forks, and app version binding.\nExperimental."
-          },
-          "app_budgets": {
-            "type": "boolean",
-            "description": "App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).\nExperimental."
-          },
-          "evals": {
-            "type": "boolean",
-            "description": "Evals (user-facing behavioral evals for agents). Experimental."
-          },
-          "global_chat": {
-            "type": "boolean",
-            "description": "Platform Chat: the per-user singleton assistant chat surface — sidebar\nentry, the `/chat` page, and the `POST /v1/sessions/chat` (+ voice)\nendpoints. When off, the whole Platform Chat feature is disabled\n(UI hidden and APIs return 404); other chat surfaces (per-session,\nagent, channel) are unaffected. Experimental."
-          },
-          "mcp_endpoint": {
-            "type": "boolean",
-            "description": "MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental."
-          },
-          "notifications": {
-            "type": "boolean",
-            "description": "In-app notifications (bell, toasts, notification SSE). Experimental."
-          },
-          "observers": {
-            "type": "boolean",
-            "description": "Observers (online scoring of production sessions). Experimental."
-          },
-          "voice": {
-            "type": "boolean",
-            "description": "Realtime voice endpoints and microphone controls. Experimental."
-          }
+        "description": "Untyped API representation of feature flags: a generic `{ \"<flag>\": bool }` map.\n\nDecision: the public API is intentionally untyped. The set of flags churns\nfrequently; encoding each flag as a named schema property would force a\n`docs/api/openapi.json` change on every add/remove. A generic string→bool map\nkeeps the API spec stable. The frontend layers its own typed view on top.",
+        "additionalProperties": {
+          "type": "boolean"
+        },
+        "propertyNames": {
+          "type": "string"
         }
       },
       "FileInfo": {

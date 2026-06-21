@@ -11,7 +11,7 @@ use axum::{
     extract::{Path, State},
     routing::get,
 };
-use everruns_core::{FeatureFlags, validate_org_public_id};
+use everruns_core::{FeatureFlagMap, FeatureFlags, validate_org_public_id};
 
 use crate::auth::middleware::{AuthState, OrgAdmin};
 use crate::services::org_feature_flags::{
@@ -92,7 +92,7 @@ async fn resolve_path_org(
     tag = "Organizations",
     params(("org" = String, Path, description = "Organization public id")),
     responses(
-        (status = 200, description = "Effective feature flags", body = FeatureFlags),
+        (status = 200, description = "Effective feature flags", body = FeatureFlagMap),
         (status = 404, description = "Organization not found", body = ErrorResponse),
     ),
     security(("bearerAuth" = []), ("cookieAuth" = []))
@@ -101,7 +101,7 @@ pub async fn get_org_feature_flags(
     State(state): State<AppState>,
     Path(org_public_id): Path<String>,
     user: crate::auth::AuthUser,
-) -> ApiResult<FeatureFlags> {
+) -> ApiResult<FeatureFlagMap> {
     let org_id = resolve_path_org(&state, user.id, &org_public_id).await?;
     let flags = crate::services::org_feature_flags::resolve_org_feature_flags(
         &state.db,
@@ -110,7 +110,7 @@ pub async fn get_org_feature_flags(
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
-    Ok(Json(flags))
+    Ok(Json(flags.to_map()))
 }
 
 /// GET /v1/orgs/{org}/feature-flags/settings — catalog with system/org/effective state.
@@ -149,7 +149,7 @@ pub async fn get_org_feature_flag_settings(
     params(("org" = String, Path, description = "Organization public id")),
     request_body = UpdateOrgFeatureFlagsRequest,
     responses(
-        (status = 200, description = "Updated effective flags", body = FeatureFlags),
+        (status = 200, description = "Updated effective flags", body = FeatureFlagMap),
         (status = 400, description = "Invalid flag", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "Organization not found", body = ErrorResponse),
@@ -161,7 +161,7 @@ pub async fn update_org_feature_flags(
     Path(org_public_id): Path<String>,
     OrgAdmin(org): OrgAdmin,
     Json(req): Json<UpdateOrgFeatureFlagsRequest>,
-) -> ApiResult<FeatureFlags> {
+) -> ApiResult<FeatureFlagMap> {
     if org.public_id != org_public_id {
         return Err(ErrorResponse::not_found("Organization"));
     }
@@ -182,5 +182,5 @@ pub async fn update_org_feature_flags(
     )
     .await
     .log_internal_error_json("resolve org feature flags")?;
-    Ok(Json(flags))
+    Ok(Json(flags.to_map()))
 }
