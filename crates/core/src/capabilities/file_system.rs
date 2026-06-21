@@ -300,7 +300,13 @@ fn parse_text_edits(arguments: &Value) -> std::result::Result<Vec<TextEdit>, Str
             (Some(""), Some(""))
         );
         if !has_empty_single_placeholders {
-            return Err("Provide either old_text/new_text or edits, not both".to_string());
+            return Err(
+                "Ambiguous edit_file call: both top-level old_text/new_text and edits[] were \
+                 provided. Send exactly one mode — either top-level old_text/new_text for a \
+                 single replacement, OR edits:[{old_text,new_text},...] for a batch. Do not \
+                 include both."
+                    .to_string(),
+            );
         }
     }
 
@@ -1014,7 +1020,7 @@ impl Tool for EditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Apply one or more exact text replacements to an existing text file. Requires the current content hash from read_file or write_file."
+        "Apply one or more exact text replacements to an existing text file. Requires the current content hash from read_file or write_file. Use exactly one editing mode: either top-level old_text/new_text for a single replacement, or edits[] for a batch — never both."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1031,15 +1037,15 @@ impl Tool for EditFileTool {
                 },
                 "old_text": {
                     "type": "string",
-                    "description": "Exact text to replace. Use for single-edit shorthand."
+                    "description": "Single-edit mode: exact text to replace, paired with new_text. Mutually exclusive with edits[] — provide either top-level old_text/new_text or edits[], never both."
                 },
                 "new_text": {
                     "type": "string",
-                    "description": "Replacement text. Use for single-edit shorthand."
+                    "description": "Single-edit mode: replacement text, paired with old_text. Do not combine with edits[]."
                 },
                 "edits": {
                     "type": "array",
-                    "description": "Batch multiple replacements in a single file. Each edit matches against the original file content.",
+                    "description": "Batch mode: multiple replacements in a single file, each matched against the original file content. Mutually exclusive with top-level old_text/new_text — provide either edits[] or old_text/new_text, never both.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -2322,16 +2328,65 @@ mod tests {
 
     #[test]
     fn test_parse_text_edits_rejects_mixed_modes() {
+        // EVE-616: a genuine mixed-mode call (non-empty top-level old_text/new_text
+        // AND a non-empty edits[]) must be rejected with an actionable, corrective
+        // error so the model knows exactly how to repair the next call.
         let result = parse_text_edits(&json!({
             "old_text": "a",
             "new_text": "b",
             "edits": [{"old_text": "c", "new_text": "d"}]
         }));
 
-        assert_eq!(
-            result.unwrap_err(),
-            "Provide either old_text/new_text or edits, not both"
+        let err = result.unwrap_err();
+        // The message names the conflict and tells the model to pick exactly one mode.
+        assert!(err.contains("old_text/new_text"), "error: {err}");
+        assert!(err.contains("edits"), "error: {err}");
+        assert!(
+            err.to_lowercase().contains("not include both")
+                || err.to_lowercase().contains("exactly one"),
+            "error should be corrective: {err}"
         );
+    }
+
+    #[test]
+    fn test_parse_text_edits_accepts_single_edit() {
+        let edits = parse_text_edits(&json!({
+            "old_text": "hello",
+            "new_text": "world"
+        }))
+        .expect("single-edit mode should be accepted");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].old_text, "hello");
+        assert_eq!(edits[0].new_text, "world");
+    }
+
+    #[test]
+    fn test_parse_text_edits_accepts_batch() {
+        let edits = parse_text_edits(&json!({
+            "edits": [
+                {"old_text": "a", "new_text": "1"},
+                {"old_text": "b", "new_text": "2"}
+            ]
+        }))
+        .expect("batch mode should be accepted");
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[1].old_text, "b");
+        assert_eq!(edits[1].new_text, "2");
+    }
+
+    #[test]
+    fn test_parse_text_edits_allows_empty_single_placeholders_with_batch() {
+        // EVE-498 compat: some models emit empty top-level placeholders alongside a
+        // real edits[]. That is treated as batch mode, not an ambiguous mixed call.
+        let edits = parse_text_edits(&json!({
+            "old_text": "",
+            "new_text": "",
+            "edits": [{"old_text": "c", "new_text": "d"}]
+        }))
+        .expect("empty placeholders + batch should be accepted as batch");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].old_text, "c");
+        assert_eq!(edits[0].new_text, "d");
     }
 
     #[test]
