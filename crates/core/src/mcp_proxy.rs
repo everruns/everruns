@@ -48,9 +48,15 @@ impl ScopedMcpToolInvoker {
     pub fn new(definitions: &[ToolDefinition], inner: Arc<dyn McpToolInvoker>) -> Self {
         let allowed_tool_names = definitions
             .iter()
-            .map(ToolDefinition::name)
-            .filter(|name| is_mcp_tool(name))
-            .map(str::to_string)
+            .filter_map(|def| match def {
+                ToolDefinition::Builtin(builtin) if is_mcp_tool(&builtin.name) => {
+                    Some(builtin.name.clone())
+                }
+                // Client-side tools are session/agent-authored metadata and are
+                // not worker-executable MCP proxy tools, even if their names
+                // use the reserved mcp_* prefix.
+                ToolDefinition::ClientSide(_) | ToolDefinition::Builtin(_) => None,
+            })
             .collect();
         Self {
             inner,
@@ -198,11 +204,11 @@ fn tool_result_to_execution(result: crate::tool_types::ToolResult) -> ToolExecut
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_types::{DeferrablePolicy, ToolPolicy, ToolResult};
+    use crate::tool_types::{ClientSideTool, DeferrablePolicy, ToolPolicy, ToolResult};
     use std::sync::Mutex;
 
-    fn mcp_def(name: &str) -> ToolDefinition {
-        ToolDefinition::Builtin(BuiltinTool {
+    fn builtin_def(name: &str) -> BuiltinTool {
+        BuiltinTool {
             name: name.to_string(),
             display_name: None,
             description: "an mcp tool".to_string(),
@@ -211,6 +217,26 @@ mod tests {
                 "properties": { "q": { "type": "string" } }
             }),
             policy: ToolPolicy::Auto,
+            category: Some("MCP Servers".to_string()),
+            deferrable: DeferrablePolicy::Automatic,
+            hints: ToolHints::default().with_open_world(true),
+            full_parameters: None,
+        }
+    }
+
+    fn mcp_def(name: &str) -> ToolDefinition {
+        ToolDefinition::Builtin(builtin_def(name))
+    }
+
+    fn client_side_mcp_def(name: &str) -> ToolDefinition {
+        ToolDefinition::ClientSide(ClientSideTool {
+            name: name.to_string(),
+            display_name: None,
+            description: "an mcp tool".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": { "q": { "type": "string" } }
+            }),
             category: Some("MCP Servers".to_string()),
             deferrable: DeferrablePolicy::Automatic,
             hints: ToolHints::default().with_open_world(true),
@@ -276,13 +302,7 @@ mod tests {
             calls: Mutex::new(vec![]),
             result: ok_result(serde_json::json!({ "answer": 42 })),
         });
-        let tool = McpProxyTool::new(
-            match mcp_def("mcp_docs__search") {
-                ToolDefinition::Builtin(b) => b,
-                _ => unreachable!(),
-            },
-            invoker.clone(),
-        );
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker.clone());
 
         let mut ctx = ToolContext::new(uuid::Uuid::new_v4().into());
         ctx.tool_call_id = Some("call_1".to_string());
@@ -314,13 +334,7 @@ mod tests {
                 raw_output: None,
             },
         });
-        let tool = McpProxyTool::new(
-            match mcp_def("mcp_docs__search") {
-                ToolDefinition::Builtin(b) => b,
-                _ => unreachable!(),
-            },
-            invoker,
-        );
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), invoker);
         let result = tool.execute(serde_json::json!({})).await;
         assert!(matches!(result, ToolExecutionResult::ToolError(ref m) if m == "boom"));
     }
@@ -338,13 +352,7 @@ mod tests {
                 ))
             }
         }
-        let tool = McpProxyTool::new(
-            match mcp_def("mcp_docs__search") {
-                ToolDefinition::Builtin(b) => b,
-                _ => unreachable!(),
-            },
-            Arc::new(FailingInvoker),
-        );
+        let tool = McpProxyTool::new(builtin_def("mcp_docs__search"), Arc::new(FailingInvoker));
         let result = tool.execute(serde_json::json!({})).await;
         match result {
             ToolExecutionResult::ToolError(m) => assert!(m.contains("MCP server not found")),
@@ -387,6 +395,40 @@ mod tests {
         let calls = inner.calls.lock().unwrap();
         assert_eq!(calls.len(), 1, "denied call must not reach backend");
         assert_eq!(calls[0].name, "mcp_docs__search");
+    }
+
+    #[tokio::test]
+    async fn scoped_invoker_rejects_client_side_mcp_names() {
+        let inner = Arc::new(RecordingInvoker {
+            calls: Mutex::new(vec![]),
+            result: ok_result(serde_json::json!({ "ok": true })),
+        });
+        let scoped = ScopedMcpToolInvoker::new(
+            &[
+                mcp_def("mcp_docs__search"),
+                client_side_mcp_def("mcp_secret__capture"),
+            ],
+            inner.clone(),
+        );
+
+        let spoofed_client_side = ToolCall {
+            id: "call_1".to_string(),
+            name: "mcp_secret__capture".to_string(),
+            arguments: serde_json::json!({ "content": "sensitive" }),
+        };
+        let error = scoped
+            .invoke(&spoofed_client_side)
+            .await
+            .expect_err("client-side MCP-prefixed tool must not authorize backend calls");
+        assert!(
+            error
+                .to_string()
+                .contains("MCP tool 'mcp_secret__capture' is not allowed"),
+            "unexpected error: {error}"
+        );
+
+        let calls = inner.calls.lock().unwrap();
+        assert!(calls.is_empty(), "denied call must not reach backend");
     }
 
     #[test]
