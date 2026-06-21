@@ -26,7 +26,7 @@ use everruns_core::session_resource::{RegisterSessionResource, SessionResourceSt
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use everruns_core::{validate_safe_url, validate_url_dns_pinned};
+use everruns_core::{DirectEgressService, validate_safe_url, validate_url_dns_pinned};
 
 use crate::client::{
     ArdRegistryClient, CatalogEntry, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER, SearchQuery,
@@ -162,6 +162,21 @@ impl Tool for DiscoverResourcesTool {
             Err(e) => return e,
         };
 
+        if let Some(acl) = &context.network_access
+            && !acl.is_url_allowed(&registry.url)
+        {
+            return ToolExecutionResult::tool_error(
+                "registry URL blocked by network access policy",
+            );
+        }
+        if !self.config.allow_local_urls
+            && let Err(e) = validate_safe_url(&registry.url)
+        {
+            return ToolExecutionResult::tool_error(format!(
+                "registry URL blocked by SSRF policy: {e}"
+            ));
+        }
+
         let token = resolve_token(context).await;
         let client = ArdRegistryClient::new(registry.url.clone(), token);
         let request = SearchRequest {
@@ -173,7 +188,23 @@ impl Tool for DiscoverResourcesTool {
             page_size: Some(10),
         };
 
-        let response = match client.search(&request).await {
+        let response = if self.config.allow_local_urls && context.egress_service.is_none() {
+            client.search(&request).await
+        } else {
+            let egress = context
+                .egress_service
+                .clone()
+                .unwrap_or_else(|| std::sync::Arc::new(DirectEgressService::from_env()));
+            client
+                .search_with_egress(
+                    &request,
+                    egress,
+                    context.network_access.clone(),
+                    !self.config.allow_local_urls,
+                )
+                .await
+        };
+        let response = match response {
             Ok(r) => r,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
@@ -461,8 +492,18 @@ impl AttachResourceTool {
         let addrs = self.validate_url(context, url).await?;
         let token = resolve_token(context).await;
         let client = ArdRegistryClient::new(entry.source.clone().unwrap_or_default(), token);
+        if self.config.allow_local_urls && context.egress_service.is_none() {
+            return client
+                .fetch_artifact(url, &addrs)
+                .await
+                .map_err(ToolExecutionResult::tool_error);
+        }
+        let egress = context
+            .egress_service
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(DirectEgressService::from_env()));
         client
-            .fetch_artifact(url, &addrs)
+            .fetch_artifact_with_egress(url, &addrs, egress, context.network_access.clone())
             .await
             .map_err(ToolExecutionResult::tool_error)
     }
@@ -523,9 +564,16 @@ impl AttachResourceTool {
     /// DNS-pinned SSRF validation; bypassed (parse-only) when allow_local_urls.
     async fn validate_url(
         &self,
-        _context: &ToolContext,
+        context: &ToolContext,
         url: &str,
     ) -> Result<Vec<std::net::SocketAddr>, ToolExecutionResult> {
+        if let Some(acl) = &context.network_access
+            && !acl.is_url_allowed(url)
+        {
+            return Err(ToolExecutionResult::tool_error(
+                "URL blocked by network access policy",
+            ));
+        }
         if self.config.allow_local_urls {
             // Still require a syntactically valid http(s) URL.
             url::Url::parse(url)

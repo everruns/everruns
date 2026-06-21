@@ -5,6 +5,7 @@
 //! attachment type allowlist, an attachment cap, and a local-URL escape hatch
 //! for tests.
 
+use everruns_core::validate_safe_url;
 use serde::{Deserialize, Serialize};
 
 use crate::client::{Federation, MEDIA_TYPE_A2A_AGENT_CARD, MEDIA_TYPE_MCP_SERVER};
@@ -86,14 +87,20 @@ impl ArdConfig {
             if !seen.insert(reg.id.clone()) {
                 return Err(format!("duplicate registry id '{}'", reg.id));
             }
-            // Registry URLs are operator-provided; require a parseable http(s) URL.
-            // SSRF for registries is enforced by the network-access policy + the
-            // resolved-artifact checks at attach time; local registries are only
-            // permitted when allow_local_urls is set.
-            let parsed = url::Url::parse(&reg.url)
-                .map_err(|e| format!("registry '{}' has invalid url: {e}", reg.id))?;
-            if !matches!(parsed.scheme(), "http" | "https") {
-                return Err(format!("registry '{}' url must be http(s)", reg.id));
+            // Registry URLs are operator-provided, but still drive server-side
+            // HTTP. Reject static SSRF targets unless explicitly enabled for
+            // local/dev registries; runtime DNS pinning happens before search.
+            if self.allow_local_urls {
+                let parsed = url::Url::parse(&reg.url)
+                    .map_err(|e| format!("registry '{}' has invalid url: {e}", reg.id))?;
+                if !matches!(parsed.scheme(), "http" | "https") {
+                    return Err(format!("registry '{}' url must be http(s)", reg.id));
+                }
+            } else if let Err(e) = validate_safe_url(&reg.url) {
+                return Err(format!(
+                    "registry '{}' url blocked by SSRF policy: {e}",
+                    reg.id
+                ));
             }
         }
         if self.max_attachments == 0 {
@@ -161,6 +168,23 @@ mod tests {
         }))
         .unwrap();
         assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn rejects_local_registry_urls_unless_allowed() {
+        let cfg = ArdConfig::from_value(&serde_json::json!({
+            "registries": [{"id": "local", "url": "http://127.0.0.1:8080"}],
+            "allow_local_urls": false
+        }))
+        .unwrap();
+        assert!(cfg.validate().unwrap_err().contains("SSRF policy"));
+
+        let cfg = ArdConfig::from_value(&serde_json::json!({
+            "registries": [{"id": "local", "url": "http://127.0.0.1:8080"}],
+            "allow_local_urls": true
+        }))
+        .unwrap();
+        cfg.validate().unwrap();
     }
 
     #[test]

@@ -272,13 +272,15 @@ async fn blocks_local_urls_unless_allowed() {
     let session_id = SessionId::new();
     let store = Arc::new(MockStorage::default());
     let context = ctx(session_id, store.clone());
-    // allow_local_urls = false → the loopback endpoint must be rejected.
-    let cfg = config_for(&base, false, vec![]);
+    // Discover through the local test registry with an explicit local-dev opt-in,
+    // then attach with local URLs disabled so the loopback endpoint is rejected.
+    let discover_cfg = config_for(&base, true, vec![]);
+    let attach_cfg = config_for("https://registry.example.test", false, vec![]);
 
-    DiscoverResourcesTool::new(cfg.clone())
+    DiscoverResourcesTool::new(discover_cfg)
         .execute_with_context(json!({ "text": "internal" }), &context)
         .await;
-    let res = AttachResourceTool::new(cfg)
+    let res = AttachResourceTool::new(attach_cfg)
         .execute_with_context(json!({ "urn": "urn:ai:acme.com:mcp:internal" }), &context)
         .await;
     match res {
