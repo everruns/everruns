@@ -62,6 +62,7 @@ jest.mock("@/components/session/session-task-chips", () => ({
 
 jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [] }),
+  useProviders: () => ({ data: [] }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,

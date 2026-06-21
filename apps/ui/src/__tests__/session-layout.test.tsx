@@ -125,6 +125,12 @@ jest.mock("@/hooks/use-sessions", () => ({
   }),
 }));
 
+// Mock providers hook (used by the layout to resolve the session trace link).
+// Avoids requiring OrgProvider in this isolated layout render.
+jest.mock("@/hooks/use-providers", () => ({
+  useProviders: () => ({ data: [] }),
+}));
+
 // Mock the SessionProvider to skip data fetching
 const mockSessionContext = {
   agent: { name: "Test Agent", id: "agent-123", status: "active" } as Record<string, unknown>,

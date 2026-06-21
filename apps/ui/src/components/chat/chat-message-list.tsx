@@ -488,7 +488,10 @@ export const ChatMessageList = memo(function ChatMessageList({
         // Deep link to this generation's trace on the provider (assistant
         // messages only; user messages carry no provider response id).
         const genTraceUrl = outputData
-          ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver)
+          ? resolveGenerationTraceUrl(outputData.message?.metadata, traceConfigByDriver, {
+              sessionId,
+              turnId: event.context?.turn_id,
+            })
           : null;
         const isScheduleTriggered = isUser && data.message?.metadata?.source === "schedule";
         const isToolOnlyMessage =

@@ -2645,11 +2645,12 @@ impl ReasonAtom {
                 serde_json::Value::String(effort.clone()),
             );
         }
-        // Stamp the driver id and provider response id so the chat UI can build
-        // a deep link to the provider's trace/logs for this message (see
-        // ProviderTraceConfig). `response_id` is the provider's generation id
-        // (e.g. OpenRouter's "gen-..."); absent for providers that do not return
-        // one.
+        // Stamp the provider driver id and provider response id so the chat UI
+        // can build a deep link to the provider's trace/logs for this message
+        // (see ProviderTraceConfig). The resolved model carries the driver id,
+        // not the concrete provider instance id, so the UI keys trace config by
+        // driver. `response_id` is the provider's generation id (e.g.
+        // OpenRouter's "gen-..."); absent for providers that do not return one.
         metadata.insert(
             "provider".to_string(),
             serde_json::Value::String(model_with_provider.provider_type.to_string()),

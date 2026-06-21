@@ -101,7 +101,10 @@ and template-based:
   (`ProviderTraceConfig`: `enabled`, `generation_url_template`,
   `session_url_template`). Templates support the `{response_id}`,
   `{session_id}`, `{turn_id}` and `{model}` placeholders, so the same mechanism
-  works for third-party backends (Langfuse, Helicone, ...) via an override.
+  works for third-party backends (Langfuse, Helicone, ...) via an override. The
+  UI substitutes placeholders, then renders the link only if the result is a
+  valid `http(s)` URL (rejecting `javascript:`/`data:` schemes — the templates
+  are admin-controlled but rendered as clickable links).
 - The Provider API response carries the **resolved** config (driver defaults
   overlaid with the override). `enabled` defaults `false`: vendors retain
   prompt/completion content only when logging is turned on, so the org opts in
@@ -113,7 +116,10 @@ forwarded `session_id` for grouping — see the OpenRouter section in
 [integrations.md](integrations.md)), a per-turn link on the turn divider, and a
 per-generation link beside each assistant message. The assistant message's
 provider driver id and `response_id` are stamped onto the message metadata by
-the reason atom so the UI can build the link without correlating events.
+the reason atom so the UI can build the link without correlating events. Trace
+config is keyed by driver id (the resolved model carries the driver, not the
+provider instance id), so when an org runs multiple providers on one driver the
+first trace-enabled provider for that driver supplies the templates.
 
 ### Model
 

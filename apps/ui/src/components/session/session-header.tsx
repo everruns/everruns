@@ -2,7 +2,6 @@
 
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -28,9 +27,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUpdateSession } from "@/hooks/use-sessions";
-import { useProviders } from "@/hooks";
-import { buildTraceConfigByDriver, resolveSessionTraceUrl } from "@/lib/chat-trace";
-import { useLocale } from "@/providers/locale-provider";
 import {
   getDisplayName,
   getEntityReferenceClassName,
@@ -197,36 +193,26 @@ export function SessionUsageBadge({ usage }: { usage: TokenUsage }) {
 
 /**
  * Link to the session's grouped trace on its provider's observability dashboard
- * (e.g. OpenRouter Logs). Rendered only when the session's provider has trace
- * links enabled (see ProviderTraceConfig). Uses the session id forwarded to the
- * provider for grouping.
+ * (e.g. OpenRouter Logs). The URL and label are resolved by the caller (which
+ * has org/provider context) and passed in, mirroring the `liveUsage` pattern, so
+ * the header stays renderable in isolation (dev page, unit tests).
  */
-function SessionTraceBadge({
-  sessionId,
-  llmModel,
-}: {
-  sessionId: string;
-  llmModel?: ModelWithProvider;
-}) {
-  const { t } = useLocale();
-  const { data: providers } = useProviders();
-  const traceByDriver = useMemo(() => buildTraceConfigByDriver(providers), [providers]);
-  const url = resolveSessionTraceUrl(llmModel?.provider_type, sessionId, traceByDriver);
-  if (!url) return null;
+function SessionTraceBadge({ href, label }: { href?: string; label?: string }) {
+  if (!href) return null;
 
   return (
     <a
-      href={url}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className={cn(
         buttonVariants({ variant: "outline", size: "sm" }),
         "gap-1 text-muted-foreground",
       )}
-      title={t("trace_view_session")}
+      title={label}
     >
       <ExternalLink className="icon-sharp h-3 w-3" />
-      {t("trace_label")}
+      {label}
     </a>
   );
 }
@@ -346,6 +332,8 @@ export function SessionHeader({
   activeTab,
   navigationItems,
   secondaryMetaText,
+  sessionTraceUrl,
+  sessionTraceLabel,
   backHref = "/sessions",
   backLabel = "Back to Sessions",
   allowTitleEditing = true,
@@ -360,6 +348,9 @@ export function SessionHeader({
   activeTab: SessionNavKey;
   navigationItems: SessionNavItem[];
   secondaryMetaText: string;
+  /** Deep link to the session's provider trace, resolved by the caller. */
+  sessionTraceUrl?: string;
+  sessionTraceLabel?: string;
   backHref?: string;
   backLabel?: string;
   allowTitleEditing?: boolean;
@@ -436,7 +427,7 @@ export function SessionHeader({
             </Badge>
           )}
 
-          <SessionTraceBadge sessionId={sessionId} llmModel={llmModel} />
+          <SessionTraceBadge href={sessionTraceUrl} label={sessionTraceLabel} />
 
           <SessionStatusBadge status={effectiveStatus} />
 
