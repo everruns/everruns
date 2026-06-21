@@ -21,7 +21,7 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::SessionId;
 use crate::connector::{
-    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation, FieldType,
+    Connector, ConnectorFormSchema, ConnectorPlugin, ConnectorType, ConnectorValidation,
     FormField,
 };
 use crate::tool_types::ToolHints;

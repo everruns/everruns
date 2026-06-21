@@ -12,7 +12,7 @@ use chrono::TimeZone;
 use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::credential_schema::{CredentialFormSchema, FieldType, FormField};
+use everruns_core::credential_schema::{CredentialFormSchema, FormField};
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
