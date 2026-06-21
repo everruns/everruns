@@ -39,8 +39,9 @@ tracing.workspace = true
 # Internal dependencies
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
-# need, keeping the standalone crate's dependency tree small.
-everruns-core = { path = "../core", version = "0.16.1", default-features = false }
+# need, keeping the dependency tree small. No version pin: this crate is not in
+# the publish set, so it follows the unpublished-crate convention (path only).
+everruns-core = { path = "../core", default-features = false }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures driver/token requests;
