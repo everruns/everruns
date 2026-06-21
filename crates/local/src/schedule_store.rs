@@ -279,4 +279,20 @@ impl SessionScheduleStore for LocalScheduleStore {
             .map_err(AgentLoopError::from)?;
         Ok(count as u32)
     }
+
+    async fn count_active_org_schedules(&self) -> Result<u32> {
+        let org_id = self.org_id;
+        let count: i64 = self
+            .db
+            .with_conn(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM local_schedules
+                     WHERE org_id = ?1 AND enabled = 1",
+                    rusqlite::params![org_id],
+                    |row| row.get(0),
+                )
+            })
+            .map_err(AgentLoopError::from)?;
+        Ok(count as u32)
+    }
 }

@@ -132,4 +132,11 @@ impl SessionScheduleStore for DbSessionScheduleStore {
             .await
             .map_err(|e| AgentLoopError::store(e.to_string()))
     }
+
+    async fn count_active_org_schedules(&self) -> Result<u32> {
+        self.db
+            .count_active_org_session_schedules(self.org_id)
+            .await
+            .map_err(|e| AgentLoopError::store(e.to_string()))
+    }
 }

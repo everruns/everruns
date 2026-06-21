@@ -2464,6 +2464,7 @@ dependencies = [
  "bashkit",
  "bytes",
  "chrono",
+ "cron",
  "ed25519-dalek",
  "eventsource-stream",
  "everruns-a2ui",

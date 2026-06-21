@@ -130,6 +130,17 @@ impl Database {
         Ok(row.0 as u32)
     }
 
+    pub async fn count_active_org_session_schedules(&self, org_id: i64) -> Result<u32> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.0 as u32)
+    }
+
     /// Claim due session schedules for processing.
     /// Uses SELECT FOR UPDATE SKIP LOCKED for multi-instance safety.
     pub async fn claim_due_session_schedules(&self, limit: i32) -> Result<Vec<SessionScheduleRow>> {

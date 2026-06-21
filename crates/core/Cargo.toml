@@ -43,6 +43,9 @@ uuid.workspace = true
 chrono.workspace = true
 rand.workspace = true
 
+# Cron parsing for session-schedule minimum-interval enforcement
+cron = "0.15"
+
 # Tracing
 tracing.workspace = true
 tracing-subscriber.workspace = true

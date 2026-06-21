@@ -20,7 +20,6 @@ use tracing::error;
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
-use crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION;
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
@@ -1133,17 +1132,22 @@ impl Tool for SpawnBackgroundTool {
                 );
             };
 
-            match schedule_store
-                .count_active_schedules(context.session_id)
-                .await
+            // Enforce per-session cap, per-org cap, and minimum recurring cron
+            // interval (shared with the create_schedule tool).
+            match crate::session_schedule::enforce_create_limits(
+                schedule_store.as_ref(),
+                context.session_id,
+                schedule_request.cron_expression.as_deref(),
+            )
+            .await
             {
-                Ok(count) if count >= MAX_ACTIVE_SCHEDULES_PER_SESSION => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Maximum {MAX_ACTIVE_SCHEDULES_PER_SESSION} active schedules per session. Cancel an existing schedule first."
-                    ));
+                Ok(()) => {}
+                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
+                    return ToolExecutionResult::internal_error(err);
                 }
-                Err(err) => return ToolExecutionResult::internal_error(err),
-                _ => {}
+                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+                    return ToolExecutionResult::tool_error(msg);
+                }
             }
 
             let description = build_background_schedule_description(
@@ -2701,6 +2705,17 @@ mod tests {
                 .unwrap()
                 .iter()
                 .filter(|schedule| schedule.session_id == session_id && schedule.enabled)
+                .count() as u32)
+        }
+
+        async fn count_active_org_schedules(&self) -> crate::Result<u32> {
+            // Test store is single-org; count all enabled schedules.
+            Ok(self
+                .schedules
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|schedule| schedule.enabled)
                 .count() as u32)
         }
     }
