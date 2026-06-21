@@ -19,7 +19,11 @@ use crate::deployment::DeploymentGrade;
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FeatureFlags {
-    /// Global chat (per-user singleton chat session). Experimental.
+    /// Platform Chat: the per-user singleton assistant chat surface — sidebar
+    /// entry, the `/chat` page, and the `POST /v1/sessions/chat` (+ voice)
+    /// endpoints. When off, the whole Platform Chat feature is disabled
+    /// (UI hidden and APIs return 404); other chat surfaces (per-session,
+    /// agent, channel) are unaffected. Experimental.
     pub global_chat: bool,
     /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
@@ -63,10 +67,12 @@ pub struct FeatureFlagDefinition {
 pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
     FeatureFlagDefinition {
         name: "global_chat",
-        label: "Global chat",
-        description: "Adds a personal chat session you can open from the sidebar anywhere in the \
-             app. It's always available as a quick scratchpad to talk to your agents without \
-             first setting up a dedicated app or channel.",
+        label: "Platform Chat",
+        description: "Adds a personal Platform Chat assistant you can open from the sidebar or the \
+             /chat page anywhere in the app. It's a quick scratchpad to talk to your agents \
+             without first setting up a dedicated app or channel. Turning it off disables the \
+             whole feature — the chat page, the sidebar entry, and its session and voice APIs all \
+             become unavailable.",
         experimental: true,
     },
     FeatureFlagDefinition {

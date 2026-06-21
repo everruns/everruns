@@ -37,7 +37,7 @@ describe("GlobalChatPage", () => {
 
     render(<GlobalChatPage />);
 
-    expect(screen.getByText("Global Chat is not enabled")).toBeInTheDocument();
+    expect(screen.getByText("Platform Chat is not enabled")).toBeInTheDocument();
     expect(mockUseGlobalChat).not.toHaveBeenCalled();
   });
 

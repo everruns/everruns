@@ -261,11 +261,12 @@ impl TestServer {
         feature_flags.mcp_endpoint = true;
         feature_flags.agent_versions = true;
         feature_flags.app_budgets = true;
+        feature_flags.global_chat = true;
 
         // Org-effective flags are `system && org-opt-in`, so opt the default
         // test org into the experimental flags whose runtime gates now consult
         // the org-effective flags (evals, voice, mcp_endpoint, agent_versions,
-        // app_budgets). Without this those gates reject requests in tests even
+        // app_budgets, global_chat). Without this those gates reject requests in tests even
         // though the system flags are on. Deliberately scoped to these flags —
         // e.g. `notifications` is left off so tests asserting its default-off
         // org state still hold.
@@ -275,6 +276,7 @@ impl TestServer {
             "mcp_endpoint",
             "agent_versions",
             "app_budgets",
+            "global_chat",
         ]
         .into_iter()
         .map(|name| (name.to_string(), true))

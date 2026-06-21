@@ -3232,6 +3232,27 @@ async fn test_global_chat_has_chat_harness() {
 }
 
 #[tokio::test]
+async fn test_global_chat_disabled_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let org_id = "org_00000000000000000000000000000001";
+
+    // Turn the Platform Chat feature off for the org (it is opted in by the
+    // harness by default). The backend must enforce the flag, not just the UI.
+    server
+        .patch(
+            &format!("/v1/orgs/{org_id}/feature-flags"),
+            json!({ "flags": { "global_chat": false } }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
     let server = TestServer::in_memory().await;
 

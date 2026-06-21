@@ -548,6 +548,8 @@ pub async fn create_chat_voice_session(
     State(state): State<AppState>,
     Json(req): Json<VoiceCallRequest>,
 ) -> Result<Json<VoiceSessionResponse<VoiceCallResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    // Platform Chat voice requires both the chat feature and voice to be enabled.
+    super::sessions::ensure_global_chat_enabled(&org)?;
     ensure_voice_enabled(&org)?;
     let session = GetOrCreateChatSession { locale: None }
         .run(&state.ctx(&org))
