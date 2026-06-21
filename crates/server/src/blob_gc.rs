@@ -560,8 +560,8 @@ mod tests {
         let orphan_file = uuid::Uuid::from_u128(11);
         let img = uuid::Uuid::from_u128(20);
 
-        let live_key = workspace_file_key(ws, live_file);
-        let orphan_key = workspace_file_key(ws, orphan_file);
+        let live_key = workspace_file_key(ws, live_file, "live");
+        let orphan_key = workspace_file_key(ws, orphan_file, "orphan");
         let img_data = image_data_key(7, img);
         let img_thumb = image_thumbnail_key(7, img);
 
@@ -614,7 +614,7 @@ mod tests {
     async fn sweep_within_grace_deletes_nothing() {
         let store: SharedBlobStore = Arc::new(ObjectStoreBlobStore::in_memory());
         let ws = uuid::Uuid::from_u128(1);
-        let orphan_key = workspace_file_key(ws, uuid::Uuid::from_u128(2));
+        let orphan_key = workspace_file_key(ws, uuid::Uuid::from_u128(2), "orphan");
         store
             .put(&orphan_key, b"x".to_vec(), &dr_meta())
             .await

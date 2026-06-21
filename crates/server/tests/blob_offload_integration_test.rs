@@ -298,21 +298,27 @@ async fn offloaded_file_delete_removes_object_and_sidecar() {
 }
 
 #[tokio::test]
-async fn offloaded_file_update_overwrites_blob_and_hash() {
+async fn offloaded_file_update_writes_immutable_blob_revision_and_hash() {
     let (backend, pool) = create_offload_backend().await;
     let session_id = create_test_session(&backend).await;
     let workspace_id: Uuid = session_id.into();
 
+    let original_body = b"v1".to_vec();
     backend
         .create_session_file(CreateSessionFileRow {
             session_id,
             path: "/edit.txt".to_string(),
             is_directory: false,
-            content: Some(b"v1".to_vec()),
+            content: Some(original_body.clone()),
             is_readonly: false,
         })
         .await
         .expect("create file");
+
+    let (old_key, old_sha) = file_sidecar(&pool, workspace_id, "/edit.txt")
+        .await
+        .expect("initial sidecar exists");
+    assert_eq!(old_sha, content_sha256(&original_body));
 
     let new_body = b"v2 longer content".to_vec();
     let updated = backend
@@ -335,10 +341,25 @@ async fn offloaded_file_update_overwrites_blob_and_hash() {
         raw_file_content(&pool, workspace_id, "/edit.txt").await,
         None
     );
-    let (_, sha) = file_sidecar(&pool, workspace_id, "/edit.txt")
+    let (new_key, sha) = file_sidecar(&pool, workspace_id, "/edit.txt")
         .await
         .expect("sidecar exists");
     assert_eq!(sha, content_sha256(&new_body));
+    assert_ne!(
+        new_key, old_key,
+        "content updates must point at an immutable blob revision"
+    );
+
+    let blob = blob_store_under_test();
+    assert_eq!(
+        blob.get(&old_key).await.expect("old blob get").as_deref(),
+        Some(original_body.as_slice()),
+        "the previous revision must not be overwritten in place"
+    );
+    assert_eq!(
+        blob.get(&new_key).await.expect("new blob get").as_deref(),
+        Some(new_body.as_slice())
+    );
 
     // Read returns the new bytes from the blob store.
     let fetched = backend
