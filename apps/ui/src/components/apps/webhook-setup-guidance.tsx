@@ -1,7 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CodeBlock } from "@/components/ui/code-block";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { codingAgentPrompt, webhookSamples } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Globe, KeyRound } from "lucide-react";
 
@@ -22,6 +24,7 @@ export function WebhookSetupGuidance({
   isPublished,
   onConfigure,
 }: WebhookSetupGuidanceProps) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -70,6 +73,28 @@ export function WebhookSetupGuidance({
       <div className="space-y-1 text-sm text-muted-foreground">
         <p>Templates can reference payload, webhook headers, and app metadata.</p>
         <p>Each request injects a user message into the app-owned session flow.</p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Call it from your app</p>
+        <div className="mt-2">
+          <CodeBlock samples={webhookSamples({ origin, endpointUrl })} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Let a coding agent wire it up</p>
+        <div className="mt-2">
+          <CodeBlock
+            samples={[
+              {
+                label: "Prompt",
+                language: "text",
+                code: codingAgentPrompt({ origin, kind: "webhook", endpointUrl }),
+              },
+            ]}
+          />
+        </div>
       </div>
 
       {onConfigure && (

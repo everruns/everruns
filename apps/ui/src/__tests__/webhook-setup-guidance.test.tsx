@@ -18,6 +18,11 @@ describe("WebhookSetupGuidance", () => {
       screen.getByText("https://example.com/api/v1/apps/app-123/webhooks/appchan-123"),
     ).toBeInTheDocument();
     expect(screen.getByText("Session Per Invocation")).toBeInTheDocument();
-    expect(screen.getByText(/Authorization: Bearer/)).toBeInTheDocument();
+    // Auth guidance plus the generated code samples and coding-agent prompt all
+    // reference the bearer header, so there are multiple matches by design.
+    expect(screen.getAllByText(/Authorization: Bearer/).length).toBeGreaterThan(0);
+    // Integration snippets are surfaced for callers.
+    expect(screen.getByText("Call it from your app")).toBeInTheDocument();
+    expect(screen.getByText("Let a coding agent wire it up")).toBeInTheDocument();
   });
 });

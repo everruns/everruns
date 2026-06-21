@@ -27,6 +27,7 @@ import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentVersionHistory } from "@/components/agents/agent-version-history";
+import { IntegrationGuide } from "@/components/integration/integration-guide";
 import {
   ArrowLeft,
   Plus,
@@ -39,6 +40,7 @@ import {
   BarChart3,
   GitBranch,
   Rocket,
+  Terminal,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
@@ -233,6 +235,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <TabsTrigger value="preview">
             <Eye className="w-4 h-4 mr-2" />
             Preview
+          </TabsTrigger>
+          <TabsTrigger value="integrate">
+            <Terminal className="w-4 h-4 mr-2" />
+            Integrate
           </TabsTrigger>
           <TabsTrigger value="stats">
             <BarChart3 className="w-4 h-4 mr-2" />
@@ -455,6 +461,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             initialFiles={agent.initial_files}
             tools={agent.tools ?? []}
           />
+        </TabsContent>
+
+        <TabsContent value="integrate">
+          <IntegrationGuide kind="agent" id={agent.id} name={getDisplayName(agent)} />
         </TabsContent>
 
         <TabsContent value="stats">
