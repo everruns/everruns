@@ -23,6 +23,7 @@ import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
+import { IntegrationGuide } from "@/components/integration/integration-guide";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import {
   ArrowLeft,
@@ -33,6 +34,7 @@ import {
   LayoutDashboard,
   BarChart3,
   Rocket,
+  Terminal,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
@@ -203,6 +205,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           <TabsTrigger value="preview">
             <Eye className="w-4 h-4 mr-2" />
             Preview
+          </TabsTrigger>
+          <TabsTrigger value="integrate">
+            <Terminal className="w-4 h-4 mr-2" />
+            Integrate
           </TabsTrigger>
           <TabsTrigger value="stats">
             <BarChart3 className="w-4 h-4 mr-2" />
@@ -379,6 +385,10 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
             }))}
             initialFiles={harness.initial_files}
           />
+        </TabsContent>
+
+        <TabsContent value="integrate">
+          <IntegrationGuide kind="harness" id={harness.id} name={getDisplayName(harness)} />
         </TabsContent>
 
         <TabsContent value="stats">

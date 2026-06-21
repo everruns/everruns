@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { CodeBlock } from "@/components/ui/code-block";
 import { A2aAgentCard, A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { a2aSamples, codingAgentPrompt } from "@/lib/integration/snippets";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";
 
@@ -44,6 +46,7 @@ export function A2aSetupGuidance({
   const [agentCardError, setAgentCardError] = useState<string | null>(null);
   const [agentCardLoading, setAgentCardLoading] = useState(false);
   const canFetchAgentCard = isPublished && channelEnabled;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
 
   const fetchAgentCard = useCallback(async () => {
     if (!canFetchAgentCard) return;
@@ -201,6 +204,28 @@ export function A2aSetupGuidance({
           Templates can reference <code>{"{{a2a.text}}"}</code>, <code>{"{{payload}}"}</code>, and
           app metadata.
         </p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Call it from your app</p>
+        <div className="mt-2">
+          <CodeBlock samples={a2aSamples({ origin, endpointUrl })} />
+        </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Let a coding agent wire it up</p>
+        <div className="mt-2">
+          <CodeBlock
+            samples={[
+              {
+                label: "Prompt",
+                language: "text",
+                code: codingAgentPrompt({ origin, kind: "a2a", endpointUrl }),
+              },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 pt-1">
