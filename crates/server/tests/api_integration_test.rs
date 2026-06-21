@@ -3250,6 +3250,13 @@ async fn test_global_chat_disabled_returns_not_found() {
         .post("/v1/sessions/chat", json!({}))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+
+    // The voice variant is gated by the same flag and is rejected before any
+    // external provider call, so it also returns 404 when the flag is off.
+    server
+        .post("/v1/sessions/chat/voice", json!({ "sdp": "v=0" }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]

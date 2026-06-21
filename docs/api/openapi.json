@@ -10035,6 +10035,9 @@
           "401": {
             "description": "Authentication required"
           },
+          "404": {
+            "description": "Platform Chat feature (global_chat) is disabled for the org"
+          },
           "500": {
             "description": "Internal server error"
           }
@@ -10046,7 +10049,7 @@
         "tags": [
           "voice"
         ],
-        "description": "Create a voice session for the user's global chat. Returns connection details for the realtime audio channel.",
+        "description": "Create a voice session for the user's Platform Chat. Returns connection details for the realtime audio channel. Requires both the `global_chat` and `voice` feature flags; returns 404 when either is disabled.",
         "operationId": "create_chat_voice_session",
         "requestBody": {
           "content": {
@@ -10068,6 +10071,9 @@
                 }
               }
             }
+          },
+          "404": {
+            "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
           }
         },
         "x-cost-tier": "paid"

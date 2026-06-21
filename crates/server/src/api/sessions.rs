@@ -527,6 +527,7 @@ pub(crate) fn ensure_global_chat_enabled(
     responses(
         (status = 200, description = "Chat session returned", body = WithUrls<Session>),
         (status = 401, description = "Authentication required"),
+        (status = 404, description = "Platform Chat feature (global_chat) is disabled for the org"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
