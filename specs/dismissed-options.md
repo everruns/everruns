@@ -19,6 +19,23 @@ This document records technical options that were considered but dismissed for s
 - The runtime remains the source of truth; AG-UI events are translated from internal events
 - Follow-up work may add authenticated or scoped access controls
 
+## App API key: management-style session listing
+
+**Status**: Dismissed for now
+
+**What it was**: Letting an App API key call `GET /v1/sessions` with the same
+cross-App filters and paging controls as the management/UI listing (e.g. an
+explicit `app_id` filter, listing beyond the key's own App).
+
+**Why dismissed**: The App API key is execution-scoped and pinned to one App
+(see `specs/app-api-keys.md`). The App filter is implied by the key, so the
+first cut lists only that App's sessions with no extra knobs. Management-style
+listing would widen the surface without a concrete integrator need and risks
+cross-App leakage if the implied-filter invariant were ever relaxed.
+
+**What could change it**: A concrete integrator requirement for richer,
+key-scoped pagination/filtering that stays within the App boundary.
+
 ## Temporal Workflow Engine
 
 **Status**: Dismissed (implemented then removed)

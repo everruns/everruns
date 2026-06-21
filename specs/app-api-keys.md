@@ -170,18 +170,40 @@ New `specs/threat-model.md` entries to add (TM-APIKEY-*):
 - **Key storage / rotation** — hashed at rest, plaintext once, rotation
   invalidates prior keys. Mirrors A2A (`TM-A2A-*`).
 
-## Open questions
+## Session routing
 
-1. **Confinement mechanism.** App confinement can be a dedicated `Rule`
-   evaluated against the resolved session's app tag, or folded into a
-   resource-ownership check once `created_by`/owner lineage lands
-   (`permissions.md` Phase 2). Prefer the explicit `Rule` for the first cut.
-2. **Session listing default.** Whether `GET /v1/sessions` for an App key
-   should require an explicit `app_id`-implied filter (it is implied by the key)
-   or also accept paging the same way the management list does.
-3. **Reusing A2A's session routing tags** verbatim vs. a distinct
-   `app_channel_type:api_endpoint` tag — the latter keeps per-channel-type
-   metrics and rate-limit buckets disjoint.
+Sessions created by an App key reuse the app-channel routing-tag set
+([`a2a-channel.md`](a2a-channel.md) "Session Routing") with a **distinct
+channel-type tag** so metrics, rate-limit buckets, and replay stores stay
+disjoint from `a2a` / `ag_ui`:
+
+- `app:{app_id}`
+- `app_channel:{channel_id}`
+- `app_channel_type:api_endpoint`
+- `__internal:app_invocation`
+- `session_per_invocation` mode adds `app_invocation:{uuid}`
+
+The distinct `api_endpoint` tag (not a reused `a2a` tag) is the deciding
+choice: it keeps per-channel-type counters and the per-channel rate limiter
+(`apikey` namespace) independent, mirroring how A2A and AG-UI keep disjoint
+buckets.
+
+## Confinement decision
+
+App confinement is an **explicit `Rule`** in the first cut: a dedicated rule
+checks that the target session carries the caller's `app:{app_id}` tag, so
+`OrgSessionsExecute` (which is org-wide) is pinned to the caller's own App.
+The alternative — reusing a generic resource-ownership check — is deferred
+because that machinery (`created_by` + `UserIsResourceOwner`) is
+`permissions.md` Phase 2 and does not exist yet; the explicit rule can fold
+into it later without changing the contract.
+
+## Session listing
+
+`GET /v1/sessions` for an App key lists **only that App's sessions** — the
+filter is implied by the key, with no management-style cross-App paging knobs.
+Richer listing controls are dismissed for now; see
+[`dismissed-options.md`](dismissed-options.md).
 
 ## References
 
