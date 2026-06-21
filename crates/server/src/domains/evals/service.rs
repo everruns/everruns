@@ -47,6 +47,20 @@ pub const EVAL_RUN: Policy = Policy {
     ],
 };
 
+/// Policy: Export reward-labeled trajectory datasets from eval runs.
+///
+/// Distinct from `EVAL_VIEW`/`REPORT_VIEW` because this surface exports raw
+/// model-view message content (more sensitive than aggregate reporting). Gated
+/// more tightly than read-only eval viewing by requiring both agent- and
+/// session-management permissions, matching the privilege of starting runs.
+pub const DATASET_EXPORT: Policy = Policy {
+    id: "dataset.export",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgSessionsManage),
+    ],
+};
+
 pub struct EvalService {
     db: Arc<StorageBackend>,
     run_context: Option<Arc<EvalRunContext>>,
