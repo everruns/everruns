@@ -138,6 +138,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/online-evals.md` - Online evals (Observers) over production sessions (proposed)
 - `specs/swe-bench-lite.md` - SWE-bench Lite evaluation harness
 - `specs/reporting.md` - Async reporting
+- `specs/dataset-export.md` - Reward-labeled trajectory dataset export from eval runs
 - `specs/reporting-backends.md` - Phase 3 reference evaluation
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 

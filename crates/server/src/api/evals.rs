@@ -19,11 +19,12 @@ use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::evals::EvalService;
+use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
-    DeleteEvalCase, ExportEvalRunArtifacts, GetEval, GetEvalCase, GetEvalRun, ListEvalCases,
-    ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+    DeleteEvalCase, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun,
+    ListEvalCases, ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -266,6 +267,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}/runs/{run_id}/artifacts",
             get(export_run_artifacts),
         )
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/dataset",
+            post(export_run_dataset),
+        )
         .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
@@ -446,6 +451,31 @@ async fn export_run_artifacts(
     let export = ExportEvalRunArtifacts { eval_id, run_id }
         .run(&state.ctx(&org))
         .await?;
+    let body = Body::from(Bytes::from(export.body));
+
+    Ok((
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/x-ndjson".to_string(),
+        )],
+        body,
+    ))
+}
+
+async fn export_run_dataset(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+    Json(req): Json<ExportEvalRunDatasetRequest>,
+) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    let export = ExportEvalRunDataset {
+        eval_id,
+        run_id,
+        req,
+    }
+    .run(&state.ctx(&org))
+    .await?;
     let body = Body::from(Bytes::from(export.body));
 
     Ok((

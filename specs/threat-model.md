@@ -674,6 +674,7 @@ All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth
 | TM-OBS-005 | Log injection | Low | Structured logging via `tracing` crate; no raw string interpolation in log output | MITIGATED |
 | TM-OBS-006 | Sensitive data in error logs | Medium | Errors logged server-side only; API keys and passwords excluded from tracing fields | MITIGATED |
 | TM-OBS-007 | No security audit logging | Medium | Structured audit_logs table with fire-and-forget writes for auth events; admin-only query API | MITIGATED |
+| TM-OBS-008 | Raw trajectory content leak via dataset export | High | Dataset export (`POST /v1/evals/{eval_id}/runs/{run_id}/dataset`, `specs/dataset-export.md`) exports raw model-view message content, so it is gated by a dedicated `DATASET_EXPORT` policy (`dataset.export`, requires `OrgAgentsManage` + `OrgSessionsManage`) distinct from read-only `EVAL_VIEW`/`REPORT_VIEW`; org-scoped through `get_run` (cross-org runs are 404, see TM-TENANT-001/002); always-on secret scrubbing strips credential patterns from every exported string; optional `redact_content` blanks message/tool content while preserving structure. Datasets are derived (no new at-rest store in Phase 1), so session/eval deletion removes the source | MITIGATED |
 
 ### Mitigation Details
 
