@@ -197,12 +197,7 @@ draft → published → draft → archived → deleted
 
 ## UI
 
-The App detail page has two implementations during the redesign rollout:
-
-- `apps.detailV2=false`: legacy configuration/detail page.
-- `apps.detailV2=true`: channels-first operations page.
-
-The channels-first page folds App configuration into the header, renders a Health / Invocations 24h / Success rate / Activity stat strip, lists channels as expandable rows, and shows a live activity rail. Channel creation and editing are full-page routes, not dialogs:
+The App detail page is a channels-first operations page. It folds App configuration into the header, renders a Health / Invocations 24h / Success rate / Activity stat strip, lists channels as expandable rows, and shows a live activity rail. Channel creation and editing are full-page routes, not dialogs:
 
 - `/apps/{app_id}/channels/new`
 - `/apps/{app_id}/channels/{channel_id}`

@@ -56,7 +56,7 @@ function findFirstRunnableChannel(app?: App): AppChannel | undefined {
   );
 }
 
-export function AppDetailV2({ appId }: { appId: string }) {
+export function AppDetail({ appId }: { appId: string }) {
   const queryClient = useQueryClient();
   const { data: app, isLoading } = useApp(appId);
   const { data: agents } = useAgents({ includeArchived: true });

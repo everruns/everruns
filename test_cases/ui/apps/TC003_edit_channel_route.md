@@ -7,7 +7,6 @@ Verifies the Edit Channel page supports schedule editing, pause/enable, run now,
 ## Preconditions
 
 - `AUTH_MODE=none`
-- `FEATURE_APPS_DETAIL_V2=true`
 - `just start-dev --no-watch` is running
 - A published App exists with an enabled schedule channel
 

@@ -2,12 +2,11 @@
 
 ## Description
 
-Verifies the `apps.detailV2` App detail page renders a channels-first operations view with no raw cron expressions outside editable cron inputs.
+Verifies the App detail page renders a channels-first operations view with no raw cron expressions outside editable cron inputs.
 
 ## Preconditions
 
 - `AUTH_MODE=none`
-- `FEATURE_APPS_DETAIL_V2=true`
 - `just start-dev --no-watch` is running
 - A published App exists with a schedule channel using cron `0 30 * * * * *` and timezone `America/Chicago`
 
