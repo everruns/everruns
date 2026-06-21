@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.16.1] - 2026-06-21
+
+### What's Changed
+
+- feat(server): add per-org limits for harnesses, agents, sessions ([#2383](https://github.com/everruns/everruns/pull/2383)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add Create app shortcut from harness and agent pages ([#2382](https://github.com/everruns/everruns/pull/2382)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): link session chats to provider trace/logs ([#2380](https://github.com/everruns/everruns/pull/2380)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): per-task drill-down on the session Tasks tab ([#2378](https://github.com/everruns/everruns/pull/2378)) by [@chaliy](https://github.com/chaliy)
+- feat(onboarding): add OSS-owned zero-org onboarding surface ([#2379](https://github.com/everruns/everruns/pull/2379)) by [@chaliy](https://github.com/chaliy)
+- feat(orgs): add org creation policy extension point for wrappers ([#2375](https://github.com/everruns/everruns/pull/2375)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): bound worker concurrency, claim batch, and idle polling ([#2373](https://github.com/everruns/everruns/pull/2373)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): serve system-health totals from maintained counters ([#2372](https://github.com/everruns/everruns/pull/2372)) by [@chaliy](https://github.com/chaliy)
+- fix(brand): center all logos on the rings centroid ([#2370](https://github.com/everruns/everruns/pull/2370)) by [@chaliy](https://github.com/chaliy)
+- chore(events): retire subagent.* event types ([#2376](https://github.com/everruns/everruns/pull/2376)) by [@chaliy](https://github.com/chaliy)
+- docs(skills): add public everruns-runtime skill ([#2381](https://github.com/everruns/everruns/pull/2381)) by [@chaliy](https://github.com/chaliy)
+- docs: expand OpenRouter docs and add server-tools capability ([#2374](https://github.com/everruns/everruns/pull/2374)) by [@chaliy](https://github.com/chaliy)
+- ci: cut redundant rust recompiles to speed up cold CI ([#2371](https://github.com/everruns/everruns/pull/2371)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.16.0] - 2026-06-20
 
 ### Highlights
