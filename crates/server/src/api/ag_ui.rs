@@ -336,20 +336,35 @@ async fn run_agent(
     headers: HeaderMap,
     request: Request,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
-    // EVE-415: monotonic anchor for the AG-UI ingress phase. Used to attribute
-    // the gap between accepted request and `ReasonAtom: starting LLM call`
-    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
-    // The handler emits a single structured `ag_ui.ingress_complete` log just
-    // before returning the SSE stream so downstream profilers can isolate the
-    // ingress portion without grepping for adjacent timestamps.
-    let ingress_start = Instant::now();
-
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         app,
         channel_config,
     } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+
+    run_app_agent_stream(state, app, channel_config, "ag_ui", request, request_id).await
+}
+
+/// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
+/// the Public Chat channel. `tag_prefix` scopes the session routing tags
+/// (`{prefix}:app:{id}` / `{prefix}:thread:{id}`) so reusing a thread ID across
+/// channels or apps can never merge tenants or sessions (TM-TENANT-009).
+pub(crate) async fn run_app_agent_stream(
+    state: AgUiState,
+    app: App,
+    channel_config: AgUiChannelConfig,
+    tag_prefix: &str,
+    request: Request,
+    request_id: Option<String>,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    // EVE-415: monotonic anchor for the ingress phase. Used to attribute
+    // the gap between accepted request and `ReasonAtom: starting LLM call`
+    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
+    // The handler emits a single structured `ag_ui.ingress_complete` log just
+    // before returning the SSE stream so downstream profilers can isolate the
+    // ingress portion without grepping for adjacent timestamps.
+    let ingress_start = Instant::now();
 
     let Json(req): Json<AgUiRunAgentInput> = Json::from_request(request, &state)
         .await
@@ -377,13 +392,13 @@ async fn run_agent(
     let thread_tag = thread_id.to_string();
     let run_tag = run_id.to_string();
 
-    // THREAT[TM-TENANT-009]: Reusing the same AG-UI thread ID across apps must
+    // THREAT[TM-TENANT-009]: Reusing the same thread ID across apps/channels must
     // not merge tenants or app sessions.
-    // Mitigation: Scope the session lookup tags by both app public ID and
-    // thread ID so thread collisions stay isolated per app.
+    // Mitigation: Scope the session lookup tags by channel prefix, app public
+    // ID, and thread ID so thread collisions stay isolated per app and channel.
     let routing_tags = vec![
-        format!("ag_ui:app:{}", app.public_id),
-        format!("ag_ui:thread:{}", thread_tag),
+        format!("{tag_prefix}:app:{}", app.public_id),
+        format!("{tag_prefix}:thread:{}", thread_tag),
     ];
     let session = find_or_create_session(
         &state,

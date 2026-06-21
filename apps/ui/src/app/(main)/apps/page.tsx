@@ -358,5 +358,11 @@ function getPrimaryChannelAccess(appId: string, channel: AppChannel | undefined)
         copyable: false,
       };
     }
+    case "public_chat":
+      return {
+        kind: "url" as const,
+        value: origin ? `${origin}/public-chat/${appId}` : `/public-chat/${appId}`,
+        copyable: true,
+      };
   }
 }

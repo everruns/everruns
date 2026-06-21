@@ -139,7 +139,7 @@ pub struct AppRunEvent {
     pub app_id: String,
     /// Channel that originated the invocation.
     pub channel_id: String,
-    /// Channel kind (slack, ag_ui, webhook, a2a, fcp).
+    /// Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat).
     pub channel_type: ChannelType,
     /// Human-readable channel name when set.
     #[serde(skip_serializing_if = "Option::is_none")]

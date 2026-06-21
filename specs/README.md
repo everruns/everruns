@@ -88,6 +88,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/runtime-mcp.md` - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth
 - `specs/integrations.md` - Integration specs index
 - `specs/apps.md` - Apps system
+- `specs/public-chat.md` - Public Chat (hosted, isolated chat app) — product spec/proposal
 - `specs/app-invocation-channels.md` - App schedule/webhook invocation channels
 - `specs/app-endpoint-auth.md` - Shared inbound auth framework for App-published endpoints
 - `specs/app-api-keys.md` - App-scoped, execution-only API keys over the native session API

@@ -54,6 +54,7 @@ Current API-visible experimental flags include:
 - `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `specs/agent-versions.md`.
 - `agent_delegation`: gates outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`). When off, these capabilities are not registered in the backend and are absent from the capability picker. Env var: `FEATURE_AGENT_DELEGATION`. See EVE-506.
 - `observers`: gates online scoring of production sessions (`/v1/observers`), the `turn.completed` matching listener, and the background scoring worker. When off, no observer routes are mounted and no listener/worker is registered. Env var: `FEATURE_OBSERVERS`. See `specs/online-evals.md`.
+- `public_chat`: gates the Public Chat feature — the public endpoints (`/v1/apps/{app_id}/public-chat[/config]`), `public_chat` channel creation/editing, the builder UI (channel-type picker), and the public web route. The public endpoints are gated on the deployment flag; channel creation and the builder UI are gated on the org-effective flag. Env var: `FEATURE_PUBLIC_CHAT`. See `specs/public-chat.md`.
 
 ## Architecture
 
