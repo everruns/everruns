@@ -18786,7 +18786,6 @@
           "app_budgets",
           "agent_versions",
           "voice",
-          "apps.detailV2",
           "agent_delegation",
           "observers"
         ],
@@ -18802,10 +18801,6 @@
           "app_budgets": {
             "type": "boolean",
             "description": "App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).\nExperimental."
-          },
-          "apps.detailV2": {
-            "type": "boolean",
-            "description": "Channels-first app detail page and full-page channel forms. Experimental."
           },
           "evals": {
             "type": "boolean",

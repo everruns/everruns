@@ -9,7 +9,6 @@ import { useApp } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
 import { deleteChannel, triggerChannel, updateChannel } from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +40,6 @@ export default function EditChannelPage({
   const { appId, channelId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const detailV2Enabled = useFeatureFlag("apps.detailV2");
   const { data: app, isLoading } = useApp(appId);
   const { can, isLoading: policiesLoading } = usePolicies("apps");
   const channel = app?.channels.find((candidate) => candidate.id === channelId);
@@ -52,10 +50,6 @@ export default function EditChannelPage({
   const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
   const canRunNow =
     canManage && formState?.kind === "schedule" && formState.enabled && app?.status === "published";
-
-  useEffect(() => {
-    if (!detailV2Enabled) router.replace(`/apps/${appId}`);
-  }, [appId, detailV2Enabled, router]);
 
   useEffect(() => {
     if (app && !policiesLoading && !canManage) router.replace(`/apps/${appId}`);
@@ -133,10 +127,6 @@ export default function EditChannelPage({
     }
     return `${getChannelTypeDisplayName(formState.kind)} · ${formState.enabled ? "Enabled" : "Disabled"}`;
   }, [app?.status, channel, formState]);
-
-  if (!detailV2Enabled) {
-    return null;
-  }
 
   if (isLoading || policiesLoading || !formState)
     return <div className="container mx-auto p-6">Loading channel...</div>;

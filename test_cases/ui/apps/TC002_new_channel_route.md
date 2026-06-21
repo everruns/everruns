@@ -7,7 +7,6 @@ Verifies Add channel opens a reload-safe full-page route with channel type cards
 ## Preconditions
 
 - `AUTH_MODE=none`
-- `FEATURE_APPS_DETAIL_V2=true`
 - `just start-dev --no-watch` is running
 - A draft or published App exists
 

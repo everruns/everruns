@@ -9,7 +9,6 @@ import { useApp } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
 import { addChannel } from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
-import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,16 +27,11 @@ export default function NewChannelPage({ params }: { params: Promise<{ appId: st
   const { appId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
-  const detailV2Enabled = useFeatureFlag("apps.detailV2");
   const { data: app, isLoading } = useApp(appId);
   const { can, isLoading: policiesLoading } = usePolicies("apps");
   const [formState, setFormState] = useState(() => getDefaultChannelFormState("schedule"));
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
-
-  useEffect(() => {
-    if (!detailV2Enabled) router.replace(`/apps/${appId}`);
-  }, [appId, detailV2Enabled, router]);
 
   useEffect(() => {
     if (app && !policiesLoading && !canManage) router.replace(`/apps/${appId}`);
@@ -57,10 +51,6 @@ export default function NewChannelPage({ params }: { params: Promise<{ appId: st
       router.push(`/apps/${appId}/channels/${channel.id}`);
     },
   });
-
-  if (!detailV2Enabled) {
-    return null;
-  }
 
   if (isLoading || policiesLoading)
     return <div className="container mx-auto p-6">Loading channel form...</div>;

@@ -12,7 +12,6 @@ Also verifies the GET handshake renders the configured Markdown.
 ## Preconditions
 
 - `AUTH_MODE=none`
-- `FEATURE_APPS_DETAIL_V2=true`
 - `just start-dev --no-watch` is running
 - A draft or published App exists with an agent and harness assigned
 

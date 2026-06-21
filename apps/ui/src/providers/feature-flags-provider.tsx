@@ -20,7 +20,6 @@ const DEFAULT_FLAGS: FeatureFlags = {
   app_budgets: false,
   agent_versions: false,
   voice: false,
-  "apps.detailV2": false,
   agent_delegation: false,
 };
 
