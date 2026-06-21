@@ -1,9 +1,9 @@
 "use client";
 
 import { use } from "react";
-import { AppDetailV2 } from "@/components/apps/app-detail-v2";
+import { AppDetail } from "@/components/apps/app-detail";
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
-  return <AppDetailV2 appId={appId} />;
+  return <AppDetail appId={appId} />;
 }
