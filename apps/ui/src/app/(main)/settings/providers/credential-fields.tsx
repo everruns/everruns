@@ -32,7 +32,9 @@ function CredentialField({
     <div className="space-y-2">
       <Label htmlFor={id}>
         {field.label}
-        {field.required && !field.group ? null : (
+        {/* Grouped required fields are required once the user picks that method,
+            so only mark genuinely optional fields. */}
+        {field.required ? null : (
           <span className="ml-1 text-xs text-muted-foreground">(optional)</span>
         )}
       </Label>
@@ -68,6 +70,10 @@ export function CredentialFields({
   for (const field of schema.fields) {
     if (field.group && !groupLabels.includes(field.group)) groupLabels.push(field.group);
   }
+  // Label each credential method when there is more than one way to authenticate
+  // (multiple groups, or groups alongside always-present ungrouped fields). A
+  // schema with a single group and nothing else needs no heading.
+  const showGroupHeadings = groupLabels.length > 1 || ungrouped.length > 0;
 
   return (
     <div className="space-y-4">
@@ -82,11 +88,11 @@ export function CredentialFields({
       ))}
       {groupLabels.map((label, index) => (
         <div key={label} className="space-y-4">
-          {(index > 0 || ungrouped.length > 0) && (
+          {showGroupHeadings && (
             <div className="flex items-center gap-3 py-1">
               <div className="h-px flex-1 bg-border" />
               <span className="text-xs text-muted-foreground">
-                {index === 0 ? label : `or ${label}`}
+                {index === 0 && ungrouped.length === 0 ? label : `or ${label}`}
               </span>
               <div className="h-px flex-1 bg-border" />
             </div>
@@ -108,13 +114,20 @@ export function CredentialFields({
   );
 }
 
-/** Seed form values from a schema's declared `default_value`s. */
+/** Seed form values from a schema's declared `default_value`s.
+ *
+ * Only ungrouped fields are pre-filled: the backend treats any non-empty
+ * grouped field as selecting that credential method, so pre-filling a grouped
+ * field's default (e.g. an OAuth scope/authority) would wrongly force that
+ * method's validation even when the user picks a different one. Grouped
+ * defaults are surfaced as input placeholders instead, and the driver applies
+ * them when the field is left blank. */
 export function defaultCredentialValues(
   schema: CredentialFormSchema | undefined,
 ): Record<string, string> {
   const values: Record<string, string> = {};
   for (const field of schema?.fields ?? []) {
-    if (field.default_value) values[field.name] = field.default_value;
+    if (field.default_value && !field.group) values[field.name] = field.default_value;
   }
   return values;
 }

@@ -301,9 +301,34 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateProviderRequest>,
 ) -> ApiResult<WithUrls<Provider>> {
+    // Validate typed credentials against the driver schema. A PATCH may omit
+    // `provider_type`, so when credentials are supplied without it we infer the
+    // driver from the stored row — otherwise the credential schema is unknown
+    // and an incomplete multi-field credential would slip through unvalidated.
+    let provider_type = match req.provider_type.clone() {
+        Some(pt) => Some(pt),
+        None if req.credentials.is_some() => {
+            let caller = Caller::from(&org);
+            let uuid = id
+                .parse::<ProviderId>()
+                .map_err(|e| {
+                    ErrorResponse::new(format!("Invalid provider ID: {e}"))
+                        .into_response(StatusCode::BAD_REQUEST)
+                })?
+                .uuid();
+            state
+                .service
+                .get(&caller, uuid)
+                .await
+                .ok()
+                .flatten()
+                .map(|p| p.provider_type)
+        }
+        None => None,
+    };
     let api_key = resolve_credential_document(
         &state.driver_registry,
-        req.provider_type.as_ref(),
+        provider_type.as_ref(),
         req.credentials.as_ref(),
         req.api_key,
     )?;
