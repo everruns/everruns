@@ -71,7 +71,15 @@ impl Command for CreateSession {
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
 
-        // Enforce per-org session cap before doing any creation work. Sessions
+        // Cheap request-shape validation first, so a malformed request reports
+        // 400 rather than being masked by a 409 when the org is at the cap.
+        if req.harness_id.is_some() && req.harness_name.is_some() {
+            return Err(CommandError::bad_request(
+                "Cannot specify both harness_id and harness_name",
+            ));
+        }
+
+        // Enforce per-org session cap before the heavier creation work. Sessions
         // are hard-deleted, so the count reflects only live rows.
         let max = ctx.resource_limits.max_sessions_per_org;
         let count = ctx
@@ -83,12 +91,6 @@ impl Command for CreateSession {
             return Err(CommandError::conflict(format!(
                 "Session limit reached (max {max})"
             )));
-        }
-
-        if req.harness_id.is_some() && req.harness_name.is_some() {
-            return Err(CommandError::bad_request(
-                "Cannot specify both harness_id and harness_name",
-            ));
         }
 
         if let Some(name) = req.harness_name.clone() {

@@ -143,7 +143,9 @@ impl Command for CreateHarness {
         q::validate_harness_name(&req.name)?;
         validate_create_limits(&req)?;
 
-        // Enforce per-org harness cap (excludes soft-deleted) before insert.
+        // Enforce per-org harness cap before insert. The count excludes
+        // soft-deleted rows and system-seeded built-in harnesses, so only
+        // user-created harnesses consume the budget.
         let max = ctx.resource_limits.max_harnesses_per_org;
         let count = ctx
             .db

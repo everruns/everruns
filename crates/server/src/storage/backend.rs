@@ -572,7 +572,8 @@ impl StorageBackend {
         dispatch!(self, count_sessions_for_harness, org_id, harness_id)
     }
 
-    /// Count non-deleted harnesses in an org (for resource limits).
+    /// Count user-created harnesses in an org (for resource limits); excludes
+    /// soft-deleted rows and system-seeded built-in harnesses.
     pub async fn count_harnesses_for_org(&self, org_id: i64) -> Result<i64> {
         dispatch!(self, count_harnesses_for_org, org_id)
     }
