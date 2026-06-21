@@ -23,6 +23,7 @@ import {
 import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
+  AppEndpointAuthConfig,
   App,
   AppChannel,
   ChannelType,
@@ -66,6 +67,8 @@ export type ChannelFormState = {
   channelMessage: string;
   webhookToken: string;
   agUiToken: string;
+  agUiAnonymous: boolean;
+  agUiAuth?: AppEndpointAuthConfig;
   agUiExpirationHours: number;
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
@@ -102,6 +105,8 @@ export function getDefaultChannelFormState(
     channelMessage: "",
     webhookToken: "",
     agUiToken: kind === "ag_ui" && !channel ? generateChannelToken() : "",
+    agUiAnonymous: true,
+    agUiAuth: undefined,
     agUiExpirationHours: DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
     agUiRateLimitPerMinute: "",
     agUiToolVisibility: "generic",
@@ -143,6 +148,8 @@ export function getDefaultChannelFormState(
       ...base,
       kind: "ag_ui",
       agUiToken: secretValue(config.token, config.token_configured),
+      agUiAnonymous: config.anonymous ?? true,
+      agUiAuth: config.auth,
       agUiExpirationHours:
         typeof config.session_expiration_seconds === "number"
           ? config.session_expiration_seconds / 3600
@@ -211,7 +218,8 @@ export function buildChannelConfig(state: ChannelFormState) {
     case "ag_ui": {
       const rateLimit = Number.parseInt(state.agUiRateLimitPerMinute, 10);
       return {
-        anonymous: true,
+        anonymous: state.agUiAnonymous,
+        ...(state.agUiAuth ? { auth: state.agUiAuth } : {}),
         ...(state.agUiToken.trim() ? { token: state.agUiToken.trim() } : {}),
         session_expiration_seconds: Math.max(0, Math.round(state.agUiExpirationHours * 3600)),
         ...(Number.isFinite(rateLimit) && rateLimit > 0

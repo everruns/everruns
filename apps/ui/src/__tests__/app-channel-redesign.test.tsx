@@ -50,6 +50,36 @@ describe("app channel redesign", () => {
     expect(config).toEqual(expect.objectContaining({ anonymous: true, token: state.agUiToken }));
   });
 
+  it("preserves AG-UI endpoint auth and anonymous settings when editing", () => {
+    const preservedAuth = {
+      mode: "google_oidc",
+      provider: { type: "google_oidc", client_id: "client-123" },
+      requirements: { domains: ["example.com"] },
+    } as const;
+    const channel: AppChannel = {
+      id: "appchan_agui",
+      channel_type: "ag_ui",
+      channel_config: {
+        anonymous: false,
+        session_expiration_seconds: 3600,
+        tool_visibility: "narrated",
+        auth: preservedAuth,
+      },
+      enabled: true,
+      created_at: "2026-05-10T00:00:00Z",
+      updated_at: "2026-05-10T00:00:00Z",
+    };
+
+    const state = getDefaultChannelFormState("ag_ui", channel);
+
+    expect(buildChannelConfig(state)).toEqual(
+      expect.objectContaining({
+        anonymous: false,
+        auth: preservedAuth,
+      }),
+    );
+  });
+
   it("renders cron labels as human-readable text with timezone", () => {
     render(<CronLabel expr="0 30 * * * * *" tz="America/Chicago" />);
 
