@@ -22,7 +22,10 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::StreamExt;
-use reqwest::{Client, header::HeaderMap};
+use reqwest::{
+    Client,
+    header::{HeaderMap, HeaderName, HeaderValue},
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -38,7 +41,8 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
 };
 use crate::openai_protocol::{
-    apply_openai_api_auth, is_openai_model_not_found, is_openai_request_too_large,
+    AuthHeaderProvider, is_openai_model_not_found, is_openai_request_too_large,
+    openai_auth_header_pair,
 };
 use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::provider::DriverId;
@@ -86,6 +90,14 @@ const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 pub trait OpenResponsesRequestExtension: Send + Sync {
     fn decorate(&self, body: &mut Value, config: &LlmCallConfig) -> Result<()>;
 
+    /// Add provider-specific **non-auth** request headers (routing, attribution,
+    /// `session_id`, `OpenAI-Beta`, `originator`, account ids, …).
+    ///
+    /// Authentication is a separate seam ([`AuthHeaderProvider`], set via
+    /// [`OpenResponsesProtocolChatDriver::with_auth_provider`]). The driver
+    /// applies these decoration headers first, then applies the resolved auth
+    /// header, so **the auth header always wins on a name conflict**. Do not set
+    /// `Authorization` / `api-key` here; use an auth provider instead.
     fn decorate_headers(&self, _headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
         Ok(())
     }
@@ -111,6 +123,11 @@ pub struct OpenResponsesProtocolChatDriver {
     /// Optional provider-specific request-body decorator (see
     /// [`OpenResponsesRequestExtension`]). `None` for vanilla OpenAI/Azure.
     request_extension: Option<Arc<dyn OpenResponsesRequestExtension>>,
+    /// Optional pluggable auth-header provider (see [`AuthHeaderProvider`]). When
+    /// set it overrides the default host-keyed `api-key` / bearer auth and is
+    /// awaited once per HTTP attempt so refreshable (OAuth) providers can mint or
+    /// refresh tokens per retry. `None` falls back to the static `api_key`.
+    auth_provider: Option<Arc<dyn AuthHeaderProvider>>,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -123,6 +140,7 @@ impl OpenResponsesProtocolChatDriver {
             provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
+            auth_provider: None,
         }
     }
 
@@ -135,6 +153,7 @@ impl OpenResponsesProtocolChatDriver {
             provider_type: DriverId::OpenAI,
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
+            auth_provider: None,
         }
     }
 
@@ -153,6 +172,39 @@ impl OpenResponsesProtocolChatDriver {
     ) -> Self {
         self.request_extension = Some(extension);
         self
+    }
+
+    /// Set a pluggable [`AuthHeaderProvider`] that overrides the default
+    /// host-keyed `api-key` / bearer auth. The provider is awaited once per HTTP
+    /// attempt (including retries), so refreshable OAuth providers (ChatGPT/Codex,
+    /// Entra ID, workload identity, …) can mint or refresh tokens per request
+    /// without the driver knowing the scheme. The resolved auth header takes
+    /// precedence over any header set by an
+    /// [`OpenResponsesRequestExtension::decorate_headers`].
+    pub fn with_auth_provider(mut self, provider: Arc<dyn AuthHeaderProvider>) -> Self {
+        self.auth_provider = Some(provider);
+        self
+    }
+
+    /// Resolve the auth header `(name, value)` for one HTTP attempt against
+    /// `url`. Uses the pluggable [`AuthHeaderProvider`] when set (awaited each
+    /// attempt so tokens can refresh), otherwise the default static-key behavior
+    /// shared with the Chat Completions driver.
+    async fn resolve_auth_header(&self, url: &str) -> Result<(HeaderName, HeaderValue)> {
+        let (name, value) = match &self.auth_provider {
+            Some(provider) => provider.auth_header().await?,
+            None => {
+                let (name, value) = openai_auth_header_pair(url, &self.api_key);
+                (name.to_string(), value.into_owned())
+            }
+        };
+        let name = HeaderName::from_bytes(name.as_bytes())
+            .map_err(|e| AgentLoopError::llm(format!("invalid auth header name {name:?}: {e}")))?;
+        let mut value = HeaderValue::from_str(&value)
+            .map_err(|e| AgentLoopError::llm(format!("invalid auth header value: {e}")))?;
+        // Auth material must never leak into debug logs of the request builder.
+        value.set_sensitive(true);
+        Ok((name, value))
     }
 
     /// Configure retry behavior for rate limit errors
@@ -450,15 +502,20 @@ impl OpenResponsesProtocolChatDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let response =
-                apply_openai_api_auth(self.client.post(&compact_url), &compact_url, &self.api_key)
-                    .header("Content-Type", "application/json")
-                    .json(&request)
-                    .send()
-                    .await
-                    .map_err(|e| {
-                        AgentLoopError::llm(format!("Failed to send compact request: {}", e))
-                    })?;
+            // Auth is resolved per attempt so refreshable providers can rotate
+            // tokens across retries (same seam as the streaming path).
+            let (auth_name, auth_value) = self.resolve_auth_header(&compact_url).await?;
+            let response = self
+                .client
+                .post(&compact_url)
+                .header(auth_name, auth_value)
+                .header("Content-Type", "application/json")
+                .json(&request)
+                .send()
+                .await
+                .map_err(|e| {
+                    AgentLoopError::llm(format!("Failed to send compact request: {}", e))
+                })?;
 
             let status = response.status();
 
@@ -924,17 +981,19 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         let mut last_error: Option<String> = None;
 
         let response = loop {
-            let mut request_builder = apply_openai_api_auth(
-                self.client.post(&self.api_url),
-                &self.api_url,
-                &self.api_key,
-            )
-            .header("Content-Type", "application/json");
-            if !extension_headers.is_empty() {
-                request_builder = request_builder.headers(extension_headers.clone());
-            }
+            // Compose headers: provider decoration first, then the resolved auth
+            // header (awaited each attempt so refreshable providers can rotate
+            // tokens per retry). `insert` overrides any same-named decoration
+            // header, so auth always wins on conflict.
+            let mut headers = extension_headers.clone();
+            let (auth_name, auth_value) = self.resolve_auth_header(&self.api_url).await?;
+            headers.insert(auth_name, auth_value);
 
-            let response = request_builder
+            let response = self
+                .client
+                .post(&self.api_url)
+                .headers(headers)
+                .header("Content-Type", "application/json")
                 .json(&request_body)
                 .send()
                 .await
@@ -4587,5 +4646,218 @@ mod tests {
         let params = json!({"type": "string"});
         let sanitized = OpenResponsesProtocolChatDriver::sanitize_parameters(&params);
         assert_eq!(sanitized, params);
+    }
+
+    // ========================================================================
+    // Pluggable request auth (EVE-618)
+    // ========================================================================
+
+    /// Minimal `LlmCallConfig` for wire tests.
+    fn auth_test_config() -> LlmCallConfig {
+        LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+        }
+    }
+
+    /// Static auth provider that records how many times it was awaited, so tests
+    /// can assert per-attempt resolution (refreshable providers).
+    struct CountingAuth {
+        header: (String, String),
+        calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl AuthHeaderProvider for CountingAuth {
+        async fn auth_header(&self) -> Result<(String, String)> {
+            self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(self.header.clone())
+        }
+    }
+
+    /// Extension that injects a non-auth header and (deliberately) a conflicting
+    /// `Authorization` header, to prove the auth seam wins on conflict.
+    struct HeaderInjectingExtension;
+
+    impl OpenResponsesRequestExtension for HeaderInjectingExtension {
+        fn decorate(&self, _body: &mut Value, _config: &LlmCallConfig) -> Result<()> {
+            Ok(())
+        }
+
+        fn decorate_headers(&self, headers: &mut HeaderMap, _config: &LlmCallConfig) -> Result<()> {
+            headers.insert("x-openrouter-route", HeaderValue::from_static("fallback"));
+            // Decoration must never override auth — the driver applies auth last.
+            headers.insert(
+                "authorization",
+                HeaderValue::from_static("Bearer decoration"),
+            );
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_auth_header_defaults_to_bearer_on_non_azure() {
+        let driver = OpenResponsesProtocolChatDriver::new("secret-key");
+        let (name, value) = driver
+            .resolve_auth_header("https://api.openai.com/v1/responses")
+            .await
+            .expect("auth resolves");
+        assert_eq!(name.as_str(), "authorization");
+        assert_eq!(value.to_str().unwrap(), "Bearer secret-key");
+    }
+
+    #[tokio::test]
+    async fn resolve_auth_header_uses_api_key_header_on_azure() {
+        let driver = OpenResponsesProtocolChatDriver::new("secret-key");
+        let (name, value) = driver
+            .resolve_auth_header("https://my-resource.openai.azure.com/openai/v1/responses")
+            .await
+            .expect("auth resolves");
+        assert_eq!(name.as_str(), "api-key");
+        assert_eq!(value.to_str().unwrap(), "secret-key");
+    }
+
+    #[tokio::test]
+    async fn resolve_auth_header_prefers_provider_over_static_key() {
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let driver = OpenResponsesProtocolChatDriver::new("ignored-key").with_auth_provider(
+            std::sync::Arc::new(CountingAuth {
+                header: (
+                    "Authorization".to_string(),
+                    "Bearer minted-token".to_string(),
+                ),
+                calls: calls.clone(),
+            }),
+        );
+        // Azure URL: the static path would emit `api-key`, but the provider wins.
+        let (name, value) = driver
+            .resolve_auth_header("https://my-resource.openai.azure.com/openai/v1/responses")
+            .await
+            .expect("auth resolves");
+        assert_eq!(name.as_str(), "authorization");
+        assert_eq!(value.to_str().unwrap(), "Bearer minted-token");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn default_static_auth_applied_on_the_wire() {
+        use wiremock::matchers::{header, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(header("authorization", "Bearer wire-key"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("wire-key", api_url);
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
+        let _ = driver
+            .chat_completion_stream(messages, &auth_test_config())
+            .await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            1,
+            "default static key must authenticate the request"
+        );
+    }
+
+    #[tokio::test]
+    async fn auth_provider_header_wins_over_extension_header() {
+        use wiremock::matchers::{header, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // The request only matches if the auth header is the minted token (not the
+        // extension's decoration value) AND the non-auth decoration is present.
+        Mock::given(method("POST"))
+            .and(header("authorization", "Bearer minted-token"))
+            .and(header("x-openrouter-route", "fallback"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("ignored", api_url)
+            .with_request_extension(std::sync::Arc::new(HeaderInjectingExtension))
+            .with_auth_provider(std::sync::Arc::new(CountingAuth {
+                header: (
+                    "Authorization".to_string(),
+                    "Bearer minted-token".to_string(),
+                ),
+                calls: calls.clone(),
+            }));
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
+        let _ = driver
+            .chat_completion_stream(messages, &auth_test_config())
+            .await;
+
+        let requests = server.received_requests().await.unwrap();
+        assert_eq!(
+            requests.len(),
+            1,
+            "auth header must win over a conflicting decoration header"
+        );
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn auth_provider_awaited_on_each_retry_attempt() {
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // Always 503 (transient): the driver exhausts its retries, awaiting auth
+        // before every attempt.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(503).set_body_string("overloaded"))
+            .mount(&server)
+            .await;
+
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let api_url = format!("{}/v1/responses", server.uri());
+        let fast_retry = LlmRetryConfig {
+            max_retries: 1,
+            initial_backoff: std::time::Duration::from_millis(1),
+            max_backoff: std::time::Duration::from_millis(1),
+            backoff_multiplier: 1.0,
+            jitter_factor: 0.0,
+        };
+        let driver = OpenResponsesProtocolChatDriver::with_base_url("ignored", api_url)
+            .with_retry_config(fast_retry)
+            .with_auth_provider(std::sync::Arc::new(CountingAuth {
+                header: (
+                    "Authorization".to_string(),
+                    "Bearer minted-token".to_string(),
+                ),
+                calls: calls.clone(),
+            }));
+
+        let messages = vec![LlmMessage::text(LlmMessageRole::User, "hi")];
+        let _ = driver
+            .chat_completion_stream(messages, &auth_test_config())
+            .await;
+
+        // Initial attempt + one retry = two auth resolutions.
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "refreshable auth must be resolved per HTTP attempt, including retries"
+        );
     }
 }

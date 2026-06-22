@@ -361,11 +361,33 @@ document parses into the same typed fields.
 
 Authentication is the reason MAI gets its own crate rather than reusing the
 Azure OpenAI driver: MAI deployments accept either an Azure AI Foundry **API
-key** (`api-key` header) or a Microsoft **Entra ID (OAuth)** bearer token. The
-core Chat Completions driver exposes a generic, async
-`AuthHeaderProvider` hook (`OpenAIProtocolChatDriver::with_auth_provider`); when
-set, it overrides the default host-keyed `api-key`/bearer logic and is awaited
-once per HTTP attempt so providers can refresh short-lived tokens transparently.
+key** (`api-key` header) or a Microsoft **Entra ID (OAuth)** bearer token. Both
+the Chat Completions and Open Responses protocol drivers expose the same
+generic, async `AuthHeaderProvider` hook
+(`OpenAIProtocolChatDriver::with_auth_provider` and
+`OpenResponsesProtocolChatDriver::with_auth_provider`); the trait is exported
+from one stable place (`everruns_core::AuthHeaderProvider`, defined in
+`crates/core/src/openai_protocol.rs`). When set, it overrides the default
+host-keyed `api-key`/bearer logic and is awaited once per HTTP attempt — for the
+Open Responses driver this includes the streaming `/responses` call, every retry
+attempt, and the `/responses/compact` call — so providers can refresh short-lived
+tokens transparently. When unset, both drivers fall back to the identical static
+`api_key` behavior (Azure → `api-key`, otherwise `Authorization: Bearer`).
+
+The four request seams are deliberately separate and compose as follows:
+
+- **Credential storage / resolution** (`CredentialProvider`,
+  `crates/core/src/credential_provider.rs`) resolves a *static*
+  `ProviderCredentials` (`api_key`, `base_url`) **before** the driver is built.
+  It cannot mint or refresh request-time tokens.
+- **Request auth** (`AuthHeaderProvider`) runs **per HTTP attempt** and owns the
+  single authentication header. This is the seam for refreshable OAuth.
+- **Request decoration** (`OpenResponsesRequestExtension`, Open Responses only)
+  layers provider-specific *non-auth* body fields and headers (routing,
+  attribution, `session_id`, `OpenAI-Beta`, `originator`, account ids). It must
+  not set auth headers.
+- **Precedence:** the driver applies decoration headers first, then inserts the
+  resolved auth header, so **auth always wins on a header-name conflict**.
 
 The MAI crate ships two providers built on that hook:
 

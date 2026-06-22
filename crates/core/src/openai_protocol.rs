@@ -20,6 +20,7 @@ use futures::StreamExt;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
@@ -35,16 +36,31 @@ use crate::user_facing_error::is_provider_quota_message;
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
 
+/// Compute the default OpenAI/Azure auth header `(name, value)` for `api_url`:
+/// Azure OpenAI uses `api-key`, everything else uses `Authorization: Bearer`.
+///
+/// Shared by the Chat Completions and Open Responses drivers so the default
+/// static-key behavior stays identical to a pluggable [`AuthHeaderProvider`]
+/// path (see [`AuthHeaderProvider`]). The Azure `api-key` branch borrows the
+/// key (no per-request allocation); only the bearer branch allocates.
+pub(crate) fn openai_auth_header_pair<'a>(
+    api_url: &str,
+    api_key: &'a str,
+) -> (&'static str, Cow<'a, str>) {
+    if is_azure_openai_api_url(api_url) {
+        ("api-key", Cow::Borrowed(api_key))
+    } else {
+        ("Authorization", Cow::Owned(format!("Bearer {}", api_key)))
+    }
+}
+
 pub(crate) fn apply_openai_api_auth(
     request: RequestBuilder,
     api_url: &str,
     api_key: &str,
 ) -> RequestBuilder {
-    if is_azure_openai_api_url(api_url) {
-        request.header("api-key", api_key)
-    } else {
-        request.header("Authorization", format!("Bearer {}", api_key))
-    }
+    let (name, value) = openai_auth_header_pair(api_url, api_key);
+    request.header(name, value.as_ref())
 }
 
 /// Pluggable authentication-header provider for OpenAI-compatible drivers.
