@@ -286,6 +286,10 @@ pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata}
 // OpenAI Protocol driver (Chat Completions API for backward compatibility)
 pub use openai_protocol::OpenAIProtocolChatDriver;
 
+// Pluggable request authentication, shared by the Chat Completions and Open
+// Responses protocol drivers (e.g. static API key vs. refreshable OAuth bearer).
+pub use openai_protocol::AuthHeaderProvider;
+
 // Open Responses Protocol driver (https://www.openresponses.org/)
 // Vendor-neutral API standard, recommended for new projects
 pub use openresponses_protocol::{
