@@ -81,9 +81,12 @@ returns the NDJSON inline.
   `{ source_key, eval_run_id, case_id, case_name, session_id, reward: { pass, score, scorers: [{name, value, pass, reason}] }, messages: [...model-view messages...], metadata: { model, turns, input_tokens, output_tokens, latency_ms } }`
 - `sft`: `{ source_key, messages: [{role, content}], reward: { pass, score, scorers } }` — chat-message shape loadable by common SFT pipelines, with reward in a sidecar field so verifiable-reward filtering happens before training.
 
-Scorer names are not persisted on the result (only the ordered `Vec<Score>`), so
-they are indexed positionally (`scorer_0`, …); joining the case's scorer names
-is a follow-up.
+Scorer identities are not persisted on the result (only the ordered
+`Vec<Score>`), but the runner emits exactly one score per scorer in definition
+order, so each scorer's `name` is joined positionally from the case definition's
+`scorers` (the scorer kind, e.g. `contains`, `tool_called`). The join is applied
+only when the scorer count matches the score count; otherwise the export falls
+back to positional `scorer_0`, … labels rather than risk a mislabel.
 
 ### Idempotency
 
@@ -121,7 +124,6 @@ See `specs/threat-model.md` (TM-OBS-008) for the threat review.
 
 - Async dataset-handle API with status + stored dataset artifacts.
 - Honor the exact per-run compaction config for model-view reconstruction.
-- Join scorer names from the eval case definition.
 - Optional cost (`cost_usd`) via reporting-fact join.
 - Preference-pair / DPO dataset construction.
 - Continuous capture from production sessions (opt-in).
