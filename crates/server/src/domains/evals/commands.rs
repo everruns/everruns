@@ -644,10 +644,10 @@ impl Command for ExportEvalRunDataset {
                 CommandError::internal(anyhow::anyhow!("load session messages: {e}"))
             })?;
             let messages = build_model_view_messages(&stored, &compaction, None).messages;
-            let empty = Vec::new();
             let names = scorer_names_by_case
                 .get(&result.eval_case_id)
-                .unwrap_or(&empty);
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
             let record = super::dataset::build_record(
                 self.req.format,
                 &run,
