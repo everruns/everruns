@@ -195,7 +195,7 @@ impl OpenResponsesProtocolChatDriver {
             Some(provider) => provider.auth_header().await?,
             None => {
                 let (name, value) = openai_auth_header_pair(url, &self.api_key);
-                (name.to_string(), value)
+                (name.to_string(), value.into_owned())
             }
         };
         let name = HeaderName::from_bytes(name.as_bytes())
