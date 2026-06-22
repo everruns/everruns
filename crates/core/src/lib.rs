@@ -167,10 +167,13 @@ pub mod user_facing_error;
 // In-memory implementations for examples and testing
 pub mod in_memory;
 
-// LLM Simulator driver for testing
+// LLM Simulator driver for testing (behind the `llmsim` feature)
+#[cfg(feature = "llmsim")]
 pub mod llmsim_driver;
 
-// In-memory agentic loop for testing and prototyping
+// In-memory agentic loop for testing and prototyping. Built on the llmsim
+// driver, so it follows the same feature gate.
+#[cfg(feature = "llmsim")]
 pub mod in_memory_loop;
 
 // Turn orchestration (state machine, context, outcomes)

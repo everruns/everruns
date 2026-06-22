@@ -481,7 +481,9 @@ impl CommandHost for StoreCommandHost {
     }
 }
 
-#[cfg(test)]
+// These tests drive the command host through the llmsim simulator, so they
+// follow the `llmsim` feature gate.
+#[cfg(all(test, feature = "llmsim"))]
 mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};

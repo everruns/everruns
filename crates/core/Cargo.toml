@@ -115,8 +115,14 @@ eventsource-stream = "0.2"
 # Plugin system for external integrations
 inventory.workspace = true
 
-# LLM simulation for testing
-llmsim = "0.4.0"
+# LLM simulation for testing. Optional + behind the `llmsim` feature so the
+# provider-only crates (e.g. openrouter, which depend on core with
+# `default-features = false`) shed it entirely. default-features = false on
+# llmsim itself sheds its server/cli/tui/tokens subtrees (axum, tower-http,
+# tiktoken-rs, clap, tracing-subscriber, crossterm, ratatui) — the driver only
+# uses the in-process library types (generator, latency, openai, script,
+# stream).
+llmsim = { version = "0.5.0", default-features = false, optional = true }
 
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui", version = "0.16.1", optional = true }
@@ -137,7 +143,7 @@ include_dir = { version = "0.7", optional = true }
 # Heavy subtrees stay ON by default so the application crates (server, worker,
 # cli, runtime) and core's own test suite are unchanged. Provider crates depend
 # on core with `default-features = false` to shed them — see crates/openrouter.
-default = ["llm-tests", "telemetry", "a2a", "web-fetch"]
+default = ["llm-tests", "telemetry", "a2a", "web-fetch", "llmsim"]
 # OTLP telemetry exporter (OpenTelemetry SDK + tracing-opentelemetry bridge).
 telemetry = [
     "dep:opentelemetry",
@@ -159,6 +165,11 @@ sqlx = ["dep:sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
 llm-tests = []  # LLM integration tests (requires API keys)
+# In-process LLM simulator driver (`llmsim_driver`) plus the in-memory agentic
+# loop that builds on it. On by default so the apps (server/worker/runtime/local)
+# and core's own tests are unchanged; provider-only crates that depend on core
+# with `default-features = false` drop llmsim and its subtree entirely.
+llmsim = ["dep:llmsim"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
