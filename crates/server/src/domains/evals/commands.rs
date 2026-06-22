@@ -618,6 +618,17 @@ impl Command for ExportEvalRunDataset {
         let retriever = crate::storage::message_store::DbMessageRetriever::new(ctx.db.clone());
         let compaction = CompactionConfig::default();
 
+        // Scorer identities are not persisted on the result (only the ordered
+        // Vec<Score>), so join the case definitions' scorer kinds positionally to
+        // name reward scorers. `list_cases` is org-scoped through the same caller.
+        let scorer_names_by_case: std::collections::HashMap<_, Vec<String>> = q::service(ctx)
+            .list_cases(&ctx.caller, &eval_id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .into_iter()
+            .map(|case| (case.public_id, super::dataset::scorer_names(&case.scorers)))
+            .collect();
+
         let mut body = String::new();
         for result in &run.results {
             if !super::dataset::case_passes_filters(result, &self.req.filters) {
@@ -633,12 +644,17 @@ impl Command for ExportEvalRunDataset {
                 CommandError::internal(anyhow::anyhow!("load session messages: {e}"))
             })?;
             let messages = build_model_view_messages(&stored, &compaction, None).messages;
+            let empty = Vec::new();
+            let names = scorer_names_by_case
+                .get(&result.eval_case_id)
+                .unwrap_or(&empty);
             let record = super::dataset::build_record(
                 self.req.format,
                 &run,
                 result,
                 &messages,
                 &self.req.redaction,
+                names,
             );
             let line =
                 serde_json::to_string(&record).map_err(|e| CommandError::internal(e.into()))?;

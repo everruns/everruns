@@ -266,6 +266,28 @@ pub enum Scorer {
     },
 }
 
+impl Scorer {
+    /// Stable kind tag for this scorer, matching the serde `type` discriminant.
+    ///
+    /// Scores are persisted as an ordered `Vec<Score>` that carries no scorer
+    /// identity, so consumers that need a name (e.g. dataset export) join this
+    /// positionally against the case's `scorers`. Keep this exhaustive so adding
+    /// a variant forces a decision here.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Scorer::Contains { .. } => "contains",
+            Scorer::NotContains { .. } => "not_contains",
+            Scorer::Regex { .. } => "regex",
+            Scorer::ToolCalled { .. } => "tool_called",
+            Scorer::ToolNotCalled { .. } => "tool_not_called",
+            Scorer::ToolCallCount { .. } => "tool_call_count",
+            Scorer::TurnsWithin { .. } => "turns_within",
+            Scorer::FileContains { .. } => "file_contains",
+            Scorer::JsonSchema { .. } => "json_schema",
+        }
+    }
+}
+
 fn default_weight() -> f64 {
     1.0
 }
