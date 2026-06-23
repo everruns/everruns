@@ -1098,8 +1098,15 @@ async fn handle_authorization_code_grant(
         });
     }
 
-    // Consume the code (one-time use)
-    state
+    // Consume the code (one-time use). This is an atomic
+    // `UPDATE ... WHERE consumed = FALSE RETURNING ...` that returns `false`
+    // when a concurrent request already consumed this code. The earlier
+    // `auth_code.consumed` check is a stale read taken before PKCE validation,
+    // so relying on it alone lets two concurrent `authorization_code` grants
+    // for the same code both pass and mint tokens (auth-code replay TOCTOU).
+    // Treat losing the atomic consume as `invalid_grant` so only the first
+    // redemption succeeds — mirrors the refresh-token rotation gate above.
+    let consumed = state
         .db
         .consume_oauth_authorization_code(auth_code.id)
         .await
@@ -1107,6 +1114,12 @@ async fn handle_authorization_code_grant(
             error: "server_error".to_string(),
             error_description: None,
         })?;
+    if !consumed {
+        return Err(OAuthErrorResponse {
+            error: "invalid_grant".to_string(),
+            error_description: Some("Authorization code already used".to_string()),
+        });
+    }
 
     // Fetch user to populate token claims
     let user = state
