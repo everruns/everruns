@@ -49,11 +49,11 @@ All templates share an app-styled HTML shell whose colors and shapes mirror `app
   - use when the surrounding flow already carries Everruns branding
 - `EmailTemplate::Basic(BasicEmailTemplate)`
   - same app-styled shell as `Minimal`, plus branding
-  - header with the Everruns logo (`https://everruns.com/logo-64.png`) and wordmark, linking to everruns.com
+  - header with the Everruns wordmark linking to everruns.com
   - footer linking back to everruns.com
   - plain text body is prefixed with the Everruns wordmark and gets a site-link footer
 
-The logo is referenced as a hosted absolute PNG URL rather than the in-repo SVG, because most email clients block SVG and inline data URIs. The marketing site serves `logo-64.png` at the apex domain — a 64px PNG sized for the 28px header at 2x retina.
+Templates must not embed remote images by default. Transactional email is used by self-hosted deployments and auth/onboarding flows, so opening a message must not cause a mail client to fetch upstream marketing-domain assets that can reveal recipient IP address, user-agent, or open timing.
 
 ## System Configuration
 
