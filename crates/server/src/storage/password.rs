@@ -1,19 +1,43 @@
 // Password hashing using Argon2id
 // Decision: Use Argon2id as it's the recommended algorithm for password hashing
-// Decision: Use default parameters which are secure for most use cases
+// Decision: Pin the cost parameters explicitly (EVE-630) rather than relying on
+// `Argon2::default()`, so an `argon2` dependency bump cannot silently change the
+// work factor.
 
 use anyhow::Result;
 use argon2::{
-    Argon2,
+    Algorithm, Argon2, Params, Version,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+
+// Pinned Argon2id cost parameters (EVE-630). These match an OWASP-recommended
+// baseline configuration (and the current `argon2` v0.5 defaults): 19 MiB of
+// memory, 2 iterations, 1 lane. Pinning them here keeps the work factor stable
+// and auditable across dependency upgrades instead of inheriting whatever
+// `Argon2::default()` happens to be. Raising the cost later is safe: each stored
+// hash is PHC-encoded with the params used to create it, so `verify_password`
+// always verifies with the embedded params and existing hashes keep working.
+const ARGON2_MEMORY_KIB: u32 = 19_456;
+const ARGON2_ITERATIONS: u32 = 2;
+const ARGON2_PARALLELISM: u32 = 1;
+
+/// The pinned Argon2id hasher used for both hashing and verification.
+fn argon2_hasher() -> Argon2<'static> {
+    let params = Params::new(
+        ARGON2_MEMORY_KIB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        None,
+    )
+    .expect("pinned Argon2 params are valid");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
 
 /// Hash a password using Argon2id
 pub fn hash_password(password: &str) -> Result<String> {
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
 
-    let hash = argon2
+    let hash = argon2_hasher()
         .hash_password(password.as_bytes(), &salt)
         .map_err(|e| anyhow::anyhow!("Failed to hash password: {}", e))?;
 
@@ -25,7 +49,9 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool> {
     let parsed_hash = PasswordHash::new(hash)
         .map_err(|e| anyhow::anyhow!("Failed to parse password hash: {}", e))?;
 
-    Ok(Argon2::default()
+    // Verification uses the cost params embedded in `parsed_hash`, so this also
+    // verifies legacy hashes created with the previous (default) configuration.
+    Ok(argon2_hasher()
         .verify_password(password.as_bytes(), &parsed_hash)
         .is_ok())
 }
@@ -65,5 +91,18 @@ mod tests {
         let hash = hash_password("test").unwrap();
         // Argon2id hash starts with $argon2id$
         assert!(hash.starts_with("$argon2id$"));
+    }
+
+    #[test]
+    fn test_hash_uses_pinned_params() {
+        // EVE-630: the encoded hash must carry the pinned cost parameters so a
+        // dependency bump cannot silently change the work factor.
+        let hash = hash_password("test").unwrap();
+        assert!(
+            hash.contains(&format!(
+                "m={ARGON2_MEMORY_KIB},t={ARGON2_ITERATIONS},p={ARGON2_PARALLELISM}"
+            )),
+            "hash must encode pinned Argon2 params: {hash}"
+        );
     }
 }
