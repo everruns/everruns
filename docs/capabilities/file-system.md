@@ -39,11 +39,9 @@ Apply one or more exact text replacements to an existing text file. This tool is
 |---|---|---|---|
 | `path` | string | yes | Absolute path to an existing text file |
 | `expected_hash` | string | yes | Current `content_hash` (`sha256:...`) |
-| `old_text` | string | yes* | Exact text to replace (single-edit shorthand) |
-| `new_text` | string | yes* | Replacement text (single-edit shorthand) |
-| `edits` | array | yes* | Batch of `{ old_text, new_text }` replacements matched against the original file |
+| `edits` | array | yes | One or more `{ old_text, new_text }` replacements matched against the original file. Use a single-element array for one replacement. |
 
-`*` Provide either `old_text`/`new_text` or `edits`, not both.
+Legacy top-level `old_text`/`new_text` are still accepted for backward compatibility — they are folded into `edits[]` — but new callers should always use `edits[]`.
 
 ### `list_directory`
 
