@@ -13521,6 +13521,56 @@
         }
       }
     },
+    "/v1/workspaces/{workspace_id}/fs/_/preview/{path}": {
+      "get": {
+        "tags": [
+          "workspace-filesystem"
+        ],
+        "summary": "GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render",
+        "description": "Serves an HTML file as a `text/html` document carrying a strict `sandbox`\nCSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside\nan iframe without exposing everruns cookies, storage, the parent DOM, or\ntop-frame navigation. Only `.html`/`.htm` files are eligible; everything else\nreturns 415 (use the download endpoint instead).",
+        "operationId": "preview_path",
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "description": "Workspace ID (wsp_<32-hex>)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "HTML file path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sandboxed HTML document",
+            "content": {
+              "text/html": {}
+            }
+          },
+          "400": {
+            "description": "Path points to a directory"
+          },
+          "404": {
+            "description": "File not found"
+          },
+          "415": {
+            "description": "File is not an HTML document"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/fs/_/stat": {
       "post": {
         "tags": [

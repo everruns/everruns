@@ -28,25 +28,30 @@
  *
  * HTML TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-010):
  * `.html`/`.htm` files are user-supplied documents that may legitimately need
- * to run JavaScript to render (the whole point of an HTML preview). We render
- * them in an `<iframe sandbox="allow-scripts" srcDoc=...>`:
+ * to run JavaScript to render. In every mode the document runs in an opaque
+ * origin (sandbox WITHOUT `allow-same-origin`), so it cannot read everruns
+ * cookies, localStorage, or the parent DOM — verified: `document.cookie`,
+ * `parent.document`, and `localStorage` all throw `SecurityError` and
+ * `window.origin` is `null`. `allow-top-navigation`/`allow-forms`/
+ * `allow-popups`/`allow-modals` are always omitted, so no redirects, form
+ * posts, popups, or dialogs. (Never add `allow-same-origin` alongside
+ * `allow-scripts` for untrusted content: the script could then reach out and
+ * strip its own `sandbox`.)
  *
- *   1. `sandbox="allow-scripts"` enables script execution but OMITS
- *      `allow-same-origin`, so the document runs in an opaque origin. It
- *      therefore cannot read everruns cookies, localStorage, or the parent
- *      DOM — verified: `document.cookie`, `parent.document`, and
- *      `localStorage` all throw `SecurityError`, and `window.origin` is
- *      `null`. (Never add `allow-same-origin` alongside `allow-scripts` for
- *      untrusted content: the script could then reach out and remove its own
- *      `sandbox` attribute.)
- *   2. `allow-top-navigation`, `allow-forms`, `allow-popups`, and
- *      `allow-modals` are all omitted, so the preview cannot redirect the
- *      top frame, submit forms, open popups, or spawn dialogs.
- *   3. `srcDoc` keeps the document inline (no network fetch) and we inject a
- *      defense-in-depth CSP `<meta>` that blocks `<object>`/`<embed>` plugins,
- *      `<base>` hijacking, and form actions while still permitting scripts so
- *      the preview stays functional. The opaque origin (1) — not the CSP — is
- *      the primary credential-theft gate.
+ * There are two render modes because of a CSP-inheritance subtlety:
+ *
+ *   1. Server-backed (`src`, preferred — used by the file viewer): the iframe
+ *      loads the sandboxed preview endpoint
+ *      (`/v1/workspaces/{id}/fs/_/preview/{path}`), whose RESPONSE carries
+ *      `Content-Security-Policy: sandbox allow-scripts; …`. A network response
+ *      does NOT inherit the app's strict `script-src 'self'`, so the page's
+ *      JavaScript actually executes (verified under the real app CSP).
+ *   2. Static fallback (`srcDoc`, e.g. initial-files preview where content is
+ *      not yet on the server): an `about:srcdoc` document INHERITS the app's
+ *      `script-src 'self'`, which a child CSP cannot loosen, so inline scripts
+ *      do NOT run — CSS/markup still render. We also inject a hardening CSP
+ *      `<meta>` (`object-src`/`base-uri`/`form-action 'none'`) as defense in
+ *      depth. This mode is safe but non-interactive.
  *
  * PDF TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-011):
  * PDFs render via `<iframe src="data:application/pdf;base64,…">`. Chromium
@@ -199,6 +204,13 @@ interface PreviewProps {
   content: string;
   extension: string;
   encoding: "text" | "base64";
+  /**
+   * Browser-navigable URL to the sandboxed HTML preview endpoint. When provided
+   * for an HTML file, the preview loads it via `<iframe src>` so JavaScript runs
+   * (see HtmlPreview). Omitted for surfaces whose content is not yet on the
+   * server (e.g. initial-files preview), which fall back to a static render.
+   */
+  htmlPreviewSrc?: string;
 }
 
 export function CodePreview({ content, extension }: { content: string; extension: string }) {
@@ -572,18 +584,36 @@ function injectHtmlPreviewCsp(html: string): string {
   return `${meta}${html}`;
 }
 
-export function HtmlPreview({ content }: { content: string }) {
+export function HtmlPreview({ content, src }: { content: string; src?: string }) {
   const srcDoc = useMemo(() => injectHtmlPreviewCsp(content), [content]);
 
+  // Server-backed mode (preferred): the iframe loads the sandboxed preview
+  // endpoint, whose response carries `Content-Security-Policy: sandbox
+  // allow-scripts`. Because a network response does NOT inherit the app's
+  // strict `script-src 'self'` (a `srcdoc` document would), the page's
+  // JavaScript actually runs — while the opaque sandbox still blocks cookie/DOM
+  // access and top-frame navigation. The iframe `sandbox` attribute is
+  // defense-in-depth on top of the server CSP.
+  if (src) {
+    return (
+      <iframe
+        title="HTML preview"
+        sandbox="allow-scripts"
+        referrerPolicy="no-referrer"
+        src={src}
+        className="w-full h-full border-0 bg-white"
+      />
+    );
+  }
+
+  // Static fallback (e.g. initial-files preview, where the content is not yet on
+  // the server): rendered from `srcDoc` in an opaque-origin sandbox. Fully
+  // isolated, but inline scripts do NOT run because the `about:srcdoc` document
+  // inherits the app's `script-src 'self'`. CSS/markup still render. See HTML
+  // TRUST BOUNDARY at the top of this module.
   return (
     <iframe
       title="HTML preview"
-      // `allow-scripts` runs the page's JS, but the absence of
-      // `allow-same-origin` keeps it in an opaque origin: no access to
-      // everruns cookies, storage, or the parent DOM. Omitting
-      // `allow-top-navigation`/`allow-forms`/`allow-popups`/`allow-modals`
-      // blocks redirects, form posts, popups, and dialogs. See HTML TRUST
-      // BOUNDARY at the top of this module.
       sandbox="allow-scripts"
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
@@ -616,7 +646,7 @@ export function PdfPreview({ content }: { content: string }) {
   );
 }
 
-export function FilePreview({ content, extension, encoding }: PreviewProps) {
+export function FilePreview({ content, extension, encoding, htmlPreviewSrc }: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
   switch (previewType) {
@@ -631,7 +661,7 @@ export function FilePreview({ content, extension, encoding }: PreviewProps) {
     case "svg":
       return <SVGPreview content={content} encoding={encoding} />;
     case "html":
-      return <HtmlPreview content={content} />;
+      return <HtmlPreview content={content} src={htmlPreviewSrc} />;
     case "pdf":
       return <PdfPreview content={content} />;
     case "image":

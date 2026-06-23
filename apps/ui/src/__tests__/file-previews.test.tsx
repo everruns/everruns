@@ -643,11 +643,10 @@ describe("SVGPreview", () => {
 // HtmlPreview Tests (sandboxed, opaque-origin iframe path)
 // ============================================
 //
-// The security boundary is the iframe sandbox: `allow-scripts` (JS runs) WITHOUT
-// `allow-same-origin` (opaque origin → no cookie/DOM/storage access) and without
-// top-nav/forms/popups (no redirects). These tests assert the sandbox wiring and
-// that user HTML — including its scripts — reaches the srcdoc verbatim (the
-// sandbox, not sanitization, is the gate).
+// Two modes (see HtmlPreview): server-backed (`src` → JS runs via the endpoint's
+// own `sandbox allow-scripts` response CSP) and static fallback (`srcDoc` →
+// isolated, no JS under the app CSP). Both run in an opaque origin: `sandbox`
+// has `allow-scripts` but never `allow-same-origin`/top-nav/forms/popups.
 
 describe("HtmlPreview", () => {
   function getIframe(container: HTMLElement): HTMLIFrameElement {
@@ -655,6 +654,20 @@ describe("HtmlPreview", () => {
     expect(iframe).toBeInTheDocument();
     return iframe as HTMLIFrameElement;
   }
+
+  describe("server-backed mode (src)", () => {
+    it("loads the preview endpoint via src with an opaque-origin sandbox", () => {
+      const url = "/api/v1/workspaces/wsp_x/fs/_/preview/index.html";
+      const { container } = render(<HtmlPreview content="<p>ignored</p>" src={url} />);
+      const iframe = getIframe(container);
+      expect(iframe.getAttribute("src")).toBe(url);
+      // srcDoc must not be used in server-backed mode.
+      expect(iframe.getAttribute("srcdoc")).toBeNull();
+      expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+      expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
+      expect(iframe.getAttribute("referrerpolicy")).toBe("no-referrer");
+    });
+  });
 
   it("renders an iframe that allows scripts but not same-origin", () => {
     const { container } = render(<HtmlPreview content="<p>hi</p>" />);

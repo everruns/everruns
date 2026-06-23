@@ -465,9 +465,9 @@ export default function DevFilePreviewsPage() {
           {/* HTML Preview */}
           <ShowcaseSection
             title="HTML Preview"
-            description="Rendered in a sandboxed, opaque-origin iframe — JavaScript runs but cannot reach everruns cookies, storage, the parent DOM, or navigate the top frame (TM-WEB-010)"
+            description="Sandboxed, opaque-origin iframe — no access to everruns cookies, storage, parent DOM, or top-frame navigation (TM-WEB-010). This static srcDoc fallback renders CSS/markup but does NOT run JS under the app CSP; the file viewer uses the server-backed endpoint where JavaScript executes."
           >
-            <ShowcaseItem label="Interactive document (.html)">
+            <ShowcaseItem label="Document (.html) — static fallback">
               <HtmlPreview content={sampleHtml} />
             </ShowcaseItem>
           </ShowcaseSection>
