@@ -9,6 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.16.2] - 2026-06-23
+
+### Highlights
+
+- **First-class OAuth Credentials** — Providers now support typed multi-field credential schemas, enabling proper OAuth credential configuration ([#2413](https://github.com/everruns/everruns/pull/2413)).
+- **MCP Always On** — The MCP endpoint is now always exposed; the `mcp_endpoint` feature flag has been removed ([#2395](https://github.com/everruns/everruns/pull/2395)).
+- **Parallel Tool Calls** — New `parallel_tool_calls` preference unified across all drivers ([#2398](https://github.com/everruns/everruns/pull/2398)).
+
+### What's Changed
+
+- chore(deps): bump llmsim to 0.5.0 and gate it behind a feature ([#2416](https://github.com/everruns/everruns/pull/2416)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): join scorer names in dataset export ([#2415](https://github.com/everruns/everruns/pull/2415)) by [@chaliy](https://github.com/chaliy)
+- feat(core): pluggable request auth for OpenResponses driver ([#2414](https://github.com/everruns/everruns/pull/2414)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): typed multi-field credential schemas (first-class OAuth) ([#2413](https://github.com/everruns/everruns/pull/2413)) by [@chaliy](https://github.com/chaliy)
+- fix(release): correct provider core version-pins after default-features opt-out ([#2412](https://github.com/everruns/everruns/pull/2412)) by [@chaliy](https://github.com/chaliy)
+- fix(loop-detection): interrupt repeated identical failed mutating calls ([#2411](https://github.com/everruns/everruns/pull/2411)) by [@chaliy](https://github.com/chaliy)
+- fix(session-file-system): make edit_file mixed-mode error corrective ([#2410](https://github.com/everruns/everruns/pull/2410)) by [@chaliy](https://github.com/chaliy)
+- fix(llm-tests): narrow quota detector for 429s ([#2408](https://github.com/everruns/everruns/pull/2408)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): use immutable session file blob keys ([#2407](https://github.com/everruns/everruns/pull/2407)) by [@chaliy](https://github.com/chaliy)
+- fix(ard): enforce egress controls ([#2406](https://github.com/everruns/everruns/pull/2406)) by [@chaliy](https://github.com/chaliy)
+- fix(orgs): require verified email for invites ([#2405](https://github.com/everruns/everruns/pull/2405)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): sign OAuth state cookie ([#2404](https://github.com/everruns/everruns/pull/2404)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): reject client-side MCP allowlist entries ([#2403](https://github.com/everruns/everruns/pull/2403)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): preserve AG-UI endpoint auth on edit ([#2402](https://github.com/everruns/everruns/pull/2402)) by [@chaliy](https://github.com/chaliy)
+- refactor(providers): shed core default features in thin provider crates ([#2401](https://github.com/everruns/everruns/pull/2401)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): always expose MCP endpoint, drop mcp_endpoint flag ([#2395](https://github.com/everruns/everruns/pull/2395)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): gate telemetry, a2a, web-fetch behind cargo features ([#2399](https://github.com/everruns/everruns/pull/2399)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): parallel_tool_calls preference, unify drivers ([#2398](https://github.com/everruns/everruns/pull/2398)) by [@chaliy](https://github.com/chaliy)
+- refactor(api): expose feature flags as untyped key→bool map ([#2396](https://github.com/everruns/everruns/pull/2396)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): reward-labeled trajectory dataset export from eval runs ([#2397](https://github.com/everruns/everruns/pull/2397)) by [@chaliy](https://github.com/chaliy)
+- fix(chat): enforce global_chat flag end-to-end; clarify description ([#2392](https://github.com/everruns/everruns/pull/2392)) by [@chaliy](https://github.com/chaliy)
+- feat(schedules): min cron interval + per-org cap on session schedules ([#2394](https://github.com/everruns/everruns/pull/2394)) by [@chaliy](https://github.com/chaliy)
+- refactor(apps): graduate apps.detailV2, remove legacy app detail ([#2393](https://github.com/everruns/everruns/pull/2393)) by [@chaliy](https://github.com/chaliy)
+- docs(feature-flags): humanize org settings flag descriptions ([#2390](https://github.com/everruns/everruns/pull/2390)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): integration guides for agents, harnesses, and apps ([#2389](https://github.com/everruns/everruns/pull/2389)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): unify list cards behind shared EntityCard ([#2391](https://github.com/everruns/everruns/pull/2391)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add shared SearchInput for consistent search box height ([#2388](https://github.com/everruns/everruns/pull/2388)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): use accent variant for MCP Servers add button ([#2387](https://github.com/everruns/everruns/pull/2387)) by [@chaliy](https://github.com/chaliy)
+- test(runtime): make crate-level example a tested doctest ([#2386](https://github.com/everruns/everruns/pull/2386)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): classify provider type validation ([#2409](https://github.com/everruns/everruns/pull/2409)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.16.1] - 2026-06-21
 
 ### What's Changed
