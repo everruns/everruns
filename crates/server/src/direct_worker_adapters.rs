@@ -2161,21 +2161,7 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
         let body = serde_json::to_vec(&payload)?;
 
         for webhook in webhooks {
-            let mut req = EgressRequest::new("POST", &webhook.url, EgressRequestKind::Integration)
-                .header("Content-Type", "application/json")
-                .body(body.clone())
-                .timeout_ms(10_000);
-
-            if let Some(secret) = &webhook.secret {
-                use hmac::{Hmac, Mac};
-                use sha2::Sha256;
-                type HmacSha256 = Hmac<Sha256>;
-                let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-                    .expect("HMAC accepts any key length");
-                mac.update(&body);
-                let sig = hex::encode(mac.finalize().into_bytes());
-                req = req.header("X-Everruns-Signature", format!("sha256={sig}"));
-            }
+            let req = build_task_webhook_request(&webhook.url, &body, webhook.secret.as_deref());
 
             if let Err(e) = self.egress_service.send(req).await {
                 tracing::warn!(
@@ -2188,6 +2174,71 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
         }
 
         Ok(())
+    }
+}
+
+/// Build the egress request for a task-webhook delivery.
+///
+/// TM-API-020 (EVE-625): task-webhook URLs are org-configured and SSRF-validated
+/// only at create time. Delivery must pin DNS to the IPs resolved during the
+/// request-time SSRF check, otherwise a DNS rebind between create and delivery
+/// can point the previously-validated host at a private IP / cloud metadata
+/// endpoint. `require_dns_pinning()` closes that rebinding window.
+fn build_task_webhook_request(url: &str, body: &[u8], secret: Option<&str>) -> EgressRequest {
+    let mut req = EgressRequest::new("POST", url, EgressRequestKind::Integration)
+        .header("Content-Type", "application/json")
+        .body(body.to_vec())
+        .timeout_ms(10_000)
+        .require_dns_pinning();
+
+    if let Some(secret) = secret {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac =
+            HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+        mac.update(body);
+        let sig = hex::encode(mac.finalize().into_bytes());
+        req = req.header("X-Everruns-Signature", format!("sha256={sig}"));
+    }
+
+    req
+}
+
+#[cfg(test)]
+mod task_webhook_request_tests {
+    use super::build_task_webhook_request;
+
+    #[test]
+    fn task_webhook_request_pins_dns_and_signs() {
+        // EVE-625: delivery must pin DNS to defeat create-time->delivery DNS
+        // rebinding SSRF.
+        let req = build_task_webhook_request(
+            "https://hooks.example.com/notify",
+            br#"{"event":"task.terminal"}"#,
+            Some("s3cret"),
+        );
+        assert!(
+            req.dns_pinning_required,
+            "task webhook delivery must require DNS pinning"
+        );
+        assert!(
+            req.headers
+                .iter()
+                .any(|(k, v)| k.eq_ignore_ascii_case("X-Everruns-Signature")
+                    && v.starts_with("sha256=")),
+            "signed webhook must carry an HMAC signature header"
+        );
+
+        // Unsigned webhook still pins DNS and omits the signature header.
+        let unsigned = build_task_webhook_request("https://hooks.example.com/notify", b"{}", None);
+        assert!(unsigned.dns_pinning_required);
+        assert!(
+            !unsigned
+                .headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("X-Everruns-Signature"))
+        );
     }
 }
 
