@@ -429,12 +429,10 @@ const APP_MUTED_FOREGROUND: &str = "#737373";
 const EMAIL_FONT_STACK: &str =
     "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
-// Public Everruns surfaces. The logo must be a hosted absolute URL (most email
-// clients block SVG and inline data URIs), so we reference the PNG served by
-// the marketing site rather than the in-repo SVG. The 64px asset is sized for
-// the 28px header logo at 2x retina (~3 KB) to keep messages small.
+// Public Everruns surface used for branded links. Branded email intentionally
+// avoids remote images so self-hosted transactional mail does not leak recipient
+// open metadata to the upstream marketing domain or its CDN logs.
 const EVERRUNS_SITE_URL: &str = "https://everruns.com";
-const EVERRUNS_LOGO_URL: &str = "https://everruns.com/logo-64.png";
 
 // App-styled HTML shell shared by every template. `title` sets the document
 // `<title>` (kept neutral for the unbranded minimal template, since some clients
@@ -474,15 +472,12 @@ fn wrap_email_html(
     )
 }
 
-// Logo + wordmark header row, linking to everruns.com.
+// Wordmark header row, linking to everruns.com without loading remote assets.
 fn branded_header() -> String {
     format!(
         r#"          <tr>
             <td style="padding:24px 28px;border-bottom:1px solid {APP_BORDER};">
-              <a href="{EVERRUNS_SITE_URL}" style="text-decoration:none;display:inline-block;">
-                <img src="{EVERRUNS_LOGO_URL}" width="28" height="28" alt="Everruns" style="vertical-align:middle;border:0;">
-                <span style="vertical-align:middle;margin-left:10px;font-size:18px;font-weight:700;color:{BRAND_NAVY};letter-spacing:-0.02em;">Everruns</span>
-              </a>
+              <a href="{EVERRUNS_SITE_URL}" style="text-decoration:none;display:inline-block;font-size:18px;font-weight:700;color:{BRAND_NAVY};letter-spacing:-0.02em;">Everruns</a>
             </td>
           </tr>
 "#
@@ -553,24 +548,23 @@ mod tests {
         // No branding at all in the minimal template — not even the document
         // <title>, which some clients surface in previews.
         assert!(!rendered.html.contains("Everruns"));
-        assert!(!rendered.html.contains(EVERRUNS_LOGO_URL));
         assert!(!rendered.html.contains(EVERRUNS_SITE_URL));
         assert!(!rendered.html.contains("Sent by"));
     }
 
     #[tokio::test]
-    async fn basic_template_adds_branding_logo_and_site_link() {
+    async fn basic_template_adds_branding_without_remote_images() {
         let message = EmailMessage::basic("user@example.com", "Hi", "Hello", "<p>Hello</p>");
         let rendered = message.validate().unwrap();
 
         // Branded plain text: wordmark prefix and site link footer.
         assert!(rendered.text.starts_with("Everruns\n\nHello"));
         assert!(rendered.text.contains(EVERRUNS_SITE_URL));
-        // Branded HTML: shares the app shell, plus logo, wordmark, and link.
+        // Branded HTML: shares the app shell, plus wordmark and link.
         assert!(rendered.html.contains("<p>Hello</p>"));
         assert!(rendered.html.contains("border-radius:0"));
         assert!(rendered.html.contains("Everruns"));
-        assert!(rendered.html.contains(EVERRUNS_LOGO_URL));
+        assert!(!rendered.html.contains("<img"));
         assert!(
             rendered
                 .html
