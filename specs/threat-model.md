@@ -1138,6 +1138,7 @@ Client-side tools pause server execution and wait for client to submit results v
 | TM-CLIENT-001 | Tool call ID spoofing | Medium | Submitted `tool_call_id` values must exactly match pending requests; mismatches rejected | MITIGATED |
 | TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
 | TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
+| TM-CLIENT-004 | Client-side tool shadowing of MCP guardrail endpoints | High | Session and agent `tools[]` deserialization rejects `client_side` definitions whose names use the reserved `mcp_` prefix before runtime tool deduplication, preventing user-authored metadata from replacing worker-executable MCP tool definitions that `ScopedMcpToolInvoker` relies on for guardrail scope checks. | MITIGATED |
 
 ## 20. Brave Search (TM-LLM)
 
