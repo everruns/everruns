@@ -473,6 +473,10 @@ export function a2aSamples(opts: { origin: string; endpointUrl: string }): CodeS
 
 export type PromptKind = "agent" | "harness" | "webhook" | "a2a";
 
+function promptData(value: string): string {
+  return JSON.stringify(value);
+}
+
 /**
  * A ready-to-paste prompt handed to a coding agent (Claude Code, Cursor, ...) so
  * it can wire up the integration directly in the user's codebase. It states the
@@ -506,7 +510,7 @@ export function codingAgentPrompt(opts: {
       `- Auth: header \`Authorization: Bearer <token>\` (a personal access token, prefix \`evr_pat_\`).`,
       ``,
       `Target ${opts.kind}:`,
-      `- ${bindKey}: ${opts.id ?? "<id>"}${opts.name ? `\n- name: ${opts.name}` : ""}`,
+      `- ${bindKey}: ${opts.id ?? "<id>"}${opts.name ? `\n- name: ${promptData(opts.name)}` : ""}`,
       ``,
       `Integration flow:`,
       `1. POST /sessions with body {"${bindKey}": "${opts.id ?? "<id>"}"} -> returns a session; keep its "id".`,
