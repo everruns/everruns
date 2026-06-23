@@ -927,6 +927,11 @@ jobs:
       API_BASE_URL: http://localhost:9000
       WORKER_GRPC_AUTH_TOKEN: test-grpc-token-for-ci
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
+      # This job boots the server in no-auth mode for workflow tests. Since
+      # EVE-621, AUTH_MODE=none is only permitted in dev deployments, so the
+      # dev grade must be set explicitly (matching the other server-boot jobs).
+      DEV_MODE: "true"
+      AUTH_MODE: none
 
     steps:
       - uses: actions/checkout@v5
