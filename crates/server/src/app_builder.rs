@@ -1546,7 +1546,11 @@ impl ServerAppBuilder {
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
                 axum::http::HeaderValue::from_static(
-                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+                    // `frame-src 'self' data:` lets the file-preview UI embed
+                    // PDFs via a `data:application/pdf` iframe (sandboxed
+                    // viewers don't render in Chromium) and keeps `about:srcdoc`
+                    // previews (SVG/HTML/MCP cards) working under 'self'.
+                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
                 ),
             ));
 

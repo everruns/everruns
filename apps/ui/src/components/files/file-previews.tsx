@@ -25,6 +25,45 @@
  *
  * The trust gate is enforced in `SVGPreview` below; `getPreviewType` routes
  * `.svg` files to that component instead of `<img>`-based `ImagePreview`.
+ *
+ * HTML TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-010):
+ * `.html`/`.htm` files are user-supplied documents that may legitimately need
+ * to run JavaScript to render (the whole point of an HTML preview). We render
+ * them in an `<iframe sandbox="allow-scripts" srcDoc=...>`:
+ *
+ *   1. `sandbox="allow-scripts"` enables script execution but OMITS
+ *      `allow-same-origin`, so the document runs in an opaque origin. It
+ *      therefore cannot read everruns cookies, localStorage, or the parent
+ *      DOM — verified: `document.cookie`, `parent.document`, and
+ *      `localStorage` all throw `SecurityError`, and `window.origin` is
+ *      `null`. (Never add `allow-same-origin` alongside `allow-scripts` for
+ *      untrusted content: the script could then reach out and remove its own
+ *      `sandbox` attribute.)
+ *   2. `allow-top-navigation`, `allow-forms`, `allow-popups`, and
+ *      `allow-modals` are all omitted, so the preview cannot redirect the
+ *      top frame, submit forms, open popups, or spawn dialogs.
+ *   3. `srcDoc` keeps the document inline (no network fetch) and we inject a
+ *      defense-in-depth CSP `<meta>` that blocks `<object>`/`<embed>` plugins,
+ *      `<base>` hijacking, and form actions while still permitting scripts so
+ *      the preview stays functional. The opaque origin (1) — not the CSP — is
+ *      the primary credential-theft gate.
+ *
+ * PDF TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-011):
+ * PDFs render via `<iframe src="data:application/pdf;base64,…">`. Chromium
+ * disables its built-in PDF viewer inside *any* sandboxed iframe (verified:
+ * `sandbox=""`, `allow-scripts`, and `allow-scripts allow-same-origin` all
+ * fail to render, for both `data:` and `blob:` sources), so `sandbox` is not
+ * available here. Security instead comes from:
+ *
+ *   1. The `data:` URL gives the frame an opaque origin, so it cannot read
+ *      everruns cookies/DOM even without `sandbox`.
+ *   2. The PDF document runs inside Chromium's out-of-process PDF viewer, an
+ *      isolated context that cannot script the embedding page.
+ *   3. Forcing `application/pdf` means a mislabeled `.pdf` (e.g. HTML bytes)
+ *      is parsed as a (broken) PDF, never executed as HTML.
+ *
+ * The parent CSP needs `frame-src 'self' data:` for the PDF `data:` frame to
+ * load; see `crates/server/src/app_builder.rs`.
  */
 
 import { useMemo } from "react";
@@ -120,6 +159,8 @@ export type PreviewType =
   | "markdown"
   | "image"
   | "svg"
+  | "html"
+  | "pdf"
   | "text"
   | "binary";
 
@@ -131,10 +172,17 @@ export function getPreviewType(extension: string, encoding: "text" | "base64"): 
   if (ext === "svg") return "svg";
 
   if (encoding === "base64") {
+    // PDFs render in the built-in viewer via a data: URL; see PDF TRUST
+    // BOUNDARY at the top of this module.
+    if (ext === "pdf") return "pdf";
     if (IMAGE_EXTENSIONS.has(ext)) return "image";
     return "binary";
   }
 
+  // HTML files render (with JS) inside a sandboxed, opaque-origin iframe;
+  // see HTML TRUST BOUNDARY at the top of this module. Routed before the
+  // generic code path so the default "View" is the rendered page.
+  if (ext === "html" || ext === "htm") return "html";
   if (ext === "md" || ext === "markdown") return "markdown";
   if (ext === "json") return "json";
   if (ext === "csv") return "csv";
@@ -495,6 +543,79 @@ export function SVGPreview({
   );
 }
 
+// Defense-in-depth CSP for the HTML preview iframe. It deliberately does NOT
+// constrain `script-src`/`default-src` — the preview must run JavaScript — but
+// it blocks plugin embeds (`object-src 'none'`), `<base>` hijacking of relative
+// URLs (`base-uri 'none'`), and form submissions (`form-action 'none'`). The
+// real credential-theft gate is the iframe's opaque origin (no
+// `allow-same-origin`); this CSP is belt-and-suspenders. See HTML TRUST
+// BOUNDARY at the top of this module.
+const HTML_PREVIEW_CSP = "object-src 'none'; base-uri 'none'; form-action 'none'";
+
+/**
+ * Inject the hardening CSP meta tag as the FIRST child of <head> so it governs
+ * everything parsed after it. Falls back to wrapping in <head>/prepending when
+ * the user's HTML omits those tags (browsers still honor a leading meta CSP).
+ * Inserting at the head's start — before any user script — is what makes the
+ * policy apply to those scripts.
+ */
+function injectHtmlPreviewCsp(html: string): string {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${HTML_PREVIEW_CSP}">`;
+  const headOpen = /<head[^>]*>/i;
+  if (headOpen.test(html)) {
+    return html.replace(headOpen, (match) => `${match}${meta}`);
+  }
+  const htmlOpen = /<html[^>]*>/i;
+  if (htmlOpen.test(html)) {
+    return html.replace(htmlOpen, (match) => `${match}<head>${meta}</head>`);
+  }
+  return `${meta}${html}`;
+}
+
+export function HtmlPreview({ content }: { content: string }) {
+  const srcDoc = useMemo(() => injectHtmlPreviewCsp(content), [content]);
+
+  return (
+    <iframe
+      title="HTML preview"
+      // `allow-scripts` runs the page's JS, but the absence of
+      // `allow-same-origin` keeps it in an opaque origin: no access to
+      // everruns cookies, storage, or the parent DOM. Omitting
+      // `allow-top-navigation`/`allow-forms`/`allow-popups`/`allow-modals`
+      // blocks redirects, form posts, popups, and dialogs. See HTML TRUST
+      // BOUNDARY at the top of this module.
+      sandbox="allow-scripts"
+      referrerPolicy="no-referrer"
+      srcDoc={srcDoc}
+      className="w-full h-full border-0 bg-white"
+    />
+  );
+}
+
+export function PdfPreview({ content }: { content: string }) {
+  // Chromium disables its PDF viewer inside any sandboxed iframe, so we cannot
+  // use `sandbox` here. The data: URL gives the frame an opaque origin (no
+  // cookie/DOM access) and forcing `application/pdf` prevents HTML execution
+  // for mislabeled files. See PDF TRUST BOUNDARY at the top of this module.
+  const dataUrl = useMemo(
+    () => `data:application/pdf;base64,${content.replace(/\s+/g, "")}`,
+    [content],
+  );
+
+  if (!content.trim()) {
+    return (
+      <div className="p-4 text-sm text-muted-foreground text-center">
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+        <p>Empty or invalid PDF</p>
+      </div>
+    );
+  }
+
+  return (
+    <iframe title="PDF preview" src={dataUrl} className="w-full h-full border-0 bg-neutral-50" />
+  );
+}
+
 export function FilePreview({ content, extension, encoding }: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
@@ -509,6 +630,10 @@ export function FilePreview({ content, extension, encoding }: PreviewProps) {
       return <MarkdownPreview content={content} />;
     case "svg":
       return <SVGPreview content={content} encoding={encoding} />;
+    case "html":
+      return <HtmlPreview content={content} />;
+    case "pdf":
+      return <PdfPreview content={content} />;
     case "image":
       return (
         <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />

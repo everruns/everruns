@@ -10,6 +10,8 @@ import {
   JSONPreview,
   MarkdownPreview,
   ImagePreview,
+  HtmlPreview,
+  PdfPreview,
   canPreview,
   getPreviewType,
 } from "@/components/files/file-previews";
@@ -313,6 +315,43 @@ everruns init my-project
 See the [full documentation](https://docs.example.com) for more details.
 `;
 
+// Self-contained HTML doc with inline JS — exercises the sandboxed, opaque-origin
+// render path (JS runs but cannot reach everruns cookies/DOM).
+const sampleHtml = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 1.5rem; color: #111; }
+      button { padding: 6px 12px; cursor: pointer; }
+      #count { font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <h1>Sandboxed HTML preview</h1>
+    <p>JavaScript runs in an opaque origin: clicks: <span id="count">0</span></p>
+    <button id="btn">Increment</button>
+    <p id="origin"></p>
+    <script>
+      let n = 0;
+      document.getElementById("btn").addEventListener("click", () => {
+        document.getElementById("count").textContent = String(++n);
+      });
+      // Demonstrates isolation: origin is null, cookies are unreachable.
+      let cookieState;
+      try { cookieState = "cookie=[" + document.cookie + "]"; }
+      catch (e) { cookieState = "cookie blocked (" + e.name + ")"; }
+      document.getElementById("origin").textContent =
+        "origin=" + window.origin + " | " + cookieState;
+    </script>
+  </body>
+</html>`;
+
+// Minimal valid one-page PDF ("Hello PDF Preview"), base64-encoded. Exercises
+// the data: URL viewer path.
+const samplePdfBase64 =
+  "JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgMzAwIDE0NF0vQ29udGVudHMgNCAwIFIvUmVzb3VyY2VzPDwvRm9udDw8L0YxIDUgMCBSPj4+Pj4+ZW5kb2JqCjQgMCBvYmo8PC9MZW5ndGggNzA+PnN0cmVhbQpCVCAvRjEgMjQgVGYgNDAgODAgVGQgKEhlbGxvIFBERiBQcmV2aWV3KSBUaiBFVAplbmRzdHJlYW0gZW5kb2JqCjUgMCBvYmo8PC9UeXBlL0ZvbnQvU3VidHlwZS9UeXBlMS9CYXNlRm9udC9IZWx2ZXRpY2E+PmVuZG9iagp4cmVmCjAgNgowMDAwMDAwMDAwIDY1NTM1IGYgCnRyYWlsZXI8PC9Sb290IDEgMCBSL1NpemUgNj4+CnN0YXJ0eHJlZgowCiUlRU9G";
+
 // Base64 encoded 1x1 pixel PNG (red)
 const sampleImageBase64 =
   "iVBORw0KGgoAAAANSUhEUgAAAGQAAABkCAYAAABw4pVUAAAACXBIWXMAAAsTAAALEwEAmpwYAAABSklEQVR4nO3dwQ2DMBBFUdKROqAPrUOfpoO0YC9YJSJyYmbu3xhZT8ssPgAAAAAAAAAAAABgqftah2HYv8p6us4D0C5lPAAAAACAi5nZ+xWuZd2WMu1wLS2Eg/qjPAD4K89hqF8/R7bHOTQchYOCQMOVIBDwLqshqCEckJ4hdQ/pnKD3FwIAAAAAAAAAgB9qjlJlqThKCKC8tJZeRlDjLAEAAPi/3hdqSKPWhX68UEMaiW2dhkDDbWHbPwIAAAAA4Bfc96OktG7BuicIBNxTSwgH3U8IQAAAAAAAAAAAAAD4qOaofq8/anPUvD4OAO+YK/8V";
@@ -423,6 +462,26 @@ export default function DevFilePreviewsPage() {
             </ShowcaseItem>
           </ShowcaseSection>
 
+          {/* HTML Preview */}
+          <ShowcaseSection
+            title="HTML Preview"
+            description="Rendered in a sandboxed, opaque-origin iframe — JavaScript runs but cannot reach everruns cookies, storage, the parent DOM, or navigate the top frame (TM-WEB-010)"
+          >
+            <ShowcaseItem label="Interactive document (.html)">
+              <HtmlPreview content={sampleHtml} />
+            </ShowcaseItem>
+          </ShowcaseSection>
+
+          {/* PDF Preview */}
+          <ShowcaseSection
+            title="PDF Preview"
+            description="Rendered via a data:application/pdf iframe using the browser's built-in viewer; the opaque data: origin isolates it from everruns (TM-WEB-011)"
+          >
+            <ShowcaseItem label="Document (.pdf)">
+              <PdfPreview content={samplePdfBase64} />
+            </ShowcaseItem>
+          </ShowcaseSection>
+
           {/* FilePreview Unified Component */}
           <ShowcaseSection
             title="Unified FilePreview Component"
@@ -440,17 +499,29 @@ export default function DevFilePreviewsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {["ts", "py", "rs", "csv", "json", "md", "png", "txt", "exe"].map((ext) => (
-                      <tr key={ext} className="border-b">
-                        <td className="py-1">.{ext}</td>
-                        <td className="py-1">
-                          {getPreviewType(ext, ext === "png" ? "base64" : "text")}
-                        </td>
-                        <td className="py-1">
-                          {canPreview(ext, ext === "png" ? "base64" : "text") ? "✅" : "❌"}
-                        </td>
-                      </tr>
-                    ))}
+                    {[
+                      "ts",
+                      "py",
+                      "rs",
+                      "csv",
+                      "json",
+                      "md",
+                      "html",
+                      "png",
+                      "pdf",
+                      "txt",
+                      "exe",
+                    ].map((ext) => {
+                      const enc =
+                        ext === "png" || ext === "pdf" || ext === "exe" ? "base64" : "text";
+                      return (
+                        <tr key={ext} className="border-b">
+                          <td className="py-1">.{ext}</td>
+                          <td className="py-1">{getPreviewType(ext, enc)}</td>
+                          <td className="py-1">{canPreview(ext, enc) ? "✅" : "❌"}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

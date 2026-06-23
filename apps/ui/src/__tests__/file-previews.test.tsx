@@ -21,6 +21,8 @@ import {
   ImagePreview,
   MarkdownPreview,
   SVGPreview,
+  HtmlPreview,
+  PdfPreview,
   parseFrontmatter,
 } from "@/components/files/file-previews";
 
@@ -65,9 +67,21 @@ describe("getPreviewType", () => {
     });
 
     it("returns 'code' for web files", () => {
-      expect(getPreviewType("html", "text")).toBe("code");
       expect(getPreviewType("css", "text")).toBe("code");
       expect(getPreviewType("scss", "text")).toBe("code");
+    });
+  });
+
+  describe("html files", () => {
+    it("returns 'html' for .html and .htm files (rendered preview path)", () => {
+      expect(getPreviewType("html", "text")).toBe("html");
+      expect(getPreviewType("htm", "text")).toBe("html");
+    });
+  });
+
+  describe("pdf files", () => {
+    it("returns 'pdf' for PDF files with base64 encoding", () => {
+      expect(getPreviewType("pdf", "base64")).toBe("pdf");
     });
   });
 
@@ -176,6 +190,15 @@ describe("canPreview", () => {
     it("returns true for image files", () => {
       expect(canPreview("png", "base64")).toBe(true);
       expect(canPreview("jpg", "base64")).toBe(true);
+    });
+
+    it("returns true for html files (sandboxed render path)", () => {
+      expect(canPreview("html", "text")).toBe(true);
+      expect(canPreview("htm", "text")).toBe(true);
+    });
+
+    it("returns true for pdf files (data: iframe path)", () => {
+      expect(canPreview("pdf", "base64")).toBe(true);
     });
   });
 
@@ -613,5 +636,113 @@ describe("SVGPreview", () => {
       expect(container.querySelector("iframe")).not.toBeInTheDocument();
       expect(screen.getByText("Empty or invalid SVG")).toBeInTheDocument();
     });
+  });
+});
+
+// ============================================
+// HtmlPreview Tests (sandboxed, opaque-origin iframe path)
+// ============================================
+//
+// The security boundary is the iframe sandbox: `allow-scripts` (JS runs) WITHOUT
+// `allow-same-origin` (opaque origin → no cookie/DOM/storage access) and without
+// top-nav/forms/popups (no redirects). These tests assert the sandbox wiring and
+// that user HTML — including its scripts — reaches the srcdoc verbatim (the
+// sandbox, not sanitization, is the gate).
+
+describe("HtmlPreview", () => {
+  function getIframe(container: HTMLElement): HTMLIFrameElement {
+    const iframe = container.querySelector("iframe");
+    expect(iframe).toBeInTheDocument();
+    return iframe as HTMLIFrameElement;
+  }
+
+  it("renders an iframe that allows scripts but not same-origin", () => {
+    const { container } = render(<HtmlPreview content="<p>hi</p>" />);
+    const iframe = getIframe(container);
+    // allow-scripts WITHOUT allow-same-origin keeps the document opaque-origin.
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(iframe.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(iframe.getAttribute("referrerpolicy")).toBe("no-referrer");
+  });
+
+  it("does not grant top-navigation, forms, popups, or modals", () => {
+    const { container } = render(<HtmlPreview content="<p>hi</p>" />);
+    const sandbox = getIframe(container).getAttribute("sandbox") ?? "";
+    expect(sandbox).not.toContain("allow-top-navigation");
+    expect(sandbox).not.toContain("allow-forms");
+    expect(sandbox).not.toContain("allow-popups");
+    expect(sandbox).not.toContain("allow-modals");
+  });
+
+  it("passes the HTML (including scripts) through to the srcdoc verbatim", () => {
+    const html =
+      "<html><head><title>T</title></head><body><script>window.x=1</script>hi</body></html>";
+    const { container } = render(<HtmlPreview content={html} />);
+    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
+    // No host-document script element; the payload lives only in the sandbox.
+    expect(container.querySelector("script")).not.toBeInTheDocument();
+    expect(srcDoc).toContain("<script>window.x=1</script>");
+    expect(srcDoc).toContain("hi");
+  });
+
+  it("injects a hardening CSP meta as the first child of <head>", () => {
+    const html = "<html><head><title>T</title></head><body>hi</body></html>";
+    const { container } = render(<HtmlPreview content={html} />);
+    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
+    expect(srcDoc).toContain('http-equiv="Content-Security-Policy"');
+    expect(srcDoc).toContain("object-src 'none'");
+    expect(srcDoc).toContain("base-uri 'none'");
+    expect(srcDoc).toContain("form-action 'none'");
+    // The meta must precede the user's head content so it governs it.
+    expect(srcDoc.indexOf("Content-Security-Policy")).toBeLessThan(srcDoc.indexOf("<title>"));
+    // The CSP intentionally does NOT constrain scripts (preview must run JS).
+    expect(srcDoc).not.toContain("script-src");
+  });
+
+  it("synthesizes a head when the HTML has none", () => {
+    const { container } = render(<HtmlPreview content="<html><body>hi</body></html>" />);
+    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
+    expect(srcDoc).toContain("<head>");
+    expect(srcDoc).toContain("Content-Security-Policy");
+    expect(srcDoc.indexOf("Content-Security-Policy")).toBeLessThan(srcDoc.indexOf("<body>"));
+  });
+
+  it("prepends the CSP for bare HTML fragments", () => {
+    const { container } = render(<HtmlPreview content="<p>just a fragment</p>" />);
+    const srcDoc = getIframe(container).getAttribute("srcdoc") ?? "";
+    expect(srcDoc.startsWith("<meta")).toBe(true);
+    expect(srcDoc).toContain("<p>just a fragment</p>");
+  });
+});
+
+// ============================================
+// PdfPreview Tests (data: URL iframe path)
+// ============================================
+//
+// Chromium disables its PDF viewer inside any sandboxed iframe, so the security
+// boundary is the data: URL's opaque origin plus the out-of-process viewer.
+// These tests assert the data: URL wiring and the forced application/pdf type.
+
+describe("PdfPreview", () => {
+  const sampleBase64 = "JVBERi0xLjQKJUVPRg==";
+
+  it("renders an iframe pointing at a data:application/pdf URL", () => {
+    const { container } = render(<PdfPreview content={sampleBase64} />);
+    const iframe = container.querySelector("iframe");
+    expect(iframe).toBeInTheDocument();
+    expect(iframe?.getAttribute("src")).toBe(`data:application/pdf;base64,${sampleBase64}`);
+  });
+
+  it("strips whitespace/newlines from base64 before building the data URL", () => {
+    const wrapped = sampleBase64.replace(/(.{4})/g, "$1\n");
+    const { container } = render(<PdfPreview content={wrapped} />);
+    const iframe = container.querySelector("iframe");
+    expect(iframe?.getAttribute("src")).toBe(`data:application/pdf;base64,${sampleBase64}`);
+  });
+
+  it("shows an empty-state for blank content", () => {
+    const { container } = render(<PdfPreview content="   " />);
+    expect(container.querySelector("iframe")).not.toBeInTheDocument();
+    expect(screen.getByText("Empty or invalid PDF")).toBeInTheDocument();
   });
 });
