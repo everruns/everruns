@@ -10,7 +10,7 @@ This document defines the authentication system for Everruns, supporting flexibl
 
 Everruns supports four authentication modes:
 
-1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, personal access tokens, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. Suitable for local development.
+1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, personal access tokens, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. **Local development only:** because `none` disables authentication, it is permitted **only in dev deployments** — `AuthConfig::from_env()` panics at startup if `none` is selected (explicitly or by omitting `AUTH_MODE`) when the deployment grade is not `dev`. Set `DEPLOYMENT_GRADE=dev` (or `DEV_MODE=true`) to opt into no-auth dev mode. Unrecognized `AUTH_MODE` values are likewise rejected at startup rather than falling back to `none`, so a typo such as `AUTH_MODE=production` cannot silently disable auth.
 
 2. **Admin** (`AUTH_MODE=admin`): Single admin user via environment variables. Suitable for local development with basic access control.
 
@@ -162,7 +162,7 @@ Account linking by email is supported (same email = same account).
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external` | `none` |
+| `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external`. Unknown values are rejected at startup. `none` is allowed only in dev deployments (`DEPLOYMENT_GRADE=dev`/`DEV_MODE=true`); a non-dev deployment that omits or sets `AUTH_MODE=none` fails startup. | `none` (dev only) |
 | `PUBLIC_APP_URL` | Public browser origin for the app | `http://localhost:9300` |
 | `FRONTEND_URL` | Browser redirect origin; set only when different from `PUBLIC_APP_URL` | `PUBLIC_APP_URL` |
 | `AUTH_BASE_URL` | Base URL for OAuth callbacks, including API prefix | `PUBLIC_APP_URL` + `API_PREFIX` |

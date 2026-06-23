@@ -37,12 +37,20 @@ pub enum AuthMode {
 }
 
 impl AuthMode {
-    pub fn parse(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "admin" => AuthMode::Admin,
-            "full" => AuthMode::Full,
-            "external" => AuthMode::External,
-            _ => AuthMode::None,
+    /// Parse a recognized `AUTH_MODE` value, returning `None` for anything
+    /// unrecognized so callers can fail closed.
+    ///
+    /// The previous lenient `parse` mapped any unknown value (including typos
+    /// like `AUTH_MODE=production`) to `AuthMode::None` — which resolves every
+    /// request to an anonymous admin. Unknown values must be rejected, not
+    /// silently downgraded to no-auth. See EVE-621 / TM-AUTH-011.
+    pub fn parse_known(s: &str) -> Option<AuthMode> {
+        match s.trim().to_lowercase().as_str() {
+            "none" => Some(AuthMode::None),
+            "admin" => Some(AuthMode::Admin),
+            "full" => Some(AuthMode::Full),
+            "external" => Some(AuthMode::External),
+            _ => None,
         }
     }
 
@@ -54,6 +62,42 @@ impl AuthMode {
             AuthMode::External => "external",
         }
     }
+}
+
+/// Resolve the effective authentication mode from the raw `AUTH_MODE` value and
+/// the deployment grade, failing closed against the fail-open default
+/// (EVE-621 / TM-AUTH-011):
+///
+/// - Unrecognized `AUTH_MODE` values are rejected — a typo such as
+///   `AUTH_MODE=production` must not silently fall back to no-auth.
+/// - `none` mode resolves every request to an anonymous admin, so it is only
+///   permitted in dev deployments. A non-dev deployment that omits `AUTH_MODE`
+///   (or sets it to `none`) fails startup instead of coming up unauthenticated.
+fn resolve_auth_mode(
+    raw: Option<&str>,
+    grade: everruns_core::DeploymentGrade,
+) -> Result<AuthMode, String> {
+    let mode = match raw {
+        Some(s) => AuthMode::parse_known(s).ok_or_else(|| {
+            format!(
+                "AUTH_MODE='{s}' is not a recognized value \
+                 (expected one of: none, admin, full, external)"
+            )
+        })?,
+        None => AuthMode::None,
+    };
+
+    if mode == AuthMode::None && !grade.is_dev() {
+        return Err(format!(
+            "AUTH_MODE=none disables authentication — every request is treated as an \
+             anonymous admin with full access — and is only allowed in dev deployments \
+             (current deployment grade: {grade}). Set AUTH_MODE=admin|full|external for \
+             this deployment, or set DEPLOYMENT_GRADE=dev (or DEV_MODE=true) to explicitly \
+             opt into no-auth dev mode."
+        ));
+    }
+
+    Ok(mode)
 }
 
 /// OAuth provider configuration
@@ -167,9 +211,18 @@ impl Default for AuthConfig {
 impl AuthConfig {
     /// Load configuration from environment variables
     pub fn from_env() -> Self {
-        let mode = std::env::var("AUTH_MODE")
-            .map(|s| AuthMode::parse(&s))
-            .unwrap_or_default();
+        // Fail closed: reject unknown AUTH_MODE values and forbid no-auth
+        // `none` mode outside dev deployments, so a production server cannot
+        // silently come up unauthenticated by omission or typo (EVE-621).
+        let grade = everruns_core::DeploymentGrade::from_env();
+        let mode = resolve_auth_mode(std::env::var("AUTH_MODE").ok().as_deref(), grade)
+            .unwrap_or_else(|err| panic!("{err}"));
+        if mode == AuthMode::None {
+            tracing::warn!(
+                "AUTH_MODE=none: authentication is DISABLED — every request is treated as an \
+                 anonymous admin with full access. Intended for local development only."
+            );
+        }
 
         let api_prefix =
             std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
@@ -477,15 +530,50 @@ mod tests {
 
     #[test]
     fn test_auth_mode_parsing() {
-        assert_eq!(AuthMode::parse("none"), AuthMode::None);
-        assert_eq!(AuthMode::parse("NONE"), AuthMode::None);
-        assert_eq!(AuthMode::parse("admin"), AuthMode::Admin);
-        assert_eq!(AuthMode::parse("ADMIN"), AuthMode::Admin);
-        assert_eq!(AuthMode::parse("full"), AuthMode::Full);
-        assert_eq!(AuthMode::parse("FULL"), AuthMode::Full);
-        assert_eq!(AuthMode::parse("external"), AuthMode::External);
-        assert_eq!(AuthMode::parse("EXTERNAL"), AuthMode::External);
-        assert_eq!(AuthMode::parse("invalid"), AuthMode::None);
+        assert_eq!(AuthMode::parse_known("none"), Some(AuthMode::None));
+        assert_eq!(AuthMode::parse_known("NONE"), Some(AuthMode::None));
+        assert_eq!(AuthMode::parse_known("admin"), Some(AuthMode::Admin));
+        assert_eq!(AuthMode::parse_known("ADMIN"), Some(AuthMode::Admin));
+        assert_eq!(AuthMode::parse_known("full"), Some(AuthMode::Full));
+        assert_eq!(AuthMode::parse_known("FULL"), Some(AuthMode::Full));
+        assert_eq!(AuthMode::parse_known("external"), Some(AuthMode::External));
+        assert_eq!(AuthMode::parse_known("EXTERNAL"), Some(AuthMode::External));
+        // EVE-621: unknown values are rejected, not silently mapped to no-auth.
+        assert_eq!(AuthMode::parse_known("invalid"), None);
+        assert_eq!(AuthMode::parse_known("production"), None);
+    }
+
+    #[test]
+    fn test_resolve_auth_mode_fails_closed() {
+        use everruns_core::DeploymentGrade;
+
+        // Unknown AUTH_MODE is rejected in every grade (no silent no-auth).
+        assert!(resolve_auth_mode(Some("production"), DeploymentGrade::Dev).is_err());
+        assert!(resolve_auth_mode(Some("production"), DeploymentGrade::Prod).is_err());
+
+        // `none` (explicit or by omission) is only allowed in dev.
+        assert_eq!(
+            resolve_auth_mode(None, DeploymentGrade::Dev),
+            Ok(AuthMode::None)
+        );
+        assert_eq!(
+            resolve_auth_mode(Some("none"), DeploymentGrade::Dev),
+            Ok(AuthMode::None)
+        );
+        assert!(resolve_auth_mode(None, DeploymentGrade::Prod).is_err());
+        assert!(resolve_auth_mode(Some("none"), DeploymentGrade::Prod).is_err());
+        assert!(resolve_auth_mode(None, DeploymentGrade::Preview).is_err());
+        assert!(resolve_auth_mode(None, DeploymentGrade::Poc).is_err());
+
+        // Real auth modes are accepted regardless of grade.
+        for grade in [DeploymentGrade::Dev, DeploymentGrade::Prod] {
+            assert_eq!(resolve_auth_mode(Some("admin"), grade), Ok(AuthMode::Admin));
+            assert_eq!(resolve_auth_mode(Some("full"), grade), Ok(AuthMode::Full));
+            assert_eq!(
+                resolve_auth_mode(Some("external"), grade),
+                Ok(AuthMode::External)
+            );
+        }
     }
 
     #[test]
@@ -538,13 +626,20 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_auth_url_env();
         // SAFETY: this test holds ENV_LOCK.
-        unsafe { std::env::set_var("API_PREFIX", "/custom-api") };
+        // `none` mode (the default) is only permitted in dev deployments, so
+        // pin the grade for this base-URL-derivation test (EVE-621).
+        unsafe {
+            std::env::set_var("DEPLOYMENT_GRADE", "dev");
+            std::env::set_var("API_PREFIX", "/custom-api");
+        }
 
         let config = AuthConfig::from_env();
 
         assert_eq!(config.base_url, "http://localhost:9300/custom-api");
         assert_eq!(config.frontend_url, DEFAULT_PUBLIC_APP_URL);
         clear_auth_url_env();
+        // SAFETY: this test holds ENV_LOCK.
+        unsafe { std::env::remove_var("DEPLOYMENT_GRADE") };
     }
 
     #[test]
@@ -552,13 +647,20 @@ mod tests {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_auth_url_env();
         // SAFETY: this test holds ENV_LOCK.
-        unsafe { std::env::set_var("API_PREFIX", "") };
+        // `none` mode (the default) is only permitted in dev deployments, so
+        // pin the grade for this base-URL-derivation test (EVE-621).
+        unsafe {
+            std::env::set_var("DEPLOYMENT_GRADE", "dev");
+            std::env::set_var("API_PREFIX", "");
+        }
 
         let config = AuthConfig::from_env();
 
         assert_eq!(config.base_url, DEFAULT_PUBLIC_APP_URL);
         assert_eq!(config.frontend_url, DEFAULT_PUBLIC_APP_URL);
         clear_auth_url_env();
+        // SAFETY: this test holds ENV_LOCK.
+        unsafe { std::env::remove_var("DEPLOYMENT_GRADE") };
     }
 
     #[test]
