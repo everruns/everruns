@@ -102,7 +102,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-008 | Session fixation via cookie | Medium | New tokens issued on login; HTTP-only, SameSite=Lax cookies | MITIGATED |
 | TM-AUTH-009 | Refresh token theft | High | Stored hashed in DB; HTTP-only cookie; revocable | MITIGATED |
 | TM-AUTH-010 | Admin password in env var | Low | Limited to admin mode; documented risk; shell history exposure possible | **ACCEPTED** |
-| TM-AUTH-011 | Auth bypass in `none` mode | Info | By design for local development; anonymous user gets admin role | **BY DESIGN** |
+| TM-AUTH-011 | Auth bypass in `none` mode | Info | By design for local development; anonymous user gets admin role. Fail-closed: `none` is gated to dev deployments and unknown `AUTH_MODE` values are rejected at startup (`AuthConfig::from_env`), so production cannot silently come up unauthenticated by omission or typo (EVE-621). | **BY DESIGN** |
 | TM-AUTH-012 | OAuth account linking collision | Medium | Accounts linked by email; if attacker controls email at provider, they gain access | **CALLER RISK** |
 | TM-AUTH-013 | Expired personal access token still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
 | TM-AUTH-014 | Account enumeration via registration | Medium | Returns generic "Registration failed" for existing emails; password hash computed first for timing consistency | MITIGATED |
@@ -1440,7 +1440,7 @@ path to any management API. Mitigations live in
 | ID | Threat | Rationale |
 |----|--------|-----------|
 | TM-AUTH-010 | Admin password in env var | Limited to development mode; documented |
-| TM-AUTH-011 | Auth bypass in none mode | By design for local development |
+| TM-AUTH-011 | Auth bypass in none mode | By design for local development; gated to dev deployments + unknown AUTH_MODE rejected at startup (EVE-621) |
 | ~~TM-API-008~~ | ~~WebFetch SSRF~~ | Reclassified to **MITIGATED** — fetchkit v0.1.2 DnsPolicy blocks private IPs |
 | TM-FS-006 | File content unencrypted at rest | Relies on infrastructure encryption |
 | TM-FS-007 | No file access audit log | Privacy tradeoff; not compliance-required |
