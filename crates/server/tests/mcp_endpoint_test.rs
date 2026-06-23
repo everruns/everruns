@@ -2939,6 +2939,141 @@ async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
     assert_eq!(body["error"], "invalid_grant");
 }
 
+/// Helper: create a single authorization code and return the params needed to
+/// redeem it at `/oauth/token` (so a test can redeem the *same* code twice).
+async fn create_oauth_authorization_code_params(
+    server: &TestServer,
+    client_id: &str,
+) -> (String, String, String) {
+    let user_id = create_oauth_test_user(server).await;
+    let suffix = unique_suffix();
+    let code = format!("oauth-code-{suffix}");
+    let verifier = format!("oauth-verifier-{suffix}");
+    let redirect_uri = "http://localhost:9999/callback".to_string();
+
+    server
+        .db
+        .create_oauth_authorization_code(CreateOAuthAuthorizationCodeRow {
+            code_hash: hash_value(&code),
+            client_id: client_id.to_string(),
+            user_id,
+            org_id: DEFAULT_ORG_ID,
+            redirect_uri: redirect_uri.clone(),
+            code_challenge: pkce_challenge(&verifier),
+            code_challenge_method: "S256".to_string(),
+            scope: "mcp".to_string(),
+            expires_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+        })
+        .await
+        .expect("failed to create OAuth authorization code");
+
+    (code, verifier, redirect_uri)
+}
+
+async fn redeem_oauth_authorization_code(
+    server: &TestServer,
+    client_id: &str,
+    client_secret: &str,
+    code: &str,
+    verifier: &str,
+    redirect_uri: &str,
+) -> test_harness::TestResponse {
+    server
+        .post(
+            "/oauth/token",
+            json!({
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "code_verifier": verifier,
+            }),
+        )
+        .await
+}
+
+/// EVE-622: a leaked/intercepted authorization code must be redeemable at most
+/// once. The token endpoint reads `consumed` before PKCE validation, then relies
+/// on the atomic consume to reject replays.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorization_code_rejects_reuse() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let (code, verifier, redirect_uri) =
+        create_oauth_authorization_code_params(&server, &client_id).await;
+
+    redeem_oauth_authorization_code(
+        &server,
+        &client_id,
+        &client_secret,
+        &code,
+        &verifier,
+        &redirect_uri,
+    )
+    .await
+    .assert_success();
+
+    let reuse = redeem_oauth_authorization_code(
+        &server,
+        &client_id,
+        &client_secret,
+        &code,
+        &verifier,
+        &redirect_uri,
+    )
+    .await;
+    assert_eq!(reuse.status(), StatusCode::BAD_REQUEST);
+    let body: Value = reuse.json();
+    assert_eq!(body["error"], "invalid_grant");
+}
+
+/// EVE-622: two concurrent redemptions of the same code (the TOCTOU window) must
+/// resolve to exactly one success — without the atomic-consume check both would
+/// pass the stale `consumed` read and mint tokens.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorization_code_concurrent_retries_are_single_use() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let (code, verifier, redirect_uri) =
+        create_oauth_authorization_code_params(&server, &client_id).await;
+
+    let (first, second) = tokio::join!(
+        redeem_oauth_authorization_code(
+            &server,
+            &client_id,
+            &client_secret,
+            &code,
+            &verifier,
+            &redirect_uri,
+        ),
+        redeem_oauth_authorization_code(
+            &server,
+            &client_id,
+            &client_secret,
+            &code,
+            &verifier,
+            &redirect_uri,
+        ),
+    );
+
+    let statuses = [first.status(), second.status()];
+    assert_eq!(
+        statuses.iter().filter(|status| status.is_success()).count(),
+        1,
+        "exactly one concurrent authorization_code redemption should succeed: {statuses:?}",
+    );
+
+    let failed = if first.status().is_success() {
+        second
+    } else {
+        first
+    };
+    assert_eq!(failed.status(), StatusCode::BAD_REQUEST);
+    let body: Value = failed.json();
+    assert_eq!(body["error"], "invalid_grant");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_token_invalid_content_type_falls_back_to_form() {
     let server = TestServer::new().await;
