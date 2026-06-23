@@ -187,6 +187,9 @@ function getPreviewIcon(type: PreviewType) {
     case "image":
     case "svg":
       return FileImage;
+    case "html":
+      return FileCode;
+    case "pdf":
     case "markdown":
     case "text":
       return FileText;

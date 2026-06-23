@@ -12,8 +12,8 @@
 
 use crate::api::session_files::{
     CopyFileRequest, CreateFileRequest, DeleteQuery, DeleteResponse, GetQuery, GetResponse,
-    GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, raw_file_response,
-    wants_raw_file,
+    GrepRequest, MoveFileRequest, StatRequest, UpdateFileRequest, is_html_preview_path,
+    raw_file_response, sandboxed_html_response, wants_raw_file,
 };
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_files::{
@@ -74,6 +74,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/workspaces/{workspace_id}/fs/_/download/{*path}",
             get(download_path),
+        )
+        .route(
+            "/v1/workspaces/{workspace_id}/fs/_/preview/{*path}",
+            get(preview_path),
         )
         .route(
             "/v1/workspaces/{workspace_id}/fs",
@@ -674,4 +678,67 @@ pub async fn download_path(
         .map_err(service_error)?
         .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
     raw_file_response(file, true)
+}
+
+/// GET /v1/workspaces/{workspace_id}/fs/_/preview/{path} - Sandboxed HTML render
+///
+/// Serves an HTML file as a `text/html` document carrying a strict `sandbox`
+/// CSP (TM-WEB-010) so the file viewer can render it — with JavaScript — inside
+/// an iframe without exposing everruns cookies, storage, the parent DOM, or
+/// top-frame navigation. Only `.html`/`.htm` files are eligible; everything else
+/// returns 415 (use the download endpoint instead).
+#[utoipa::path(
+    get,
+    path = "/v1/workspaces/{workspace_id}/fs/_/preview/{path}",
+    params(
+        ("workspace_id" = String, Path, description = "Workspace ID (wsp_<32-hex>)"),
+        ("path" = String, Path, description = "HTML file path. Wildcard route: nested paths are literal `/`-separated segments, not a single URL-encoded value."),
+    ),
+    responses(
+        (status = 200, description = "Sandboxed HTML document", content_type = "text/html"),
+        (status = 400, description = "Path points to a directory"),
+        (status = 404, description = "File not found"),
+        (status = 415, description = "File is not an HTML document"),
+        (status = 500, description = "Internal server error"),
+    ),
+    tag = "workspace-filesystem"
+)]
+pub async fn preview_path(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((workspace_id, path)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, String)> {
+    let uuid = resolve_for_read(
+        &state,
+        &org,
+        &workspace_id,
+        "authorize preview workspace file",
+    )
+    .await?;
+    let path = normalize_path(&path);
+    if !is_html_preview_path(&path) {
+        return Err((
+            StatusCode::UNSUPPORTED_MEDIA_TYPE,
+            "Only HTML files can be previewed".to_string(),
+        ));
+    }
+    let stat = state
+        .file_service
+        .stat(uuid, &path)
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
+    if stat.is_directory {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot preview a directory".to_string(),
+        ));
+    }
+    let file = state
+        .file_service
+        .read_file(uuid, &path)
+        .await
+        .map_err(service_error)?
+        .ok_or((StatusCode::NOT_FOUND, "Not found".to_string()))?;
+    sandboxed_html_response(file)
 }

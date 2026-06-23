@@ -7,7 +7,7 @@
 // session id — the derivation only holds under the default 1:1 invariant and
 // breaks for a session attached to a shared Workspace.
 
-import { api } from "./client";
+import { api, getApiBaseUrl } from "./client";
 import type {
   FileInfo,
   SessionFile,
@@ -37,6 +37,21 @@ function fsPath(workspaceId: string, path?: string): string {
 
 function actionPath(workspaceId: string, action: string): string {
   return `/v1/workspaces/${workspaceId}/fs/_/${action}`;
+}
+
+/**
+ * Browser-navigable URL for the sandboxed HTML preview endpoint (TM-WEB-010).
+ *
+ * Used as an `<iframe src>`, so it includes the API base prefix and is loaded
+ * directly by the browser (auth cookies ride along same-origin). The server
+ * responds with a strict `sandbox` CSP, isolating the rendered document from
+ * everruns. Each path segment is percent-encoded; `/` stays a separator to match
+ * the `{*path}` wildcard route.
+ */
+export function htmlPreviewUrl(workspaceId: string, path: string): string {
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  const encodedPath = normalizedPath.split("/").map(encodeURIComponent).join("/");
+  return `${getApiBaseUrl()}/v1/workspaces/${workspaceId}/fs/_/preview/${encodedPath}`;
 }
 
 // ============================================

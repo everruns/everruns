@@ -7,9 +7,9 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { File, X, Save, Edit3, Lock, Download, Eye, Code2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
-import { FilePreview, canPreview } from "./file-previews";
+import { FilePreview, canPreview, getPreviewType } from "./file-previews";
 import { useFile, useUpdateFile } from "@/hooks/use-session-files";
-import { formatFileSize, getFileExtension } from "@/lib/api/session-files";
+import { formatFileSize, getFileExtension, htmlPreviewUrl } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
 
 interface FileViewerProps {
@@ -80,6 +80,12 @@ export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
   const isBinary = fileData?.encoding === "base64";
   const encoding = (fileData?.encoding ?? "text") as "text" | "base64";
   const hasPreview = canPreview(extension, encoding);
+  // HTML previews load through the sandboxed server endpoint so their JS can run
+  // in an isolated origin; only available once we know the workspace.
+  const htmlPreviewSrc =
+    workspaceId && getPreviewType(extension, encoding) === "html"
+      ? htmlPreviewUrl(workspaceId, file.path)
+      : undefined;
 
   return (
     <Card className="h-full flex flex-col">
@@ -196,7 +202,12 @@ export function FileViewer({ workspaceId, file, onClose }: FileViewerProps) {
             <p className="text-sm">Empty file</p>
           </div>
         ) : hasPreview && viewMode === "preview" ? (
-          <FilePreview content={fileData.content} extension={extension} encoding={encoding} />
+          <FilePreview
+            content={fileData.content}
+            extension={extension}
+            encoding={encoding}
+            htmlPreviewSrc={htmlPreviewSrc}
+          />
         ) : (
           <ScrollArea className="h-full">
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap break-words">

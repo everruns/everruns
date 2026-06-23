@@ -325,6 +325,67 @@ pub(crate) fn raw_file_response(
         })
 }
 
+/// CSP for the sandboxed HTML preview response (TM-WEB-010).
+///
+/// The `sandbox` directive WITHOUT `allow-same-origin` forces an opaque origin,
+/// so the previewed document — even though served same-origin and fetched with
+/// the user's auth cookies — cannot read everruns cookies, storage, or the
+/// parent DOM. Omitting `allow-top-navigation`/`allow-forms`/`allow-popups`
+/// blocks redirects, form posts, and popups; `allow-scripts` lets the page run
+/// JavaScript. The asset directives permit inline scripts/styles and
+/// https/data/blob resources so real pages render, while `object-src 'none'`
+/// blocks plugins and `base-uri 'none'` blocks `<base>` hijacking.
+///
+/// Crucially this is delivered as a real network response: unlike a `srcdoc`/
+/// `data:` iframe — which inherits the app's strict `script-src 'self'` and thus
+/// cannot run inline scripts — a network response carries its own CSP, which is
+/// what lets the preview execute JavaScript at all.
+const SANDBOXED_HTML_PREVIEW_CSP: &str = "sandbox allow-scripts; default-src 'none'; \
+script-src 'unsafe-inline' 'unsafe-eval' https: data: blob:; \
+style-src 'unsafe-inline' https: data: blob:; img-src https: data: blob:; \
+font-src https: data: blob:; media-src https: data: blob:; connect-src https:; \
+object-src 'none'; base-uri 'none'";
+
+/// True when `path` names an HTML document eligible for sandboxed preview.
+pub(crate) fn is_html_preview_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".html") || lower.ends_with(".htm")
+}
+
+/// Serve a file's bytes as a sandboxed `text/html` document (TM-WEB-010).
+///
+/// Sets `X-Frame-Options: SAMEORIGIN` so the file-viewer iframe can embed it —
+/// the global response layer would otherwise apply `DENY` (`if_not_present`) and
+/// block even same-origin framing. The CSP `sandbox` directive is the real
+/// isolation boundary; `X-Frame-Options` only governs who may frame it.
+pub(crate) fn sandboxed_html_response(file: SessionFile) -> Result<Response, (StatusCode, String)> {
+    let content = file.content.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "File content missing".to_string(),
+    ))?;
+    let bytes = SessionFile::decode_content(content, &file.encoding).map_err(|error| {
+        tracing::error!(path = %file.path, %error, "Failed to decode HTML preview content");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to decode file content".to_string(),
+        )
+    })?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(header::CONTENT_SECURITY_POLICY, SANDBOXED_HTML_PREVIEW_CSP)
+        .header(header::X_FRAME_OPTIONS, "SAMEORIGIN")
+        .body(Body::from(bytes))
+        .map_err(|error| {
+            tracing::error!(path = %file.path, %error, "Failed to build HTML preview response");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to build file response".to_string(),
+            )
+        })
+}
+
 /// Create session files routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -805,6 +866,65 @@ mod tests {
         // /workspacefoo is NOT a workspace path (no slash after workspace)
         assert_eq!(normalize_path("workspacefoo"), "/workspacefoo");
         assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
+
+    #[test]
+    fn test_is_html_preview_path() {
+        assert!(is_html_preview_path("/index.html"));
+        assert!(is_html_preview_path("/a/b/page.HTM"));
+        assert!(is_html_preview_path("/Report.HTML"));
+        assert!(!is_html_preview_path("/notes.md"));
+        assert!(!is_html_preview_path("/script.js"));
+        assert!(!is_html_preview_path("/htmlfile")); // no extension
+        assert!(!is_html_preview_path("/a.html.txt"));
+    }
+
+    #[test]
+    fn test_sandboxed_html_preview_csp_directives() {
+        // The CSP must sandbox into an opaque origin with scripts allowed, and
+        // must NOT grant same-origin/top-navigation/forms/popups (TM-WEB-010).
+        let csp = SANDBOXED_HTML_PREVIEW_CSP;
+        assert!(csp.contains("sandbox allow-scripts"));
+        assert!(!csp.contains("allow-same-origin"));
+        assert!(!csp.contains("allow-top-navigation"));
+        assert!(!csp.contains("allow-forms"));
+        assert!(!csp.contains("allow-popups"));
+        assert!(csp.contains("object-src 'none'"));
+        assert!(csp.contains("base-uri 'none'"));
+    }
+
+    #[test]
+    fn test_sandboxed_html_response_headers() {
+        let now = chrono::Utc::now();
+        let file = SessionFile {
+            id: uuid::Uuid::nil(),
+            session_id: uuid::Uuid::nil(),
+            path: "/index.html".to_string(),
+            name: "index.html".to_string(),
+            content: Some("<h1>hi</h1>".to_string()),
+            encoding: "text".to_string(),
+            is_directory: false,
+            is_readonly: false,
+            size_bytes: 11,
+            created_at: now,
+            updated_at: now,
+        };
+        let resp = sandboxed_html_response(file).expect("response builds");
+        let headers = resp.headers();
+        assert_eq!(
+            headers.get(header::CONTENT_TYPE).unwrap(),
+            "text/html; charset=utf-8"
+        );
+        // SAMEORIGIN is required so the global X-Frame-Options: DENY does not
+        // block the file-viewer iframe from embedding this preview.
+        assert_eq!(headers.get(header::X_FRAME_OPTIONS).unwrap(), "SAMEORIGIN");
+        let csp = headers
+            .get(header::CONTENT_SECURITY_POLICY)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("sandbox allow-scripts"));
+        assert!(!csp.contains("allow-same-origin"));
     }
 
     #[test]

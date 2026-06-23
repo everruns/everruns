@@ -247,6 +247,7 @@ use utoipa::OpenApi;
         api::workspace_files::stat_file,
         api::workspace_files::grep_files,
         api::workspace_files::download_path,
+        api::workspace_files::preview_path,
         // Memory
         api::memory::create_memory,
         api::memory::list_memories,
