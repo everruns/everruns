@@ -285,62 +285,46 @@ struct PlannedEdit {
     replacement: String,
 }
 
-fn parse_text_edits(arguments: &Value) -> std::result::Result<Vec<TextEdit>, String> {
+/// Coerce a legacy top-level `old_text`/`new_text` pair into a single edit.
+///
+/// The advertised `edit_file` schema is `edits[]`-only (EVE-620), but stored
+/// calls and stubborn structured-tool-call models may still emit the scalar
+/// fields. Rather than rejecting (the EVE-616 corrective error is now a last
+/// resort), we fold them into `edits[]` — the same `prepareArguments` approach
+/// pi uses. Empty-string placeholders (which some models emit alongside a real
+/// `edits[]`) are treated as absent, not as an error.
+fn coerce_top_level_edit(arguments: &Value) -> std::result::Result<Option<TextEdit>, String> {
     let old_text_arg = arguments.get("old_text");
     let new_text_arg = arguments.get("new_text");
-    let has_single = old_text_arg.is_some() || new_text_arg.is_some();
-    let has_batch = arguments.get("edits").is_some();
-
-    if has_single && has_batch {
-        let has_empty_single_placeholders = matches!(
-            (
-                old_text_arg.and_then(Value::as_str),
-                new_text_arg.and_then(Value::as_str)
-            ),
-            (Some(""), Some(""))
-        );
-        if !has_empty_single_placeholders {
-            return Err(
-                "Ambiguous edit_file call: both top-level old_text/new_text and edits[] were \
-                 provided. Send exactly one mode — either top-level old_text/new_text for a \
-                 single replacement, OR edits:[{old_text,new_text},...] for a batch. Do not \
-                 include both."
-                    .to_string(),
-            );
-        }
+    if old_text_arg.is_none() && new_text_arg.is_none() {
+        return Ok(None);
     }
 
-    if has_single && !has_batch {
-        let old_text = arguments
-            .get("old_text")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "Missing required parameter: old_text".to_string())?;
-        let new_text = arguments
-            .get("new_text")
-            .and_then(Value::as_str)
-            .ok_or_else(|| "Missing required parameter: new_text".to_string())?;
-        if old_text.is_empty() {
-            return Err("old_text cannot be empty".to_string());
-        }
-        return Ok(vec![TextEdit {
-            old_text: old_text.to_string(),
-            new_text: new_text.to_string(),
-        }]);
+    let old_text = old_text_arg.and_then(Value::as_str).unwrap_or_default();
+    let new_text = new_text_arg.and_then(Value::as_str).unwrap_or_default();
+
+    // Empty old_text carries no replacement target: treat as a placeholder stub.
+    if old_text.is_empty() {
+        return Ok(None);
     }
 
-    let edits = arguments
-        .get("edits")
-        .and_then(Value::as_array)
-        .ok_or_else(|| "Provide old_text/new_text or a non-empty edits array".to_string())?;
+    Ok(Some(TextEdit {
+        old_text: old_text.to_string(),
+        new_text: new_text.to_string(),
+    }))
+}
 
-    if edits.is_empty() {
-        return Err("edits must contain at least one replacement".to_string());
+fn parse_text_edits(arguments: &Value) -> std::result::Result<Vec<TextEdit>, String> {
+    let mut edits: Vec<TextEdit> = Vec::new();
+
+    // Backward-compat: fold a legacy top-level old_text/new_text pair into
+    // edits[] instead of rejecting (EVE-620).
+    if let Some(top_level) = coerce_top_level_edit(arguments)? {
+        edits.push(top_level);
     }
 
-    edits
-        .iter()
-        .enumerate()
-        .map(|(index, edit)| {
+    if let Some(array) = arguments.get("edits").and_then(Value::as_array) {
+        for (index, edit) in array.iter().enumerate() {
             let old_text = edit
                 .get("old_text")
                 .and_then(Value::as_str)
@@ -352,12 +336,27 @@ fn parse_text_edits(arguments: &Value) -> std::result::Result<Vec<TextEdit>, Str
             if old_text.is_empty() {
                 return Err(format!("Edit {} has an empty old_text", index + 1));
             }
-            Ok(TextEdit {
+            let edit = TextEdit {
                 old_text: old_text.to_string(),
                 new_text: new_text.to_string(),
-            })
-        })
-        .collect()
+            };
+            // Dedup the coerced top-level edit when a model duplicates it into
+            // edits[] (the gpt-5.5 mixed-mode pattern): two identical edits would
+            // otherwise match the same span and trip the overlap check.
+            if !edits.contains(&edit) {
+                edits.push(edit);
+            }
+        }
+    }
+
+    if edits.is_empty() {
+        return Err(
+            "edit_file requires a non-empty edits[] array; each entry needs old_text and new_text"
+                .to_string(),
+        );
+    }
+
+    Ok(edits)
 }
 
 fn plan_text_edits(
@@ -1020,7 +1019,7 @@ impl Tool for EditFileTool {
     }
 
     fn description(&self) -> &str {
-        "Apply one or more exact text replacements to an existing text file. Requires the current content hash from read_file or write_file. Use exactly one editing mode: either top-level old_text/new_text for a single replacement, or edits[] for a batch — never both."
+        "Apply one or more exact text replacements to an existing text file. Requires the current content hash from read_file or write_file. Provide every replacement as an entry in edits[] (use a single-element array for one replacement)."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1035,17 +1034,9 @@ impl Tool for EditFileTool {
                     "type": "string",
                     "description": "Current content hash from read_file or write_file (format: 'sha256:...')"
                 },
-                "old_text": {
-                    "type": "string",
-                    "description": "Single-edit mode: exact text to replace, paired with new_text. Mutually exclusive with edits[] — provide either top-level old_text/new_text or edits[], never both."
-                },
-                "new_text": {
-                    "type": "string",
-                    "description": "Single-edit mode: replacement text, paired with old_text. Do not combine with edits[]."
-                },
                 "edits": {
                     "type": "array",
-                    "description": "Batch mode: multiple replacements in a single file, each matched against the original file content. Mutually exclusive with top-level old_text/new_text — provide either edits[] or old_text/new_text, never both.",
+                    "description": "One or more replacements to apply, each matched against the original file content. Use a single-element array for one replacement.",
                     "items": {
                         "type": "object",
                         "properties": {
@@ -1064,7 +1055,7 @@ impl Tool for EditFileTool {
                     "minItems": 1
                 }
             },
-            "required": ["path", "expected_hash"],
+            "required": ["path", "expected_hash", "edits"],
             "additionalProperties": false
         })
     }
@@ -2327,37 +2318,60 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_text_edits_rejects_mixed_modes() {
-        // EVE-616: a genuine mixed-mode call (non-empty top-level old_text/new_text
-        // AND a non-empty edits[]) must be rejected with an actionable, corrective
-        // error so the model knows exactly how to repair the next call.
-        let result = parse_text_edits(&json!({
+    fn test_parse_text_edits_coerces_mixed_modes() {
+        // EVE-620: the schema is edits[]-only, but a mixed-mode call (top-level
+        // old_text/new_text AND a non-empty edits[]) must be coerced rather than
+        // rejected — the top-level pair is folded in as a leading edit.
+        let edits = parse_text_edits(&json!({
             "old_text": "a",
             "new_text": "b",
             "edits": [{"old_text": "c", "new_text": "d"}]
-        }));
+        }))
+        .expect("mixed-mode call should be coerced, not rejected");
 
-        let err = result.unwrap_err();
-        // The message names the conflict and tells the model to pick exactly one mode.
-        assert!(err.contains("old_text/new_text"), "error: {err}");
-        assert!(err.contains("edits"), "error: {err}");
-        assert!(
-            err.to_lowercase().contains("not include both")
-                || err.to_lowercase().contains("exactly one"),
-            "error should be corrective: {err}"
-        );
+        assert_eq!(edits.len(), 2);
+        assert_eq!(edits[0].old_text, "a");
+        assert_eq!(edits[0].new_text, "b");
+        assert_eq!(edits[1].old_text, "c");
+        assert_eq!(edits[1].new_text, "d");
     }
 
     #[test]
-    fn test_parse_text_edits_accepts_single_edit() {
+    fn test_parse_text_edits_dedupes_duplicated_top_level_edit() {
+        // EVE-620: gpt-5.5 duplicates the same edit into the scalar fields and
+        // edits[]. Folding both verbatim would create two identical edits that
+        // match the same span and trip the overlap check — dedup keeps it to one.
+        let edits = parse_text_edits(&json!({
+            "old_text": "a",
+            "new_text": "b",
+            "edits": [{"old_text": "a", "new_text": "b"}]
+        }))
+        .expect("duplicated mixed-mode call should be coerced to a single edit");
+
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].old_text, "a");
+        assert_eq!(edits[0].new_text, "b");
+    }
+
+    #[test]
+    fn test_parse_text_edits_coerces_top_level_only() {
+        // Backward-compat: a legacy call with only top-level scalars (no edits[])
+        // is folded into a single edit instead of rejected.
         let edits = parse_text_edits(&json!({
             "old_text": "hello",
             "new_text": "world"
         }))
-        .expect("single-edit mode should be accepted");
+        .expect("legacy top-level scalars should be coerced into edits[]");
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].old_text, "hello");
         assert_eq!(edits[0].new_text, "world");
+    }
+
+    #[test]
+    fn test_parse_text_edits_requires_edits() {
+        // No edits[] and no usable top-level pair is a hard error.
+        let err = parse_text_edits(&json!({})).unwrap_err();
+        assert!(err.contains("edits"), "error: {err}");
     }
 
     #[test]
@@ -2511,6 +2525,32 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn test_edit_file_schema_is_edits_only() {
+        // EVE-620: the advertised schema must not offer top-level old_text/new_text
+        // and must require edits[]. The single ambiguity-free shape is what keeps
+        // structured-tool-call models from populating both fields on the first call.
+        let schema = EditFileTool.parameters_schema();
+        let props = schema["properties"].as_object().expect("properties object");
+        assert!(
+            !props.contains_key("old_text"),
+            "schema must not advertise top-level old_text"
+        );
+        assert!(
+            !props.contains_key("new_text"),
+            "schema must not advertise top-level new_text"
+        );
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("required array")
+            .iter()
+            .map(|v| v.as_str().expect("required entries are strings"))
+            .collect();
+        assert!(required.contains(&"edits"), "edits[] must be required");
+        assert!(required.contains(&"path"));
+        assert!(required.contains(&"expected_hash"));
     }
 
     #[tokio::test]
