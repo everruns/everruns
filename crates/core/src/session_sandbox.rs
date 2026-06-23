@@ -502,6 +502,7 @@ pub async fn run_session_sandbox_init_if_needed(
 /// Shared hints for stateful remote sandbox tools.
 pub fn session_sandbox_tool_hints() -> ToolHints {
     ToolHints::default()
+        .with_concurrency_class("session_sandbox")
         .with_open_world(true)
         .with_requires_secrets(true)
         .with_long_running(true)
