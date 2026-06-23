@@ -466,6 +466,8 @@ mod tests {
         }
     }
 
+    // Registers the llmsim driver, so it follows the `llmsim` feature gate.
+    #[cfg(feature = "llmsim")]
     #[test]
     fn test_platform_definition_builder() {
         let mut drivers = DriverRegistry::new();

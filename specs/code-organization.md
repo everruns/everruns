@@ -55,8 +55,9 @@ badge-free header and omit docs.rs links.
 Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
 `fireworks`, `openrouter`) depend on `everruns-core` with
 `default-features = false`. Core's heavy subtrees (telemetry/OTLP, `a2a` gRPC,
-web-fetch/fetchkit) are opt-in features kept in core's `default`, so the
-application crates stay full while standalone provider builds shed them. Crates
+web-fetch/fetchkit, and the `llmsim` simulator driver) are opt-in features kept
+in core's `default`, so the application crates stay full while standalone
+provider builds shed them. Crates
 that pull in the runtime (e.g. `everruns-local` → `everruns-runtime`) cannot
 benefit — feature unification re-enables the subtrees — so they keep full
 defaults.
