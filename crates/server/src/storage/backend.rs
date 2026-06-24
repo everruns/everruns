@@ -3740,6 +3740,19 @@ impl StorageBackend {
         dispatch!(self, list_agent_check_rules, org_id)
     }
 
+    pub async fn count_custom_agent_check_rules_excluding(
+        &self,
+        org_id: i64,
+        excluded_rule_id: &str,
+    ) -> Result<i64> {
+        dispatch!(
+            self,
+            count_custom_agent_check_rules_excluding,
+            org_id,
+            excluded_rule_id
+        )
+    }
+
     pub async fn upsert_agent_check_rule(
         &self,
         org_id: i64,
