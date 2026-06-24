@@ -1692,7 +1692,8 @@ impl SessionService {
                 .with_cost(
                     (row.total_actual_cost_usd > 0.0).then_some(row.total_actual_cost_usd),
                     (row.total_estimated_cost_usd > 0.0).then_some(row.total_estimated_cost_usd),
-                ),
+                )
+                .with_effective_cost((row.total_cost_usd > 0.0).then_some(row.total_cost_usd)),
             )
         } else {
             None

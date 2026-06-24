@@ -32011,6 +32011,14 @@
             "description": "Number of tokens read from cache (reduces cost)",
             "minimum": 0
           },
+          "effective_cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Best-effort USD cost for already-aggregated usage. Per-generation usage\nleaves this unset and derives the effective cost from actual/estimated."
+          },
           "estimated_cost_usd": {
             "type": [
               "number",
