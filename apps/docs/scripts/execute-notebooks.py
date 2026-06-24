@@ -23,7 +23,7 @@ def ensure_local_default_model() -> None:
     suffix = uuid.uuid4().hex[:8]
 
     provider = requests.post(
-        f"{base_url}/v1/llm-providers",
+        f"{base_url}/v1/providers",
         headers=headers,
         json={"name": f"Notebook LlmSim {suffix}", "provider_type": "llmsim"},
         timeout=30,
@@ -32,7 +32,7 @@ def ensure_local_default_model() -> None:
     provider_id = provider.json()["id"]
 
     model = requests.post(
-        f"{base_url}/v1/llm-providers/{provider_id}/models",
+        f"{base_url}/v1/providers/{provider_id}/models",
         headers=headers,
         json={
             "model_id": f"llmsim-notebook-{suffix}",
@@ -44,7 +44,7 @@ def ensure_local_default_model() -> None:
     model_id = model.json()["id"]
 
     enable = requests.patch(
-        f"{base_url}/v1/llm-models/{model_id}",
+        f"{base_url}/v1/models/{model_id}",
         headers=headers,
         json={"enabled": True},
         timeout=30,
