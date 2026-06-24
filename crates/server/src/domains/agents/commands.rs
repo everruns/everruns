@@ -537,6 +537,7 @@ impl Command for UpdateAgentCmd {
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap())),
+            parallel_tool_calls: req.parallel_tool_calls.map(Some),
             ..Default::default()
         };
         let row = ctx
@@ -1956,6 +1957,38 @@ mod tests {
             .expect("latest published lookup succeeds")
             .expect("published version exists");
         assert_eq!(latest_published.id, published.public_id);
+    }
+
+    #[tokio::test]
+    async fn update_agent_updates_parallel_tool_calls() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("parallel-tool-calls-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        let mut req = update_prompt_request("enable parallel tool calls");
+        req.parallel_tool_calls = Some(true);
+        let updated = UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req,
+        }
+        .run(&ctx)
+        .await
+        .expect("agent enables parallel tool calls");
+        assert_eq!(updated.parallel_tool_calls, Some(true));
+
+        let mut req = update_prompt_request("disable parallel tool calls");
+        req.parallel_tool_calls = Some(false);
+        let updated = UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req,
+        }
+        .run(&ctx)
+        .await
+        .expect("agent disables parallel tool calls");
+        assert_eq!(updated.parallel_tool_calls, Some(false));
     }
 
     #[tokio::test]
