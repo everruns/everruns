@@ -26,6 +26,37 @@ use crate::api::common::Pagination;
 /// oversized delete; large backlogs drain over successive reaper ticks.
 const MAX_RETENTION_PRUNE_LIMIT: i64 = 1000;
 
+const TASK_ARTIFACT_ROOTS: &[&str] = &["/.tasks", "/.background", "/.agent-runs"];
+
+fn task_artifact_delete_root(result_path: &str) -> Option<&str> {
+    if !result_path.starts_with('/') || result_path.contains("..") || result_path.contains("//") {
+        return None;
+    }
+
+    let mut parts = result_path.split('/');
+    if parts.next() != Some("") {
+        return None;
+    }
+    let root_name = parts.next()?;
+    let run_id = parts.next()?;
+
+    if root_name.is_empty() || run_id.is_empty() || parts.next().is_none() {
+        return None;
+    }
+
+    let root = match root_name {
+        ".tasks" => "/.tasks",
+        ".background" => "/.background",
+        ".agent-runs" => "/.agent-runs",
+        _ => return None,
+    };
+    if !TASK_ARTIFACT_ROOTS.contains(&root) {
+        return None;
+    }
+
+    Some(&result_path[..root.len() + 1 + run_id.len()])
+}
+
 /// Helper macro to dispatch method calls to the appropriate backend.
 ///
 /// This reduces the repetitive match pattern from 4 lines to 1 line per method.
@@ -3279,7 +3310,7 @@ impl StorageBackend {
 
     /// Full retention prune (EVE-580): delete a bounded batch of terminal
     /// session tasks older than `now - ttl` (rows + messages), then remove
-    /// each pruned task's `/.tasks/{task_id}` artifact subtree through the
+    /// each pruned task's recorded internal artifact subtree through the
     /// existing session-file deletion seam (which clears backing blobs for the
     /// object-storage backend). Returns the number of tasks pruned.
     ///
@@ -3304,17 +3335,26 @@ impl StorageBackend {
         let pruned = self.prune_terminal_session_tasks(cutoff, limit).await?;
 
         for (session_id, task_id, result_path) in &pruned {
-            if result_path.is_none() {
+            let Some(result_path) = result_path.as_deref() else {
                 continue;
-            }
-            let dir = format!("/.tasks/{task_id}");
+            };
+            let Some(dir) = task_artifact_delete_root(result_path) else {
+                tracing::warn!(
+                    session_id = %session_id,
+                    task_id = %task_id,
+                    result_path = %result_path,
+                    "Retention prune: skipped non-task artifact result path"
+                );
+                continue;
+            };
             if let Err(e) = self
-                .delete_session_file_recursive(session_id.uuid(), &dir)
+                .delete_session_file_recursive(session_id.uuid(), dir)
                 .await
             {
                 tracing::warn!(
                     session_id = %session_id,
                     task_id = %task_id,
+                    result_path = %result_path,
                     error = %e,
                     "Retention prune: failed to delete task artifacts (best-effort; blob GC will reclaim)"
                 );
@@ -4006,7 +4046,7 @@ mod retention_tests {
     };
     use std::sync::Arc;
 
-    // The retention prune deletes a task's `/.tasks/{id}` artifact subtree
+    // The retention prune deletes a task's recorded internal artifact subtree
     // through the existing session-file deletion seam after the row commits
     // (EVE-580). Proven against the in-memory backend: a terminal task with a
     // result_path has its row removed AND its artifact file deleted, while a
@@ -4018,7 +4058,7 @@ mod retention_tests {
         let session_id = SessionId::new();
         let sid = session_id.uuid();
 
-        // Terminal task with an artifact file under /.tasks/{id}.
+        // Terminal task with an artifact file under a production background artifact path.
         let terminal = registry
             .create(CreateSessionTask {
                 session_id,
@@ -4038,7 +4078,7 @@ mod retention_tests {
                 &terminal.id,
                 SessionTaskUpdate {
                     state: Some(SessionTaskState::Succeeded),
-                    result_path: Some("/.tasks/task_term/result.json".to_string()),
+                    result_path: Some("/.background/bg_task_term/result.json".to_string()),
                     ..Default::default()
                 },
             )
@@ -4046,7 +4086,7 @@ mod retention_tests {
             .unwrap();
         db.create_session_file(crate::storage::models::CreateSessionFileRow {
             session_id,
-            path: "/.tasks/task_term/result.json".to_string(),
+            path: "/.background/bg_task_term/result.json".to_string(),
             content: Some(b"{}".to_vec()),
             is_directory: false,
             is_readonly: false,
@@ -4070,7 +4110,7 @@ mod retention_tests {
             .unwrap();
         db.create_session_file(crate::storage::models::CreateSessionFileRow {
             session_id,
-            path: "/.tasks/task_live/result.json".to_string(),
+            path: "/.background/bg_task_live/result.json".to_string(),
             content: Some(b"{}".to_vec()),
             is_directory: false,
             is_readonly: false,
@@ -4096,7 +4136,7 @@ mod retention_tests {
             "terminal task row removed"
         );
         assert!(
-            db.get_session_file(sid, "/.tasks/task_term/result.json")
+            db.get_session_file(sid, "/.background/bg_task_term/result.json")
                 .await
                 .unwrap()
                 .is_none(),
@@ -4113,7 +4153,7 @@ mod retention_tests {
             "live task untouched"
         );
         assert!(
-            db.get_session_file(sid, "/.tasks/task_live/result.json")
+            db.get_session_file(sid, "/.background/bg_task_live/result.json")
                 .await
                 .unwrap()
                 .is_some(),
