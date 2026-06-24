@@ -29,6 +29,7 @@ use super::{
     middleware::{AuthError, AuthMethod, AuthState, AuthUser, ORG_COOKIE_NAME},
     oauth::{GitHubOAuthService, GoogleOAuthService, OAuthProvider},
 };
+use crate::security::constant_time_eq;
 /// Enable AuthUser extractor when BuiltinAuthBackend is the route state.
 /// AuthUser needs AuthState via FromRef — this converts BuiltinAuthBackend to AuthState.
 impl FromRef<BuiltinAuthBackend> for AuthState {
@@ -318,9 +319,12 @@ pub async fn login(
 
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
+        // Constant-time comparison of both email and password, combined with a
+        // non-short-circuiting `&`, so login timing does not reveal which field
+        // matched or how many leading bytes of the password were correct.
         if let Some(admin) = &state.config.admin
-            && req.email == admin.email
-            && req.password == admin.password
+            && (constant_time_eq(req.email.as_bytes(), admin.email.as_bytes())
+                & constant_time_eq(req.password.as_bytes(), admin.password.as_bytes()))
         {
             // Create or get admin user
             let user = get_or_create_admin_user(&state, admin).await?;
