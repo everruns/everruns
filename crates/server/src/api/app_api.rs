@@ -41,6 +41,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
+use crate::security::constant_time_eq;
 use crate::storage::models::EventRow;
 use crate::storage::{EncryptionService, StorageBackend};
 
@@ -467,18 +468,6 @@ fn verify_api_key(
     }
 }
 
-// THREAT[TM-APIKEY-001]: constant-time comparison of the SHA-256 hex digests
-// avoids leaking partial-match timing information.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
 /// Read the derived status and the agent's completed messages for a session.
 /// Only final (non-Commentary) assistant messages are surfaced — raw tool
 /// names, arguments, and results are never exposed to the execution key
@@ -653,13 +642,6 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn constant_time_eq_matches() {
-        assert!(constant_time_eq(b"abcd", b"abcd"));
-        assert!(!constant_time_eq(b"abcd", b"abce"));
-        assert!(!constant_time_eq(b"abc", b"abcd"));
-    }
 
     #[test]
     fn verify_api_key_accepts_case_insensitive_bearer() {

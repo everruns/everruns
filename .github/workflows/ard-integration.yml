@@ -55,10 +55,21 @@ jobs:
   # push/workflow_dispatch so an optional Doppler-provided token is never
   # available in a fork-PR context. The weekly `integration-live-sweep.yml`
   # backstop catches shared-crate regressions that slip past this gate.
+  #
+  # QUARANTINED (EVE-659): the public reference registry
+  # (https://agenticresourcediscovery.org/api/v1) was decommissioned — it is
+  # now a docs-only site (405/404 on the API; registry/api subdomains no longer
+  # resolve), so these fail-closed live tests can never pass. The job is gated
+  # off (`if: false`) rather than allowed to silently skip/pass, per the
+  # fail-closed contract in specs/integrations.md. The wiremock-backed unit +
+  # integration tests in the `unit-test` job above still cover the ARD client.
+  # To re-enable: restore the trigger condition below and repoint
+  # ARD_LIVE_REGISTRY_URL to a reachable reference registry.
   live-test:
     name: ARD Live Registry Tests
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    # if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: false
     timeout-minutes: 10
     env:
       DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}

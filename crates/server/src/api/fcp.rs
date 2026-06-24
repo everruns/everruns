@@ -57,6 +57,7 @@ use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
+use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
 
 const FCP_SESSION_COOKIE: &str = "fcp_session";
@@ -773,16 +774,6 @@ fn extract_token(headers: &HeaderMap) -> Option<&str> {
     auth.strip_prefix("Bearer ")
 }
 
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
-}
-
 // ----------------------------------------------------------------------------
 // Response helpers — every body is Markdown with actionable text.
 // ----------------------------------------------------------------------------
@@ -1083,13 +1074,6 @@ mod tests {
     fn content_parts_to_text_joins_text_parts_and_drops_others() {
         let parts = vec![ContentPart::text("hello"), ContentPart::text("world")];
         assert_eq!(content_parts_to_text(&parts), "hello\nworld");
-    }
-
-    #[test]
-    fn constant_time_eq_matches_only_equal_strings() {
-        assert!(constant_time_eq(b"abc", b"abc"));
-        assert!(!constant_time_eq(b"abc", b"abd"));
-        assert!(!constant_time_eq(b"abc", b"abcd"));
     }
 
     #[test]

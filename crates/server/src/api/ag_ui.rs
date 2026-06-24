@@ -83,6 +83,7 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
+use crate::security::constant_time_eq;
 use crate::services::EventService;
 use crate::storage::{
     DbMessageRetriever, EncryptionService, StorageBackend, models::CreateImageRow,
@@ -1319,16 +1320,6 @@ fn extract_ag_ui_token(headers: &HeaderMap) -> Option<&str> {
 
     let auth = headers.get(AUTHORIZATION)?.to_str().ok()?;
     auth.strip_prefix("Bearer ")
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
 }
 
 /// Reject AG-UI request bodies that smuggle non-{user,assistant} message

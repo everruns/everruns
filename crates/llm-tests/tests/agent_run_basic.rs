@@ -187,6 +187,12 @@ async fn test_model_not_available_returns_user_friendly_error(
 
     let result = runner.run_turn("Hello").await.unwrap();
 
+    // If the provider account is out of credits/quota, the live API returns a
+    // billing error before it ever validates the model name, so the
+    // "model not available" path can't be exercised — skip rather than fail
+    // (same billing-condition handling as the other live cases).
+    skip_if_quota!(result, model_name);
+
     // The turn should complete (not crash) but with failure
     assert!(!result.success, "Turn should fail for nonexistent model");
     let error = result.error.as_deref().unwrap_or("");
