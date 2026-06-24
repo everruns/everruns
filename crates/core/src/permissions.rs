@@ -384,7 +384,16 @@ impl Caller {
     ///
     /// Used for gRPC service calls (worker ↔ server) and other internal
     /// operations that should bypass all policy checks.
-    // THREAT[TM-AUTHZ-002]: Internal caller bypasses policies; only use for gRPC/internal paths
+    ///
+    /// THREAT[TM-AUTHZ-002]: This constructs an Owner / `is_internal` caller
+    /// that bypasses ALL policy evaluation for the given `org_id`. The worker
+    /// control plane builds it from the CLIENT-SUPPLIED `req.org_id` on every
+    /// RPC, so a single valid worker bearer token can act on ANY org — there is
+    /// no per-org token scoping. The full tenant-isolation guarantee on the
+    /// worker boundary therefore rests on (1) network isolation of that
+    /// boundary (it MUST never be reachable from untrusted networks) and (2)
+    /// the shared worker secret, which is constant-time compared in the gRPC
+    /// auth interceptor. Only ever call this from trusted gRPC/internal paths.
     pub fn internal(org_id: i64) -> Self {
         Self {
             org_id,

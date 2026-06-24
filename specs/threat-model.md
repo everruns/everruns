@@ -229,7 +229,7 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
 | TM-AUTHZ-001 | Default Owner role grants full access | Medium | By design for phase 1; all users are Owners. Future phases will assign roles via admin UI/invitation flow | **BY DESIGN** |
-| TM-AUTHZ-002 | Policy bypass via internal Caller | Medium | `Caller::internal()` bypasses policies with Owner role; only used in gRPC service (worker ↔ server), not HTTP-accessible | MITIGATED |
+| TM-AUTHZ-002 | Worker control plane trusts client-supplied `org_id`; one shared token grants cross-org authority | Medium | Every worker RPC builds `Caller::internal(req.org_id)` from the **client-supplied** `org_id`, which bypasses all policy (Owner role, `is_internal`). There is **no per-org token scoping**: any holder of the single shared worker bearer token can act on any org. Assumption/mitigation: the worker gRPC boundary is **never reachable from untrusted networks**, and the shared secret is **constant-time compared** in the auth interceptor (`grpc_service/mod.rs`) | **BY ASSUMPTION** (network isolation + shared secret) |
 | TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
 | TM-AUTHZ-004 | Missing policy on mutating command | Medium | Every caller (HTTP/MCP/gRPC/platform) routes through `Command::run` which evaluates `Command::policy()`. Inventory coverage test (`crates/server/tests/command_policy_enforcement_test.rs`) asserts every non-GET command declares a policy — a missing declaration fails the build | MITIGATED |
 | TM-AUTHZ-005 | Anonymous app channel reaches draft, disabled, or protected app config | High | Public AG-UI ingress requires `AppStatus::Published` and an enabled `ag_ui` channel before any request work. Legacy configs then require `anonymous=true` plus the configured token when present. New inline endpoint auth (`channel_config.auth`) bypasses the legacy anonymous flag only after the shared verifier accepts the configured credential policy. Failures return before session creation or image upload. | MITIGATED |
@@ -246,8 +246,15 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 **TM-AUTHZ-001 — Default Owner Role (BY DESIGN):**
 Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no permission-based restrictions are active in practice. This is intentional to avoid breaking existing workflows while the role assignment infrastructure is built in phase 2.
 
-**TM-AUTHZ-002 — Internal Caller:**
-`Caller::internal(org_id)` is used exclusively in `grpc_service.rs` for worker-to-server calls. The gRPC endpoint requires a bearer token in production (`TM-DURABLE-002`). HTTP handlers always construct `Caller` from `ResolvedOrg` with the user's actual role.
+**TM-AUTHZ-002 — Worker control plane trusts client-supplied `org_id` (BY ASSUMPTION):**
+Every worker→server RPC (`grpc_service/worker_service_impl.rs`) builds its caller via `Caller::internal(req.org_id)` (`crates/core/src/permissions.rs`), using the `org_id` supplied by the client in the request. `Caller::internal` constructs an Owner / `is_internal` caller that bypasses ALL policy evaluation. There is **no per-org scoping of the worker token**: the worker control plane authenticates with a **single shared bearer token**, so any client that presents a valid token can act on **any org** — the full tenant-isolation guarantee on the worker boundary rests on this one secret.
+
+This is accepted by assumption rather than fixed by per-org token scoping (a large redesign). The two pillars of the assumption are:
+
+1. **Network isolation** — the worker gRPC boundary MUST never be reachable from untrusted networks. HTTP handlers, by contrast, always construct `Caller` from `ResolvedOrg` with the user's actual role and are never able to reach `Caller::internal`.
+2. **Shared secret integrity** — the gRPC auth interceptor (`grpc_service/mod.rs`) requires a bearer token in production (`TM-DURABLE-002`) and now compares it in **constant time** (`crate::security::constant_time_eq`), so the token cannot be recovered via a timing side-channel.
+
+If the worker boundary is ever exposed to untrusted networks, or the shared token leaks, an attacker gains full cross-org Owner authority. Future hardening would scope worker tokens per org.
 
 **TM-AUTHZ-004 — Command Runner as Single Enforcement Point:**
 `Command::run` (`crates/server/src/domains/common.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed — service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
