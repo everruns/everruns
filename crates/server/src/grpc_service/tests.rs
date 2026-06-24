@@ -207,6 +207,20 @@ fn test_interceptor_rejects_wrong_token() {
 }
 
 #[test]
+fn test_interceptor_rejects_same_length_wrong_token() {
+    // Same length as the expected token so the constant-time compare reaches
+    // its byte-comparison branch rather than short-circuiting on length.
+    let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
+    let mut request = Request::new(());
+    request
+        .metadata_mut()
+        .insert("authorization", "Bearer secret124".parse().unwrap());
+    let err = interceptor.call(request).unwrap_err();
+    assert_eq!(err.code(), tonic::Code::Unauthenticated);
+    assert!(err.message().contains("Invalid"));
+}
+
+#[test]
 fn test_interceptor_rejects_non_bearer_scheme() {
     let mut interceptor = GrpcAuthInterceptor::new(Some("secret123".to_string()));
     let mut request = Request::new(());

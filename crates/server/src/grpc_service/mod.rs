@@ -341,6 +341,15 @@ pub fn grpc_server_tls_from_env() -> Option<tonic::transport::ServerTlsConfig> {
 
 /// Tonic interceptor that validates bearer token on every gRPC request.
 /// If `expected_token` is `None`, all requests are allowed (dev mode).
+///
+/// THREAT[TM-AUTHZ-002]: This bearer token is the ONLY thing guarding the
+/// worker control-plane boundary. It is a single shared secret with no
+/// per-org scoping, so any client that presents it is fully trusted: every
+/// worker RPC builds `Caller::internal(req.org_id)` from the client-supplied
+/// `org_id`, which bypasses all policy checks. A single valid token can
+/// therefore act on any org. The worker boundary MUST never be reachable from
+/// untrusted networks. The token is compared in constant time below to avoid
+/// leaking it via a timing side-channel.
 #[derive(Clone)]
 pub struct GrpcAuthInterceptor {
     expected_token: Option<String>,
@@ -365,7 +374,11 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
             .and_then(|v| v.strip_prefix("Bearer "));
 
         match token {
-            Some(t) if t == expected => Ok(request),
+            // Constant-time compare: the worker token is a shared secret, so a
+            // short-circuiting `==` would leak it byte-by-byte via timing.
+            Some(t) if crate::security::constant_time_eq(t.as_bytes(), expected.as_bytes()) => {
+                Ok(request)
+            }
             Some(_) => Err(Status::unauthenticated("Invalid gRPC auth token")),
             None => Err(Status::unauthenticated("Missing gRPC auth token")),
         }
