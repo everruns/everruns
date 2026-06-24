@@ -27,9 +27,18 @@ use crate::storage::{
 use anyhow::{Result, bail};
 use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, SessionId};
 use everruns_core::{Event, EventListener, EventRequest, FeatureFlags};
-use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+use moka::future::Cache;
+use std::sync::Arc;
+use std::time::Duration;
 use uuid::Uuid;
+
+/// Bound the per-session agent-version metadata cache so a long-lived server
+/// cannot leak memory: previously one entry was inserted per session and never
+/// evicted. 10k entries covers active fleets; the 30-minute TTL drops stale
+/// sessions and keeps memory predictable. Mirrors the PAT auth cache
+/// (`auth::builtin`) and reuses the same moka version.
+const AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY: u64 = 10_000;
+const AGENT_VERSION_METADATA_CACHE_TTL: Duration = Duration::from_secs(30 * 60); // 30 minutes
 
 #[derive(Clone)]
 struct AgentVersionEventMetadata {
@@ -45,7 +54,16 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
-    agent_version_metadata_cache: Arc<RwLock<HashMap<SessionId, AgentVersionEventMetadata>>>,
+    /// Bounded cache: session_id -> agent-version metadata. moka is internally
+    /// `Arc`-backed and `Clone`, so no outer `Arc<RwLock>` is needed.
+    agent_version_metadata_cache: Cache<SessionId, AgentVersionEventMetadata>,
+}
+
+fn build_agent_version_metadata_cache() -> Cache<SessionId, AgentVersionEventMetadata> {
+    Cache::builder()
+        .max_capacity(AGENT_VERSION_METADATA_CACHE_MAX_CAPACITY)
+        .time_to_live(AGENT_VERSION_METADATA_CACHE_TTL)
+        .build()
 }
 
 impl EventService {
@@ -54,7 +72,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(Vec::new()),
-            agent_version_metadata_cache: Arc::new(RwLock::new(HashMap::new())),
+            agent_version_metadata_cache: build_agent_version_metadata_cache(),
         }
     }
 
@@ -68,7 +86,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(listeners),
-            agent_version_metadata_cache: Arc::new(RwLock::new(HashMap::new())),
+            agent_version_metadata_cache: build_agent_version_metadata_cache(),
         }
     }
 
@@ -168,10 +186,8 @@ impl EventService {
 
         let session_metadata = if let Some(cached) = self
             .agent_version_metadata_cache
-            .read()
-            .await
             .get(&request.session_id)
-            .cloned()
+            .await
         {
             cached
         } else {
@@ -184,9 +200,8 @@ impl EventService {
                 agent_config_hash: session.agent_config_hash,
             };
             self.agent_version_metadata_cache
-                .write()
-                .await
-                .insert(request.session_id, metadata.clone());
+                .insert(request.session_id, metadata.clone())
+                .await;
             metadata
         };
         if session_metadata.agent_id.is_none() && session_metadata.agent_version_id.is_none() {
@@ -448,5 +463,50 @@ impl everruns_core::traits::EventEmitter for EventService {
         EventService::emit(self, request)
             .await
             .map_err(|e| everruns_core::AgentLoopError::event(e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_metadata() -> AgentVersionEventMetadata {
+        AgentVersionEventMetadata {
+            agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+        }
+    }
+
+    /// Inserting far more than `max_capacity` distinct sessions must not grow
+    /// the cache unboundedly — this is the regression guard for EVE-638.
+    #[tokio::test]
+    async fn agent_version_metadata_cache_is_bounded() {
+        // Small capacity keeps the test fast while still exercising eviction.
+        let cache: Cache<SessionId, AgentVersionEventMetadata> =
+            Cache::builder().max_capacity(100).build();
+
+        for _ in 0..10_000 {
+            cache.insert(SessionId::new(), sample_metadata()).await;
+        }
+
+        // Force moka's async eviction tasks to run so entry_count is accurate.
+        cache.run_pending_tasks().await;
+
+        assert!(
+            cache.entry_count() <= 100,
+            "cache grew beyond max_capacity: {}",
+            cache.entry_count()
+        );
+    }
+
+    /// The real EventService cache is constructed with the bounded settings.
+    #[tokio::test]
+    async fn event_service_cache_round_trips() {
+        let cache = build_agent_version_metadata_cache();
+        let id = SessionId::new();
+        cache.insert(id, sample_metadata()).await;
+        assert!(cache.get(&id).await.is_some());
+        assert!(cache.get(&SessionId::new()).await.is_none());
     }
 }
