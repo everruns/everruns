@@ -167,7 +167,7 @@ impl InMemoryDatabase {
     }
 
     /// Return (session_id, task_id, schedule_id) triples for running monitor
-    /// tasks whose linked schedule is inactive (missing or enabled=false).
+    /// tasks whose linked schedule is inactive (missing or disabled recurring schedule).
     pub async fn list_monitor_tasks_with_inactive_schedules(
         &self,
         limit: i64,
@@ -190,10 +190,12 @@ impl InMemoryDatabase {
                 // Parse the schedule_id as a UUID/ScheduleId.
                 let schedule_id: everruns_core::ScheduleId = schedule_id_str.parse().ok()?;
 
-                // Inactive = missing row OR enabled=false.
+                // Inactive = missing row OR a disabled recurring schedule. Disabled
+                // one-shots are excluded: firing disables them before the linked
+                // monitor can be marked Succeeded.
                 let is_inactive = schedules
                     .get(&schedule_id)
-                    .map(|s| !s.enabled)
+                    .map(|s| !s.enabled && s.cron_expression.is_some())
                     .unwrap_or(true); // missing row → inactive
 
                 if is_inactive {
