@@ -679,6 +679,46 @@ impl GrpcOrgAdapter {
             Err(error) => Err(grpc_command_error_to_error(error)),
         }
     }
+
+    async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
+        const TURN_COMPLETED: &str = "turn.completed";
+        const TURN_FAILED: &str = "turn.failed";
+        const TURN_CANCELLED: &str = "turn.cancelled";
+        const TURN_SEALED: &str = "turn.sealed";
+
+        let response: serde_json::Value = self
+            .execute_platform_command(
+                "list_events",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "types": [TURN_COMPLETED, TURN_FAILED, TURN_CANCELLED, TURN_SEALED],
+                    "limit": 1,
+                    "order_desc": true,
+                }),
+            )
+            .await?;
+
+        let Some(event_type) = response
+            .get("data")
+            .and_then(|data| data.as_array())
+            .and_then(|events| events.first())
+            .and_then(|event| event.get("type"))
+            .and_then(|event_type| event_type.as_str())
+        else {
+            return Ok(None);
+        };
+
+        let status = match event_type {
+            TURN_COMPLETED => Some("completed"),
+            TURN_FAILED => Some("failed"),
+            TURN_CANCELLED => Some("cancelled"),
+            // A sealed turn is terminal but distinct from a failure: surface it
+            // as "sealed" so the parent agent can decide what to do next.
+            TURN_SEALED => Some("sealed"),
+            _ => None,
+        };
+        Ok(status.map(str::to_string))
+    }
 }
 
 // Type aliases for backward compatibility at call sites
@@ -3270,7 +3310,14 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 .ok_or_else(|| AgentLoopError::store("Session not found"))?;
 
             match session.status {
-                SessionStatus::Idle => return Ok("idle".to_string()),
+                SessionStatus::Idle => {
+                    if let Some(status) = self.latest_terminal_turn_status(session_id).await? {
+                        return Ok(status);
+                    }
+                    // Session status flips to idle independently from terminal
+                    // turn-event persistence. Keep polling until the event lands
+                    // so callers can distinguish successful and failed idle turns.
+                }
                 SessionStatus::WaitingForToolResults => {
                     return Ok("waiting_for_tool_results".to_string());
                 }

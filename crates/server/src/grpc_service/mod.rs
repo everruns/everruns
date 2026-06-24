@@ -684,7 +684,11 @@ impl WorkerServiceImpl {
                 .clone()
                 .map(|store| store as Arc<dyn WorkflowEventStore + Send + Sync>),
         )
-        .with_session_service(self.session_service.clone());
+        .with_session_service(self.session_service.clone())
+        // Wire the event service so event-backed platform commands (e.g.
+        // list_events, used by subagent/handoff idle-settling) work over the
+        // gRPC worker dispatch, not just the in-process direct path.
+        .with_event_service(Arc::new(self.event_service.clone()));
 
         if let Some(runner) = &self.runner {
             let message_service = Arc::new(crate::domains::messages::MessageService::new(

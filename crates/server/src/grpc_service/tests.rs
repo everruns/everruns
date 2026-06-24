@@ -55,6 +55,28 @@ impl everruns_worker::AgentRunner for CompletingTestRunner {
                 ),
             ))
             .await?;
+        // Emit the terminal turn event the production completion path always
+        // emits (session_lifecycle::turn_completed). Adapters derive the child's
+        // settled status from this event, not from the bare `idle` status.
+        self.event_service
+            .emit(everruns_core::EventRequest::new(
+                session_id,
+                everruns_core::events::EventContext::empty(),
+                everruns_core::events::TurnCompletedData {
+                    turn_id: everruns_core::typed_id::TurnId::new(),
+                    iterations: 1,
+                    duration_ms: None,
+                    usage: None,
+                    input_content: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                    time_to_first_token_ms: None,
+                    tool_call_count: None,
+                    llm_call_count: None,
+                    status: None,
+                },
+            ))
+            .await?;
         self.db
             .update_session(
                 org_id,
@@ -482,7 +504,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let ToolExecutionResult::Success(spawn_value) = spawn_result else {
         panic!("spawn_subagent should succeed over grpc, got {spawn_result:?}");
     };
-    assert_eq!(spawn_value["status"], "idle");
+    assert_eq!(spawn_value["status"], "completed");
     assert_eq!(spawn_value["result"], "Child completed through gRPC");
     let subagent_id: everruns_core::SessionId = spawn_value["subagent_id"]
         .as_str()
@@ -537,7 +559,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let ToolExecutionResult::Success(handoff_value) = handoff_result else {
         panic!("start_agent_handoff should succeed over grpc, got {handoff_result:?}");
     };
-    assert_eq!(handoff_value["status"], "idle");
+    assert_eq!(handoff_value["status"], "completed");
     assert_eq!(handoff_value["result"], "Child completed through gRPC");
     let handoff_id: everruns_core::SessionId = handoff_value["handoff_id"]
         .as_str()

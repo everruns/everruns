@@ -30,6 +30,7 @@ fn terminal_handoff_status(wait_status: &str) -> Option<SubagentStatus> {
         "error" | "failed" => Some(SubagentStatus::Failed),
         "cancelled" => Some(SubagentStatus::Cancelled),
         "max_iterations_reached" => Some(SubagentStatus::MaxIterationsReached),
+        "sealed" => Some(SubagentStatus::Sealed),
         _ => None,
     }
 }
@@ -619,9 +620,9 @@ impl Tool for StartAgentHandoffTool {
         ) {
             let task_state = match subagent_status {
                 SubagentStatus::Completed => SessionTaskState::Succeeded,
-                SubagentStatus::Failed | SubagentStatus::MaxIterationsReached => {
-                    SessionTaskState::Failed
-                }
+                SubagentStatus::Failed
+                | SubagentStatus::MaxIterationsReached
+                | SubagentStatus::Sealed => SessionTaskState::Failed,
                 SubagentStatus::Cancelled => SessionTaskState::Canceled,
                 SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
             };
