@@ -216,7 +216,7 @@ DATABASE_UNPOOLED_URL=postgres://app:secret@ep-foo.us-east-1.aws.neon.tech/everr
 Optional backend that offloads workspace-file and image *content bytes* to an
 S3-compatible object store while keeping all metadata in PostgreSQL. Everruns
 remains the proxy for every read/write — no presigned URLs are handed to
-clients or workers. See [specs/object-storage.md](../../specs/object-storage.md).
+clients or workers. See [specs/object-storage.md](https://github.com/everruns/everruns/blob/main/specs/object-storage.md).
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|

@@ -6,6 +6,8 @@ use uuid::Uuid;
 use super::InMemoryDatabase;
 use crate::storage::models::*;
 
+const MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ: usize = 256;
+
 impl InMemoryDatabase {
     pub async fn list_agent_check_rules(&self, org_id: i64) -> Result<Vec<AgentCheckRuleRow>> {
         let mut rows: Vec<AgentCheckRuleRow> = self
@@ -16,7 +18,24 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         rows.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
+        rows.truncate(MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ);
         Ok(rows)
+    }
+
+    pub async fn count_custom_agent_check_rules_excluding(
+        &self,
+        org_id: i64,
+        excluded_rule_id: &str,
+    ) -> Result<i64> {
+        let count = self
+            .agent_check_rules
+            .read()
+            .values()
+            .filter(|r| {
+                r.org_id == org_id && r.kind != "builtin_override" && r.rule_id != excluded_rule_id
+            })
+            .count();
+        Ok(i64::try_from(count).unwrap_or(i64::MAX))
     }
 
     pub async fn upsert_agent_check_rule(

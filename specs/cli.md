@@ -30,7 +30,7 @@ Interactive authentication. Uses localhost HTTP callback OAuth flow.
 - `login` — Open browser for OAuth login, receive a personal access token via localhost callback
 - `login --token` — Paste a personal access token directly (headless/SSH fallback)
 
-Flow: CLI → `POST /v1/auth/cli/start` → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...` → CLI calls `POST /v1/auth/cli/exchange` → receives a personal access token + user info + orgs → interactive org selection → stores in credential file.
+Flow: CLI → `POST /v1/auth/cli/start` (returns `auth_url` + a CSRF `state` nonce) → open browser → user logs in → server redirects to `localhost:{port}/callback?code=...&state=...` → CLI rejects the callback unless `state` matches the value from `/cli/start` (CSRF binding) → CLI calls `POST /v1/auth/cli/exchange` → receives a personal access token + user info + orgs → interactive org selection → stores in credential file.
 
 ### `everruns logout`
 

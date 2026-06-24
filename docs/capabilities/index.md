@@ -243,4 +243,4 @@ Capabilities are applied in the order configured on the agent. Earlier capabilit
 
 - [Concepts](/getting-started/concepts/) — how capabilities fit into the Harness → Agent → Session model
 - [API Reference](/api/) — full API documentation
-- [MCP Servers](/features/capabilities/#mcp-virtual-capabilities) — external tool servers as virtual capabilities
+- [MCP Servers](/features/mcp/) — external tool servers as virtual capabilities

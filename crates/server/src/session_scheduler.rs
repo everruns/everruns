@@ -625,6 +625,14 @@ mod tests {
     }
 
     async fn create_schedule(db: &Arc<StorageBackend>, session_id: SessionId) -> ScheduleId {
+        create_schedule_with_cron(db, session_id, Some("0 * * * *".to_string())).await
+    }
+
+    async fn create_schedule_with_cron(
+        db: &Arc<StorageBackend>,
+        session_id: SessionId,
+        cron_expression: Option<String>,
+    ) -> ScheduleId {
         let row = db
             .create_session_schedule(CreateSessionScheduleRow {
                 org_id: DEFAULT_ORG_ID,
@@ -632,7 +640,7 @@ mod tests {
                 owner_principal_id: PrincipalId::new(),
                 resolved_owner_user_id: None,
                 description: "Test schedule".to_string(),
-                cron_expression: Some("0 * * * *".to_string()),
+                cron_expression,
                 scheduled_at: None,
                 timezone: "UTC".to_string(),
                 next_trigger_at: None,
@@ -684,6 +692,37 @@ mod tests {
         assert_eq!(after[0].0, session_id);
         assert_eq!(after[0].1, task.id);
         assert_eq!(after[0].2, schedule_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn query_does_not_return_disabled_one_shot_schedule() {
+        let db = make_db();
+        let session_id = SessionId::new();
+
+        let schedule_id = create_schedule_with_cron(&db, session_id, None).await;
+        create_monitor_task(&db, session_id, schedule_id).await;
+
+        // One-shot firing disables the schedule before the monitor is marked
+        // Succeeded. The orphan sweep must not race that path and cancel it.
+        db.update_session_schedule(
+            DEFAULT_ORG_ID,
+            schedule_id,
+            UpdateSessionScheduleRow {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let results = db
+            .list_monitor_tasks_with_inactive_schedules(50)
+            .await
+            .unwrap();
+        assert!(
+            results.is_empty(),
+            "disabled one-shot schedule monitor must be excluded"
+        );
     }
 
     #[tokio::test]

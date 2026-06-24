@@ -11,9 +11,10 @@ use crate::domains::harnesses::queries::resolve_effective as resolve_effective_h
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::limits::OrgCaps;
-use crate::errors::{BadRequestError, ResourceNotFoundError};
+use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::max_iterations;
 use crate::org_init;
+use crate::server::ResourceLimitsConfig;
 use crate::services::PrincipalService;
 use crate::storage::{
     StorageBackend,
@@ -72,6 +73,7 @@ pub struct SessionService {
     session_file_service: WorkspaceFileService,
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
     caps: OrgCaps,
+    resource_limits: ResourceLimitsConfig,
 }
 
 impl SessionService {
@@ -83,6 +85,7 @@ impl SessionService {
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
+            resource_limits: ResourceLimitsConfig::from_env(),
         }
     }
 
@@ -95,11 +98,17 @@ impl SessionService {
             db,
             session_sandbox_service: None,
             caps: OrgCaps::from_env(),
+            resource_limits: ResourceLimitsConfig::from_env(),
         }
     }
 
     pub fn with_caps(mut self, caps: OrgCaps) -> Self {
         self.caps = caps;
+        self
+    }
+
+    pub fn with_resource_limits(mut self, resource_limits: ResourceLimitsConfig) -> Self {
+        self.resource_limits = resource_limits;
         self
     }
 
@@ -191,6 +200,17 @@ impl SessionService {
         let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
         let agent_id = agent_internal_id.map(AgentId::from_uuid);
+
+        // Enforce the absolute per-org live-session cap in the shared service
+        // path so app-channel ingress cannot bypass the public command check.
+        let max_sessions = self.resource_limits.max_sessions_per_org;
+        let sessions = self.db.count_sessions_for_org(org_id).await?;
+        if sessions >= max_sessions {
+            return Err(ResourceLimitError::new(format!(
+                "Session limit reached (max {max_sessions})"
+            ))
+            .into());
+        }
 
         // EVE-508: check per-org concurrent session cap before creating.
         let active_sessions = self.db.count_active_sessions_for_org(org_id).await?;
@@ -3186,6 +3206,80 @@ mod tests {
                 "got: {err} for tag: {forbidden}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn app_session_creation_enforces_total_session_cap() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "app-session-cap-harness".to_string(),
+            display_name: Some("App Session Cap Harness".to_string()),
+            description: None,
+            system_prompt: Some("test".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let resource_limits = ResourceLimitsConfig {
+            max_sessions_per_org: 1,
+            ..Default::default()
+        };
+        let svc = SessionService::new(db.clone()).with_resource_limits(resource_limits);
+
+        let owner_principal = svc
+            .principal_service
+            .default_owner_principal(&caller, None)
+            .await
+            .unwrap();
+        let app_id = Uuid::new_v4();
+
+        svc.create_from_app(
+            &caller,
+            harness.id.uuid(),
+            None,
+            None,
+            app_id,
+            owner_principal.id,
+            owner_principal.resolved_user_id,
+            build_create_request(harness.id, None, None),
+        )
+        .await
+        .unwrap();
+
+        let err = svc
+            .create_from_app(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                app_id,
+                owner_principal.id,
+                owner_principal.resolved_user_id,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.downcast_ref::<ResourceLimitError>().is_some(),
+            "expected ResourceLimitError, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("Session limit reached"),
+            "got: {err}"
+        );
     }
 
     #[tokio::test]

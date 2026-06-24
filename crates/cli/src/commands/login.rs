@@ -24,7 +24,8 @@ struct CliStartRequest {
 #[derive(Deserialize)]
 struct CliStartResponse {
     auth_url: String,
-    #[allow(dead_code)]
+    /// CSRF state nonce. Echoed back on the loopback callback and validated by
+    /// the CLI to bind the callback to this login attempt.
     state: String,
 }
 
@@ -57,6 +58,46 @@ struct OrgInfo {
     public_id: String,
     name: String,
     role: String,
+}
+
+/// Parsed `code`/`state` query parameters from the loopback OAuth callback.
+#[derive(Debug, Default, PartialEq)]
+struct CallbackParams {
+    code: Option<String>,
+    state: Option<String>,
+}
+
+impl CallbackParams {
+    /// Return the `code` only if a `state` is present and exactly matches the
+    /// `expected` value issued for this login attempt. Missing or mismatched
+    /// `state`, or a missing `code`, yields `None` (fail closed — CSRF defense).
+    fn validated_code(self, expected: &str) -> Option<String> {
+        match (self.code, self.state) {
+            (Some(code), Some(state)) if state == expected => Some(code),
+            _ => None,
+        }
+    }
+}
+
+/// Parse the `code` and `state` query parameters from an HTTP request's first
+/// line (`GET /callback?code=...&state=... HTTP/1.1`).
+fn parse_request_line(request: &str) -> Option<CallbackParams> {
+    let line = request.lines().next()?;
+    let path = line.split_whitespace().nth(1)?;
+
+    let mut params = CallbackParams::default();
+    // A request line with no query string yields empty params (which then fail
+    // validation), rather than `None` — only a malformed request line is `None`.
+    if let Some(query) = path.split('?').nth(1) {
+        for param in query.split('&') {
+            if let Some(value) = param.strip_prefix("code=") {
+                params.code = Some(value.to_string());
+            } else if let Some(value) = param.strip_prefix("state=") {
+                params.state = Some(value.to_string());
+            }
+        }
+    }
+    Some(params)
 }
 
 /// Run the login command
@@ -118,6 +159,10 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
     // api_url might be "http://localhost:9300/api" or "https://app.everruns.com/api"
     let success_redirect = success_url.clone();
 
+    // CSRF state issued for this login attempt. The loopback callback must echo
+    // it back unchanged; otherwise we refuse to exchange the code.
+    let expected_state = start.state.clone();
+
     let server = tokio::spawn(async move {
         let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
             .await
@@ -134,21 +179,10 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
             .expect("Failed to read request");
         let request = String::from_utf8_lossy(&buf[..n]);
 
-        // Parse the code from GET /callback?code=...
-        let code = request.lines().next().and_then(|line| {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let path = parts[1];
-                if let Some(query) = path.split('?').nth(1) {
-                    for param in query.split('&') {
-                        if let Some(value) = param.strip_prefix("code=") {
-                            return Some(value.to_string());
-                        }
-                    }
-                }
-            }
-            None
-        });
+        // Parse `code` and `state` from the GET request line, then enforce that
+        // the returned `state` matches the value we issued (CSRF protection).
+        let code = parse_request_line(&request)
+            .and_then(|callback| callback.validated_code(&expected_state));
 
         // Respond with redirect to success page
         let response = if code.is_some() {
@@ -157,7 +191,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
                 success_redirect
             )
         } else {
-            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\nMissing code parameter"
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\nInvalid login callback (missing code or state mismatch)"
                 .to_string()
         };
         tokio::io::AsyncWriteExt::write_all(&mut stream, response.as_bytes())
@@ -342,4 +376,69 @@ fn select_org(orgs: &[OrgInfo]) -> Result<String> {
         .context("Failed to select organization")?;
 
     Ok(orgs[selection].public_id.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(query: &str) -> String {
+        format!(
+            "GET /callback?{} HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            query
+        )
+    }
+
+    #[test]
+    fn parses_code_and_state() {
+        let params = parse_request_line(&req("code=abc123&state=nonce42")).unwrap();
+        assert_eq!(
+            params,
+            CallbackParams {
+                code: Some("abc123".to_string()),
+                state: Some("nonce42".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn matching_state_yields_code() {
+        let params = parse_request_line(&req("code=abc123&state=nonce42")).unwrap();
+        assert_eq!(params.validated_code("nonce42"), Some("abc123".to_string()));
+    }
+
+    #[test]
+    fn mismatched_state_is_rejected() {
+        let params = parse_request_line(&req("code=abc123&state=attacker")).unwrap();
+        assert_eq!(params.validated_code("nonce42"), None);
+    }
+
+    #[test]
+    fn missing_state_is_rejected() {
+        // A callback with only `code` (the pre-fix behavior) must now fail closed.
+        let params = parse_request_line(&req("code=abc123")).unwrap();
+        assert_eq!(params.state, None);
+        assert_eq!(params.validated_code("nonce42"), None);
+    }
+
+    #[test]
+    fn missing_code_is_rejected() {
+        let params = parse_request_line(&req("state=nonce42")).unwrap();
+        assert_eq!(params.validated_code("nonce42"), None);
+    }
+
+    #[test]
+    fn empty_expected_state_does_not_accept_missing_state() {
+        // Defensive: even if the issued state were empty, a callback without a
+        // `state` parameter must not be accepted.
+        let params = parse_request_line(&req("code=abc123")).unwrap();
+        assert_eq!(params.validated_code(""), None);
+    }
+
+    #[test]
+    fn no_query_string_yields_empty_params() {
+        let params = parse_request_line("GET /callback HTTP/1.1\r\n\r\n").unwrap();
+        assert_eq!(params, CallbackParams::default());
+        assert_eq!(params.validated_code("nonce42"), None);
+    }
 }
