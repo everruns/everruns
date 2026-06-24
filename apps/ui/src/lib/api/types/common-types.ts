@@ -130,6 +130,11 @@ export interface TokenUsage {
    * independently of `actual_cost_usd` so estimate-vs-actual drift can be reconciled.
    */
   estimated_cost_usd?: number;
+  /**
+   * Best-effort cost in USD. Aggregate usage uses this to preserve the stored
+   * actual-else-estimated total across mixed generations.
+   */
+  effective_cost_usd?: number;
 }
 
 export interface ContextReportSection {

@@ -562,6 +562,11 @@ pub struct TokenUsage {
     /// reconciled. `None` when there is no profile cost data for the model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub estimated_cost_usd: Option<f64>,
+
+    /// Best-effort USD cost for already-aggregated usage. Per-generation usage
+    /// leaves this unset and derives the effective cost from actual/estimated.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_cost_usd: Option<f64>,
 }
 
 impl TokenUsage {
@@ -574,6 +579,7 @@ impl TokenUsage {
             cache_creation_tokens: None,
             actual_cost_usd: None,
             estimated_cost_usd: None,
+            effective_cost_usd: None,
         }
     }
 
@@ -591,6 +597,7 @@ impl TokenUsage {
             cache_creation_tokens,
             actual_cost_usd: None,
             estimated_cost_usd: None,
+            effective_cost_usd: None,
         }
     }
 
@@ -607,11 +614,20 @@ impl TokenUsage {
         self
     }
 
-    /// Best-effort cost of this generation in USD: the actual provider-reported
-    /// cost when present, otherwise the price-table estimate. `None` when neither
-    /// is available. Actual takes priority.
+    /// Set the precomputed best-effort USD cost for aggregate usage, returning
+    /// `self` for chaining. Generation usage should leave this unset so the
+    /// best-effort cost remains actual-else-estimated for that generation.
+    pub fn with_effective_cost(mut self, effective_cost_usd: Option<f64>) -> Self {
+        self.effective_cost_usd = effective_cost_usd;
+        self
+    }
+
+    /// Best-effort cost in USD. Aggregate usage can carry a precomputed total
+    /// that sums actual-else-estimated per generation; otherwise this falls back
+    /// to the generation-level actual-else-estimated behavior.
     pub fn effective_cost_usd(&self) -> Option<f64> {
-        self.actual_cost_usd.or(self.estimated_cost_usd)
+        self.effective_cost_usd
+            .or(self.actual_cost_usd.or(self.estimated_cost_usd))
     }
 
     /// Get total tokens (input + output)
@@ -635,6 +651,32 @@ impl TokenUsage {
         if let Some(cost) = other.estimated_cost_usd {
             *self.estimated_cost_usd.get_or_insert(0.0) += cost;
         }
+        if let Some(cost) = other.effective_cost_usd() {
+            *self.effective_cost_usd.get_or_insert(0.0) += cost;
+        }
+    }
+}
+
+#[cfg(test)]
+mod token_usage_tests {
+    use super::TokenUsage;
+
+    #[test]
+    fn aggregate_effective_cost_preserves_mixed_actual_and_estimated_total() {
+        let aggregate = TokenUsage::with_cache(30, 15, None, None)
+            .with_cost(Some(1.0), Some(2.0))
+            .with_effective_cost(Some(3.0));
+
+        assert_eq!(aggregate.actual_cost_usd, Some(1.0));
+        assert_eq!(aggregate.estimated_cost_usd, Some(2.0));
+        assert_eq!(aggregate.effective_cost_usd(), Some(3.0));
+    }
+
+    #[test]
+    fn generation_effective_cost_still_prefers_actual_over_estimated() {
+        let generation = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(2.0));
+
+        assert_eq!(generation.effective_cost_usd(), Some(1.0));
     }
 }
 
@@ -3138,6 +3180,7 @@ mod tests {
                 cache_creation_tokens: None,
                 actual_cost_usd: None,
                 estimated_cost_usd: None,
+                effective_cost_usd: None,
             }),
             Some(100),
             Some(25), // time_to_first_token_ms
@@ -3174,6 +3217,7 @@ mod tests {
                 cache_creation_tokens: None,
                 actual_cost_usd: None,
                 estimated_cost_usd: None,
+                effective_cost_usd: None,
             }),
             Some(50),
             Some(25), // time_to_first_token_ms
@@ -3544,6 +3588,7 @@ mod tests {
                 cache_creation_tokens: None,
                 actual_cost_usd: None,
                 estimated_cost_usd: None,
+                effective_cost_usd: None,
             }),
             Some(500), // duration_ms
             Some(120), // time_to_first_token_ms
