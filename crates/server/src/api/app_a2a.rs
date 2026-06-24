@@ -52,6 +52,7 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
+use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
 
 const A2A_PROTOCOL_VERSION: &str = "1.0";
@@ -522,6 +523,9 @@ fn verify_a2a_api_key(
     // hash before doing anything else.
     let provided_key = extract_a2a_api_key(headers).ok_or_else(unauthorized)?;
     let provided_hash = hash_a2a_api_key(&provided_key);
+    // THREAT[TM-A2A-002]: constant-time comparison of the SHA-256 hex digests
+    // (canonical `crate::security::constant_time_eq`) avoids leaking
+    // partial-match timing information to a remote attacker.
     if constant_time_eq(provided_hash.as_bytes(), expected_hash.as_bytes()) {
         Ok(())
     } else {
@@ -1405,19 +1409,6 @@ fn extract_a2a_api_key(headers: &HeaderMap) -> Option<String> {
     auth.strip_prefix("Bearer ").map(ToOwned::to_owned)
 }
 
-// THREAT[TM-A2A-002]: Constant-time comparison of the SHA-256 hex digests
-// avoids leaking partial-match timing information to a remote attacker.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
-}
-
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     ErrorResponse::new(message.into()).into_response(StatusCode::BAD_REQUEST)
 }
@@ -1462,13 +1453,6 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn constant_time_eq_matches() {
-        assert!(constant_time_eq(b"abcd", b"abcd"));
-        assert!(!constant_time_eq(b"abcd", b"abce"));
-        assert!(!constant_time_eq(b"abc", b"abcd"));
-    }
 
     #[test]
     fn extract_a2a_api_key_reads_bearer() {

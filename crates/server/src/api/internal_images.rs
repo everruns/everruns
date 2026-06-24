@@ -4,6 +4,7 @@
 // This removes the 150MB gRPC message limit workaround and keeps gRPC messages small.
 // Presigned URLs are HMAC-signed with WORKER_GRPC_AUTH_TOKEN so no org auth is needed.
 
+use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
 use axum::{
     Router,
@@ -97,17 +98,6 @@ fn validate_presigned(
     }
 
     Ok(())
-}
-
-/// Constant-time comparison to prevent timing attacks on signature validation
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter()
-        .zip(b.iter())
-        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
-        == 0
 }
 
 /// GET /internal/images/{image_id}?org_id=...&expires=...&sig=...
@@ -207,12 +197,5 @@ mod tests {
             sig: "bad-signature".to_string(),
         };
         assert!(validate_presigned(secret, image_id, &query).is_err());
-    }
-
-    #[test]
-    fn constant_time_eq_works() {
-        assert!(constant_time_eq(b"hello", b"hello"));
-        assert!(!constant_time_eq(b"hello", b"world"));
-        assert!(!constant_time_eq(b"hello", b"hell"));
     }
 }
