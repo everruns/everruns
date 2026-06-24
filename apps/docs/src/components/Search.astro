@@ -1,0 +1,241 @@
+---
+// Override of Starlight's Search to give the search dialog a useful empty
+// state instead of a blank box: a curated "Suggested" quick-links list plus
+// a "Recent" list of pages the visitor has viewed. The panel is shown before
+// the visitor types and hidden the moment a query is entered, when Pagefind
+// results take over.
+//
+// The default component still owns the <site-search> web component, the
+// dialog, and the Pagefind mount — we only delegate to it and then inject an
+// extra panel into its dialog at runtime, so Starlight upgrades keep working.
+import Default from "@astrojs/starlight/components/Search.astro";
+
+// Curated entry points. Keep these in sync with the "Popular destinations"
+// section on docs/index.mdx — they answer the most common "where do I start?"
+// questions without needing real search analytics.
+const ICONS: Record<string, string> = {
+  rocket:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 8-11l4 4a22 22 0 0 1-9 10z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+  ship:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20a6 6 0 0 0 3-1 6 6 0 0 0 6 0 6 6 0 0 0 6 0 6 6 0 0 0 3 1"/><path d="M4 18l-1.92-6.7A1 1 0 0 1 3 10h18a1 1 0 0 1 .92 1.3L20 18"/><path d="M12 10V4M8 6h8"/></svg>',
+  puzzle:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19.4 13a1.6 1.6 0 0 1 0-3.2h.6V6.4A1.4 1.4 0 0 0 18.6 5h-3.4v-.6a1.6 1.6 0 0 0-3.2 0V5H8.6A1.4 1.4 0 0 0 7.2 6.4v3.2h-.6a1.6 1.6 0 0 0 0 3.2h.6v3.4A1.4 1.4 0 0 0 8.6 17.6H12v.6a1.6 1.6 0 0 0 3.2 0v-.6h3.4a1.4 1.4 0 0 0 1.4-1.4V13z"/></svg>',
+  code:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M8 18l-6-6 6-6M16 6l6 6-6 6"/></svg>',
+  bolt:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>',
+  gear:
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.5 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.88 1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.5a1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.88.34H9a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.88V9a1.7 1.7 0 0 0 1.56 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg>',
+};
+
+const suggested = [
+  {
+    title: "Run an agent",
+    desc: "Zero-to-running starter tutorial",
+    href: "/tutorials/run-an-agent/",
+    icon: "rocket",
+  },
+  {
+    title: "Deploy with Docker Compose",
+    desc: "The whole platform in one command",
+    href: "/getting-started/docker-compose/",
+    icon: "ship",
+  },
+  {
+    title: "Capabilities catalog",
+    desc: "Every built-in capability and its tools",
+    href: "/capabilities/",
+    icon: "puzzle",
+  },
+  {
+    title: "API reference",
+    desc: "OpenAPI reference for every endpoint",
+    href: "/api/",
+    icon: "code",
+  },
+  {
+    title: "Event reference",
+    desc: "Every event type and its payload",
+    href: "/event-reference/",
+    icon: "bolt",
+  },
+  {
+    title: "Environment variables",
+    desc: "Configure the control plane and workers",
+    href: "/sre/environment-variables/",
+    icon: "gear",
+  },
+];
+---
+
+<Default {...Astro.props}><slot /></Default>
+
+{/* Cloned into the dialog at runtime; never rendered in place. */}
+<template id="er-search-suggestions" data-er-icons>
+  <div class="er-search-panel" data-er-search-panel>
+    <div class="er-search-section" data-er-recent hidden>
+      <p class="er-search-label">Recent</p>
+      <ul class="er-search-list" data-er-recent-list></ul>
+    </div>
+    <div class="er-search-section">
+      <p class="er-search-label">Suggested</p>
+      <ul class="er-search-list">
+        {
+          suggested.map((s) => (
+            <li>
+              <a class="er-search-item" href={s.href}>
+                <span class="er-search-ico" aria-hidden="true" set:html={ICONS[s.icon]} />
+                <span class="er-search-text">
+                  <span class="er-search-title">{s.title}</span>
+                  <span class="er-search-desc">{s.desc}</span>
+                </span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script>
+  const RECENT_KEY = "er:recent-pages";
+  const MAX_RECENT = 5;
+  const CLOCK_ICON =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+
+  type RecentEntry = { path: string; title: string };
+
+  function readRecent(): RecentEntry[] {
+    try {
+      const raw = localStorage.getItem(RECENT_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function recordCurrentPage() {
+    const path = location.pathname;
+    // Skip the splash home — it is already the most obvious destination.
+    if (path === "/") return;
+    const h1 = document.querySelector("main h1, article h1, h1");
+    const title = (h1?.textContent || document.title.split("|")[0] || "").trim();
+    if (!title) return;
+    const list = [
+      { path, title },
+      ...readRecent().filter((e) => e && e.path && e.path !== path),
+    ].slice(0, MAX_RECENT);
+    try {
+      localStorage.setItem(RECENT_KEY, JSON.stringify(list));
+    } catch {
+      /* storage unavailable — recent list is best-effort */
+    }
+  }
+
+  function escapeHtml(value: string): string {
+    return value.replace(
+      /[&<>"']/g,
+      (c) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c] as string,
+    );
+  }
+
+  function buildPanel(): HTMLElement | null {
+    const tpl = document.getElementById(
+      "er-search-suggestions",
+    ) as HTMLTemplateElement | null;
+    const node = tpl?.content.firstElementChild?.cloneNode(true);
+    if (!(node instanceof HTMLElement)) return null;
+
+    const recent = readRecent().filter((e) => e.path !== location.pathname);
+    const section = node.querySelector<HTMLElement>("[data-er-recent]");
+    const list = node.querySelector<HTMLElement>("[data-er-recent-list]");
+    if (recent.length && section && list) {
+      section.hidden = false;
+      for (const e of recent) {
+        const li = document.createElement("li");
+        li.innerHTML =
+          `<a class="er-search-item" href="${escapeHtml(e.path)}">` +
+          `<span class="er-search-ico" aria-hidden="true">${CLOCK_ICON}</span>` +
+          `<span class="er-search-text">` +
+          `<span class="er-search-title">${escapeHtml(e.title)}</span>` +
+          `<span class="er-search-desc">${escapeHtml(e.path)}</span>` +
+          `</span></a>`;
+        list.appendChild(li);
+      }
+    }
+    return node;
+  }
+
+  function wireSiteSearch() {
+    const siteSearch = document.querySelector("site-search");
+    if (!(siteSearch instanceof HTMLElement) || siteSearch.dataset.erWired)
+      return;
+    const dialog = siteSearch.querySelector("dialog");
+    if (!dialog) return;
+    siteSearch.dataset.erWired = "1";
+
+    const syncVisibility = () => {
+      const panel = siteSearch.querySelector<HTMLElement>(
+        "[data-er-search-panel]",
+      );
+      const input = siteSearch.querySelector<HTMLInputElement>(
+        ".pagefind-ui__search-input",
+      );
+      if (panel) panel.hidden = !!input && input.value.trim().length > 0;
+    };
+
+    const render = () => {
+      const container = siteSearch.querySelector<HTMLElement>(
+        ".search-container",
+      );
+      const input = container?.querySelector<HTMLInputElement>(
+        ".pagefind-ui__search-input",
+      );
+      if (!container || !input) return false;
+      container.querySelector("[data-er-search-panel]")?.remove();
+      const panel = buildPanel();
+      if (!panel) return false;
+      container.appendChild(panel);
+      if (!input.dataset.erBound) {
+        input.dataset.erBound = "1";
+        input.addEventListener("input", syncVisibility);
+      }
+      syncVisibility();
+      return true;
+    };
+
+    // Pagefind mounts lazily on first open, so retry until the input exists.
+    const onOpen = () => {
+      let tries = 0;
+      const attempt = () => {
+        if (render() || tries++ > 120) return;
+        requestAnimationFrame(attempt);
+      };
+      attempt();
+    };
+
+    new MutationObserver(() => {
+      if (dialog.hasAttribute("open")) onOpen();
+    }).observe(dialog, { attributes: true, attributeFilter: ["open"] });
+
+    if (dialog.hasAttribute("open")) onOpen();
+  }
+
+  function init() {
+    recordCurrentPage();
+    wireSiteSearch();
+  }
+
+  init();
+  // Re-run if the site ever enables Astro view transitions.
+  document.addEventListener("astro:page-load", init);
+</script>
