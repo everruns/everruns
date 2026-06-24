@@ -18,8 +18,10 @@ const VALID_CATEGORIES: &[&str] = &[
     "safety",
     "cost",
 ];
-/// Bound custom rule text fields (TM-DOS).
+/// Bound custom rule text fields and identifiers (TM-DOS).
 const MAX_RULE_TEXT: usize = 4_000;
+const MAX_RULE_ID_LEN: usize = 128;
+const MAX_CUSTOM_RULES_PER_ORG: i64 = 100;
 
 /// List the org's effective check-rule configuration (built-ins + custom).
 #[derive(Debug, Deserialize, ToSchema)]
@@ -93,6 +95,7 @@ impl Command for UpsertAgentCheckRule {
 
     async fn execute(self, ctx: &Ctx) -> Result<CheckRulesResponse, CommandError> {
         let row = build_upsert_row(&self.rule_id, &self.req)?;
+        enforce_custom_rule_quota(ctx, &row).await?;
         ctx.db
             .upsert_agent_check_rule(ctx.org_id(), row)
             .await
@@ -218,14 +221,37 @@ fn build_upsert_row(
     }
 }
 
-fn require_custom_id(rule_id: &str) -> Result<(), CommandError> {
-    if rule_id.starts_with("custom.") && rule_id.len() > "custom.".len() {
-        Ok(())
-    } else {
-        Err(CommandError::bad_request(
-            "Custom rule id must start with 'custom.'",
-        ))
+async fn enforce_custom_rule_quota(
+    ctx: &Ctx,
+    row: &UpsertAgentCheckRuleRow,
+) -> Result<(), CommandError> {
+    if row.kind == "builtin_override" {
+        return Ok(());
     }
+
+    let existing_custom_rules = ctx
+        .db
+        .count_custom_agent_check_rules_excluding(ctx.org_id(), &row.rule_id)
+        .await
+        .map_err(classify_anyhow)?;
+    if existing_custom_rules >= MAX_CUSTOM_RULES_PER_ORG {
+        return Err(CommandError::conflict(format!(
+            "Custom agent check rule limit reached ({MAX_CUSTOM_RULES_PER_ORG})"
+        )));
+    }
+    Ok(())
+}
+
+fn require_custom_id(rule_id: &str) -> Result<(), CommandError> {
+    if !rule_id.starts_with("custom.") || rule_id.len() <= "custom.".len() {
+        return Err(CommandError::bad_request(
+            "Custom rule id must start with 'custom.'",
+        ));
+    }
+    if rule_id.len() > MAX_RULE_ID_LEN {
+        return Err(CommandError::bad_request("Custom rule id is too long"));
+    }
+    Ok(())
 }
 
 fn require_category(category: &Option<String>) -> Result<String, CommandError> {
@@ -276,6 +302,12 @@ mod tests {
     fn custom_rules_require_custom_prefix() {
         assert!(build_upsert_row("custom.no_todo", &req("declarative")).is_ok());
         assert!(build_upsert_row("no_todo", &req("declarative")).is_err());
+    }
+
+    #[test]
+    fn custom_rule_ids_are_bounded() {
+        let id = format!("custom.{}", "a".repeat(MAX_RULE_ID_LEN));
+        assert!(build_upsert_row(&id, &req("declarative")).is_err());
     }
 
     #[test]

@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { FileCode, FileJson, FileText, Image, File, Trash2, Plus, FolderPlus } from "lucide-react";
 import { usePageTitle } from "@/hooks";
 
+// Check if we're in development mode
+const isDev = process.env.NODE_ENV === "development";
+
 function getFileIcon(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase();
   switch (ext) {
@@ -33,9 +36,21 @@ function getFileIcon(filename: string) {
 }
 
 export default function FileTreeDevPage() {
-  usePageTitle("File Tree", "Dev");
+  usePageTitle(isDev ? "File Tree" : "Page not found", isDev ? "Dev" : null);
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace", "/workspace/src"]));
+
+  // Show 404-like message in production
+  if (!isDev) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
+          <p className="text-muted-foreground mt-2">Page not found</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 max-w-5xl mx-auto space-y-8">

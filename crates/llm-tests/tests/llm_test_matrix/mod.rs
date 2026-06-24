@@ -207,6 +207,22 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         return true;
     }
 
+    // Explicit credit/balance exhaustion that never uses the word "quota".
+    // Anthropic returns this as a 400 `invalid_request_error`, not a 429:
+    //   "Your credit balance is too low to access the Anthropic API. Please go
+    //    to Plans & Billing to upgrade or purchase credits."
+    // Require the billing/credit signal to be paired with an exhaustion phrase
+    // so ordinary billing-related prose isn't swallowed.
+    let exhaustion_phrase = e.contains("too low")
+        || e.contains("run out")
+        || e.contains("ran out")
+        || e.contains("out of credit")
+        || e.contains("purchase credit")
+        || e.contains("depleted");
+    if billing_signal && exhaustion_phrase {
+        return true;
+    }
+
     // HTTP 429 only counts when paired with an explicit quota/billing signal,
     // so plain rate limiting (which should be retried/flagged, not skipped)
     // still fails even if the provider says a rate limit was "exceeded".
@@ -274,6 +290,12 @@ mod quota_detector_tests {
         assert!(is_quota_exhausted(
             "You have exceeded your current quota for this month"
         ));
+        // Anthropic real-world 400 credit-balance exhaustion (no "quota" word,
+        // not a 429). This is the exact message returned when the account is
+        // out of credits and must skip rather than fail the matrix.
+        assert!(is_quota_exhausted(
+            "LLM error: Anthropic API error (400 Bad Request): {\"type\":\"error\",\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.\"}}"
+        ));
         // Anthropic / Gemini style billing/credit exhaustion.
         assert!(is_quota_exhausted(
             "Your account has run out of credit; quota exhausted"
@@ -308,6 +330,10 @@ mod quota_detector_tests {
             "HTTP 429 Too Many Requests: requests per minute exceeded"
         ));
         assert!(!is_quota_exhausted("rate_limit_exceeded"));
+        // Billing-related prose without an exhaustion phrase must NOT be
+        // swallowed (e.g. a declined card or a generic billing notice).
+        assert!(!is_quota_exhausted("Please update your billing details"));
+        assert!(!is_quota_exhausted("Your credit card was declined"));
         // Auth/permission failures must never be swallowed as quota.
         assert!(!is_quota_exhausted("401 Unauthorized: invalid api key"));
         assert!(!is_quota_exhausted("403 Forbidden"));

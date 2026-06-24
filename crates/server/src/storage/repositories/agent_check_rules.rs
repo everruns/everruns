@@ -5,6 +5,8 @@ use anyhow::Result;
 use crate::storage::Database;
 use crate::storage::models::*;
 
+const MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ: i64 = 256;
+
 impl Database {
     pub async fn list_agent_check_rules(&self, org_id: i64) -> Result<Vec<AgentCheckRuleRow>> {
         let rows = sqlx::query_as::<_, AgentCheckRuleRow>(
@@ -14,12 +16,35 @@ impl Database {
             FROM agent_check_rules
             WHERE org_id = $1
             ORDER BY rule_id
+            LIMIT $2
             "#,
         )
         .bind(org_id)
+        .bind(MAX_AGENT_CHECK_RULE_ROWS_PER_ORG_READ)
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    pub async fn count_custom_agent_check_rules_excluding(
+        &self,
+        org_id: i64,
+        excluded_rule_id: &str,
+    ) -> Result<i64> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM agent_check_rules
+            WHERE org_id = $1
+              AND kind != 'builtin_override'
+              AND rule_id != $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(excluded_rule_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count)
     }
 
     pub async fn upsert_agent_check_rule(

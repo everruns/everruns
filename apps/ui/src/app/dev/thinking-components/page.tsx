@@ -7,6 +7,9 @@
 import { StreamingThinking } from "@/components/streaming-thinking";
 import { usePageTitle } from "@/hooks";
 
+// Check if we're in development mode
+const isDev = process.env.NODE_ENV === "development";
+
 const SAMPLE_THINKING = `Let me analyze this step by step.
 
 1. First, I need to understand the context of the question. The user is asking about why the sky appears blue.
@@ -31,7 +34,19 @@ const SAMPLE_THINKING = `Let me analyze this step by step.
 const SHORT_THINKING = "This is a simple arithmetic question. 2+2 equals 4.";
 
 export default function ThinkingComponentsPage() {
-  usePageTitle("Thinking Components", "Dev");
+  usePageTitle(isDev ? "Thinking Components" : "Page not found", isDev ? "Dev" : null);
+  // Show 404-like message in production
+  if (!isDev) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
+          <p className="text-muted-foreground mt-2">Page not found</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container mx-auto p-8 max-w-4xl space-y-8">
       <h1 className="text-3xl font-bold mb-2">Thinking Components</h1>

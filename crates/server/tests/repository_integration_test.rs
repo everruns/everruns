@@ -2737,7 +2737,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let session_id = session.id;
 
     // ------------------------------------------------------------------
-    // Fixture: a session schedule (enabled = true by default)
+    // Fixture: a recurring session schedule (enabled = true by default)
     // ------------------------------------------------------------------
     let schedule = backend
         .create_session_schedule(CreateSessionScheduleRow {
@@ -2755,6 +2755,26 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         .expect("Failed to create test schedule");
 
     let schedule_id: ScheduleId = schedule.id;
+
+    // Fixture: a one-shot schedule. A fired one-shot is disabled before its
+    // linked monitor is marked Succeeded, so disabled one-shots are not orphan
+    // candidates.
+    let one_shot_schedule = backend
+        .create_session_schedule(CreateSessionScheduleRow {
+            org_id: TEST_ORG_ID,
+            session_id,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            description: "monitor-disabled-one-shot-test".to_string(),
+            cron_expression: None,
+            scheduled_at: Some(Utc::now()),
+            timezone: "UTC".to_string(),
+            next_trigger_at: None,
+        })
+        .await
+        .expect("Failed to create one-shot test schedule");
+
+    let one_shot_schedule_id: ScheduleId = one_shot_schedule.id;
 
     // ------------------------------------------------------------------
     // Fixture: running monitor task with a valid prefixed schedule_id
@@ -2778,6 +2798,26 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         .expect("Failed to create monitor task");
 
     let task_id = monitor_task.id.clone();
+
+    let one_shot_monitor_task = new_session_task(
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: TASK_KIND_MONITOR.to_string(),
+            display_name: "Test monitor (disabled one-shot pg)".to_string(),
+            spec: json!({ "schedule_id": one_shot_schedule_id.to_string() }),
+            state: SessionTaskState::Running,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+        },
+        Utc::now(),
+    );
+    backend
+        .create_session_task(&one_shot_monitor_task)
+        .await
+        .expect("Failed to create one-shot monitor task");
+
+    let one_shot_task_id = one_shot_monitor_task.id.clone();
 
     // ------------------------------------------------------------------
     // Fixture: a second monitor task with a *malformed* schedule_id.
@@ -2805,8 +2845,12 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let malformed_task_id = malformed_task.id.clone();
 
     // Helper: filter the global result list to rows belonging to this test.
-    let our_ids: std::collections::HashSet<String> =
-        [task_id.clone(), malformed_task_id.clone()].into();
+    let our_ids: std::collections::HashSet<String> = [
+        task_id.clone(),
+        one_shot_task_id.clone(),
+        malformed_task_id.clone(),
+    ]
+    .into();
 
     // ------------------------------------------------------------------
     // Step 4: schedule is still enabled → our task must NOT appear.
@@ -2828,8 +2872,8 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     );
 
     // ------------------------------------------------------------------
-    // Step 5: disable the schedule (enabled = false).
-    // Our valid-spec task must now appear exactly once.
+    // Step 5: disable the recurring schedule and the one-shot schedule.
+    // Only the recurring valid-spec task must now appear exactly once.
     // ------------------------------------------------------------------
     backend
         .update_session_schedule(
@@ -2841,7 +2885,18 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             },
         )
         .await
-        .expect("Failed to disable schedule");
+        .expect("Failed to disable recurring schedule");
+    backend
+        .update_session_schedule(
+            TEST_ORG_ID,
+            one_shot_schedule_id,
+            UpdateSessionScheduleRow {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to disable one-shot schedule");
 
     let results_after = backend
         .list_monitor_tasks_with_inactive_schedules(500)
@@ -2878,6 +2933,12 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             .iter()
             .all(|(_, tid, _)| tid != &malformed_task_id),
         "malformed-spec task must never appear in results"
+    );
+    assert!(
+        results_after
+            .iter()
+            .all(|(_, tid, _)| tid != &one_shot_task_id),
+        "disabled one-shot schedule task must never appear in results"
     );
 }
 
