@@ -550,6 +550,76 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
 }
 
 #[tokio::test]
+async fn test_list_message_events_filtered_caps_unbounded_history() {
+    // A session larger than MESSAGE_SAFETY_LIMIT must not return an unbounded
+    // result set from the (offset=None, limit=None) full-history branch. The
+    // cap keeps the most recent N rows so the prompt window stays anchored to
+    // recent history.
+    let cap = super::events::MESSAGE_SAFETY_LIMIT;
+    let total = cap + 25;
+
+    let db = InMemoryDatabase::new();
+    let session = db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    for i in 0..total {
+        db.create_event(CreateEventRow {
+            session_id: session.id,
+            event_type: "input.message".to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({"content": format!("Message {}", i)}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    // Unbounded query (no offset, no limit): capped to MESSAGE_SAFETY_LIMIT.
+    let query = MessageQuery::new(session.id);
+    let events = db.list_message_events_filtered(&query).await.unwrap();
+    assert_eq!(events.len(), cap, "unbounded read must be capped");
+    // Cap keeps the most recent rows in ascending sequence order.
+    assert_eq!(events.first().unwrap().sequence, (total - cap + 1) as i32);
+    assert_eq!(events.last().unwrap().sequence, total as i32);
+
+    // The non-filtered full-history read is capped identically.
+    let limited = db
+        .list_message_events_limited(session.id, None)
+        .await
+        .unwrap();
+    assert_eq!(limited.len(), cap);
+}
+
+#[tokio::test]
 async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let db = InMemoryDatabase::new();
 

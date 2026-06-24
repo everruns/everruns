@@ -5,6 +5,13 @@ use anyhow::Result;
 use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
 use everruns_worker::{DurableWorkerConfig, WorkerAppBuilder};
 
+// Use mimalloc as the global allocator. The worker runs heavy concurrent
+// agent/tool execution; a sharded allocator reduces fragmentation and improves
+// tail latency vs. system malloc. Defined here (the bin crate root) so it
+// applies only to the everruns-worker binary, not library crates.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize telemetry with OpenTelemetry support

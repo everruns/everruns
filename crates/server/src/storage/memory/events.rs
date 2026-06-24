@@ -7,6 +7,11 @@ use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{EventId, SessionId};
 use uuid::Uuid;
 
+/// Safety cap for otherwise-unbounded full-history message reads. Mirrors the
+/// Postgres backend's `MESSAGE_SAFETY_LIMIT` so both backends bound the
+/// no-explicit-limit paths identically.
+pub(crate) const MESSAGE_SAFETY_LIMIT: usize = 5_000;
+
 impl InMemoryDatabase {
     // ============================================
     // Events
@@ -381,6 +386,11 @@ impl InMemoryDatabase {
             }
         } else if limit.is_some() {
             result.clear();
+        } else if result.len() > MESSAGE_SAFETY_LIMIT {
+            // No explicit limit: cap to the most recent N rows, matching the
+            // Postgres backend's safety cap on this path.
+            let len = result.len();
+            result = result.split_off(len - MESSAGE_SAFETY_LIMIT);
         }
         Ok(result)
     }
@@ -536,6 +546,12 @@ impl InMemoryDatabase {
                 let drain_end = result.len() - limit;
                 result.drain(keep_head..drain_end);
             }
+        } else if result.len() > MESSAGE_SAFETY_LIMIT {
+            // No explicit limit: apply the same safety cap as the Postgres
+            // backend's (None, None) branch, keeping the most recent N rows so
+            // an unbounded full-history candidate load cannot grow without bound.
+            let drain_end = result.len() - MESSAGE_SAFETY_LIMIT;
+            result.drain(0..drain_end);
         }
 
         Ok(result)

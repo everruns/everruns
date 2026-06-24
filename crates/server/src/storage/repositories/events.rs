@@ -57,6 +57,12 @@ fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &Lis
     }
 }
 
+/// Safety cap for otherwise-unbounded full-history message reads. Applied to
+/// both `list_message_events_limited` (no explicit limit) and the
+/// `(offset=None, limit=None)` branch of `list_message_events_filtered`, so
+/// neither path can materialize an unbounded result set for a huge session.
+const MESSAGE_SAFETY_LIMIT: i64 = 5_000;
+
 impl Database {
     // ============================================
     // Events (source of truth for messages)
@@ -505,7 +511,6 @@ impl Database {
             Vec::new()
         } else {
             // Safety cap when no explicit limit — prevents unbounded result sets.
-            const MESSAGE_SAFETY_LIMIT: i64 = 5_000;
             sqlx::query_as::<_, EventRow>(
                 r#"
                 SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
@@ -688,7 +693,21 @@ impl Database {
                 needs_reverse = true;
             }
             (None, None) => {
-                sql.push_str(" ORDER BY sequence ASC");
+                // Safety cap on the otherwise-unbounded full-history read. This
+                // branch is reached when MessageRetriever::load_filtered forces
+                // limit/offset = None to fetch the full candidate set for
+                // in-memory custom filtering / exact-count windowing. Without a
+                // cap this deserializes every JSONB row for the whole session,
+                // O(total_history) per call. The cap keeps the most recent N
+                // rows (DESC + reverse) so the prompt window stays anchored to
+                // recent history, mirroring the identical MESSAGE_SAFETY_LIMIT
+                // already applied on the sibling list_message_events_limited
+                // path (line ~508). Callers wanting a precise window pass an
+                // explicit limit, which takes the bounded branches above.
+                sql.push_str(&format!(
+                    " ORDER BY sequence DESC LIMIT {MESSAGE_SAFETY_LIMIT}"
+                ));
+                needs_reverse = true;
             }
         }
 

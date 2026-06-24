@@ -10,6 +10,13 @@ use everruns_server::auth;
 use everruns_server::server::ServerConfig;
 use std::sync::Arc;
 
+// Use mimalloc as the global allocator. For a high-concurrency Tokio service
+// with heavy per-request allocation, a sharded allocator reduces fragmentation
+// and improves tail latency vs. system malloc. Defined here (the bin crate
+// root) so it applies only to the everruns-server binary, not library crates.
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 /// CLI arguments for everruns-server
 #[derive(Parser)]
 #[command(name = "everruns-server", about = "Everruns API server")]

@@ -62,6 +62,9 @@ tokio = { version = "1.50", features = ["full"] }
 tokio-stream = "0.1"
 futures = "0.3"
 
+# Global allocator for binaries (sharded, low-fragmentation; MIT-licensed)
+mimalloc = "0.1"
+
 # HTTP framework
 axum = { version = "0.8", features = ["macros"] }
 axum-extra = { version = "0.12", features = ["cookie", "multipart", "query"] }
