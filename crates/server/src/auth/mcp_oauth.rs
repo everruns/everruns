@@ -13,6 +13,7 @@ use super::{
     config::AuthMode,
     jwt::JwtService,
     middleware::{AuthError, AuthState, AuthUser},
+    rate_limit::{AuthRateLimiter, extract_client_ip},
 };
 use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
@@ -21,8 +22,10 @@ use crate::storage::models::{
 };
 use axum::{
     Form, Json, Router,
-    extract::{FromRef, Query, State},
+    body::Body,
+    extract::{FromRef, Query, Request, State},
     http::{HeaderMap, StatusCode},
+    middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
@@ -223,6 +226,9 @@ pub struct McpOAuthState {
     pub issuer_url: String,
     /// Frontend URL for login redirects (e.g. `http://localhost:9300`).
     pub frontend_url: String,
+    /// Per-IP rate limiter shared with the other auth endpoints. Used to throttle
+    /// the unauthenticated dynamic client registration endpoint (TM-DOS).
+    pub rate_limiter: AuthRateLimiter,
 }
 
 impl McpOAuthState {
@@ -264,13 +270,50 @@ pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
             "/.well-known/oauth-authorization-server",
             get(oauth_server_metadata),
         )
-        .route("/oauth/register", post(oauth_register))
+        // TM-DOS: the registration endpoint is unauthenticated by design (RFC 7591),
+        // so an attacker could create unbounded `oauth_clients` rows. Apply the same
+        // per-IP "register" rate limit the builtin signup endpoint uses.
+        .route(
+            "/oauth/register",
+            post(oauth_register).route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                rate_limit_register,
+            )),
+        )
         .route(
             "/oauth/authorize",
             get(oauth_authorize).post(oauth_authorize_confirm),
         )
         .route("/oauth/token", post(oauth_token))
         .with_state(state)
+}
+
+/// Per-IP rate limit middleware for the unauthenticated `/oauth/register`
+/// endpoint (TM-DOS). Reuses the shared `register` limit and the same trusted-proxy
+/// client-IP extraction the rest of the auth endpoints use, so the limit cannot be
+/// bypassed by spoofing forwarding headers from an untrusted peer. On breach it
+/// returns an OAuth-shaped error with HTTP 429.
+async fn rate_limit_register(
+    State(state): State<McpOAuthState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
+    let ip = extract_client_ip(&req);
+    if state.rate_limiter.check_register(ip).await.is_err() {
+        tracing::warn!(%ip, "MCP OAuth: registration rate limit exceeded");
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            [("retry-after", "60")],
+            Json(OAuthErrorResponse {
+                error: "too_many_requests".to_string(),
+                error_description: Some(
+                    "Too many client registrations. Please try again later.".to_string(),
+                ),
+            }),
+        )
+            .into_response();
+    }
+    next.run(req).await
 }
 
 // ============================================
