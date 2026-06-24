@@ -12,6 +12,8 @@ Identifier for an action. Format: `org:<resource>:<action>`.
 
 See `crates/core/src/permissions.rs` for the full `Permission` enum with all variants.
 
+Permissions are scoped **per domain**: each managed resource (apps, MCP servers, plugins, skills, capabilities, agent identities, harnesses, providers, …) has its own `Org<Domain>View` / `Org<Domain>Manage` (and, where applicable, `Org<Domain>Dangerous`) permission rather than sharing one coarse grant. This keeps the role map least-privilege-ready: a custom resolver or a future role can grant one domain without implying the others (EVE-656, TM-AUTHZ-013).
+
 ### Rule
 
 Single predicate that evaluates to true/false given an auth context. Hardcoded enum variants (no dynamic rules). Rules are **additive within a policy** — all rules must pass (AND logic).

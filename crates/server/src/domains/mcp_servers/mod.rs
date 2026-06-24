@@ -18,16 +18,16 @@ pub use service::{
 
 pub const MCP_SERVER_VIEW: Policy = Policy {
     id: "mcp_server.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgMcpServersView)],
 };
 pub const MCP_SERVER_MANAGE: Policy = Policy {
     id: "mcp_server.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgMcpServersManage)],
 };
 pub const MCP_SERVER_DANGEROUS: Policy = Policy {
     id: "mcp_server.dangerous",
     rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgMcpServersManage),
         Rule::UserHasPermission(Permission::OrgMcpServersDangerous),
     ],
 };

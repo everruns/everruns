@@ -1,8 +1,8 @@
 // Plugin domain commands — marketplace CRUD + sync + install lifecycle.
 //
 // Policies:
-//   PLUGIN_VIEW   — list/get (OrgAgentsManage)
-//   PLUGIN_MANAGE — write (OrgAgentsManage + OrgPluginsManage = Admin+ only)
+//   PLUGIN_VIEW   — list/get (OrgPluginsView)
+//   PLUGIN_MANAGE — write (OrgPluginsManage = Admin+ only)
 
 use super::fetcher::{
     FetchedPluginFileSet, PluginSource, download_bytes, fetch_plugin, validate_github_repo_slug,
