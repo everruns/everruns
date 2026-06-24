@@ -26,6 +26,7 @@ path = "src/bin/export_openapi.rs"
 lua = ["everruns-core/lua"]
 
 [dependencies]
+mimalloc.workspace = true
 axum.workspace = true
 axum-extra.workspace = true
 tokio.workspace = true
