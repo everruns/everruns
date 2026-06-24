@@ -16,8 +16,9 @@
     "notebooks:exec": "python3 scripts/execute-notebooks.py"
   },
   "dependencies": {
-    "@astrojs/check": "^0.9.7",
-    "@astrojs/starlight": "^0.39.3",
+    "@astrojs/check": "^0.9.9",
+    "@astrojs/markdown-satteri": "^0.2.2",
+    "@astrojs/starlight": "^0.40.0",
     "astro": "^6.4.6",
     "js-yaml": "^4.2.0",
     "marked": "^18.0.5",
@@ -25,12 +26,13 @@
     "sharp": "^0.34.5",
     "shiki": "^4.2.0",
     "starlight-openapi": "^0.25.3",
-    "starlight-sidebar-topics": "^0.7.1",
+    "starlight-sidebar-topics": "^0.8.0",
     "typescript": "^6.0.3",
     "zod": "^4.4.3"
   },
   "pnpm": {
     "overrides": {
+      "@astrojs/mdx": "6.0.2",
       "esbuild": "0.28.1",
       "form-data": "4.0.6",
       "lodash": "4.17.23",
