@@ -326,7 +326,7 @@ impl BlobStore for ObjectStoreBlobStore {
     ) -> Result<Vec<BlobObject>> {
         // Build the full (prefixed) listing path. An empty relative prefix
         // lists the whole deployment scope.
-        let list_path = self.object_path(prefix.trim_end_matches('/'));
+        let list_path = self.object_path(prefix);
         let mut stream = self.inner.list(Some(&list_path));
         let mut out = Vec::new();
         while let Some(item) = stream.next().await {
@@ -337,6 +337,9 @@ impl BlobStore for ObjectStoreBlobStore {
             let Some(rel) = self.strip_prefix(full) else {
                 continue;
             };
+            if !rel.starts_with(prefix) {
+                continue;
+            }
             out.push(BlobObject {
                 key: rel.to_string(),
                 last_modified: meta.last_modified,
@@ -495,6 +498,39 @@ mod tests {
         // `limit` bounds the number of objects materialized.
         let capped = store.list_with_prefix("", Some(2)).await.unwrap();
         assert_eq!(capped.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn list_with_prefix_excludes_sibling_prefixes() {
+        let store = ObjectStoreBlobStore::in_memory();
+        store
+            .put("workspaces/a/files/1", b"x".to_vec(), &meta())
+            .await
+            .unwrap();
+        store
+            .put("workspaces-old/a/files/2", b"yy".to_vec(), &meta())
+            .await
+            .unwrap();
+        store
+            .put("images/org-1/i/data", b"zzz".to_vec(), &meta())
+            .await
+            .unwrap();
+        store
+            .put("images-old/org-1/i/data", b"wwww".to_vec(), &meta())
+            .await
+            .unwrap();
+
+        let ws = store.list_with_prefix("workspaces/", None).await.unwrap();
+        assert_eq!(
+            ws.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(),
+            vec!["workspaces/a/files/1"]
+        );
+
+        let imgs = store.list_with_prefix("images/", None).await.unwrap();
+        assert_eq!(
+            imgs.iter().map(|o| o.key.as_str()).collect::<Vec<_>>(),
+            vec!["images/org-1/i/data"]
+        );
     }
 
     #[tokio::test]
