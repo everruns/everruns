@@ -1,8 +1,18 @@
 //! Docker Engine REST API client.
 //!
 //! Decision: Uses reqwest for HTTP/TCP connections to Docker Engine API v1.47.
-//! Docker host resolution: config → env `CONTAINER_SANDBOX_DOCKER_HOST` → default `http://localhost:2375`.
-//! Unix socket support is a future enhancement (requires hyper unix transport).
+//! Docker host resolution: config → env `CONTAINER_SANDBOX_DOCKER_HOST` → default
+//! `unix:///var/run/docker.sock` (the secure local default).
+//! Unix socket transport is not yet supported by this reqwest-based client (it
+//! requires a hyper unix connector). Until that lands, leaving the host at the
+//! default fails closed at request time with a clear error instead of silently
+//! falling back to an unauthenticated network endpoint. See TM-SANDBOX-011.
+//!
+//! Security: the default must never be a plaintext, unauthenticated TCP endpoint
+//! (e.g. `http://localhost:2375`). Such an endpoint, if ever reachable over a
+//! network, grants full Docker control of the host (container escape). Operators
+//! that need a TCP daemon must set `CONTAINER_SANDBOX_DOCKER_HOST` explicitly and
+//! protect it with mTLS (`https://`); plaintext TCP must never be networked.
 //!
 //! Decision: All methods return `Result<T, String>` for consistency with the Daytona client
 //! pattern and easy mapping to ToolExecutionResult errors.
@@ -16,7 +26,14 @@ use tracing::{debug, warn};
 const API_VERSION: &str = "/v1.47";
 
 /// Default Docker host when no config or env is set.
-const DEFAULT_DOCKER_HOST: &str = "http://localhost:2375";
+///
+/// The local unix socket is the secure default: it is host-local and protected
+/// by filesystem permissions rather than exposed on the network. It is
+/// deliberately NOT a plaintext TCP endpoint — an unauthenticated
+/// `http://localhost:2375` default would grant full host control if ever
+/// networked (see TM-SANDBOX-011). Unix-socket transport is not yet implemented
+/// by this client, so this default fails closed (see `resolve_docker_host`).
+const DEFAULT_DOCKER_HOST: &str = "unix:///var/run/docker.sock";
 
 /// Environment variable for Docker host override.
 const DOCKER_HOST_ENV: &str = "CONTAINER_SANDBOX_DOCKER_HOST";
@@ -134,7 +151,10 @@ pub struct ExecOutput {
 
 pub struct DockerClient {
     http: reqwest::Client,
-    base_url: String,
+    /// Resolved HTTP base URL, or a deferred fail-closed error if the configured
+    /// host uses a transport this client cannot speak (currently: unix sockets).
+    /// We surface the error on the first request rather than panicking in `new`.
+    base_url: Result<String, String>,
 }
 
 impl DockerClient {
@@ -143,16 +163,26 @@ impl DockerClient {
     /// Host resolution priority:
     /// 1. Explicit `docker_host` parameter (from config)
     /// 2. `CONTAINER_SANDBOX_DOCKER_HOST` env var
-    /// 3. Default: `http://localhost:2375`
+    /// 3. Default: `unix:///var/run/docker.sock` (secure local default)
+    ///
+    /// The default unix socket is not yet supported by this reqwest-based
+    /// transport, so when the resolved host is a unix socket the client fails
+    /// closed: requests return a clear error asking the operator to set
+    /// `CONTAINER_SANDBOX_DOCKER_HOST` to an `http(s)://` daemon (protected with
+    /// mTLS for any non-loopback address). This is deliberately safer than
+    /// silently defaulting to an unauthenticated `http://localhost:2375`.
     pub fn new(docker_host: Option<&str>) -> Self {
-        let base_url = docker_host
+        let raw_host = docker_host
             .map(String::from)
             .or_else(|| std::env::var(DOCKER_HOST_ENV).ok())
-            .unwrap_or_else(|| DEFAULT_DOCKER_HOST.to_string())
-            .trim_end_matches('/')
-            .to_string();
+            .unwrap_or_else(|| DEFAULT_DOCKER_HOST.to_string());
 
-        debug!(base_url = %base_url, "DockerClient initialized");
+        let base_url = resolve_docker_host(&raw_host);
+
+        match &base_url {
+            Ok(url) => debug!(base_url = %url, "DockerClient initialized"),
+            Err(e) => warn!(error = %e, "DockerClient initialized with unusable Docker host"),
+        }
 
         let http = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
@@ -166,7 +196,7 @@ impl DockerClient {
     /// For tests: create with explicit base URL.
     #[cfg(test)]
     pub fn with_base_url(base_url: String) -> Self {
-        let base_url = base_url.trim_end_matches('/').to_string();
+        let base_url = Ok(base_url.trim_end_matches('/').to_string());
         let http = reqwest::Client::builder()
             .connect_timeout(std::time::Duration::from_secs(30))
             .timeout(std::time::Duration::from_secs(300))
@@ -175,8 +205,11 @@ impl DockerClient {
         Self { http, base_url }
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}{API_VERSION}{path}", self.base_url)
+    /// Build a full request URL, propagating the deferred host-resolution error
+    /// (e.g. an unsupported unix-socket default) as a request-time failure.
+    fn url(&self, path: &str) -> Result<String, String> {
+        let base = self.base_url.as_ref().map_err(|e| e.clone())?;
+        Ok(format!("{base}{API_VERSION}{path}"))
     }
 
     // --- Generic request helpers ---
@@ -187,7 +220,7 @@ impl DockerClient {
         path: &str,
         body: Option<Value>,
     ) -> Result<Value, String> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let mut req = self
             .http
             .request(method, &url)
@@ -225,7 +258,7 @@ impl DockerClient {
         path: &str,
         body: Option<Value>,
     ) -> Result<T, String> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let mut req = self
             .http
             .request(method, &url)
@@ -259,7 +292,7 @@ impl DockerClient {
         path: &str,
         max_bytes: usize,
     ) -> Result<Vec<u8>, String> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let mut resp = self
             .http
             .request(method, &url)
@@ -285,7 +318,7 @@ impl DockerClient {
         path: &str,
         body: Option<Value>,
     ) -> Result<(), String> {
-        let url = self.url(path);
+        let url = self.url(path)?;
         let mut req = self
             .http
             .request(method, &url)
@@ -474,7 +507,7 @@ impl DockerClient {
     /// We demux the stream and combine stdout+stderr into a single string.
     pub async fn exec_start(&self, exec_id: &str) -> Result<String, String> {
         debug!(exec_id = %exec_id, "Starting exec");
-        let url = self.url(&format!("/exec/{exec_id}/start"));
+        let url = self.url(&format!("/exec/{exec_id}/start"))?;
         let resp = self
             .http
             .post(&url)
@@ -576,7 +609,7 @@ impl DockerClient {
         let encoded_path = urlencoding::encode(dir_path);
         let url = self.url(&format!(
             "/containers/{container_id}/archive?path={encoded_path}"
-        ));
+        ))?;
 
         let resp = self
             .http
@@ -603,6 +636,34 @@ impl DockerClient {
 // ============================================================================
 // Helpers
 // ============================================================================
+
+/// Resolve a raw Docker host string into an HTTP base URL this client can use.
+///
+/// `http://` and `https://` hosts are accepted (trailing slashes trimmed).
+/// Unix-socket hosts (`unix://`, including the secure default
+/// `unix:///var/run/docker.sock`) and any other unsupported scheme fail closed
+/// with an actionable error: this reqwest-based client cannot speak the unix
+/// transport yet, and we must never silently fall back to an unauthenticated
+/// network endpoint. The error is surfaced at request time. See TM-SANDBOX-011.
+fn resolve_docker_host(raw: &str) -> Result<String, String> {
+    let host = raw.trim();
+    if host.starts_with("http://") || host.starts_with("https://") {
+        return Ok(host.trim_end_matches('/').to_string());
+    }
+    if host.starts_with("unix://") {
+        return Err(format!(
+            "Docker host '{host}' uses a unix socket, which this client does not \
+             support yet. Set CONTAINER_SANDBOX_DOCKER_HOST to an http(s):// Docker \
+             daemon (use https:// with mTLS for any non-loopback address; never \
+             expose plaintext TCP on a network)."
+        ));
+    }
+    Err(format!(
+        "Unsupported Docker host '{host}'. Set CONTAINER_SANDBOX_DOCKER_HOST to an \
+         http(s):// Docker daemon URL (use https:// with mTLS for any non-loopback \
+         address)."
+    ))
+}
 
 /// Validate that a filename is safe for use inside a tar archive.
 /// Rejects path traversal (`..`), absolute paths (`/`), and backslash separators.
@@ -774,9 +835,61 @@ mod tests {
     fn test_url_construction() {
         let client = DockerClient::with_base_url("http://10.0.0.3:2375".to_string());
         assert_eq!(
-            client.url("/containers/json"),
+            client.url("/containers/json").unwrap(),
             "http://10.0.0.3:2375/v1.47/containers/json"
         );
+    }
+
+    #[test]
+    fn test_resolve_docker_host_accepts_http() {
+        assert_eq!(
+            resolve_docker_host("http://localhost:2375").unwrap(),
+            "http://localhost:2375"
+        );
+    }
+
+    #[test]
+    fn test_resolve_docker_host_accepts_https_and_trims_slash() {
+        assert_eq!(
+            resolve_docker_host("https://docker.internal:2376/").unwrap(),
+            "https://docker.internal:2376"
+        );
+    }
+
+    #[test]
+    fn test_resolve_docker_host_default_is_secure_unix_socket() {
+        // The default must be the host-local unix socket, never plaintext TCP.
+        assert_eq!(DEFAULT_DOCKER_HOST, "unix:///var/run/docker.sock");
+    }
+
+    #[test]
+    fn test_resolve_docker_host_unix_socket_fails_closed() {
+        // Unix-socket transport is unsupported today; it must fail closed with an
+        // actionable error rather than fall back to an unauthenticated endpoint.
+        let err = resolve_docker_host(DEFAULT_DOCKER_HOST).unwrap_err();
+        assert!(err.contains("unix socket"), "unexpected error: {err}");
+        assert!(
+            err.contains("CONTAINER_SANDBOX_DOCKER_HOST"),
+            "error should name the override env var: {err}"
+        );
+    }
+
+    #[test]
+    fn test_resolve_docker_host_unknown_scheme_fails_closed() {
+        let err = resolve_docker_host("tcp://10.0.0.3:2375").unwrap_err();
+        assert!(err.contains("Unsupported Docker host"), "got: {err}");
+    }
+
+    #[test]
+    fn test_default_client_fails_closed_at_url_build() {
+        // With no config/env, the default unix socket means url() returns the
+        // deferred fail-closed error instead of building a plaintext-TCP URL.
+        // Note: relies on CONTAINER_SANDBOX_DOCKER_HOST being unset in this env.
+        if std::env::var(DOCKER_HOST_ENV).is_err() {
+            let client = DockerClient::new(None);
+            let err = client.url("/containers/json").unwrap_err();
+            assert!(err.contains("unix socket"), "unexpected error: {err}");
+        }
     }
 
     #[test]
@@ -889,7 +1002,7 @@ mod tests {
     fn test_url_trailing_slash_trimmed() {
         let client = DockerClient::with_base_url("http://10.0.0.3:2375/".to_string());
         assert_eq!(
-            client.url("/containers/json"),
+            client.url("/containers/json").unwrap(),
             "http://10.0.0.3:2375/v1.47/containers/json"
         );
     }
