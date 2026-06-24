@@ -24,6 +24,7 @@ use tokio::net::lookup_host;
 use tokio::time::timeout;
 use url::Host;
 
+use crate::security::constant_time_eq;
 use crate::storage::password::verify_password;
 
 #[derive(Clone)]
@@ -559,17 +560,6 @@ fn claim_audience_set(claims: &Value) -> HashSet<String> {
 
 fn email_domain(email: Option<&str>) -> Option<&str> {
     email?.split_once('@').map(|(_, domain)| domain)
-}
-
-pub fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 #[cfg(test)]

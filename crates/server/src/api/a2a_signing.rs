@@ -49,6 +49,7 @@ use hmac::{Hmac, Mac};
 use parking_lot::RwLock;
 use sha2::Sha256;
 
+use crate::security::constant_time_eq;
 use crate::valkey::ValkeyClient;
 
 type HmacSha256 = Hmac<Sha256>;
@@ -163,17 +164,6 @@ pub fn verify_signature(
         return Err(SignatureCheckError::SignatureMismatch);
     }
     Ok(signature.to_string())
-}
-
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    let mut diff: u8 = 0;
-    for (x, y) in a.iter().zip(b.iter()) {
-        diff |= x ^ y;
-    }
-    diff == 0
 }
 
 /// Store of recently-seen signatures keyed by `(scope, signature)` with a
