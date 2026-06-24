@@ -370,6 +370,7 @@ impl AuthBackend for BuiltinAuthBackend {
             jwt_service: self.jwt_service.clone(),
             issuer_url: root_url_from_api_base(&api_base_url),
             frontend_url: self.config.frontend_url.clone(),
+            rate_limiter: self.rate_limiter.clone(),
         };
         Some(
             super::cli_auth::cli_auth_public_routes(cli_state)

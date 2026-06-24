@@ -657,6 +657,7 @@ impl TestServer {
                     jwt_service: auth_backend.jwt_service.clone(),
                     issuer_url: auth_config.frontend_url.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    rate_limiter: auth_backend.rate_limiter.clone(),
                 },
             ));
 

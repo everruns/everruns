@@ -3093,7 +3093,10 @@ async fn test_oauth_token_invalid_content_type_falls_back_to_form() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_register_rejects_unsafe_redirect_uris() {
-    let server = TestServer::in_memory().await;
+    // Use a fresh server per URI: the registration endpoint is now per-IP
+    // rate-limited (TM-DOS), and this loop has more entries than the register
+    // limit, so sharing one server would trip the limiter before all URIs are
+    // exercised.
     for uri in [
         "javascript:alert(1)",
         "data:text/html,<script>alert(1)</script>",
@@ -3104,6 +3107,7 @@ async fn test_oauth_register_rejects_unsafe_redirect_uris() {
         "/relative",
         "",
     ] {
+        let server = TestServer::in_memory().await;
         let resp = server
             .post(
                 "/oauth/register",
@@ -3163,4 +3167,32 @@ async fn test_oauth_register_and_metadata() {
         .get("/.well-known/oauth-protected-resource")
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+/// TM-DOS: the unauthenticated dynamic client registration endpoint must be
+/// per-IP rate limited so it cannot be used to create unbounded `oauth_clients`
+/// rows. The in-memory register limit is 5/min; the 6th request from the same
+/// (loopback) client within the window must be rejected with HTTP 429 and an
+/// OAuth-shaped error body.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_register_is_rate_limited() {
+    let server = TestServer::in_memory().await;
+    let body = json!({
+        "client_name": "rl-client",
+        "redirect_uris": ["http://localhost:9999/callback"],
+    });
+
+    // The first REGISTER_LIMIT (5) requests succeed.
+    for _ in 0..5 {
+        server
+            .post("/oauth/register", body.clone())
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
+    // The next request from the same IP is throttled.
+    let resp = server.post("/oauth/register", body.clone()).await;
+    assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
+    let payload: Value = resp.json();
+    assert_eq!(payload["error"], "too_many_requests");
 }
