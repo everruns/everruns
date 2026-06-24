@@ -570,3 +570,91 @@ h6 {
 .sidebar-content a[href="/integrations/parallel/"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M7%204v16M12%204v16M17%204v16%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M7%204v16M12%204v16M17%204v16%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
 .sidebar-content a[href="/integrations/slack/"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M9%203.5L7%2020.5M17%203.5l-2%2017M4%208.5h16M3.2%2015.5h16%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20d%3D%22M9%203.5L7%2020.5M17%203.5l-2%2017M4%208.5h16M3.2%2015.5h16%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.8%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
 .sidebar-content a[href="/integrations/ard/"]::before { -webkit-mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%225%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%225%22%20cy%3D%2218%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%2219%22%20cy%3D%2218%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Cpath%20d%3D%22M10.7%206.9L6.3%2015.9M13.3%206.9L17.7%2015.9M7.3%2018h9.4%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); mask-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2024%2024%22%3E%3Ccircle%20cx%3D%2212%22%20cy%3D%225%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%225%22%20cy%3D%2218%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Ccircle%20cx%3D%2219%22%20cy%3D%2218%22%20r%3D%222.3%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%2F%3E%3Cpath%20d%3D%22M10.7%206.9L6.3%2015.9M13.3%206.9L17.7%2015.9M7.3%2018h9.4%22%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%221.6%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E"); }
+
+/* ------------------------------------------------------------------ *
+ * Search dialog empty state (see src/components/Search.astro)
+ *
+ * Suggested quick-links + recently-viewed pages, shown before the
+ * visitor types. Styled globally (not scoped) because the panel is
+ * cloned into the dialog at runtime, and the recent rows are built
+ * with innerHTML — neither carries Astro's scoped-style attribute.
+ * ------------------------------------------------------------------ */
+.er-search-panel {
+  padding: 0.75rem 0.25rem 0.5rem;
+}
+
+.er-search-panel[hidden] {
+  display: none;
+}
+
+.er-search-section + .er-search-section {
+  margin-top: 1rem;
+}
+
+.er-search-label {
+  margin: 0 0 0.35rem;
+  padding: 0 0.5rem;
+  font-size: var(--sl-text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+
+.er-search-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.er-search-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+  color: var(--sl-color-white);
+  text-decoration: none;
+  line-height: 1.3;
+}
+
+.er-search-item:hover,
+.er-search-item:focus-visible {
+  background: var(--sl-color-accent-low);
+  outline: none;
+}
+
+.er-search-ico {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--sl-color-gray-2);
+}
+
+.er-search-ico svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.er-search-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.er-search-title {
+  font-size: var(--sl-text-sm);
+  font-weight: 500;
+  color: var(--sl-color-white);
+}
+
+.er-search-desc {
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
