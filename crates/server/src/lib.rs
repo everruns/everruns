@@ -23,6 +23,9 @@ extern crate everruns_integrations_github;
 extern crate everruns_integrations_parallel;
 extern crate everruns_integrations_sprites;
 
+// Shared low-level security primitives (constant-time comparison, etc.)
+pub mod security;
+
 // API routes and types (shared for OpenAPI generation)
 pub mod api;
 

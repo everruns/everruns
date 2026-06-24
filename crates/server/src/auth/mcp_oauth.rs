@@ -14,6 +14,7 @@ use super::{
     jwt::JwtService,
     middleware::{AuthError, AuthState, AuthUser},
 };
+use crate::security::constant_time_eq;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateOAuthAuthorizationCodeRow, CreateOAuthClientRow, CreateOAuthRefreshTokenRow,
@@ -61,7 +62,7 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
     use base64::Engine;
     let hash = Sha256::digest(verifier.as_bytes());
     let computed = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(hash);
-    computed == challenge
+    constant_time_eq(computed.as_bytes(), challenge.as_bytes())
 }
 
 /// Validate a registered redirect URI for an MCP OAuth client.
@@ -1043,7 +1044,7 @@ async fn handle_authorization_code_grant(
     // Public clients (most MCP clients) rely on PKCE alone.
     if let Some(client_secret) = req.client_secret.as_deref() {
         let secret_hash = hash_value(client_secret);
-        if secret_hash != client.client_secret_hash {
+        if !constant_time_eq(secret_hash.as_bytes(), client.client_secret_hash.as_bytes()) {
             return Err(OAuthErrorResponse {
                 error: "invalid_client".to_string(),
                 error_description: Some("Invalid client_secret".to_string()),
@@ -1230,7 +1231,7 @@ async fn handle_refresh_token_grant(
     // Verify client secret if provided (confidential client).
     if let Some(client_secret) = req.client_secret.as_deref() {
         let secret_hash = hash_value(client_secret);
-        if secret_hash != client.client_secret_hash {
+        if !constant_time_eq(secret_hash.as_bytes(), client.client_secret_hash.as_bytes()) {
             return Err(OAuthErrorResponse {
                 error: "invalid_client".to_string(),
                 error_description: Some("Invalid client_secret".to_string()),
