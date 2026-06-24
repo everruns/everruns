@@ -284,10 +284,13 @@ async fn cli_auth_callback(
         serde_json::json!({}),
     );
 
-    // Redirect browser to CLI's localhost server with the exchange code
+    // Redirect browser to CLI's localhost server with the exchange code and the
+    // session `state`. The CLI validates that the returned `state` matches the
+    // value it received from `/cli/start`, binding the callback to the
+    // browser-initiated request (CSRF protection on the loopback callback).
     let redirect_url = format!(
-        "http://localhost:{}/callback?code={}",
-        session.redirect_port, session.exchange_code
+        "http://localhost:{}/callback?code={}&state={}",
+        session.redirect_port, session.exchange_code, session.state
     );
 
     Ok(Redirect::to(&redirect_url).into_response())
