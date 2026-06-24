@@ -275,11 +275,12 @@ impl Database {
     }
 
     /// Return (session_id, task_id, schedule_id) triples for running monitor
-    /// tasks whose linked schedule is inactive (missing row or enabled=false).
+    /// tasks whose linked schedule is inactive.
     ///
-    /// "Inactive" = the schedule row does not exist, OR its `enabled` column
-    /// is false.  Both cases mean the schedule will never fire again, so the
-    /// monitor is an orphan that should be canceled.
+    /// "Inactive" = the schedule row does not exist, OR it is a disabled
+    /// recurring schedule. Disabled one-shot schedules are excluded because
+    /// `mark_triggered` disables them before the firing path can complete the
+    /// linked monitor.
     ///
     /// Plain snapshot read — safe for concurrent sweepers because transitions
     /// are applied through `apply_task_update` where terminal states are final.
@@ -303,7 +304,7 @@ impl Database {
             WHERE st.kind = 'monitor'
               AND st.state = 'running'
               AND st.spec->>'schedule_id' ~ '^sched_[0-9a-f]{32}$'
-              AND (ss.id IS NULL OR ss.enabled = false)
+              AND (ss.id IS NULL OR (ss.enabled = false AND ss.cron_expression IS NOT NULL))
             ORDER BY st.id
             LIMIT $1
             "#,
