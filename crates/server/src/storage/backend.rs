@@ -1846,10 +1846,6 @@ impl StorageBackend {
         dispatch!(self, get_session_file, session_id, path)
     }
 
-    pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
-        dispatch!(self, get_session_file_by_id, id)
-    }
-
     pub async fn get_session_file_info(
         &self,
         session_id: Uuid,

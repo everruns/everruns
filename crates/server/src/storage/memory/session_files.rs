@@ -57,9 +57,9 @@ impl InMemoryDatabase {
             .map(Self::file_to_info))
     }
 
-    pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
-        Ok(self.session_files.read().get(&id).cloned())
-    }
+    // No `get_session_file_by_id`: see the PostgreSQL repo (TM-TENANT-012) —
+    // bare-id content reads are an unscoped tenant-isolation hazard and had no
+    // callers.
 
     /// Convert SessionFileRow to SessionFileInfoRow (strips content)
     fn file_to_info(f: &SessionFileRow) -> SessionFileInfoRow {

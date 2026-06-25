@@ -68,6 +68,15 @@ impl Database {
         Ok(exists)
     }
 
+    // THREAT[TM-TENANT-012]: `get_app_channel_by_public_id` /
+    // `update_app_channel` / `delete_app_channel` take a bare global identifier
+    // (`public_id` / row `id`) with no `app_id`/`org_id` filter, and the row
+    // carries `channel_config_encrypted` (secrets). They do NOT enforce tenant
+    // isolation on their own. Every caller MUST first fetch the parent app under
+    // the caller's org and then assert `channel_row.app_id == app.id` before
+    // reading config or mutating — see `domains/apps/commands.rs`
+    // (`get_app_channel_by_public_id` callers all gate on that equality). Do not
+    // add a caller that skips the org-scoped parent fetch.
     pub async fn get_app_channel_by_public_id(
         &self,
         public_id: &str,
@@ -86,6 +95,9 @@ impl Database {
         Ok(row)
     }
 
+    // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
+    // `get_app_channel_by_public_id`. Callers MUST have already resolved the
+    // channel under their org-scoped app.
     pub async fn update_app_channel(
         &self,
         id: Uuid,
@@ -118,6 +130,9 @@ impl Database {
         Ok(row)
     }
 
+    // THREAT[TM-TENANT-012]: bare-`id` mutator — see the note on
+    // `get_app_channel_by_public_id`. Callers MUST have already resolved the
+    // channel under their org-scoped app.
     pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {
         let result = sqlx::query("DELETE FROM app_channels WHERE id = $1")
             .bind(id)
