@@ -165,14 +165,14 @@ resolve_service(org, ServiceKind, binding) -> (ProviderConnection, service clien
 
 Selection: explicit `provider_id` on the consumer's binding (e.g. the voice connection's `provider_id` field) wins; otherwise an org-level default provider per service; otherwise the single active provider whose driver declares the service. "First active provider matching a type string" — the old voice behavior — is removed. Resolution failures surface structured "no provider configured for {service}" errors, fail-closed.
 
-All three tiers are implemented. The org-default-per-service tier reads an org-settings map (`organization_settings.default_provider_per_service`, `ServiceKind` → provider id) set via `PATCH /v1/orgs/{org}` (`default_provider_per_service`). It is consulted only when no explicit binding is supplied, and it is fail-closed: a configured default that is missing, inactive, or whose driver does not declare the service errors rather than falling through to the active-provider scan. An unset default for a service falls through to that scan as before. Voice realtime currently calls `resolve_service(org, Realtime, None)` — a per-connection provider binding is not plumbed, so it relies on the org default (or the single realtime-capable provider); the binding parameter exists for when that selection lands.
+All three tiers are implemented. The org-default-per-service tier reads an org-settings map (`organization_settings.default_provider_per_service`, `ServiceKind` → provider id) set via `PATCH /v1/orgs/{org}` (`default_provider_per_service`). It is consulted only when no explicit binding is supplied, and it is fail-closed: a configured default that is missing, inactive, or whose driver does not declare the service errors rather than falling through to the active-provider scan. An unset default for a service falls through to that scan as before. Voice realtime plumbs the per-connection binding: the create/attach request bodies carry an optional `provider_id` (the realtime provider connection's public id), passed straight through as `resolve_service(org, Realtime, provider_id)`. When omitted it falls back to the org default (or the single realtime-capable provider); an unknown binding or one whose driver does not declare the realtime service is rejected with `400` rather than the generic provider `502`. The resolved provider id is persisted on the voice connection's leased-resource metadata.
 
 Consumers and their paths:
 
 | Consumer | Path |
 |---|---|
 | Agent chat turns | Model-bound resolution (above) |
-| Voice realtime | `resolve_service(org, Realtime, None)` today (single realtime-capable provider); passes `voice_connection.provider_id` once per-connection provider selection is plumbed |
+| Voice realtime | `resolve_service(org, Realtime, voice_connection.provider_id)` — optional per-connection `provider_id` binding on the create/attach bodies; omitted falls back to the org default or the single realtime-capable provider; an unknown/non-realtime binding is a `400` |
 | Knowledge-base embeddings (future) | `resolve_service` with an embedding model selection |
 | Model sync | Per-provider, via the driver's `list_models` with the provider's connection |
 | Utility LLM | **Not a provider consumer.** Stays system-owned and env-configured by design (`specs/utility-llm.md`) |

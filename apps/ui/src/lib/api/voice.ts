@@ -7,6 +7,13 @@ export interface VoiceCallRequest {
   voice?: string;
   reasoning_effort?: string;
   instructions?: string;
+  /**
+   * Optional realtime provider binding: the prefixed public id of the provider
+   * connection to route this voice connection through. Lets an org with more
+   * than one realtime-capable provider choose which one serves the session.
+   * Omit to use the org default (or single) realtime provider.
+   */
+  provider_id?: string;
 }
 
 export interface VoiceCallResponse {

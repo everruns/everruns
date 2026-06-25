@@ -12,7 +12,8 @@ use crate::domains::messages::{CreateMessage, MessageService};
 use crate::domains::sessions::{CreateSession, GetOrCreateChatSession, SessionService};
 use crate::event_delivery::EventDelivery;
 use crate::services::{
-    EventService, ProviderResolverService, provider_resolver::ResolvedProviderCredentials,
+    EventService, ProviderResolverService,
+    provider_resolver::{ResolvedProviderCredentials, ResolvedServiceProvider},
 };
 use crate::storage::{DbLeasedResourceStore, DbSessionResourceRegistry, StorageBackend};
 use axum::{
@@ -190,6 +191,15 @@ pub struct VoiceSessionOptions {
     #[serde(default)]
     #[schema(example = "Always confirm before placing an order.")]
     pub instructions: Option<String>,
+    /// Realtime provider binding: the prefixed public id of the provider
+    /// connection to route this voice connection through (e.g. `prov_…`). Lets
+    /// an org with more than one realtime-capable provider pick which one serves
+    /// the connection. When omitted, the server resolves the org's default (or
+    /// single) realtime provider. The bound provider's driver MUST declare the
+    /// realtime service, otherwise the request is rejected with 400.
+    #[serde(default)]
+    #[schema(example = "prov_01h…")]
+    pub provider_id: Option<String>,
 }
 
 /// Request body for voice client secret.
@@ -324,8 +334,10 @@ pub async fn create_client_secret(
     ensure_voice_enabled(&org)?;
     let session_id = parse_session_id(&session_id)?;
     authorize_session(&state, &org, session_id).await?;
+    let binding = req.options.provider_id.clone();
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_realtime_credentials(&state, org.org_id).await?;
+    let resolved = resolve_realtime_credentials(&state, org.org_id, binding.as_deref()).await?;
+    let credentials = resolved.credentials;
     let voice_connection_id = new_voice_connection_id();
     let lease = upsert_voice_resource(VoiceResourceUpsert {
         state: &state,
@@ -333,6 +345,7 @@ pub async fn create_client_secret(
         org: &org,
         voice_connection_id: &voice_connection_id,
         provider_call_id: None,
+        provider_id: &resolved.provider_id,
         options: &normalized,
         transport: "client_secret",
         status: "pending_client",
@@ -416,14 +429,17 @@ pub async fn attach_call(
             ErrorResponse::new("Invalid voice connection").into_response(StatusCode::BAD_REQUEST)
         );
     }
+    let binding = req.options.provider_id.clone();
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_realtime_credentials(&state, org.org_id).await?;
+    let resolved = resolve_realtime_credentials(&state, org.org_id, binding.as_deref()).await?;
+    let credentials = resolved.credentials;
     let lease = upsert_voice_resource(VoiceResourceUpsert {
         state: &state,
         session_id,
         org: &org,
         voice_connection_id: &voice_connection_id,
         provider_call_id: Some(&req.provider_call_id),
+        provider_id: &resolved.provider_id,
         options: &normalized,
         transport: "webrtc",
         status: "active",
@@ -570,8 +586,10 @@ async fn bootstrap_call(
     if req.sdp.trim().is_empty() {
         return Err(ErrorResponse::new("Missing SDP").into_response(StatusCode::BAD_REQUEST));
     }
+    let binding = req.options.provider_id.clone();
     let normalized = normalize_options(req.options)?;
-    let credentials = resolve_realtime_credentials(state, org.org_id).await?;
+    let resolved = resolve_realtime_credentials(state, org.org_id, binding.as_deref()).await?;
+    let credentials = resolved.credentials;
     let voice_connection_id = new_voice_connection_id();
     let form = multipart::Form::new()
         .part(
@@ -615,6 +633,7 @@ async fn bootstrap_call(
         org,
         voice_connection_id: &voice_connection_id,
         provider_call_id: provider_call_id.as_deref(),
+        provider_id: &resolved.provider_id,
         options: &normalized,
         transport: "webrtc",
         status: "active",
@@ -769,20 +788,49 @@ async fn authorize_session(
 }
 
 /// Resolve the realtime-voice provider connection for an org via service-bound
-/// resolution (specs/providers.md): the active provider whose driver declares
+/// resolution (specs/providers.md): the provider whose driver declares
 /// `ServiceKind::Realtime`, fail-closed. Replaces the previous "first active
 /// provider matching the `openai` type string" behavior — only realtime-capable
 /// drivers are eligible now.
+///
+/// `binding` is an optional client-supplied realtime provider public id. When
+/// present it pins resolution to that provider (resolver tier 1); a binding that
+/// is unknown or whose driver does not declare the realtime service is a request
+/// error surfaced as 400, not an upstream `502`.
 async fn resolve_realtime_credentials(
     state: &AppState,
     org_id: i64,
-) -> Result<ResolvedProviderCredentials, (StatusCode, Json<ErrorResponse>)> {
+    binding: Option<&str>,
+) -> Result<ResolvedServiceProvider, (StatusCode, Json<ErrorResponse>)> {
     state
         .provider_resolver
-        .resolve_service(org_id, ServiceKind::Realtime, None)
+        .resolve_service(org_id, ServiceKind::Realtime, binding)
         .await
-        .map(|resolved| resolved.credentials)
-        .map_err(provider_error)
+        .map_err(|error| map_realtime_resolution_error(binding, error))
+}
+
+/// Map a realtime provider resolution failure onto an HTTP error.
+///
+/// When the caller pinned a `binding`, the failure is about their request
+/// (unknown provider id, driver that does not declare the realtime service, or
+/// missing credentials), so return a `400` with the resolver's reason — a
+/// multi-provider caller needs to know which selection to fix. With no binding
+/// the failure is server-side configuration (no realtime provider available),
+/// surfaced as the generic `502` like any other provider problem.
+fn map_realtime_resolution_error(
+    binding: Option<&str>,
+    error: anyhow::Error,
+) -> (StatusCode, Json<ErrorResponse>) {
+    match binding {
+        Some(provider_id) => {
+            tracing::debug!(%provider_id, error = %error, "voice realtime provider binding rejected");
+            ErrorResponse::new(format!(
+                "Realtime provider '{provider_id}' is not available for voice: {error}"
+            ))
+            .into_response(StatusCode::BAD_REQUEST)
+        }
+        None => provider_error(error),
+    }
 }
 
 fn parse_session_id(session_id: &str) -> Result<SessionId, (StatusCode, Json<ErrorResponse>)> {
@@ -858,6 +906,10 @@ struct VoiceResourceUpsert<'a> {
     org: &'a ResolvedOrg,
     voice_connection_id: &'a str,
     provider_call_id: Option<&'a str>,
+    /// Public id of the realtime provider connection resolved for this voice
+    /// connection (the binding when one was supplied, otherwise the
+    /// auto-selected provider). Persisted for audit / multi-provider visibility.
+    provider_id: &'a str,
     options: &'a NormalizedVoiceOptions,
     transport: &'a str,
     status: &'a str,
@@ -872,6 +924,7 @@ async fn upsert_voice_resource(
         "voice": req.options.voice,
         "reasoning_effort": req.options.reasoning_effort,
         "transport": req.transport,
+        "provider_id": req.provider_id,
     });
     if let Some(provider_call_id) = req.provider_call_id {
         metadata["provider_call_id"] = json!(provider_call_id);
@@ -1434,6 +1487,65 @@ async fn execute_realtime_tool(_session_id: SessionId, call: ToolCall) -> Realti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn voice_session_options_accept_provider_binding() {
+        // The realtime provider binding rides on the shared options struct that
+        // is flattened into every create/attach voice request body.
+        let opts: VoiceSessionOptions =
+            serde_json::from_value(json!({ "provider_id": "prov_realtime_1" }))
+                .expect("provider_id is an accepted option");
+        assert_eq!(opts.provider_id.as_deref(), Some("prov_realtime_1"));
+
+        // Omitting it is valid and resolves to the org default later.
+        let empty: VoiceSessionOptions = serde_json::from_value(json!({})).expect("empty options");
+        assert_eq!(empty.provider_id, None);
+    }
+
+    #[test]
+    fn provider_binding_is_not_forwarded_to_the_realtime_payload() {
+        // The binding is a routing decision, not a realtime-session knob, so it
+        // must not leak into the provider session payload.
+        let normalized = normalize_options(VoiceSessionOptions {
+            model: None,
+            voice: None,
+            reasoning_effort: None,
+            instructions: None,
+            provider_id: Some("prov_realtime_1".to_string()),
+        })
+        .expect("default options normalize");
+        let payload = realtime_session_payload(&normalized);
+        assert_eq!(payload.get("provider_id"), None);
+        assert_eq!(payload.get("provider"), None);
+    }
+
+    #[test]
+    fn bad_provider_binding_maps_to_bad_request() {
+        // A client-chosen provider that cannot serve realtime is the caller's
+        // mistake — surface 400 with the resolver's reason, not an opaque 502.
+        let (status, body) = map_realtime_resolution_error(
+            Some("prov_realtime_1"),
+            anyhow::anyhow!("provider prov_realtime_1 does not provide the realtime service"),
+        );
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let detail = body.0.detail.expect("detail set");
+        assert!(detail.contains("prov_realtime_1"), "names the provider");
+        assert!(
+            detail.contains("does not provide the realtime service"),
+            "surfaces the resolver reason: {detail}"
+        );
+    }
+
+    #[test]
+    fn missing_realtime_provider_without_binding_maps_to_bad_gateway() {
+        // No binding => server-side configuration gap, reported like any other
+        // provider failure (generic 502, no internal detail leaked).
+        let (status, _body) = map_realtime_resolution_error(
+            None,
+            anyhow::anyhow!("no provider configured for the realtime service"),
+        );
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+    }
 
     #[test]
     fn parses_call_id_from_location() {
