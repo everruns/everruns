@@ -30,6 +30,7 @@ use crate::driver_registry::{
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
+    is_transient_send_error, send_error_message,
 };
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
@@ -438,12 +439,42 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
             };
 
-            let response = request_builder
+            let response = match request_builder
                 .header("Content-Type", "application/json")
                 .json(&request)
                 .send()
                 .await
-                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    // A send failure never produced an HTTP response, so it
+                    // bypasses the status-based retry below. Connection-level
+                    // errors (incl. a stale pooled keep-alive connection,
+                    // EVE-635) are transient — retry them with backoff, matching
+                    // SDK `APIConnectionError` behavior.
+                    if is_transient_send_error(&e)
+                        && retry_metadata.attempts < self.retry_config.max_retries
+                    {
+                        let wait_duration =
+                            self.retry_config.calculate_backoff(retry_metadata.attempts);
+                        tracing::warn!(
+                            error = %e,
+                            attempt = retry_metadata.attempts + 1,
+                            max_retries = self.retry_config.max_retries,
+                            wait_secs = wait_duration.as_secs_f64(),
+                            "OpenAIProtocolDriver: transient connection error sending request, retrying"
+                        );
+                        retry_metadata.record_retry(wait_duration, None);
+                        last_error = Some(format!("Failed to send request: {e}"));
+                        tokio::time::sleep(wait_duration).await;
+                        continue;
+                    }
+                    return Err(AgentLoopError::llm(send_error_message(
+                        &e,
+                        retry_metadata.attempts,
+                    )));
+                }
+            };
 
             let status = response.status();
 

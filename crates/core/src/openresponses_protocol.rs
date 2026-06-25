@@ -39,6 +39,7 @@ use crate::driver_registry::{
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
+    is_transient_send_error, send_error_message,
 };
 use crate::openai_protocol::{
     AuthHeaderProvider, is_openai_model_not_found, is_openai_request_too_large,
@@ -505,7 +506,7 @@ impl OpenResponsesProtocolChatDriver {
             // Auth is resolved per attempt so refreshable providers can rotate
             // tokens across retries (same seam as the streaming path).
             let (auth_name, auth_value) = self.resolve_auth_header(&compact_url).await?;
-            let response = self
+            let response = match self
                 .client
                 .post(&compact_url)
                 .header(auth_name, auth_value)
@@ -513,9 +514,41 @@ impl OpenResponsesProtocolChatDriver {
                 .json(&request)
                 .send()
                 .await
-                .map_err(|e| {
-                    AgentLoopError::llm(format!("Failed to send compact request: {}", e))
-                })?;
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    // A send failure never produced an HTTP response, so it
+                    // bypasses the status-based retry below. Connection-level
+                    // errors (incl. a stale pooled keep-alive connection,
+                    // EVE-635) are transient — retry them with backoff, matching
+                    // SDK `APIConnectionError` behavior.
+                    if is_transient_send_error(&e)
+                        && retry_metadata.attempts < self.retry_config.max_retries
+                    {
+                        let wait_duration =
+                            self.retry_config.calculate_backoff(retry_metadata.attempts);
+                        tracing::warn!(
+                            error = %e,
+                            attempt = retry_metadata.attempts + 1,
+                            max_retries = self.retry_config.max_retries,
+                            wait_secs = wait_duration.as_secs_f64(),
+                            "OpenResponsesDriver: compact transient connection error sending request, retrying"
+                        );
+                        retry_metadata.record_retry(wait_duration, None);
+                        last_error = Some(format!("Failed to send compact request: {e}"));
+                        tokio::time::sleep(wait_duration).await;
+                        continue;
+                    }
+                    let suffix = if retry_metadata.attempts > 0 {
+                        format!(" (after {} retries)", retry_metadata.attempts)
+                    } else {
+                        String::new()
+                    };
+                    return Err(AgentLoopError::llm(format!(
+                        "Failed to send compact request: {e}{suffix}"
+                    )));
+                }
+            };
 
             let status = response.status();
 
@@ -989,7 +1022,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             let (auth_name, auth_value) = self.resolve_auth_header(&self.api_url).await?;
             headers.insert(auth_name, auth_value);
 
-            let response = self
+            let response = match self
                 .client
                 .post(&self.api_url)
                 .headers(headers)
@@ -997,7 +1030,37 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                 .json(&request_body)
                 .send()
                 .await
-                .map_err(|e| AgentLoopError::llm(format!("Failed to send request: {}", e)))?;
+            {
+                Ok(response) => response,
+                Err(e) => {
+                    // A send failure never produced an HTTP response, so it
+                    // bypasses the status-based retry below. Connection-level
+                    // errors (incl. a stale pooled keep-alive connection,
+                    // EVE-635) are transient — retry them with backoff, matching
+                    // SDK `APIConnectionError` behavior.
+                    if is_transient_send_error(&e)
+                        && retry_metadata.attempts < self.retry_config.max_retries
+                    {
+                        let wait_duration =
+                            self.retry_config.calculate_backoff(retry_metadata.attempts);
+                        tracing::warn!(
+                            error = %e,
+                            attempt = retry_metadata.attempts + 1,
+                            max_retries = self.retry_config.max_retries,
+                            wait_secs = wait_duration.as_secs_f64(),
+                            "OpenResponsesProtocolDriver: transient connection error sending request, retrying"
+                        );
+                        retry_metadata.record_retry(wait_duration, None);
+                        last_error = Some(format!("Failed to send request: {e}"));
+                        tokio::time::sleep(wait_duration).await;
+                        continue;
+                    }
+                    return Err(AgentLoopError::llm(send_error_message(
+                        &e,
+                        retry_metadata.attempts,
+                    )));
+                }
+            };
 
             let status = response.status();
 
