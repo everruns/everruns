@@ -377,6 +377,35 @@ pub fn is_transient_error(status: reqwest::StatusCode) -> bool {
     false
 }
 
+/// Check if a `reqwest` error raised while *sending* a request is a transient
+/// connection-level failure that is safe to retry.
+///
+/// These are errors where the request never produced an HTTP response: a
+/// connect/TLS failure, a connect timeout, or a generic send failure on a
+/// (possibly stale) pooled keep-alive connection — surfaced by reqwest as
+/// `error sending request for url ...`. The official Anthropic/OpenAI SDKs
+/// retry exactly these as `APIConnectionError`. Because the server produced no
+/// response, the request had no effect, so retrying is safe.
+///
+/// This matters since EVE-635 introduced a process-wide shared connection pool:
+/// a keep-alive connection the peer has already closed is only discovered when
+/// the next request tries to reuse it, and that send fails here rather than
+/// returning an HTTP status — so it must be retried alongside the 429/5xx path
+/// (see `is_transient_error`).
+pub fn is_transient_send_error(err: &reqwest::Error) -> bool {
+    err.is_connect() || err.is_timeout() || err.is_request()
+}
+
+/// Build the user-facing message for a request that failed to send, noting how
+/// many retries were exhausted so it mirrors the HTTP-status error path.
+pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
+    if attempts > 0 {
+        format!("Failed to send request: {err} (after {attempts} retries)")
+    } else {
+        format!("Failed to send request: {err}")
+    }
+}
+
 /// Check if an in-band provider error message looks transient and safe to retry.
 ///
 /// This complements HTTP-status-based retry detection for streaming APIs that can
@@ -583,6 +612,29 @@ mod tests {
         assert!(!is_transient_error(reqwest::StatusCode::FORBIDDEN)); // 403
         assert!(!is_transient_error(reqwest::StatusCode::NOT_FOUND)); // 404
         assert!(!is_transient_error(reqwest::StatusCode::NOT_IMPLEMENTED)); // 501
+    }
+
+    /// A real send that cannot reach the server (connection refused on a closed
+    /// port) must be classified as a transient connection error — this is the
+    /// "error sending request for url" case that the retry loop now retries.
+    #[tokio::test]
+    async fn test_is_transient_send_error_on_connection_refused() {
+        // Bind then immediately drop a listener to obtain a port that is
+        // guaranteed to be closed, so the connect attempt is refused.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        let err = reqwest::Client::new()
+            .get(format!("http://{addr}/"))
+            .send()
+            .await
+            .expect_err("request to a closed port should fail");
+
+        assert!(
+            is_transient_send_error(&err),
+            "connection-refused send error should be transient: {err:?}"
+        );
     }
 
     #[test]
