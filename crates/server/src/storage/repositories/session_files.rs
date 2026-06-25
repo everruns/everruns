@@ -212,24 +212,12 @@ impl Database {
         Ok(row)
     }
 
-    /// Get a file by ID
-    pub async fn get_session_file_by_id(&self, id: Uuid) -> Result<Option<SessionFileRow>> {
-        let mut row = sqlx::query_as::<_, SessionFileRow>(
-            r#"
-            SELECT id, workspace_id AS session_id, path, content, is_directory, is_readonly, size_bytes, created_at, updated_at
-            FROM workspace_files
-            WHERE id = $1
-            "#,
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await?;
-
-        if let Some(row) = row.as_mut() {
-            self.materialize_file_content(row).await?;
-        }
-        Ok(row)
-    }
+    // Intentionally no `get_session_file_by_id(id)`: a bare `WHERE id = $1`
+    // lookup that returns file *content* with no session scoping is a
+    // tenant-isolation hazard (TM-TENANT-012). It had no callers, so it was
+    // removed rather than left as a footgun for a future cross-session reader.
+    // All real reads scope by `workspace_id` (the session id) — see
+    // `get_session_file` / `get_session_file_info`.
 
     /// List files in a directory (immediate children only, no content)
     pub async fn list_session_files(

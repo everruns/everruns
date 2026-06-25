@@ -56,6 +56,18 @@ impl Database {
         Ok(row)
     }
 
+    // THREAT[TM-TENANT-012]: the connection accessors below
+    // (`get_agent_identity_connection`, `list_agent_identity_connections`,
+    // `delete_agent_identity_connection`) are scoped only by
+    // `agent_identity_id` and return/mutate `access_token_encrypted` /
+    // `refresh_token_encrypted` (OAuth secrets). `agent_identity_connections`
+    // has no `org_id` column, so these methods cannot self-enforce tenant
+    // isolation. Every caller MUST first verify the identity belongs to the
+    // caller's org — `resolve_identity` in `api/agent_identity_connections.rs`
+    // does this via `get_agent_identity(caller.org_id, identity_id)` before any
+    // connection access. Do not call these with an `AgentIdentityId` that was
+    // not org-validated.
+
     /// Get an identity's connection for a specific provider
     pub async fn get_agent_identity_connection(
         &self,
