@@ -9,6 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.0] - 2026-06-25
+
+### Highlights
+
+- **Sandboxed File Previews** — HTML and PDF files can now be previewed in a secure sandboxed viewer ([#2418](https://github.com/everruns/everruns/pull/2418)).
+- **Security Hardening** — Broad security pass: constant-time auth comparisons, Argon2id parameter pinning, OAuth CSRF/replay protection, DNS-pinned webhook delivery (SSRF), and rate-limited OAuth client registration ([#2427](https://github.com/everruns/everruns/pull/2427), [#2432](https://github.com/everruns/everruns/pull/2432), [#2434](https://github.com/everruns/everruns/pull/2434), [#2435](https://github.com/everruns/everruns/pull/2435), [#2429](https://github.com/everruns/everruns/pull/2429)).
+- **Per-domain Agent Permissions** — `OrgAgentsManage` is now split into fine-grained per-domain permissions for tighter access control ([#2451](https://github.com/everruns/everruns/pull/2451)).
+
+### What's Changed
+
+- fix(storage): harden bare-id repository methods (tenant isolation) ([#2458](https://github.com/everruns/everruns/pull/2458)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): settle idle turns from terminal events ([#2444](https://github.com/everruns/everruns/pull/2444)) by [@chaliy](https://github.com/chaliy)
+- refactor(authz): split OrgAgentsManage into per-domain permissions ([#2451](https://github.com/everruns/everruns/pull/2451)) by [@chaliy](https://github.com/chaliy)
+- fix(container-sandbox): secure Docker-host default; document runtime/egress assumptions ([#2450](https://github.com/everruns/everruns/pull/2450)) by [@chaliy](https://github.com/chaliy)
+- perf(server,worker): mimalloc global allocator; bound history read ([#2457](https://github.com/everruns/everruns/pull/2457)) by [@chaliy](https://github.com/chaliy)
+- perf(server): bound agent_version_metadata_cache with moka ([#2456](https://github.com/everruns/everruns/pull/2456)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): keep blob GC prefix scans delimited ([#2441](https://github.com/everruns/everruns/pull/2441)) by [@chaliy](https://github.com/chaliy)
+- fix(usage): preserve aggregate effective cost ([#2446](https://github.com/everruns/everruns/pull/2446)) by [@chaliy](https://github.com/chaliy)
+- fix(server): prune recorded task artifacts ([#2440](https://github.com/everruns/everruns/pull/2440)) by [@chaliy](https://github.com/chaliy)
+- fix(server): enforce session caps in app channels ([#2439](https://github.com/everruns/everruns/pull/2439)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): persist parallel tool call updates ([#2443](https://github.com/everruns/everruns/pull/2443)) by [@chaliy](https://github.com/chaliy)
+- fix(server): avoid canceling fired one-shot monitors ([#2445](https://github.com/everruns/everruns/pull/2445)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): bound custom check rules ([#2442](https://github.com/everruns/everruns/pull/2442)) by [@chaliy](https://github.com/chaliy)
+- feat(docs): add llms.txt generation and build-time link validation ([#2448](https://github.com/everruns/everruns/pull/2448)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): guard /dev showcase pages behind isDev ([#2449](https://github.com/everruns/everruns/pull/2449)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): validate OAuth CSRF state on login callback ([#2447](https://github.com/everruns/everruns/pull/2447)) by [@chaliy](https://github.com/chaliy)
+- fix(grpc): constant-time worker token compare; document TM-AUTHZ-002 ([#2436](https://github.com/everruns/everruns/pull/2436)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): rate-limit OAuth dynamic client registration ([#2435](https://github.com/everruns/everruns/pull/2435)) by [@chaliy](https://github.com/chaliy)
+- feat(docs): add suggested + recent quick links to search empty state ([#2438](https://github.com/everruns/everruns/pull/2438)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): use constant-time comparison for credential checks ([#2434](https://github.com/everruns/everruns/pull/2434)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): pin Argon2id password-hashing parameters ([#2432](https://github.com/everruns/everruns/pull/2432)) by [@chaliy](https://github.com/chaliy)
+- fix(webhooks): pin DNS on task-webhook delivery (SSRF) ([#2429](https://github.com/everruns/everruns/pull/2429)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): fail closed on AUTH_MODE misconfiguration ([#2428](https://github.com/everruns/everruns/pull/2428)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): reject MCP OAuth authorization-code replay (TOCTOU) ([#2427](https://github.com/everruns/everruns/pull/2427)) by [@chaliy](https://github.com/chaliy)
+- fix(email): avoid remote logo loads in templates ([#2424](https://github.com/everruns/everruns/pull/2424)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): reject client-side MCP tool names ([#2421](https://github.com/everruns/everruns/pull/2421)) by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid role-promoting tool errors ([#2420](https://github.com/everruns/everruns/pull/2420)) by [@chaliy](https://github.com/chaliy)
+- fix(core): serialize session sandbox tools ([#2422](https://github.com/everruns/everruns/pull/2422)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): quote names in coding-agent prompts ([#2423](https://github.com/everruns/everruns/pull/2423)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): correct events message index predicate, prune indexes ([#2425](https://github.com/everruns/everruns/pull/2425)) by [@chaliy](https://github.com/chaliy)
+- fix(session-file-system): make edit_file edits[]-only ([#2419](https://github.com/everruns/everruns/pull/2419)) by [@chaliy](https://github.com/chaliy)
+- feat(files): add sandboxed HTML and PDF file previews ([#2418](https://github.com/everruns/everruns/pull/2418)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.16.2] - 2026-06-23
 
 ### Highlights

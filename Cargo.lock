@@ -24,7 +24,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
  "webpki-roots 1.0.8",
 ]
 
@@ -39,7 +39,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -85,7 +85,7 @@ dependencies = [
  "tower",
  "tower-http",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -138,7 +138,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -482,7 +482,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -1036,13 +1036,13 @@ dependencies = [
 
 [[package]]
 name = "bstr"
-version = "1.12.1"
+version = "1.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "63044e1ae8e69f3b5a92c736ca6269b8d12fa7efe39bf34ddb06d102cf0e2cab"
+checksum = "a4e308e67087593070530a666f7fe8815cbd2e61d8f5b7313b71b7d721d1dfde"
 dependencies = [
  "memchr",
  "regex-automata",
- "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -1164,9 +1164,9 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 
 [[package]]
 name = "chacha20"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f8d983286843e49675a4b7a2d174efe136dc93a18d69130dd18198a6c167601"
+checksum = "d524456ba66e72eb8b115ff89e01e497f8e6d11d78b70b1aa13c0fbd97540a81"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.3.0",
@@ -2331,11 +2331,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.16.2"
+version = "0.17.0"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2351,7 +2351,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2368,7 +2368,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2422,14 +2422,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2449,7 +2449,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2500,13 +2500,13 @@ dependencies = [
  "tree-sitter-typescript",
  "url",
  "utoipa",
- "uuid 1.23.3",
+ "uuid 1.23.4",
  "wiremock",
 ]
 
 [[package]]
 name = "everruns-durable"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2526,12 +2526,12 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-fireworks"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2546,7 +2546,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2560,7 +2560,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-ard"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2577,7 +2577,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2593,7 +2593,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2614,7 +2614,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2629,7 +2629,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2646,7 +2646,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2679,12 +2679,12 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2699,7 +2699,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2726,7 +2726,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2743,7 +2743,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2756,7 +2756,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2772,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2784,12 +2784,12 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2806,12 +2806,12 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-local"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2824,12 +2824,12 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-mai"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2845,7 +2845,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2859,7 +2859,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2879,7 +2879,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2894,11 +2894,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.16.2"
+version = "0.17.0"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2913,7 +2913,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -2938,7 +2938,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3028,14 +3028,14 @@ dependencies = [
  "url",
  "urlencoding",
  "utoipa",
- "uuid 1.23.3",
+ "uuid 1.23.4",
  "wiremock",
  "zip",
 ]
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3047,12 +3047,12 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3068,7 +3068,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.16.2"
+version = "0.17.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3110,7 +3110,7 @@ dependencies = [
  "tonic",
  "tracing",
  "turmoil",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -4545,9 +4545,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.102"
+version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03d04c30968dffe80775bd4d7fb676131cd04a1fb46d2686dbffbaec2d9dfd31"
+checksum = "53b44bfcdb3f8d5837a46dae1ca9660a837176eee74a28b229bc626816589102"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -5140,7 +5140,7 @@ dependencies = [
  "portable-atomic",
  "smallvec",
  "tagptr",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -7794,7 +7794,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
- "uuid 1.23.3",
+ "uuid 1.23.4",
  "webpki-roots 1.0.8",
 ]
 
@@ -7862,7 +7862,7 @@ dependencies = [
  "sqlx-core",
  "thiserror 2.0.18",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -7898,7 +7898,7 @@ dependencies = [
  "stringprep",
  "thiserror 2.0.18",
  "tracing",
- "uuid 1.23.3",
+ "uuid 1.23.4",
  "whoami",
 ]
 
@@ -7925,7 +7925,7 @@ dependencies = [
  "thiserror 2.0.18",
  "tracing",
  "url",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -9045,7 +9045,7 @@ dependencies = [
  "quote",
  "regex",
  "syn 2.0.118",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
@@ -9060,9 +9060,9 @@ dependencies = [
 
 [[package]]
 name = "uuid"
-version = "1.23.3"
+version = "1.23.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "144d6b123cef80b301b8f72a9e2ca4370ddec21950d0a103dd22c437006d2db7"
+checksum = "bf80a72845275afea99e7f2b434723d3bc7e38470fcd1c7ed39a599c73319a53"
 dependencies = [
  "atomic",
  "getrandom 0.4.3",
@@ -9141,9 +9141,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ddb3f79143bced6de84270411622a2699cee572fc0875aeaf1e7867cf9fca1a"
+checksum = "4b067c0c11094aef6b7a801c1e34a26affafdf3d051dba08456b868789aaf9a4"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -9154,9 +9154,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.75"
+version = "0.4.76"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "503b14d284f2c8dac03b819967e155ea753f573586193b2b2c95990cb5d69280"
+checksum = "c62df1340f32221cb9c54d6a27b030e3dba64361d4a95bed55f9aacb44da291d"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -9164,9 +9164,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4e21a184b13fb19e157296e2c46056aec9092264fab83e4ba59e68c61b323c3d"
+checksum = "167ce5e579f6bcf889c4f7175a8a5a585de84e8ff93976ce393efa5f2837aab1"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -9174,9 +9174,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fecefd9c35bd935a20fc3fc344b5f29138961e4f47fb03297d88f2587afb5ebd"
+checksum = "f3997c7839262f4ef12cf90b818d6340c18e80f263f1a94bf157d0ec4420380e"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -9187,9 +9187,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.125"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23939e44bb9a5d7576fa2b563dc2e136628f1224e88a8deed09e04858b77871f"
+checksum = "dc1b4cb0cc549fcf58d7dfc081778139b3d283a081644e833e84682ad71cea24"
 dependencies = [
  "unicode-ident",
 ]
@@ -9222,9 +9222,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.102"
+version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a6430a72df5eb332242960fe84b3002a241163998241eb596d4f739b9757061d"
+checksum = "8622dcb61c0bcc9fffa6938bed81210af2da9a7e4a1a834b2e37a59b6dfb6141"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -9309,7 +9309,7 @@ dependencies = [
  "mac_address",
  "sha2 0.10.9",
  "thiserror 1.0.69",
- "uuid 1.23.3",
+ "uuid 1.23.4",
 ]
 
 [[package]]
