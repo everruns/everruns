@@ -1060,9 +1060,15 @@ fn process_stream_choice(
                     accumulated_tool_calls[idx].name = name.clone();
                 }
                 if let Some(args) = &function.arguments {
-                    let current = accumulated_tool_calls[idx].arguments.as_str().unwrap_or("");
-                    let combined = format!("{}{}", current, args);
-                    accumulated_tool_calls[idx].arguments = json!(combined);
+                    // EVE-636: accumulate fragments in place via push_str
+                    // (amortized O(total)) instead of re-copying + re-boxing into
+                    // a Value per delta (O(n^2)). `arguments` is kept as a
+                    // Value::String here and parsed once at finish via
+                    // finalize_tool_calls.
+                    if let serde_json::Value::String(s) = &mut accumulated_tool_calls[idx].arguments
+                    {
+                        s.push_str(args);
+                    }
                 }
             }
         }
@@ -1667,6 +1673,69 @@ mod tests {
         );
         assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s == "hello"));
         assert_eq!(total_tokens, 1);
+    }
+
+    /// EVE-636: streamed tool-call arguments must concatenate exactly across
+    /// many small chunks (accumulated as a raw string, parsed zero times
+    /// mid-stream) and be parsed exactly once at the `tool_calls` finish chunk.
+    #[test]
+    fn test_tool_call_arguments_accumulate_across_many_chunks() {
+        let mut total_tokens = 0u32;
+        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+
+        // Open the call (id + name, empty initial arguments).
+        process_stream_choice(
+            &choice(
+                r#"{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"write_file","arguments":""}}]},"finish_reason":null}"#,
+            ),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+
+        let payload = r#"{"path":"a.rs","contents":"a fairly long contents value streamed one character at a time to exceed one hundred chunks","n":987654321}"#;
+        assert!(payload.chars().count() > 100);
+
+        // Stream the arguments one character per chunk.
+        let mut expected = String::new();
+        for ch in payload.chars() {
+            let frag = ch.to_string();
+            let chunk = json!({
+                "delta": {"tool_calls": [{"index": 0, "function": {"arguments": frag}}]},
+                "finish_reason": null
+            })
+            .to_string();
+            process_stream_choice(
+                &choice(&chunk),
+                &mut total_tokens,
+                &mut acc,
+                &mut finish_reason,
+            );
+            expected.push_str(&frag);
+        }
+
+        // Mid-stream: accumulated as a raw string, not yet parsed.
+        assert_eq!(acc[0].arguments.as_str(), Some(expected.as_str()));
+
+        // Finish chunk: parsed exactly once into the structured value.
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{},"finish_reason":"tool_calls"}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        match e {
+            LlmStreamEvent::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id, "call_1");
+                assert_eq!(
+                    calls[0].arguments,
+                    serde_json::from_str::<serde_json::Value>(payload).unwrap()
+                );
+            }
+            other => panic!("expected ToolCalls, got {:?}", other),
+        }
     }
 
     /// OpenAI's native path sends `delta: {}` (no content key) in the finish

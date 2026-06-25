@@ -825,18 +825,20 @@ impl ChatDriver for AnthropicChatDriver {
                                 {
                                     match data.delta {
                                         AnthropicDelta::TextDelta { text } => {
-                                            *output_tokens.lock().unwrap() += 1;
+                                            // EVE-636: do not count deltas as tokens here —
+                                            // deltas != tokens, and this took a mutex on every
+                                            // token. Authoritative `output_tokens` is set from
+                                            // the terminal `message_delta` usage event below.
                                             return Ok(LlmStreamEvent::TextDelta(text));
                                         }
                                         AnthropicDelta::InputJsonDelta { partial_json } => {
-                                            // Accumulate tool input JSON
+                                            // EVE-636: accumulate tool-input JSON in place via
+                                            // push_str (amortized O(total)) instead of
+                                            // re-copying + re-boxing into a Value per delta
+                                            // (O(n^2)). Parsed once at content_block_stop.
                                             let mut current = current_tool_call.lock().unwrap();
                                             if let Some(ref mut tc) = *current {
-                                                let current_args =
-                                                    tc.arguments.as_str().unwrap_or("");
-                                                let combined =
-                                                    format!("{}{}", current_args, partial_json);
-                                                tc.arguments = json!(combined);
+                                                append_tool_input_delta(tc, &partial_json);
                                             }
                                             return Ok(LlmStreamEvent::TextDelta(String::new()));
                                         }
@@ -871,11 +873,8 @@ impl ChatDriver for AnthropicChatDriver {
                                 // Finalize current tool call if any
                                 let mut current = current_tool_call.lock().unwrap();
                                 if let Some(mut tc) = current.take() {
-                                    // Parse the accumulated JSON string
-                                    if let Some(args_str) = tc.arguments.as_str() {
-                                        tc.arguments =
-                                            serde_json::from_str(args_str).unwrap_or(json!({}));
-                                    }
+                                    // EVE-636: parse the accumulated JSON string exactly once.
+                                    finalize_tool_arguments(&mut tc);
                                     accumulated_tool_calls.lock().unwrap().push(tc);
                                 }
                                 // Check if this is a thinking block with signature
@@ -1079,6 +1078,30 @@ pub fn register_driver(registry: &mut DriverRegistry) {
             Box::new(driver) as BoxedChatDriver
         })
     });
+}
+
+// ============================================================================
+// Streaming tool-call accumulation (EVE-636)
+// ============================================================================
+
+/// Appends a streamed tool-input JSON fragment onto the accumulating arguments
+/// in place. During streaming `ToolCall::arguments` is kept as a
+/// `Value::String`, so `push_str` grows it in amortized O(total) — avoiding the
+/// O(n^2) re-copy + re-box (`format!` + `json!`) that the per-delta path used.
+/// The string is parsed once at `content_block_stop` via
+/// [`finalize_tool_arguments`].
+fn append_tool_input_delta(tool_call: &mut ToolCall, fragment: &str) {
+    if let serde_json::Value::String(s) = &mut tool_call.arguments {
+        s.push_str(fragment);
+    }
+}
+
+/// Parses the accumulated tool-input JSON string into a structured value once a
+/// tool-use content block completes. Empty/invalid JSON falls back to `{}`.
+fn finalize_tool_arguments(tool_call: &mut ToolCall) {
+    if let Some(args_str) = tool_call.arguments.as_str() {
+        tool_call.arguments = serde_json::from_str(args_str).unwrap_or_else(|_| json!({}));
+    }
 }
 
 // ============================================================================
@@ -1849,6 +1872,43 @@ mod tests {
     fn supports_parallel_tool_calls_is_true() {
         let driver = AnthropicChatDriver::new("test-key");
         assert!(driver.supports_parallel_tool_calls("claude-opus-4-8"));
+    }
+
+    /// EVE-636: streamed tool-call arguments accumulate as a raw string across
+    /// many small deltas (parsed zero times during streaming) and are parsed
+    /// exactly once at finalize into the structured value.
+    #[test]
+    fn test_tool_input_accumulates_linearly_and_parses_once() {
+        let payload = r#"{"path":"src/main.rs","contents":"fn main() { println!(\"hello, world — a deliberately long argument payload to exceed one hundred streamed characters\"); }","count":1234567}"#;
+        assert!(
+            payload.chars().count() > 100,
+            "test needs >100 fragments to exercise the accumulation path"
+        );
+
+        let mut tc = ToolCall {
+            id: "tool_1".to_string(),
+            name: "write_file".to_string(),
+            arguments: json!(""),
+        };
+
+        // One character per delta => well over 100 deltas.
+        let mut expected = String::new();
+        for ch in payload.chars() {
+            let frag = ch.to_string();
+            append_tool_input_delta(&mut tc, &frag);
+            expected.push_str(&frag);
+        }
+
+        // Still a Value::String holding the exact concatenation (no per-delta
+        // parse/re-box happened).
+        assert_eq!(tc.arguments.as_str(), Some(expected.as_str()));
+
+        // Parsed exactly once at finalize.
+        finalize_tool_arguments(&mut tc);
+        assert_eq!(
+            tc.arguments,
+            serde_json::from_str::<serde_json::Value>(payload).unwrap()
+        );
     }
 
     // These tests verify that empty text blocks are filtered out to avoid
