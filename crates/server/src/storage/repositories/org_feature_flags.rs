@@ -6,14 +6,22 @@ use std::collections::HashMap;
 
 impl Database {
     pub async fn list_org_feature_flags(&self, org_id: i64) -> Result<HashMap<String, bool>> {
-        let rows = sqlx::query_as::<_, (String, bool)>(
-            "SELECT flag_name, enabled FROM org_feature_flags WHERE org_id = $1",
-        )
-        .bind(org_id)
-        .fetch_all(&self.pool)
-        .await?;
+        // Read-through cache (EVE-637): this read happens on essentially every
+        // org-scoped request; a hit avoids the SELECT entirely. The write path
+        // (`replace_org_feature_flags`) invalidates the same instance.
+        let pool = self.pool.clone();
+        self.org_feature_flags_cache
+            .get_or_load(org_id, move || async move {
+                let rows = sqlx::query_as::<_, (String, bool)>(
+                    "SELECT flag_name, enabled FROM org_feature_flags WHERE org_id = $1",
+                )
+                .bind(org_id)
+                .fetch_all(&pool)
+                .await?;
 
-        Ok(rows.into_iter().collect())
+                Ok(rows.into_iter().collect())
+            })
+            .await
     }
 
     pub async fn replace_org_feature_flags(
@@ -48,6 +56,10 @@ impl Database {
         }
 
         tx.commit().await?;
+        // Invalidate the read-through cache so the next read reflects the write
+        // on this instance immediately (cross-instance staleness is bounded by
+        // the cache TTL). See `storage::org_feature_flags_cache`.
+        self.org_feature_flags_cache.invalidate(org_id).await;
         Ok(())
     }
 }
