@@ -66,12 +66,30 @@ supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
 
 ### Unified Workspace Path Model (EVE-660)
 
-There is **one** workspace path language, owned by
-`everruns_core::workspace_paths::WorkspacePaths`. It is the single seam that
-parses model/tool input, maps to the host filesystem, and formats display
-strings. Every backend (in-memory VFS, DB store, `RealDiskFileStore`) and every
-host consumer (the shell, host-path capabilities) goes through it instead of
-re-implementing `/workspace` stripping.
+The agent sees **one** filesystem, resolved by
+`everruns_core::mount_fs::MountFs` — a `SessionFileSystem` decorator the runtime
+wires around the workspace backend wherever a file store enters a `ToolContext`
+or `SystemPromptContext`. `MountFs` owns:
+
+- a **mount table** — named mount points, each backed by a `SessionFileSystem`,
+  with a per-mount root in that backend's keyspace, dispatched by longest-prefix
+  match; and
+- a **current working directory** (default `/workspace`) — relative paths
+  resolve against it, `.`/`..` collapse POSIX-style.
+
+`/workspace` is therefore a **mount point and the default cwd**, not a magic
+prefix re-implemented in every store. Today there is a single workspace backend,
+so the table holds the root mount (`/` → backend, for legacy backend-native
+paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
+`/workspace` view of the same backend; `/workspace` wins by longest-prefix, so
+`/workspace/foo` ≡ `/foo`. Splitting `/outputs`, `/.agents/skills`, or volumes
+onto *different* backends later is `MountFs::with_mount(...)` — the resolver does
+not change. The model-facing namespace is a stable `/workspace` even for a
+host-rooted backend; host-absolute display is opt-in rendering, not addressing.
+
+Underneath, the workspace backend normalizes paths and maps to the host
+filesystem through `everruns_core::workspace_paths::WorkspacePaths`. It is the
+single normalizer/host-mapper the stores share, below the resolver.
 
 - **Canonical form is workspace-relative.** The in-memory representation is
   `RelPath` — normalized, no `..`, no leading slash, no host prefix
@@ -409,8 +427,9 @@ When the mount-overlay resolver lands, the migration path is:
 
 ## Source Index
 
+- `crates/core/src/mount_fs.rs` — `MountFs` (the mount + cwd resolver, EVE-660)
 - `crates/core/src/workspace_paths.rs` — `WorkspacePaths`, `RelPath` (the
-  unified path model, EVE-660)
+  backend normalizer / host-mapper under the resolver, EVE-660)
 - `crates/core/src/traits.rs` — `SessionFileSystem` trait
   (`workspace_paths()`), `ToolContext::workspace_paths()`
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,

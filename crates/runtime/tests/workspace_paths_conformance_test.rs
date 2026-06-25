@@ -1,22 +1,25 @@
-// EVE-660 conformance: every workspace surface shares one namespace and one
-// root, including across a worktree switch.
+// EVE-660 conformance: one mount-resolved namespace, one root, across a
+// worktree switch.
 //
-// Acceptance criterion: `read_file`, `grep_files`, a host-path scanner
-// capability, and the bash cwd must all agree on the same root before and after
-// `set_host_root` repoints the workspace (the worktree-switch scenario).
+// The agent's filesystem is `MountFs` over the workspace backend: `/workspace`
+// is a mount + the default cwd, not a per-store prefix. This proves that
+// `read_file`, `grep_files`, a host-path scanner capability, the bash cwd, and
+// cwd-relative resolution all agree on the same root — and that repointing the
+// host root (the worktree-switch scenario) moves every surface together while
+// the model-facing namespace stays a stable `/workspace`.
 
 use everruns_core::capabilities::BashTool;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use everruns_core::{SessionFileSystem, SessionId};
+use everruns_core::{MountFs, SessionFileSystem, SessionId};
 use everruns_runtime::RealDiskFileStore;
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 /// Read a path the way a host-path capability (e.g. `repo_map`, `ast_grep`)
-/// would: resolve through the shared `WorkspacePaths` to a host path, then scan
-/// the real file. No local `/workspace` stripping.
+/// would: resolve through the workspace path model to a host path, then scan the
+/// real file. No local `/workspace` stripping.
 fn host_scanner_read(ctx: &ToolContext, input: &str) -> std::io::Result<String> {
     let paths = ctx.workspace_paths();
     let rel = paths
@@ -47,18 +50,20 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
 
     // --- Worktree A ---
     let worktree_a = TempDir::new().unwrap();
-    let store = Arc::new(RealDiskFileStore::new(worktree_a.path()).unwrap());
+    // The host-backed store, behind the mount resolver (as the runtime wires it).
+    let backend = Arc::new(RealDiskFileStore::new(worktree_a.path()).unwrap());
+    let store: Arc<dyn SessionFileSystem> = MountFs::wrap(backend.clone());
     let ctx = ToolContext::with_file_store(session, store.clone());
 
-    let root_a = store.root();
+    let root_a = backend.root();
 
-    // The model addresses files with the workspace alias; the store maps it.
+    // Model addresses files at /workspace; the resolver maps to the backend.
     store
         .write_file(session, "/workspace/marker.txt", "ALPHA", "text")
         .await
         .unwrap();
 
-    // read_file agrees.
+    // read_file agrees — both the /workspace view and the backend-native path.
     let read = store
         .read_file(session, "/workspace/marker.txt")
         .await
@@ -67,27 +72,34 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
     assert_eq!(read.content.as_deref(), Some("ALPHA"));
     assert_eq!(read.path, "/marker.txt");
 
+    // cwd-relative resolution agrees: cwd defaults to /workspace.
+    let relative = store
+        .read_file(session, "marker.txt")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(relative.content.as_deref(), Some("ALPHA"));
+
     // grep_files agrees.
     let hits = store.grep_files(session, "ALPHA", None).await.unwrap();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].path, "/marker.txt");
 
     // Host-path scanner agrees — and reads from worktree A on disk.
-    assert_eq!(host_scanner_read(&ctx, "/marker.txt").unwrap(), "ALPHA");
     assert_eq!(
-        ctx.workspace_paths()
-            .to_host(&ctx.workspace_paths().parse_input("/").unwrap())
-            .unwrap(),
-        root_a
+        host_scanner_read(&ctx, "/workspace/marker.txt").unwrap(),
+        "ALPHA"
     );
 
-    // Bash cwd agrees: pwd reports worktree A's root.
-    assert_eq!(bash_pwd(&ctx).await, root_a.display().to_string());
+    // The model-facing namespace is a stable /workspace, even on real disk.
+    assert_eq!(store.display_root(), "/workspace");
+    assert_eq!(store.display_path("/marker.txt"), "/workspace/marker.txt");
+    assert_eq!(bash_pwd(&ctx).await, "/workspace");
 
-    // --- Switch to Worktree B (e.g. the embedder moved worktrees) ---
+    // --- Switch to Worktree B (the embedder moved worktrees) ---
     let worktree_b = TempDir::new().unwrap();
-    store.set_host_root(worktree_b.path()).unwrap();
-    let root_b = store.root();
+    backend.set_host_root(worktree_b.path()).unwrap();
+    let root_b = backend.root();
     assert_ne!(root_a, root_b);
 
     // A file that exists only in B.
@@ -96,7 +108,7 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         .await
         .unwrap();
 
-    // Every surface now agrees on worktree B — using the *same* context.
+    // Every surface now resolves to worktree B — using the *same* context.
     let read_b = store
         .read_file(session, "/workspace/marker.txt")
         .await
@@ -108,16 +120,20 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
     assert_eq!(hits_b.len(), 1);
     assert_eq!(hits_b[0].path, "/marker.txt");
 
-    assert_eq!(host_scanner_read(&ctx, "/marker.txt").unwrap(), "BETA");
+    assert_eq!(
+        host_scanner_read(&ctx, "/workspace/marker.txt").unwrap(),
+        "BETA"
+    );
 
-    // The old root no longer holds the file the scanner now resolves.
-    let host_b = ctx
-        .workspace_paths()
-        .to_host(&ctx.workspace_paths().parse_input("/marker.txt").unwrap())
+    // The scanner's host path is under the new root, not the old one.
+    let paths = ctx.workspace_paths();
+    let host_b = paths
+        .to_host(&paths.parse_input("/marker.txt").unwrap())
         .unwrap();
     assert!(host_b.starts_with(&root_b));
     assert!(!host_b.starts_with(&root_a));
 
-    // Bash cwd followed the switch too.
-    assert_eq!(bash_pwd(&ctx).await, root_b.display().to_string());
+    // The model-facing namespace is unchanged: still /workspace.
+    assert_eq!(store.display_root(), "/workspace");
+    assert_eq!(bash_pwd(&ctx).await, "/workspace");
 }

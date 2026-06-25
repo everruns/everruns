@@ -410,10 +410,13 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         session_id,
         locale: locale.or(session.locale.clone()),
         // Pin system-prompt file reads to the session's workspace (the default
-        // 1:1 case is a transparent pass-through).
-        file_store: Some(everruns_core::WorkspaceScopedFileSystem::wrap(
-            adapter.file_store(),
-            session.workspace_id,
+        // 1:1 case is a transparent pass-through), then resolve through the
+        // mount resolver (EVE-660): `/workspace` is a mount + cwd.
+        file_store: Some(everruns_core::MountFs::wrap(
+            everruns_core::WorkspaceScopedFileSystem::wrap(
+                adapter.file_store(),
+                session.workspace_id,
+            ),
         )),
         model: None,
     };
