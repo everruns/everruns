@@ -34514,6 +34514,14 @@
             "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.",
             "example": "gpt-realtime"
           },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Realtime provider binding: the prefixed public id of the provider\nconnection to route this voice connection through (e.g. `prov_…`). Lets\nan org with more than one realtime-capable provider pick which one serves\nthe connection. When omitted, the server resolves the org's default (or\nsingle) realtime provider. The bound provider's driver MUST declare the\nrealtime service, otherwise the request is rejected with 400.",
+            "example": "prov_01h…"
+          },
           "reasoning_effort": {
             "type": [
               "string",
