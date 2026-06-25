@@ -64,9 +64,11 @@ A check binds a **rule** to a **stage** with an **on-fail action**:
   matches a `*`-wildcard glob; valid only on the `tool_use` stage),
   `llm_judge` (a natural-language policy evaluated by the utility LLM; valid
   only on `tool_use` and `tool_output` stages; async, not in the sync hot path),
-  and `mcp` (delegates the decision to a third-party guardrail served as an
+  `mcp` (delegates the decision to a third-party guardrail served as an
   external MCP endpoint; valid only on `tool_use` and `tool_output` stages;
-  async; sends stage content off-platform).
+  async; sends stage content off-platform), and `moderation` (scores the
+  finalized assistant message via the utility LLM as a content classifier;
+  valid only on the `output` stage; async; runs on the end-of-message seam).
 - **On-fail** — `block` or `log`. `block` suppresses the matched content
   (replacing output/tool-output with a notice, or refusing the tool call);
   `log` records the hit and continues. Optional per-check `replacement` text
@@ -136,6 +138,34 @@ same JSON verdict shape as `llm_judge` (`{"verdict":"allow"}` /
   boundary).
 - Advisory mode downgrades `block` verdicts to `log` just like other checks.
 
+### `moderation` check type
+
+`moderation` is the first **model-backed output check** (EVE-573). It scores
+the finalized assistant message via the utility LLM acting as a content
+classifier and blocks (or logs) when any configured category scores at or above
+a threshold. A check carries `categories` (a list; defaults to a built-in set —
+`hate`, `harassment`, `self_harm`, `sexual`, `violence`, `illicit` — when
+omitted) and `threshold` (a percentage `0..=100`, default 50). The classifier
+returns `{"scores":{"<category>":<0-100>, ...}}`; a category at or above the
+threshold applies reason code `guardrail.moderation`. Constraints:
+
+- Only valid on the `output` stage. It runs on the **end-of-message seam** (see
+  Determinism, below), not the streaming hot path — it needs the full message
+  and an async LLM call.
+- **Async + model-backed**: runs once on the assembled assistant message, only
+  when a utility LLM service is configured. Without one, it fails open.
+- **Data egress**: the finalized assistant text (capped at 4 000 bytes, UTF-8
+  safe) is sent to the org's configured utility model — the same provider the
+  agent already uses, not a new third party. Still flagged because the model's
+  output leaves the generating path for classification (TM-LLM, TM-DOS).
+- **Fail-open**: a timeout (10 s), LLM error, unparseable response, or missing
+  utility service defaults to `allow`, so a classifier outage never wedges a
+  turn.
+- **Cap**: at most 4 moderation calls per finalized message (TM-DOS).
+- Cost flows through the utility-LLM accounting pipeline (`LlmCompletionMetadata`),
+  like `llm_judge`.
+- Advisory mode and `on_fail: log` downgrade `block` to `log` like other checks.
+
 ### Determinism and the streaming hot path
 
 Deterministic checks (`regex`, `blocklist`, `tool_pattern`) run in the
@@ -147,6 +177,17 @@ input validation). User-authored patterns therefore cannot wedge a worker.
 
 `llm_judge` checks are inherently async and are never placed on this sync hot
 path — they run only in the hook path (pre/post tool) with a hard timeout.
+
+The `output` stage additionally has a **non-streaming, end-of-message seam**
+(EVE-573): after the stream completes and before the assistant message is
+finalized into context, async output guardrails run once on the full message.
+This is the only place a model-backed output check (`moderation`, and in future
+an `output`-stage `llm_judge`/`mcp`) can run, because it needs the assembled
+message and may perform I/O. It is time-bounded and fail-open, and a block
+reuses the streaming seam's plumbing — replacing the finalized message and
+emitting `output.message.replaced`, so the model's original tokens are never
+persisted. When the streaming seam already replaced the message, the
+end-of-message seam is skipped.
 
 ## Runtime integration
 
@@ -226,9 +267,9 @@ in this phase.
 ## Reason codes
 
 Blocking and logging both carry a stable machine-readable reason code,
-`guardrail.<rule_type>` (e.g. `guardrail.blocklist`). Clients localize copy
-from the code rather than the human text. The `prompt_canary_guardrail`
-continues to use its own `system_prompt_leak` code.
+`guardrail.<rule_type>` (e.g. `guardrail.blocklist`, `guardrail.moderation`).
+Clients localize copy from the code rather than the human text. The
+`prompt_canary_guardrail` continues to use its own `system_prompt_leak` code.
 
 ## Security
 
@@ -236,9 +277,11 @@ continues to use its own `system_prompt_leak` code.
 - The `llm_judge` check sends a bounded content excerpt to the utility LLM
   (TM-LLM-027/028); the `mcp` check sends a bounded content excerpt to an
   external, operator-configured MCP guardrail endpoint (data egress —
-  TM-LLM-029). Both are async, bounded (timeout + per-invocation call cap), and
-  fail open: a guardrail outage or hostile endpoint can only block, never make
-  execution more permissive than the no-guardrail baseline.
+  TM-LLM-029); the `moderation` check sends a bounded excerpt of the finalized
+  assistant message to the utility LLM for classification (TM-LLM-030). All are
+  async, bounded (timeout + per-invocation call cap), and fail open: a guardrail
+  outage or hostile endpoint can only block, never make execution more permissive
+  than the no-guardrail baseline.
 - The `mcp` check resolves its `server` through the host's per-session scoped-MCP
   connection resolver, so a tenant's guardrail config can only reach that
   tenant's servers and never another tenant's MCP credentials (TM-AGENT,
@@ -255,10 +298,11 @@ continues to use its own `system_prompt_leak` code.
 
 ## Future phases (not implemented)
 
-- Model-backed checks: PII (NER), profanity/toxicity, prompt-injection
-  classifiers; provider moderation APIs first, local models later.
-- `llm_judge` on the `output` stage: end-of-message seam required; tracked in
-  EVE-573.
-- `mcp` on the `output` stage: same end-of-message seam dependency as
-  `llm_judge` (EVE-573); the `mcp` check ships for `tool_use`/`tool_output`
-  only.
+- More model-backed checks: PII (NER), prompt-injection classifiers; a dedicated
+  provider moderation API (e.g. OpenAI moderations) as an alternative backend to
+  the utility-model classifier; local/on-device models later. The end-of-message
+  seam and the first model-backed output check (`moderation`, utility-model
+  classifier) shipped in EVE-573.
+- `llm_judge` on the `output` stage: the end-of-message seam now exists
+  (EVE-573); enabling `llm_judge`/`mcp` on `output` is tracked in EVE-572. Those
+  checks still ship for `tool_use`/`tool_output` only today.

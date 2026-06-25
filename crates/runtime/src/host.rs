@@ -1089,6 +1089,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
         atom = atom.with_reasoning_effort_handle(handle);
     }
+    if let Some(utility_llm_service) = adapter.utility_llm_service() {
+        atom = atom.with_utility_llm_service(utility_llm_service);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,

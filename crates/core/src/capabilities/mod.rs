@@ -1045,6 +1045,24 @@ pub trait Capability: Send + Sync {
     fn output_guardrails(&self) -> Vec<Arc<dyn crate::output_guardrail::OutputGuardrail>> {
         vec![]
     }
+
+    /// Async, end-of-message output guardrails (EVE-573).
+    ///
+    /// Unlike [`Self::output_guardrails`] (synchronous, per-delta, hot path),
+    /// these providers run **once** on the fully assembled assistant message
+    /// after streaming completes and before the message is finalized into
+    /// context. They receive an LLM-capable context and may perform I/O (e.g.
+    /// a moderation classifier). The per-agent capability config is passed so a
+    /// capability contributes nothing unless it has an applicable check
+    /// configured — keeping the common (no-output-check) case free of work.
+    ///
+    /// Default: no guardrails.
+    fn post_output_guardrails_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn crate::output_guardrail::PostGenerationOutputGuardrail>> {
+        vec![]
+    }
 }
 
 pub trait ToolDefinitionHook: Send + Sync {

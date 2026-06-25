@@ -25,6 +25,7 @@ use crate::guardrail_checks::{
 use crate::mcp_server::mcp_tool_name;
 use crate::output_guardrail::{
     GuardrailDecision, OutputGuardrail, OutputGuardrailContext, OutputGuardrailRun,
+    PostGenerationOutputContext, PostGenerationOutputGuardrail,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::ToolContext;
@@ -102,8 +103,8 @@ impl Capability for GuardrailsCapability {
                             },
                             "type": {
                                 "type": "string",
-                                "enum": ["regex", "blocklist", "tool_pattern", "llm_judge", "mcp"],
-                                "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (tool_use/tool_output stages only); mcp delegates the decision to an external guardrail served over scoped MCP (tool_use/tool_output stages only — sends stage content off-platform)."
+                                "enum": ["regex", "blocklist", "tool_pattern", "llm_judge", "mcp", "moderation"],
+                                "description": "regex/blocklist match stage text; tool_pattern matches tool names (tool_use stage only); llm_judge evaluates a natural-language policy via the utility LLM (tool_use/tool_output stages only); mcp delegates the decision to an external guardrail served over scoped MCP (tool_use/tool_output stages only — sends stage content off-platform); moderation scores the finalized assistant message via the utility LLM as a content classifier (output stage only — runs on the end-of-message seam, sends the message to the utility model)."
                             },
                             "patterns": {
                                 "type": "array",
@@ -149,6 +150,19 @@ impl Capability for GuardrailsCapability {
                                 "maxLength": MAX_MCP_REF_LEN,
                                 "description": "Guardrail tool/method to call on the MCP server for type=mcp. Required for mcp checks. Sends a bounded stage payload off-platform; fails open on timeout, connection error, parse failure, or server-not-configured."
                             },
+                            "categories": {
+                                "type": "array",
+                                "items": {"type": "string", "maxLength": MAX_ENTRY_LEN},
+                                "maxItems": MAX_ENTRIES_PER_CHECK,
+                                "description": "Moderation categories to score (type=moderation). Defaults to a built-in safety set (hate, harassment, self_harm, sexual, violence, illicit) when omitted."
+                            },
+                            "threshold": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 100,
+                                "default": 50,
+                                "description": "Moderation block threshold as a percentage (0-100): a category scoring at or above this value trips the check (type=moderation)."
+                            },
                             "replacement": {
                                 "type": "string",
                                 "maxLength": MAX_REPLACEMENT_LEN,
@@ -167,6 +181,26 @@ impl Capability for GuardrailsCapability {
 
     fn output_guardrails(&self) -> Vec<Arc<dyn OutputGuardrail>> {
         vec![Arc::new(DeclarativeOutputGuardrail)]
+    }
+
+    fn post_output_guardrails_with_config(
+        &self,
+        config: &serde_json::Value,
+    ) -> Vec<Arc<dyn PostGenerationOutputGuardrail>> {
+        // Contribute the model-backed moderation provider only when an
+        // output-stage moderation check is configured. Deterministic output
+        // checks run on the streaming seam (`output_guardrails`), not here.
+        match compile_config_for_stage(config, GuardrailStage::Output) {
+            Some(compiled)
+                if compiled
+                    .moderation_checks_for_stage(GuardrailStage::Output)
+                    .next()
+                    .is_some() =>
+            {
+                vec![Arc::new(ModerationOutputGuardrail { compiled })]
+            }
+            _ => vec![],
+        }
     }
 
     fn pre_tool_use_hooks_with_config(
@@ -298,6 +332,111 @@ async fn run_judge_check(
             None // fail-open
         }
     }
+}
+
+/// Timeout for a single moderation classifier call. Fail-open on expiry —
+/// a utility-model outage must never wedge a turn.
+const MODERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Maximum moderation checks evaluated per finalized message (TM-DOS: bounds
+/// added latency on the end-of-message seam).
+const MAX_MODERATION_CALLS_PER_INVOCATION: usize = 4;
+/// Bytes of assistant text sent to the moderation classifier.
+const MODERATION_CONTENT_CAP: usize = 4_000;
+
+/// System prompt sent to the utility LLM for moderation scoring.
+const MODERATION_SYSTEM_PROMPT: &str = r#"You are a content-moderation classifier for an AI agent runtime.
+Score the provided assistant message for each requested category from 0 to 100, where 0 means clearly absent and 100 means a clear, severe violation.
+Respond ONLY with valid JSON on a single line. No explanation, no prose, no markdown.
+Format: {"scores":{"<category>":<integer 0-100>, ...}} — include every requested category."#;
+
+/// Evaluate one moderation check against `content` via the utility LLM as a
+/// classifier. Returns `Some(GuardrailAction::Block)` when any requested
+/// category scores at or above the check's threshold, `Some(Log)` when all
+/// score below it, and `None` on any error/timeout/parse failure (fail-open).
+/// The caller applies advisory-mode downgrade via `compiled.async_action()`.
+async fn run_moderation_check(
+    service: &dyn crate::UtilityLlmService,
+    check: &crate::guardrail_checks::CompiledModerationCheck,
+    content: &str,
+) -> Option<GuardrailAction> {
+    let payload = truncate_on_char_boundary(content, MODERATION_CONTENT_CAP);
+    let user_prompt = format!(
+        "Categories: {}\nMessage:\n{}",
+        check.categories.join(", "),
+        payload,
+    );
+    let request = UtilityLlmRequest::new(vec![
+        LlmMessage::text(LlmMessageRole::System, MODERATION_SYSTEM_PROMPT),
+        LlmMessage::text(LlmMessageRole::User, user_prompt),
+    ])
+    .with_reasoning_effort(UtilityLlmReasoningEffort::Low)
+    .with_max_tokens(128);
+
+    let response =
+        match tokio::time::timeout(MODERATION_TIMEOUT, service.chat_completion(request)).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    check = %check.label,
+                    error = %e,
+                    "guardrails: moderation call failed, failing open"
+                );
+                return None;
+            }
+            Err(_) => {
+                tracing::warn!(
+                    check = %check.label,
+                    "guardrails: moderation call timed out, failing open"
+                );
+                return None;
+            }
+        };
+
+    // Parse the scores object from the first JSON-like fragment.
+    let text = response.text.trim();
+    let start = text.find('{').unwrap_or(0);
+    let end = text.rfind('}').map(|i| i + 1).unwrap_or(text.len());
+    let fragment = &text[start..end];
+    let parsed = match serde_json::from_str::<serde_json::Value>(fragment) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                check = %check.label,
+                parse_error = %e,
+                raw = %fragment,
+                "guardrails: moderation response parse failed, failing open"
+            );
+            return None;
+        }
+    };
+    let Some(scores) = parsed.get("scores").and_then(|s| s.as_object()) else {
+        tracing::warn!(
+            check = %check.label,
+            "guardrails: moderation response missing scores field, failing open"
+        );
+        return None;
+    };
+
+    for category in &check.categories {
+        // Accept both integer and float scores; ignore unparseable entries.
+        let score = scores
+            .get(category)
+            .and_then(|v| v.as_f64())
+            .map(|s| s.round() as i64);
+        if let Some(score) = score
+            && score >= check.threshold as i64
+        {
+            tracing::warn!(
+                check = %check.label,
+                category = %category,
+                score,
+                threshold = check.threshold,
+                "guardrails: moderation category at/over threshold"
+            );
+            return Some(GuardrailAction::Block);
+        }
+    }
+    Some(GuardrailAction::Log)
 }
 
 /// Truncate `content` to at most `cap` bytes on a UTF-8 char boundary.
@@ -520,6 +659,87 @@ impl OutputGuardrailRun for DeclarativeOutputRun {
                         "guardrails: output check hit (log only)"
                     );
                     self.logged.insert(hit.check_index);
+                }
+            }
+        }
+        GuardrailDecision::Pass
+    }
+}
+
+// ============================================================================
+// Output stage: end-of-message moderation seam (EVE-573)
+// ============================================================================
+
+/// Async, model-backed output guardrail run once on the finalized assistant
+/// message. Holds the compiled output-stage moderation checks; the streaming
+/// deterministic checks are handled separately by `DeclarativeOutputGuardrail`.
+struct ModerationOutputGuardrail {
+    compiled: Arc<CompiledGuardrails>,
+}
+
+#[async_trait]
+impl PostGenerationOutputGuardrail for ModerationOutputGuardrail {
+    fn id(&self) -> &str {
+        "moderation"
+    }
+
+    async fn check_message(&self, ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
+        // Model-backed: needs the utility LLM. Without it, fail open.
+        let Some(service) = ctx.utility_llm_service else {
+            tracing::warn!(
+                "guardrails: moderation skipped — no utility LLM service available (fail-open)"
+            );
+            return GuardrailDecision::Pass;
+        };
+        if !service.is_configured() {
+            tracing::warn!(
+                "guardrails: moderation skipped — utility LLM not configured (fail-open)"
+            );
+            return GuardrailDecision::Pass;
+        }
+
+        for (calls, check) in self
+            .compiled
+            .moderation_checks_for_stage(GuardrailStage::Output)
+            .enumerate()
+        {
+            if calls >= MAX_MODERATION_CALLS_PER_INVOCATION {
+                tracing::warn!(
+                    "guardrails: moderation call cap reached ({MAX_MODERATION_CALLS_PER_INVOCATION}); \
+                     remaining output checks skipped (fail-open)"
+                );
+                break;
+            }
+            let Some(raw_action) =
+                run_moderation_check(service.as_ref(), check, ctx.message_text).await
+            else {
+                continue; // fail-open on error/timeout/parse failure
+            };
+            if raw_action != GuardrailAction::Block {
+                continue; // scored below threshold → allow
+            }
+            // Apply advisory-mode / on_fail downgrade.
+            match self.compiled.async_action(check.on_fail) {
+                GuardrailAction::Block => {
+                    tracing::warn!(
+                        check = %check.label,
+                        reason_code = "guardrail.moderation",
+                        "guardrails: blocking model output (moderation)"
+                    );
+                    return GuardrailDecision::Block(crate::output_guardrail::GuardrailBlock {
+                        reason_code: "guardrail.moderation".to_string(),
+                        replacement: check
+                            .replacement
+                            .clone()
+                            .unwrap_or_else(|| DEFAULT_OUTPUT_REPLACEMENT.to_string()),
+                    });
+                }
+                GuardrailAction::Log => {
+                    tracing::warn!(
+                        check = %check.label,
+                        reason_code = "guardrail.moderation",
+                        "guardrails: moderation hit (log only)"
+                    );
                 }
             }
         }
@@ -959,6 +1179,196 @@ mod tests {
             _request: crate::utility_llm::UtilityLlmRequest,
         ) -> crate::Result<LlmResponseStream> {
             Err(AgentLoopError::llm("stub: no stream"))
+        }
+    }
+
+    // ---- Moderation output seam (EVE-573) ----
+
+    fn moderation_config(threshold: u8, on_fail: &str, mode: &str) -> serde_json::Value {
+        json!({
+            "mode": mode,
+            "checks": [{
+                "stage": "output",
+                "type": "moderation",
+                "threshold": threshold,
+                "on_fail": on_fail,
+            }]
+        })
+    }
+
+    async fn run_moderation_seam(
+        config: &serde_json::Value,
+        service: Option<Arc<dyn UtilityLlmService>>,
+        text: &str,
+    ) -> GuardrailDecision {
+        let providers = GuardrailsCapability.post_output_guardrails_with_config(config);
+        let provider = providers
+            .into_iter()
+            .next()
+            .expect("moderation provider should be contributed");
+        let ctx = PostGenerationOutputContext {
+            system_prompt: "",
+            message_text: text,
+            utility_llm_service: service.as_ref(),
+        };
+        provider.check_message(&ctx).await
+    }
+
+    fn scores(json_body: &str) -> Arc<StubJudge> {
+        Arc::new(StubJudge {
+            response: json_body.to_string(),
+        })
+    }
+
+    #[tokio::test]
+    async fn moderation_blocks_when_category_at_or_over_threshold() {
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":90,"violence":0}}"#);
+        let decision = run_moderation_seam(&config, Some(svc), "bad text").await;
+        match decision {
+            GuardrailDecision::Block(b) => {
+                assert_eq!(b.reason_code, "guardrail.moderation");
+                assert_eq!(b.replacement, DEFAULT_OUTPUT_REPLACEMENT);
+            }
+            GuardrailDecision::Pass => panic!("expected block"),
+        }
+    }
+
+    #[tokio::test]
+    async fn moderation_blocks_exactly_at_threshold() {
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":50}}"#);
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Block(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_allows_when_below_threshold() {
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":10,"violence":5}}"#);
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "fine").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_advisory_logs_without_blocking() {
+        let config = moderation_config(50, "block", "advisory");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":99}}"#);
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_on_fail_log_does_not_block() {
+        let config = moderation_config(50, "log", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":99}}"#);
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_uses_custom_replacement() {
+        let config = json!({
+            "checks": [{
+                "stage": "output",
+                "type": "moderation",
+                "threshold": 50,
+                "replacement": "[removed by policy]",
+            }]
+        });
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"hate":80}}"#);
+        match run_moderation_seam(&config, Some(svc), "x").await {
+            GuardrailDecision::Block(b) => assert_eq!(b.replacement, "[removed by policy]"),
+            GuardrailDecision::Pass => panic!("expected block"),
+        }
+    }
+
+    #[tokio::test]
+    async fn moderation_fails_open_on_service_error() {
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = StubJudge::error();
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_fails_open_without_utility_service() {
+        let config = moderation_config(50, "block", "active");
+        assert!(matches!(
+            run_moderation_seam(&config, None, "x").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_fails_open_on_unparseable_response() {
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores("not json at all");
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Pass
+        ));
+    }
+
+    #[tokio::test]
+    async fn moderation_defaults_categories_when_unspecified() {
+        // No `categories` → built-in set is used; the model scoring a default
+        // category over threshold still trips.
+        let config = moderation_config(50, "block", "active");
+        let svc: Arc<dyn UtilityLlmService> = scores(r#"{"scores":{"self_harm":75}}"#);
+        assert!(matches!(
+            run_moderation_seam(&config, Some(svc), "x").await,
+            GuardrailDecision::Block(_)
+        ));
+    }
+
+    #[test]
+    fn no_moderation_provider_without_output_moderation_check() {
+        // A config with only a deterministic output check contributes no
+        // post-generation provider (that check runs on the streaming seam).
+        let config = json!({
+            "checks": [{
+                "stage": "output",
+                "type": "regex",
+                "patterns": ["secret"],
+            }]
+        });
+        assert!(
+            GuardrailsCapability
+                .post_output_guardrails_with_config(&config)
+                .is_empty()
+        );
+        // Empty config: no provider either.
+        assert!(
+            GuardrailsCapability
+                .post_output_guardrails_with_config(&json!({}))
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn moderation_rejected_on_tool_stages() {
+        for stage in ["tool_use", "tool_output"] {
+            let config = json!({
+                "checks": [{ "stage": stage, "type": "moderation", "threshold": 50 }]
+            });
+            assert!(
+                GuardrailsConfig::from_value(&config)
+                    .unwrap()
+                    .compile()
+                    .is_err(),
+                "moderation on {stage} should be rejected"
+            );
         }
     }
 

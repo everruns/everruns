@@ -19,6 +19,8 @@
 
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 /// Provider-side definition of an output guardrail.
 ///
 /// Contributed by capabilities via `Capability::output_guardrails()`. A single
@@ -152,6 +154,78 @@ pub fn arm_guardrails(
         .collect()
 }
 
+// ---------------------------------------------------------------------------
+// End-of-message (post-generation) output seam (EVE-573)
+// ---------------------------------------------------------------------------
+
+/// Async, end-of-message output guardrail.
+///
+/// Unlike [`OutputGuardrail`] — which runs synchronously on every streamed
+/// delta in the hot path and must stay cheap — this seam runs **once** on the
+/// fully assembled assistant message after streaming completes and before the
+/// message is finalized into context. It may perform I/O (e.g. call a
+/// moderation classifier through the utility LLM).
+///
+/// Contract: implementations MUST be internally time-bounded and **fail open**
+/// — any timeout, transport error, or missing dependency must return
+/// [`GuardrailDecision::Pass`] so a guardrail outage never wedges a turn. A
+/// [`GuardrailDecision::Block`] reuses the streaming seam's plumbing: the
+/// finalized message is replaced with the block's `replacement` and a single
+/// `output.message.replaced` event is emitted. The model's original tokens are
+/// never persisted once a block fires.
+#[async_trait]
+pub trait PostGenerationOutputGuardrail: Send + Sync {
+    /// Stable identifier (e.g. `"moderation"`), surfaced to clients in the
+    /// `output.message.replaced` event.
+    fn id(&self) -> &str;
+
+    /// Inspect the finalized assistant message. Returns
+    /// [`GuardrailDecision::Block`] to replace it; otherwise
+    /// [`GuardrailDecision::Pass`]. Must fail open on any error.
+    async fn check_message(&self, ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision;
+}
+
+/// Runtime context handed to a [`PostGenerationOutputGuardrail`]. Borrowed for
+/// the duration of the `check_message` call.
+pub struct PostGenerationOutputContext<'a> {
+    /// The fully assembled system prompt for this turn.
+    pub system_prompt: &'a str,
+    /// The finalized assistant message text (post-streaming, pre-context).
+    pub message_text: &'a str,
+    /// Utility LLM service for model-backed checks. `None` when the deployment
+    /// has no utility model configured — model-backed checks then fail open.
+    pub utility_llm_service: Option<&'a Arc<dyn crate::UtilityLlmService>>,
+}
+
+/// A post-generation guardrail provider paired with its contributing
+/// capability id, so a trip can label the `output.message.replaced` event.
+pub struct PostGenerationProvider {
+    pub capability_id: String,
+    pub provider: Arc<dyn PostGenerationOutputGuardrail>,
+}
+
+/// Run post-generation guardrails in registration order, returning the first
+/// block. Pure orchestration: each provider owns its timeout / fail-open
+/// behavior, so a provider that errors simply yields `Pass` and the next runs.
+pub async fn evaluate_post_generation_guardrails(
+    providers: &[PostGenerationProvider],
+    ctx: &PostGenerationOutputContext<'_>,
+) -> Option<TrippedGuardrail> {
+    for p in providers {
+        match p.provider.check_message(ctx).await {
+            GuardrailDecision::Pass => continue,
+            GuardrailDecision::Block(block) => {
+                return Some(TrippedGuardrail {
+                    capability_id: p.capability_id.clone(),
+                    guardrail_id: p.provider.id().to_string(),
+                    block,
+                });
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -199,5 +273,71 @@ mod tests {
             armed("cap_b", "g_b", Box::new(NeverBlock)),
         ];
         assert!(evaluate_guardrails(&mut runs, "txt", "d").is_none());
+    }
+
+    struct PostPass;
+    #[async_trait]
+    impl PostGenerationOutputGuardrail for PostPass {
+        fn id(&self) -> &str {
+            "pass"
+        }
+        async fn check_message(&self, _ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
+            GuardrailDecision::Pass
+        }
+    }
+
+    struct PostBlock;
+    #[async_trait]
+    impl PostGenerationOutputGuardrail for PostBlock {
+        fn id(&self) -> &str {
+            "block"
+        }
+        async fn check_message(&self, _ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision {
+            GuardrailDecision::block("guardrail.moderation", "[removed]")
+        }
+    }
+
+    fn post_ctx<'a>(text: &'a str) -> PostGenerationOutputContext<'a> {
+        PostGenerationOutputContext {
+            system_prompt: "",
+            message_text: text,
+            utility_llm_service: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn post_generation_returns_first_block_in_order() {
+        let providers = vec![
+            PostGenerationProvider {
+                capability_id: "cap_a".to_string(),
+                provider: Arc::new(PostPass),
+            },
+            PostGenerationProvider {
+                capability_id: "cap_b".to_string(),
+                provider: Arc::new(PostBlock),
+            },
+        ];
+        let ctx = post_ctx("hello");
+        let tripped = evaluate_post_generation_guardrails(&providers, &ctx)
+            .await
+            .expect("blocked");
+        assert_eq!(tripped.capability_id, "cap_b");
+        assert_eq!(tripped.guardrail_id, "block");
+        assert_eq!(tripped.block.reason_code, "guardrail.moderation");
+        assert_eq!(tripped.block.replacement, "[removed]");
+    }
+
+    #[tokio::test]
+    async fn post_generation_returns_none_when_all_pass() {
+        let providers = vec![PostGenerationProvider {
+            capability_id: "cap_a".to_string(),
+            provider: Arc::new(PostPass),
+        }];
+        let ctx = post_ctx("hello");
+        assert!(
+            evaluate_post_generation_guardrails(&providers, &ctx)
+                .await
+                .is_none()
+        );
     }
 }

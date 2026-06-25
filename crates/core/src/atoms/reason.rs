@@ -48,7 +48,8 @@ use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
 };
 use crate::output_guardrail::{
-    ArmedGuardrail, OutputGuardrailContext, TrippedGuardrail, evaluate_guardrails,
+    ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
+    TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
 };
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -696,6 +697,10 @@ pub struct ReasonAtom {
     /// value, it overrides the message-derived effort on every LLM step, so a
     /// tool can change effort mid-turn and have subsequent steps observe it.
     reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
+    /// Optional utility LLM service (EVE-573). Powers model-backed
+    /// end-of-message output guardrails (e.g. moderation). When absent, those
+    /// guardrails fail open and the seam is a no-op.
+    utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
 }
 
 impl ReasonAtom {
@@ -727,6 +732,7 @@ impl ReasonAtom {
             durable_tool_result_store: None,
             partial_stream_store: None,
             reasoning_effort_handle: None,
+            utility_llm_service: None,
         }
     }
 
@@ -807,6 +813,13 @@ impl ReasonAtom {
         handle: crate::traits::ReasoningEffortHandle,
     ) -> Self {
         self.reasoning_effort_handle = Some(handle);
+        self
+    }
+
+    /// Set the utility LLM service used by model-backed end-of-message output
+    /// guardrails (EVE-573). When unset, those guardrails fail open.
+    pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
+        self.utility_llm_service = Some(service);
         self
     }
 }
@@ -1232,6 +1245,33 @@ impl ReasonAtom {
                     guards
                         .into_iter()
                         .map(move |g| (cap_id, &cfg.config, g))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect();
+
+        // End-of-message (post-generation) output guardrail providers (EVE-573).
+        // Collected here alongside the streaming providers, but evaluated once
+        // on the finalized assistant message after the stream ends. Capabilities
+        // contribute nothing unless an applicable output check is configured, so
+        // the common case stays free of work.
+        let post_output_providers: Vec<PostGenerationProvider> = resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap_id = cfg.capability_ref.as_str();
+                let cap = self.capability_registry.get(cap_id)?;
+                let providers = cap.post_output_guardrails_with_config(&cfg.config);
+                if providers.is_empty() {
+                    return None;
+                }
+                Some(
+                    providers
+                        .into_iter()
+                        .map(move |provider| PostGenerationProvider {
+                            capability_id: cap_id.to_string(),
+                            provider,
+                        })
                         .collect::<Vec<_>>(),
                 )
             })
@@ -2470,6 +2510,23 @@ impl ReasonAtom {
         };
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);
+
+        // End-of-message output guardrail seam (EVE-573). Runs once on the
+        // finalized assistant text after streaming completes, before the
+        // message is built into context. Async, time-bounded, and fail-open
+        // (each provider owns its own timeout). Skipped when the streaming seam
+        // already tripped (the message is already a replacement), when there
+        // are no post-generation providers, or when there is no assistant text.
+        // A trip here reuses the same replacement/emit path as the streaming
+        // seam below, so the original tokens are never persisted.
+        if tripped.is_none() && !post_output_providers.is_empty() && !text.is_empty() {
+            let ctx = PostGenerationOutputContext {
+                system_prompt: &runtime_agent.system_prompt,
+                message_text: &text,
+                utility_llm_service: self.utility_llm_service.as_ref(),
+            };
+            tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+        }
 
         // If a streaming output guardrail tripped, emit
         // output.message.replaced and overwrite the assistant output now so
