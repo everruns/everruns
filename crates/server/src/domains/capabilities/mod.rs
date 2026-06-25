@@ -12,18 +12,20 @@ pub use commands::*;
 
 pub const CAPABILITY_VIEW: Policy = Policy {
     id: "capability.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgCapabilitiesView)],
 };
 
 pub const CAPABILITY_MANAGE: Policy = Policy {
     id: "capability.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgCapabilitiesManage)],
 };
 
+// Dangerous capability ops reuse OrgSkillsDangerous (Owner-only) as the danger
+// tier — a pre-existing choice kept here to preserve the Owner-only gate.
 pub const CAPABILITY_DANGEROUS: Policy = Policy {
     id: "capability.dangerous",
     rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgCapabilitiesManage),
         Rule::UserHasPermission(Permission::OrgSkillsDangerous),
     ],
 };

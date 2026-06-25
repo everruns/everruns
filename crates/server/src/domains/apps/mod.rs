@@ -13,20 +13,20 @@ pub use commands::*;
 /// Policy: View apps (read-only).
 pub const APP_VIEW: Policy = Policy {
     id: "app.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgAppsView)],
 };
 
 /// Policy: Manage apps (create, update).
 pub const APP_MANAGE: Policy = Policy {
     id: "app.manage",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgAppsManage)],
 };
 
 /// Policy: Dangerous app operations (delete, publish, unpublish).
 pub const APP_DANGEROUS: Policy = Policy {
     id: "app.dangerous",
     rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgAppsManage),
         Rule::UserHasPermission(Permission::OrgAppsDangerous),
     ],
 };

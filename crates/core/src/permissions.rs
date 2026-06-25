@@ -26,14 +26,36 @@ pub enum Permission {
     OrgAgentsManage,
     /// Delete and other dangerous agent operations
     OrgAgentsDangerous,
-    /// Dangerous skill operations
-    OrgSkillsDangerous,
-    /// Dangerous MCP server operations
-    OrgMcpServersDangerous,
-    /// Register marketplaces and install/uninstall plugins (admin-gated per specs/plugins.md)
-    OrgPluginsManage,
+    /// View apps (read-only)
+    OrgAppsView,
+    /// CRUD on apps
+    OrgAppsManage,
     /// Dangerous app operations
     OrgAppsDangerous,
+    /// View MCP servers (read-only)
+    OrgMcpServersView,
+    /// CRUD on MCP servers
+    OrgMcpServersManage,
+    /// Dangerous MCP server operations
+    OrgMcpServersDangerous,
+    /// View skills (read-only)
+    OrgSkillsView,
+    /// CRUD on skills
+    OrgSkillsManage,
+    /// Dangerous skill operations
+    OrgSkillsDangerous,
+    /// View capabilities (read-only)
+    OrgCapabilitiesView,
+    /// CRUD on capabilities
+    OrgCapabilitiesManage,
+    /// View agent identities (read-only)
+    OrgAgentIdentitiesView,
+    /// CRUD on agent identities
+    OrgAgentIdentitiesManage,
+    /// View marketplaces and installed plugins (read-only)
+    OrgPluginsView,
+    /// Register marketplaces and install/uninstall plugins (admin-gated per specs/plugins.md)
+    OrgPluginsManage,
     /// CRUD on sessions
     OrgSessionsManage,
     /// View LLM providers (read-only)
@@ -69,10 +91,21 @@ impl Permission {
             Permission::OrgHarnessesDangerous => "org:harnesses:dangerous",
             Permission::OrgAgentsManage => "org:agents:manage",
             Permission::OrgAgentsDangerous => "org:agents:dangerous",
-            Permission::OrgSkillsDangerous => "org:skills:dangerous",
-            Permission::OrgMcpServersDangerous => "org:mcp-servers:dangerous",
-            Permission::OrgPluginsManage => "org:plugins:manage",
+            Permission::OrgAppsView => "org:apps:view",
+            Permission::OrgAppsManage => "org:apps:manage",
             Permission::OrgAppsDangerous => "org:apps:dangerous",
+            Permission::OrgMcpServersView => "org:mcp-servers:view",
+            Permission::OrgMcpServersManage => "org:mcp-servers:manage",
+            Permission::OrgMcpServersDangerous => "org:mcp-servers:dangerous",
+            Permission::OrgSkillsView => "org:skills:view",
+            Permission::OrgSkillsManage => "org:skills:manage",
+            Permission::OrgSkillsDangerous => "org:skills:dangerous",
+            Permission::OrgCapabilitiesView => "org:capabilities:view",
+            Permission::OrgCapabilitiesManage => "org:capabilities:manage",
+            Permission::OrgAgentIdentitiesView => "org:agent-identities:view",
+            Permission::OrgAgentIdentitiesManage => "org:agent-identities:manage",
+            Permission::OrgPluginsView => "org:plugins:view",
+            Permission::OrgPluginsManage => "org:plugins:manage",
             Permission::OrgSessionsManage => "org:sessions:manage",
             Permission::OrgProvidersView => "org:providers:view",
             Permission::OrgProvidersManage => "org:providers:manage",
@@ -95,10 +128,21 @@ impl Permission {
         Permission::OrgHarnessesDangerous,
         Permission::OrgAgentsManage,
         Permission::OrgAgentsDangerous,
-        Permission::OrgSkillsDangerous,
-        Permission::OrgMcpServersDangerous,
-        Permission::OrgPluginsManage,
+        Permission::OrgAppsView,
+        Permission::OrgAppsManage,
         Permission::OrgAppsDangerous,
+        Permission::OrgMcpServersView,
+        Permission::OrgMcpServersManage,
+        Permission::OrgMcpServersDangerous,
+        Permission::OrgSkillsView,
+        Permission::OrgSkillsManage,
+        Permission::OrgSkillsDangerous,
+        Permission::OrgCapabilitiesView,
+        Permission::OrgCapabilitiesManage,
+        Permission::OrgAgentIdentitiesView,
+        Permission::OrgAgentIdentitiesManage,
+        Permission::OrgPluginsView,
+        Permission::OrgPluginsManage,
         Permission::OrgSessionsManage,
         Permission::OrgProvidersView,
         Permission::OrgProvidersManage,
@@ -131,10 +175,21 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesDangerous,
     Permission::OrgAgentsManage,
     Permission::OrgAgentsDangerous,
-    Permission::OrgSkillsDangerous,
-    Permission::OrgMcpServersDangerous,
-    Permission::OrgPluginsManage,
+    Permission::OrgAppsView,
+    Permission::OrgAppsManage,
     Permission::OrgAppsDangerous,
+    Permission::OrgMcpServersView,
+    Permission::OrgMcpServersManage,
+    Permission::OrgMcpServersDangerous,
+    Permission::OrgSkillsView,
+    Permission::OrgSkillsManage,
+    Permission::OrgSkillsDangerous,
+    Permission::OrgCapabilitiesView,
+    Permission::OrgCapabilitiesManage,
+    Permission::OrgAgentIdentitiesView,
+    Permission::OrgAgentIdentitiesManage,
+    Permission::OrgPluginsView,
+    Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
     Permission::OrgProvidersView,
     Permission::OrgProvidersManage,
@@ -154,6 +209,19 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesView,
     Permission::OrgHarnessesManage,
     Permission::OrgAgentsManage,
+    // Per-domain VIEW+MANAGE previously gated by OrgAgentsManage (EVE-656).
+    // Admin had OrgAgentsManage, so it keeps equivalent access to all six domains.
+    Permission::OrgAppsView,
+    Permission::OrgAppsManage,
+    Permission::OrgMcpServersView,
+    Permission::OrgMcpServersManage,
+    Permission::OrgSkillsView,
+    Permission::OrgSkillsManage,
+    Permission::OrgCapabilitiesView,
+    Permission::OrgCapabilitiesManage,
+    Permission::OrgAgentIdentitiesView,
+    Permission::OrgAgentIdentitiesManage,
+    Permission::OrgPluginsView,
     Permission::OrgPluginsManage,
     Permission::OrgSessionsManage,
     Permission::OrgProvidersView,
@@ -173,6 +241,21 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
 const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgHarnessesView,
     Permission::OrgAgentsManage,
+    // Per-domain VIEW+MANAGE previously gated by OrgAgentsManage (EVE-656).
+    // Member had OrgAgentsManage, so it keeps equivalent access to all six domains.
+    Permission::OrgAppsView,
+    Permission::OrgAppsManage,
+    Permission::OrgMcpServersView,
+    Permission::OrgMcpServersManage,
+    Permission::OrgSkillsView,
+    Permission::OrgSkillsManage,
+    Permission::OrgCapabilitiesView,
+    Permission::OrgCapabilitiesManage,
+    Permission::OrgAgentIdentitiesView,
+    Permission::OrgAgentIdentitiesManage,
+    // Members can view plugins but NOT manage them: PLUGIN_MANAGE has always
+    // required OrgPluginsManage, which Members never held (Admin+ only). (EVE-656)
+    Permission::OrgPluginsView,
     Permission::OrgSessionsManage,
     Permission::OrgProvidersView,
     Permission::OrgSettingsView,
@@ -742,6 +825,60 @@ mod tests {
         ));
     }
 
+    // -- EVE-656: per-domain split of OrgAgentsManage preserves behavior --
+
+    /// Per-domain VIEW+MANAGE permissions introduced in EVE-656. Every role that
+    /// previously held OrgAgentsManage (Owner, Admin, Member) gated these six
+    /// domains through it, so each role must still hold the equivalent per-domain
+    /// VIEW+MANAGE permissions. Plugins manage is excluded: it has always also
+    /// required OrgPluginsManage (Admin+ only) and is asserted separately below.
+    const SPLIT_DOMAIN_VIEW_MANAGE: &[Permission] = &[
+        Permission::OrgAppsView,
+        Permission::OrgAppsManage,
+        Permission::OrgMcpServersView,
+        Permission::OrgMcpServersManage,
+        Permission::OrgSkillsView,
+        Permission::OrgSkillsManage,
+        Permission::OrgCapabilitiesView,
+        Permission::OrgCapabilitiesManage,
+        Permission::OrgAgentIdentitiesView,
+        Permission::OrgAgentIdentitiesManage,
+        Permission::OrgPluginsView,
+    ];
+
+    #[test]
+    fn eve656_roles_with_agents_manage_keep_per_domain_access() {
+        // Owner, Admin, Member all held OrgAgentsManage and could therefore
+        // view+manage all six split domains (plugins manage excepted).
+        for role in [OrgRole::Owner, OrgRole::Admin, OrgRole::Member] {
+            assert!(role_has_permission(role, &Permission::OrgAgentsManage));
+            for perm in SPLIT_DOMAIN_VIEW_MANAGE {
+                assert!(
+                    role_has_permission(role, perm),
+                    "{role:?} must retain {perm:?} after the OrgAgentsManage split"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn eve656_plugin_manage_stays_admin_plus_only() {
+        // PLUGIN_MANAGE required OrgPluginsManage (Admin+ only), so Members must
+        // still be unable to manage plugins after the split.
+        assert!(role_has_permission(
+            OrgRole::Owner,
+            &Permission::OrgPluginsManage
+        ));
+        assert!(role_has_permission(
+            OrgRole::Admin,
+            &Permission::OrgPluginsManage
+        ));
+        assert!(!role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgPluginsManage
+        ));
+    }
+
     // -- Policy evaluation tests --
 
     const TEST_MANAGE: Policy = Policy {
@@ -919,9 +1056,9 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 21);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 15);
-        assert_eq!(role_permissions(OrgRole::Member).len(), 7);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 32);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 26);
+        assert_eq!(role_permissions(OrgRole::Member).len(), 18);
         assert!(role_has_permission(
             OrgRole::Owner,
             &Permission::OrgReportsAdmin

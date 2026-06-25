@@ -13,15 +13,12 @@ pub use commands::*;
 /// View marketplaces and installed plugins.
 pub const PLUGIN_VIEW: Policy = Policy {
     id: "plugin.view",
-    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+    rules: &[Rule::UserHasPermission(Permission::OrgPluginsView)],
 };
 
 /// Manage marketplaces and install/update/uninstall plugins.
 /// Admin-gated per specs/plugins.md § Security.
 pub const PLUGIN_MANAGE: Policy = Policy {
     id: "plugin.manage",
-    rules: &[
-        Rule::UserHasPermission(Permission::OrgAgentsManage),
-        Rule::UserHasPermission(Permission::OrgPluginsManage),
-    ],
+    rules: &[Rule::UserHasPermission(Permission::OrgPluginsManage)],
 };
