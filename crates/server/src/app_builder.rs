@@ -1021,12 +1021,19 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
         );
+        let webhook_rate_limiter = match valkey_for_channel_rate_limits.clone() {
+            Some(client) => {
+                api::channel_rate_limit::ChannelRateLimiter::with_valkey("webhook", client)
+            }
+            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
+        };
         let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
             db.clone(),
             encryption.clone(),
             runner.clone(),
             notifications_enabled,
             event_delivery.clone(),
+            webhook_rate_limiter,
         );
         let ag_ui_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {

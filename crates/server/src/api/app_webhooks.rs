@@ -10,18 +10,21 @@ use std::sync::Arc;
 use axum::{
     Json, Router,
     body::Bytes,
-    extract::{Path, State},
+    extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     routing::post,
 };
 use utoipa::ToSchema;
 
+use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
 use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::middleware::RequestId;
+use crate::security::constant_time_eq;
 use crate::storage::{EncryptionService, StorageBackend};
 
 const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
@@ -38,6 +41,10 @@ pub struct AppWebhookState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    /// Per-channel, per-IP rate limiter (namespace `webhook`). Mirrors the
+    /// sibling public channels (AG-UI/A2A/app_api/FCP) so a webhook token
+    /// holder cannot drive unbounded session/LLM burn (EVE-627, TM-DOS-010).
+    pub rate_limiter: ChannelRateLimiter,
 }
 
 impl AppWebhookState {
@@ -47,6 +54,7 @@ impl AppWebhookState {
         runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
+        rate_limiter: ChannelRateLimiter,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -58,6 +66,7 @@ impl AppWebhookState {
             )),
             db,
             encryption,
+            rate_limiter,
         }
     }
 }
@@ -103,6 +112,7 @@ pub async fn invoke_webhook(
     State(state): State<AppWebhookState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<(StatusCode, Json<WebhookInvocationResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -139,8 +149,33 @@ pub async fn invoke_webhook(
         .webhook_config()
         .ok_or_else(|| bad_request("Invalid webhook channel configuration"))?;
     let provided_token = extract_webhook_token(&headers).ok_or_else(unauthorized)?;
-    if provided_token != config.token {
+    // EVE-627 (TM-AUTHZ-006 / TM-APIKEY-003): constant-time comparison, matching
+    // every sibling channel — a `!=` on the secret leaks a remote timing
+    // side-channel that can recover the token byte by byte.
+    if !constant_time_eq(provided_token.as_bytes(), config.token.as_bytes()) {
         return Err(unauthorized());
+    }
+
+    // EVE-627 (TM-DOS-010): per-channel, per-IP rate limit after the secret is
+    // verified (so rejected traffic costs nothing) and before any session/LLM
+    // work. Scope includes the channel id so multiple webhook channels on one
+    // app keep independent buckets. `None`/`0` disables (global limit applies).
+    if let Some(limit) = config.rate_limit_per_minute
+        && limit > 0
+    {
+        let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+        let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
+        let scope = format!("{app_id}:{channel_id}");
+        if state
+            .rate_limiter
+            .check(&scope, client_ip, limit)
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests(
+                "Webhook rate limit exceeded for this app channel",
+            ));
+        }
     }
 
     let json_payload = serde_json::from_slice(&body).ok();
@@ -209,6 +244,10 @@ fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) 
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     ErrorResponse::new(message.into()).into_response(StatusCode::FORBIDDEN)
+}
+
+fn too_many_requests(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    ErrorResponse::new(message.into()).into_response(StatusCode::TOO_MANY_REQUESTS)
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {

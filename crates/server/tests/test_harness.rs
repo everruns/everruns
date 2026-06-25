@@ -515,6 +515,7 @@ impl TestServer {
             runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("webhook"),
         );
         let app_a2a_state = api::app_a2a::AppA2aState::new(
             db.clone(),
