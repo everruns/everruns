@@ -429,14 +429,12 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
 /// authoritative cost inline (e.g. OpenRouter's `usage.cost`). Cost figures in
 /// profiles are per million tokens.
 ///
-/// Cache accounting is provider-aware (see [`prompt_tokens_include_cache`]):
-/// OpenAI-family and Gemini report a prompt token count that already *includes*
-/// cached reads, so the cached subset is billed at the cheaper `cache_read`
-/// rate and only the remainder at the full input rate. Anthropic/Bedrock report
-/// cached tokens separately, so cache-read and cache-creation tokens are added
-/// on top of `input_tokens`. Cache-creation (write) tokens have no dedicated
-/// price in profiles and are billed at the input rate where the provider
-/// reports them separately.
+/// Token buckets are disjoint by convention (drivers normalize at the boundary;
+/// see [`TokenUsage`](crate::events::TokenUsage)): `input_tokens` is non-cached
+/// input only, with `cache_read_tokens` / `cache_creation_tokens` additive on
+/// top. Cost is therefore uniform across providers — each bucket is billed at
+/// its own rate (cache-creation tokens have no dedicated price and bill at the
+/// input rate) with no provider-specific compensation.
 pub fn estimate_cost_usd(
     provider_type: &DriverId,
     model_id: &str,
@@ -449,35 +447,12 @@ pub fn estimate_cost_usd(
     let per_million = |tokens: u32, rate: f64| (tokens as f64 / 1_000_000.0) * rate;
     let cache_read_rate = cost.cache_read.unwrap_or(cost.input);
 
-    let (billable_input, cache_write_cost) = if prompt_tokens_include_cache(provider_type) {
-        // `input_tokens` already includes the cached reads (creation tokens are
-        // not reported separately for these providers): bill only the
-        // non-cached remainder at the input rate.
-        (input_tokens.saturating_sub(cache_read_tokens), 0.0)
-    } else {
-        // Cached tokens are reported on top of `input_tokens`: charge the full
-        // input plus the cache-creation tokens at the input rate.
-        (input_tokens, per_million(cache_creation_tokens, cost.input))
-    };
-
     Some(
-        per_million(billable_input, cost.input)
+        per_million(input_tokens, cost.input)
             + per_million(cache_read_tokens, cache_read_rate)
-            + cache_write_cost
+            + per_million(cache_creation_tokens, cost.input)
             + per_million(output_tokens, cost.output),
     )
-}
-
-/// Whether the provider's reported prompt/input token count already includes
-/// cached-read tokens (so they must be subtracted before billing the input
-/// rate) versus reporting them separately (so they are additive).
-///
-/// OpenAI Responses/Chat Completions and Gemini include cached reads in the
-/// prompt count; Anthropic (direct and via Bedrock) reports
-/// `cache_read_input_tokens` / `cache_creation_input_tokens` separately. Unknown
-/// external providers are assumed OpenAI-compatible (cache-inclusive).
-fn prompt_tokens_include_cache(provider_type: &DriverId) -> bool {
-    !matches!(provider_type, DriverId::Anthropic | DriverId::Bedrock)
 }
 
 /// Get the vendor/brand for a model id, or None if it is not in the registry
@@ -4411,30 +4386,30 @@ mod tests {
     }
 
     #[test]
-    fn test_estimate_cost_usd_openai_discounts_cached_subset() {
-        // OpenAI reports `prompt_tokens` inclusive of cached reads. gpt-4o:
-        // input $2.50/M, cache_read $1.25/M. Of 1M prompt tokens, 800K are
-        // cached, so only 200K bill at the input rate.
-        let est = estimate_cost_usd(&DriverId::OpenAI, "gpt-4o", 1_000_000, 0, 800_000, 0)
+    fn test_estimate_cost_usd_bills_disjoint_buckets() {
+        // Disjoint convention: `input_tokens` is non-cached, `cache_read_tokens`
+        // additive. gpt-4o: input $2.50/M, cache_read $1.25/M. 200K non-cached
+        // input + 800K cache reads each bill at their own rate.
+        let est = estimate_cost_usd(&DriverId::OpenAI, "gpt-4o", 200_000, 0, 800_000, 0)
             .expect("known model should yield an estimate");
-        // 200K * 2.50 + 800K * 1.25 = 0.50 + 1.00 = 1.50 (vs 2.50 without discount).
+        // 200K * 2.50 + 800K * 1.25 = 0.50 + 1.00 = 1.50.
         assert!((est - 1.50).abs() < 1e-9, "got {est}");
     }
 
     #[test]
-    fn test_estimate_cost_usd_openai_cache_heavy_run_is_not_overstated() {
-        // Regression for EVE-599: gpt-5.5 (input $5/M, output $30/M,
-        // cache_read $0.50/M) on a cache-heavy run. 87% of the prompt is cached.
-        let input = 327_079;
+    fn test_estimate_cost_usd_cache_heavy_run_is_cheap() {
+        // Regression for EVE-599 / EVE-661: gpt-5.5 (input $5/M, output $30/M,
+        // cache_read $0.50/M) on a cache-heavy run. With disjoint buckets the
+        // driver reports the non-cached remainder (42K) plus 285K cache reads
+        // (87% of the original 327K prompt was cached).
+        let input = 42_407;
         let cache_read = 284_672;
         let output = 2_096;
-        let cached = estimate_cost_usd(&DriverId::OpenAI, "gpt-5.5", input, output, cache_read, 0)
+        let est = estimate_cost_usd(&DriverId::OpenAI, "gpt-5.5", input, output, cache_read, 0)
             .expect("known model");
-        let naive =
-            estimate_cost_usd(&DriverId::OpenAI, "gpt-5.5", input, output, 0, 0).expect("known");
-        // The cache-blind figure was ~$1.70; the discounted figure is ~$0.42.
-        assert!((naive - 1.698).abs() < 0.01, "naive {naive}");
-        assert!(cached < 0.45 && cached > 0.39, "cached {cached}");
+        // 42K*5 + 285K*0.5 + 2K*30 (per M) ≈ $0.42 — far below the ~$1.70 that
+        // billing the whole 327K prompt at the full input rate would produce.
+        assert!(est < 0.45 && est > 0.39, "est {est}");
     }
 
     #[test]

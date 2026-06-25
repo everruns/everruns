@@ -1026,13 +1026,16 @@ fn should_apply_cost_control_masking(
     let Some(usage) = prior_usage else {
         return false;
     };
+    // Token buckets are disjoint (see `TokenUsage`): `input_tokens` already
+    // carries only the non-cached prompt, and the cache-read ratio is measured
+    // against the full prompt (all buckets summed).
     let cache_read = usage.cache_read_tokens.unwrap_or(0);
-    let uncached = usage.input_tokens.saturating_sub(cache_read);
-    if uncached >= config.max_uncached_input_tokens {
+    let cache_creation = usage.cache_creation_tokens.unwrap_or(0);
+    if usage.input_tokens >= config.max_uncached_input_tokens {
         return true;
     }
-    usage.input_tokens > 0
-        && (cache_read as f32 / usage.input_tokens as f32) < config.min_cache_read_ratio
+    let total_prompt = usage.input_tokens + cache_read + cache_creation;
+    total_prompt > 0 && (cache_read as f32 / total_prompt as f32) < config.min_cache_read_ratio
 }
 
 fn is_protected_message_tool_result(messages: &[Message], tool_msg: &Message) -> bool {
@@ -2127,6 +2130,47 @@ mod tests {
             .as_str()
             .unwrap();
         assert!(summary.contains("bash exit=0"));
+    }
+
+    #[test]
+    fn test_cost_control_masking_uses_disjoint_cache_buckets() {
+        // Disjoint convention: `input_tokens` is the non-cached prompt and the
+        // cache-read ratio is measured against the full prompt (all buckets).
+        let config = CostControlConfig {
+            mask_after_tool_results: usize::MAX,
+            max_live_tool_result_bytes: usize::MAX,
+            max_uncached_input_tokens: 50_000,
+            min_cache_read_ratio: 0.35,
+            ..CostControlConfig::default()
+        };
+
+        // 20K non-cached input + 180K cache reads: a well-cached run (90% hit,
+        // non-cached under threshold) — usage signals must not trigger masking.
+        let well_cached = TokenUsage::with_cache(20_000, 100, Some(180_000), None);
+        assert!(!should_apply_cost_control_masking(
+            0,
+            0,
+            &config,
+            Some(&well_cached)
+        ));
+
+        // Same total prompt but cache-poor (10% hit): low ratio triggers masking.
+        let cache_poor = TokenUsage::with_cache(20_000, 100, Some(2_000), None);
+        assert!(should_apply_cost_control_masking(
+            0,
+            0,
+            &config,
+            Some(&cache_poor)
+        ));
+
+        // High non-cached input alone triggers masking regardless of cache ratio.
+        let heavy_uncached = TokenUsage::with_cache(60_000, 100, Some(200_000), None);
+        assert!(should_apply_cost_control_masking(
+            0,
+            0,
+            &config,
+            Some(&heavy_uncached)
+        ));
     }
 
     #[test]

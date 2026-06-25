@@ -531,22 +531,42 @@ pub struct ModelMetadata {
 
 /// Token usage statistics
 ///
-/// Tracks token consumption per LLM call including cache tokens for cost optimization.
-/// Cache tokens are provider-specific:
-/// - OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens
-/// - Anthropic: `cache_read_tokens` from cache_read_input_tokens,
-///   `cache_creation_tokens` from cache_creation_input_tokens
+/// Tracks token consumption per LLM call including cache tokens for cost
+/// optimization.
+///
+/// # Disjoint bucket convention
+///
+/// Prompt token buckets are **disjoint** (non-overlapping). Drivers normalize
+/// provider wire formats at the boundary so this holds for every provider:
+///
+/// ```text
+/// total_prompt = input_tokens + cache_read_tokens + cache_creation_tokens
+/// ```
+///
+/// - `input_tokens` — non-cached prompt tokens only.
+/// - `cache_read_tokens` — tokens served from cache, never counted in
+///   `input_tokens`.
+/// - `cache_creation_tokens` — tokens written to cache, never counted in
+///   `input_tokens`.
+///
+/// Inclusive providers (OpenAI Responses / Chat Completions, Gemini) report a
+/// prompt count that *includes* cached reads; their drivers subtract the cached
+/// subset so the value stored here is the non-cached remainder. Anthropic /
+/// Bedrock already report disjoint buckets. Cost is therefore uniform across
+/// providers (`input·in + cache_read·cr + cache_creation·cw + output·out`);
+/// consumers must not re-derive a non-cached input by subtracting cache reads.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TokenUsage {
-    /// Number of input/prompt tokens
+    /// Number of non-cached prompt tokens (cached reads/writes are tracked
+    /// separately; see the disjoint bucket convention on the struct)
     pub input_tokens: u32,
     /// Number of output/completion tokens
     pub output_tokens: u32,
-    /// Number of tokens read from cache (reduces cost)
+    /// Number of tokens read from cache (reduces cost), disjoint from `input_tokens`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read_tokens: Option<u32>,
-    /// Number of tokens written to cache (Anthropic-specific)
+    /// Number of tokens written to cache, disjoint from `input_tokens`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_creation_tokens: Option<u32>,
 

@@ -31979,7 +31979,7 @@
       },
       "TokenUsage": {
         "type": "object",
-        "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost optimization.\nCache tokens are provider-specific:\n- OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens\n- Anthropic: `cache_read_tokens` from cache_read_input_tokens,\n  `cache_creation_tokens` from cache_creation_input_tokens",
+        "description": "Token usage statistics\n\nTracks token consumption per LLM call including cache tokens for cost\noptimization.\n\n# Disjoint bucket convention\n\nPrompt token buckets are **disjoint** (non-overlapping). Drivers normalize\nprovider wire formats at the boundary so this holds for every provider:\n\n```text\ntotal_prompt = input_tokens + cache_read_tokens + cache_creation_tokens\n```\n\n- `input_tokens` — non-cached prompt tokens only.\n- `cache_read_tokens` — tokens served from cache, never counted in\n  `input_tokens`.\n- `cache_creation_tokens` — tokens written to cache, never counted in\n  `input_tokens`.\n\nInclusive providers (OpenAI Responses / Chat Completions, Gemini) report a\nprompt count that *includes* cached reads; their drivers subtract the cached\nsubset so the value stored here is the non-cached remainder. Anthropic /\nBedrock already report disjoint buckets. Cost is therefore uniform across\nproviders (`input·in + cache_read·cr + cache_creation·cw + output·out`);\nconsumers must not re-derive a non-cached input by subtracting cache reads.",
         "required": [
           "input_tokens",
           "output_tokens"
@@ -31999,7 +31999,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Number of tokens written to cache (Anthropic-specific)",
+            "description": "Number of tokens written to cache, disjoint from `input_tokens`",
             "minimum": 0
           },
           "cache_read_tokens": {
@@ -32008,7 +32008,7 @@
               "null"
             ],
             "format": "int32",
-            "description": "Number of tokens read from cache (reduces cost)",
+            "description": "Number of tokens read from cache (reduces cost), disjoint from `input_tokens`",
             "minimum": 0
           },
           "effective_cost_usd": {
@@ -32030,7 +32030,7 @@
           "input_tokens": {
             "type": "integer",
             "format": "int32",
-            "description": "Number of input/prompt tokens",
+            "description": "Number of non-cached prompt tokens (cached reads/writes are tracked\nseparately; see the disjoint bucket convention on the struct)",
             "minimum": 0
           },
           "output_tokens": {

@@ -199,11 +199,13 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 ### Completion Metadata
 
-`LlmCompletionMetadata` returned on stream completion:
-- `total_tokens`: Total tokens used
-- `prompt_tokens`: Input tokens
+`LlmCompletionMetadata` returned on stream completion. Token buckets are
+disjoint (drivers normalize inclusive providers at the boundary; see
+[usage-tracking](usage-tracking.md#disjoint-bucket-convention)):
+- `total_tokens`: Total tokens used (non-cached prompt + cache + completion)
+- `prompt_tokens`: Non-cached input tokens (cached reads excluded)
 - `completion_tokens`: Output tokens
-- `cache_read_tokens`: Tokens from cache (provider-specific)
+- `cache_read_tokens`: Tokens from cache, additive (not part of `prompt_tokens`)
 - `cache_creation_tokens`: Tokens written to cache (Anthropic)
 - `model`: Actual model used
 - `finish_reason`: Why generation stopped
