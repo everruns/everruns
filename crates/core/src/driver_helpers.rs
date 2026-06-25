@@ -6,9 +6,70 @@
 // See specs/llm-drivers.md for driver requirements.
 
 use reqwest::StatusCode;
+use std::sync::OnceLock;
+use std::time::Duration;
 
 /// Placeholder text for audio content in providers that don't support audio input.
 pub const AUDIO_CONTENT_PLACEHOLDER: &str = "[Audio content not supported]";
+
+// ============================================================================
+// Shared HTTP clients (EVE-635)
+// ============================================================================
+
+/// Connect/TLS handshake timeout applied to every provider HTTP client.
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Per-read inactivity timeout for streaming chat clients. This bounds a
+/// silently stalled connection (no bytes for this long) without capping the
+/// total time a long, actively-streaming response may take — an overall
+/// `.timeout()` would do the latter and kill legitimate long streams. Set well
+/// above the agent loop's own stall timeout (EVE-531, ~120s) so it only acts as
+/// a transport-level backstop.
+const HTTP_STREAM_READ_TIMEOUT: Duration = Duration::from_secs(300);
+/// Overall request timeout for non-streaming reads (embeddings, vector store)
+/// so a hung response body cannot block a request indefinitely.
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// Idle pooled-connection lifetime, so reused HTTP keep-alive/HTTP-2
+/// connections are eventually recycled.
+const HTTP_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+
+/// Process-wide HTTP client shared by all streaming chat drivers.
+///
+/// `reqwest::Client` is internally reference-counted and built to be cloned and
+/// shared; it carries no per-request credentials (auth headers are attached per
+/// request), so one pool is safe to reuse across providers, credentials, and
+/// reasoning steps. Sharing it is what lets TCP/TLS handshakes and HTTP/2
+/// connections be reused across agent turns even though the driver structs are
+/// rebuilt on every step (EVE-635).
+pub fn shared_streaming_http_client() -> reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(HTTP_CONNECT_TIMEOUT)
+                .read_timeout(HTTP_STREAM_READ_TIMEOUT)
+                .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT)
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new())
+        })
+        .clone()
+}
+
+/// Process-wide HTTP client shared by non-streaming request/response drivers
+/// (embeddings, vector store). Uses an overall request timeout because these
+/// reads are bounded and must not hang forever.
+pub fn shared_request_http_client() -> reqwest::Client {
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .connect_timeout(HTTP_CONNECT_TIMEOUT)
+                .timeout(HTTP_REQUEST_TIMEOUT)
+                .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT)
+                .build()
+                .unwrap_or_else(|_| reqwest::Client::new())
+        })
+        .clone()
+}
 
 // ============================================================================
 // Data URL Parsing

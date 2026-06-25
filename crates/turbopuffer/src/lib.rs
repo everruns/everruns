@@ -43,7 +43,9 @@ impl TurbopufferVectorStore {
     /// (any trailing slash is trimmed); `api_key` authenticates every request.
     pub fn new(base_url: impl Into<String>, api_key: impl Into<String>) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            // EVE-635: shared client with connect + overall request timeouts so
+            // a hung vector-store read cannot block indefinitely.
+            http: everruns_core::driver_helpers::shared_request_http_client(),
             base_url: base_url.into().trim_end_matches('/').to_string(),
             api_key: api_key.into(),
         }

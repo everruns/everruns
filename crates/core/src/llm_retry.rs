@@ -14,6 +14,7 @@
 // Design: exponential backoff with 25% jitter, respecting provider retry-after hints.
 // Defaults match official SDKs: 2 retries, 1s initial, 60s max, 2x multiplier.
 
+use rand::Rng;
 use std::time::Duration;
 
 /// Maximum retry-after value to honor (seconds).
@@ -87,9 +88,10 @@ impl LlmRetryConfig {
         // This gives range [0.75, 1.0] * base
         let jitter = if self.jitter_factor > 0.0 {
             let jitter_range = capped_backoff * self.jitter_factor;
-            // Simple deterministic jitter based on attempt number
-            // In production, use rand crate for true randomness
-            let jitter_offset = (attempt as f64 * 0.37).fract() * 2.0 - 1.0; // -1 to 1
+            // EVE-635: real RNG so concurrent clients hitting the same attempt
+            // number (e.g. a shared 429/503) do not retry in lockstep
+            // (thundering herd). Range [-1, 1).
+            let jitter_offset = rand::rng().random::<f64>() * 2.0 - 1.0;
             jitter_range * jitter_offset
         } else {
             0.0
@@ -457,6 +459,35 @@ mod tests {
         assert_eq!(config.calculate_backoff(2), Duration::from_secs(30));
         // attempt 3: 80s -> capped to 30s
         assert_eq!(config.calculate_backoff(3), Duration::from_secs(30));
+    }
+
+    /// EVE-635: with jitter enabled the backoff must use a real RNG, so repeated
+    /// computations for the same attempt number diverge (no thundering herd).
+    #[test]
+    fn test_backoff_jitter_is_randomized() {
+        let config = LlmRetryConfig {
+            initial_backoff: Duration::from_secs(10),
+            max_backoff: Duration::from_secs(60),
+            backoff_multiplier: 2.0,
+            jitter_factor: 0.25,
+            ..Default::default()
+        };
+        let samples: std::collections::HashSet<u128> = (0..20)
+            .map(|_| config.calculate_backoff(1).as_nanos())
+            .collect();
+        assert!(
+            samples.len() > 1,
+            "jittered backoff should vary across calls, got {} distinct value(s)",
+            samples.len()
+        );
+        // Jitter stays within ±25% of the 20s base for attempt 1.
+        for _ in 0..50 {
+            let secs = config.calculate_backoff(1).as_secs_f64();
+            assert!(
+                (15.0..=25.0).contains(&secs),
+                "backoff {secs}s out of range"
+            );
+        }
     }
 
     #[test]

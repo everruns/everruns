@@ -13,6 +13,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::{Context, Result, anyhow, bail};
+use futures::StreamExt;
+
 use everruns_core::driver_registry::{DriverRegistry, EmbedRequest};
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::typed_id::{KnowledgeIndexChunkId, KnowledgeIndexDocumentId};
@@ -44,6 +46,9 @@ const CHUNK_OVERLAP_CHARS: usize = 150;
 /// Embedding batch size: how many chunks are sent to the embeddings driver per
 /// request.
 const EMBED_BATCH_SIZE: usize = 64;
+/// Max embedding batches in flight at once (EVE-635). Bounds fan-out so a large
+/// document does not open an unbounded number of concurrent provider requests.
+const EMBED_BATCH_CONCURRENCY: usize = 4;
 
 #[derive(Debug, Clone)]
 pub struct KnowledgeIndexSyncConfig {
@@ -261,7 +266,11 @@ impl KnowledgeIndexSyncService {
             index,
         )
         .await?;
-        let driver = embedder.driver;
+        // EVE-635: share the driver across concurrently in-flight embedding
+        // batches (bounded fan-out below). `BoxedEmbeddingsDriver` is not Clone,
+        // so wrap it once in an Arc.
+        let driver = Arc::new(embedder.driver);
+        let model_id = embedder.model_id.clone();
 
         let mut documents = Vec::with_capacity(docs.len());
         let mut records = Vec::new();
@@ -271,21 +280,41 @@ impl KnowledgeIndexSyncService {
             let pieces = chunk_text(&doc.text, CHUNK_SIZE_CHARS, CHUNK_OVERLAP_CHARS);
             let mut chunk_rows = Vec::with_capacity(pieces.len());
 
-            // Embed in batches to bound request size.
-            let mut embeddings: Vec<Vec<f32>> = Vec::with_capacity(pieces.len());
-            for batch in pieces.chunks(EMBED_BATCH_SIZE) {
-                let response = driver
-                    .embed(EmbedRequest {
-                        texts: batch.iter().map(|p| p.text.clone()).collect(),
-                        model: embedder.model_id.clone(),
-                    })
-                    .await
-                    .map_err(|e| anyhow!("embedding request failed: {e}"))?;
-                if response.embeddings.len() != batch.len() {
-                    bail!("embeddings provider returned a mismatched batch size");
-                }
-                embeddings.extend(response.embeddings);
+            // Embed in batches to bound request size. EVE-635: run batches with
+            // bounded concurrency rather than strictly one-at-a-time, then
+            // reassemble in batch order so embeddings still line up with chunks.
+            let batch_inputs: Vec<(usize, Vec<String>)> = pieces
+                .chunks(EMBED_BATCH_SIZE)
+                .enumerate()
+                .map(|(i, batch)| (i, batch.iter().map(|p| p.text.clone()).collect()))
+                .collect();
+            let mut batch_results: Vec<Option<Vec<Vec<f32>>>> = vec![None; batch_inputs.len()];
+
+            let mut embed_stream =
+                futures::stream::iter(batch_inputs.into_iter().map(|(i, texts)| {
+                    let driver = Arc::clone(&driver);
+                    let model = model_id.clone();
+                    async move {
+                        let expected = texts.len();
+                        let response = driver
+                            .embed(EmbedRequest { texts, model })
+                            .await
+                            .map_err(|e| anyhow!("embedding request failed: {e}"))?;
+                        if response.embeddings.len() != expected {
+                            bail!("embeddings provider returned a mismatched batch size");
+                        }
+                        Ok::<(usize, Vec<Vec<f32>>), anyhow::Error>((i, response.embeddings))
+                    }
+                }))
+                .buffer_unordered(EMBED_BATCH_CONCURRENCY);
+
+            while let Some(result) = embed_stream.next().await {
+                let (i, batch_embeddings) = result?;
+                batch_results[i] = Some(batch_embeddings);
             }
+
+            // Flatten batches back into a single per-chunk order.
+            let embeddings: Vec<Vec<f32>> = batch_results.into_iter().flatten().flatten().collect();
 
             let document_public_id = KnowledgeIndexDocumentId::new().to_string();
             for (ordinal, (piece, embedding)) in pieces.into_iter().zip(embeddings).enumerate() {

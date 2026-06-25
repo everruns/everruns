@@ -77,7 +77,7 @@ impl AnthropicChatDriver {
     /// Create a new provider with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
             uses_custom_url: false,
@@ -88,7 +88,7 @@ impl AnthropicChatDriver {
     /// Create a new provider with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: api_url.into(),
             uses_custom_url: true,
