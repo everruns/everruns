@@ -685,6 +685,8 @@ impl SessionBuilder {
             active_schedule_count: None,
             features: Vec::new(),
             parent_session_id: None,
+            forked_from_session_id: None,
+            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         }

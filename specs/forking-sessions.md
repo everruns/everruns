@@ -34,8 +34,8 @@ later change is a deliberate one.
 | Fork point | Full history (everything up to "now") | Covers the common "branch from here" case; arbitrary-point rewind is a clean follow-up (see [Fork point](#fork-point)). |
 | Workspace/files | **Isolated copy** — new workspace, deep-copy files | True fork semantics: edits in the child never affect the parent. |
 | Conversation | Copy all persisted events as-is | Faithful snapshot; reconstruction logic is unchanged. |
-| KV + secrets | Copy | Config/state the child is expected to reuse. |
-| SQL databases | Copy (page-level) | Pure data, transparent to the agent. |
+| KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
+| SQL databases | Copy (page-level; target design) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
 | Parent state required to fork | Not `active` / `waiting_for_tool_results` | Avoids snapshotting a half-written, in-flight turn. |
 
@@ -171,7 +171,8 @@ Overridable on fork: `title`, `tags`, `model_id`, `agent_id`,
 
 Response: `201 Created`, body is the new `Session` (same shape as
 `create_session`), with `forked_from_session_id` and `forked_from_sequence`
-populated, `status = idle`, and zeroed usage.
+populated and zeroed usage. The fork is created in `started` (no turn has run
+in *its* lifecycle); the first input drives it like any new session.
 
 Errors:
 
@@ -190,20 +191,37 @@ forking is not permitted.
 
 Phased so each phase is independently reviewable and lands a coherent slice.
 
-1. **Lineage foundation.** Migration adding `forked_from_session_id` +
-   `forked_from_sequence`; thread through `SessionRow` / `CreateSessionRow` /
-   `row_to_session` / `Session` model and the create path (default `NULL`).
-   Add the `forked_from` list filter. No fork behavior yet.
-2. **Fork service + command + route.** `SessionService::fork()` performing the
-   transactional copy (config + events + files + KV/secrets); `ForkSession`
-   command (policy `SESSION_MANAGE`); `POST /v1/sessions/{id}/fork`. Skip-list
-   enforced by simply not copying those tables.
+1. **Lineage + fork MVP (landed).** Migration adding `forked_from_session_id` +
+   `forked_from_sequence`; threaded through `SessionRow` / `row_to_session` /
+   the `Session` model and read SELECTs (lineage written via a dedicated
+   `set_session_fork_lineage` update so the many `CreateSessionRow` call sites
+   stay untouched). `SessionService::fork()` copies **config + conversation
+   history (events) + workspace files**; `ForkSession` command (policy
+   `SESSION_MANAGE`); `POST /v1/sessions/{id}/fork`. The skip-list is enforced
+   by simply not copying those tables.
+2. **KV + secrets copy.** Copy `session_key_values` and `session_secrets`.
+   Requires adding `upsert_session_key_value` and `get_session_secret` to the
+   in-memory backend + `StorageBackend` dispatch (Postgres already has both),
+   then copying in `fork()`.
 3. **SQL databases copy.** Page-level copy of `session_databases` /
    `session_database_pages` (gated on the session actually having any).
-4. **Arbitrary fork point.** Optional `up_to_sequence` / `up_to_message_id`
-   with turn-boundary sealing.
-5. **UI.** "Fork" action on a session (chat header / session card); "forked
-   from …" provenance link; optional fork-tree view.
+4. **Atomicity + arbitrary fork point.** Move the multi-table copy into a single
+   transaction (bulk copy methods), and add optional `up_to_sequence` /
+   `up_to_message_id` with turn-boundary sealing.
+5. **UI + list filter.** `GET /v1/sessions?forked_from={id}` filter; a "Fork"
+   action on a session (chat header / session card); "forked from …" provenance
+   link; optional fork-tree view.
+
+### Current implementation status
+
+Phase 1 is implemented: the fork endpoint creates an independent session that
+copies configuration, full conversation history, and workspace files, and
+records lineage. KV/secrets copy (phase 2), SQL-database copy (phase 3),
+single-transaction atomicity and arbitrary fork point (phase 4), and the list
+filter + UI (phase 5) are follow-ups. The copy is currently sequential
+(per-table), not a single transaction, so a mid-copy failure can leave an
+incompletely-populated fork that the caller can delete and retry — matching the
+best-effort posture of `create_session`'s post-commit side effects.
 
 ## Implementation references
 

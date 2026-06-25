@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::types::{
-    CancelStatus, CancelTurnResponse, CreateSessionRequest, GetOrCreateChatSessionRequest,
-    SessionStatsResponse, UpdateSessionRequest,
+    CancelStatus, CancelTurnResponse, CreateSessionRequest, ForkSessionRequest,
+    GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
 use everruns_core::events::{
@@ -193,6 +193,79 @@ impl Command for CreateSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateSession>() }
+
+/// Fork a session into a new, independent session (specs/forking-sessions.md).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ForkSession {
+    /// Session to fork (prefixed public id).
+    pub session_id: String,
+    /// Optional overrides applied to the fork.
+    #[serde(default)]
+    pub overrides: ForkSessionRequest,
+}
+
+impl Command for ForkSession {
+    type Output = Session;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "fork_session",
+            category: "sessions",
+            description: "Fork a session into a new, independent session that copies its conversation history and workspace files.",
+            method: "POST",
+            path: "/v1/sessions/{session_id}/fork",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
+        let parent_id = q::parse_session_id(&self.session_id)?;
+
+        // Existence + active-status checks here so callers get precise HTTP
+        // codes (404 / 409) rather than a generic 500 surfaced from the service.
+        let parent = ctx
+            .db
+            .get_session(ctx.org_id(), parent_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+        if matches!(
+            parent.status.as_str(),
+            "active" | "waiting_for_tool_results"
+        ) {
+            return Err(CommandError::conflict(
+                "Cannot fork a session while it is mid-turn".to_string(),
+            ));
+        }
+
+        let mut overrides = self.overrides;
+        overrides.locale =
+            crate::api::validation::normalize_locale(overrides.locale).map_err(|_| {
+                CommandError::bad_request(crate::api::validation::VALIDATION_ERROR_MESSAGE)
+            })?;
+
+        q::session_service(ctx)?
+            .fork(
+                &ctx.caller,
+                parent_id,
+                super::ForkOverrides {
+                    title: overrides.title,
+                    tags: overrides.tags,
+                    model_id: overrides.model_id,
+                    agent_id: overrides.agent_id,
+                    locale: overrides.locale,
+                    system_prompt: overrides.system_prompt,
+                },
+            )
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ForkSession>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListSessions {

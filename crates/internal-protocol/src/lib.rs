@@ -1478,6 +1478,8 @@ mod tests {
             active_schedule_count: None,
             features: vec![],
             parent_session_id: Some(everruns_core::SessionId::new()),
+            forked_from_session_id: None,
+            forked_from_sequence: None,
             blueprint_id: Some("oracle".to_string()),
             blueprint_config: Some(serde_json::json!({ "depth": "focused" })),
         };

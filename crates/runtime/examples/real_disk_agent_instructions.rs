@@ -149,6 +149,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             active_schedule_count: None,
             features: vec![],
             parent_session_id: None,
+            forked_from_session_id: None,
+            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         })

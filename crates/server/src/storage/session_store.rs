@@ -148,6 +148,8 @@ impl SessionStore for DbSessionStore {
                     active_schedule_count: None,
                     features: vec![],
                     parent_session_id: row.parent_session_id,
+                    forked_from_session_id: row.forked_from_session_id,
+                    forked_from_sequence: row.forked_from_sequence,
                     blueprint_id: row.blueprint_id,
                     blueprint_config: row.blueprint_config,
                 }))

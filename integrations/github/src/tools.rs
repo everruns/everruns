@@ -649,6 +649,8 @@ mod tests {
             active_schedule_count: None,
             features: vec![],
             parent_session_id: Some(parent_session_id),
+            forked_from_session_id: None,
+            forked_from_sequence: None,
             blueprint_id: None,
             blueprint_config: None,
         }

@@ -285,6 +285,19 @@ pub struct Session {
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_session_id: Option<SessionId>,
 
+    // -- Fork lineage fields (specs/forking-sessions.md) --
+    /// Session this one was forked from. NULL for sessions that were not forked.
+    /// Distinct from `parent_session_id` (subagent nesting): forking is a
+    /// user-initiated "branch from here" relationship.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub forked_from_session_id: Option<SessionId>,
+    /// Parent event sequence the fork was taken at (the fork point). NULL unless
+    /// this session is a fork.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 42))]
+    pub forked_from_sequence: Option<i32>,
+
     // -- Blueprint fields (only set when this session runs a blueprint agent) --
     /// Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
     /// from the blueprint definition instead of from harness_id/agent_id.

@@ -116,12 +116,39 @@ impl Database {
         Ok(row)
     }
 
+    /// Record fork provenance on an already-created session
+    /// (specs/forking-sessions.md). Set in a dedicated update so the normal
+    /// `create_session` path and its many call sites stay untouched.
+    pub async fn set_session_fork_lineage(
+        &self,
+        session_id: SessionId,
+        forked_from_session_id: SessionId,
+        forked_from_sequence: Option<i32>,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE sessions
+            SET forked_from_session_id = $2,
+                forked_from_sequence = $3,
+                updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(session_id.uuid())
+        .bind(forked_from_session_id.uuid())
+        .bind(forked_from_sequence)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
     /// Get session by org and session id
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND id = $2
@@ -141,6 +168,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE id = $1
@@ -203,6 +231,7 @@ impl Database {
         let select_sql = format!(
             r#"SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions {where_clause}
             ORDER BY created_at DESC
@@ -266,6 +295,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE parent_session_id = $1
@@ -461,6 +491,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND tags @> $2
@@ -487,6 +518,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND tags @> $3
@@ -514,6 +546,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
@@ -542,6 +575,7 @@ impl Database {
             r#"
             SELECT id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                   forked_from_session_id, forked_from_sequence,
                    blueprint_id, blueprint_config
             FROM sessions
             WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4

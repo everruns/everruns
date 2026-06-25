@@ -83,11 +83,29 @@ impl InMemoryDatabase {
             total_estimated_cost_usd: 0.0,
             total_cost_usd: 0.0,
             parent_session_id: input.parent_session_id,
+            forked_from_session_id: None,
+            forked_from_sequence: None,
             blueprint_id: input.blueprint_id,
             blueprint_config: input.blueprint_config,
         };
         self.sessions.write().insert(id, row.clone());
         Ok(row)
+    }
+
+    /// Record fork provenance on an already-created session
+    /// (specs/forking-sessions.md). No-op if the session id is unknown.
+    pub async fn set_session_fork_lineage(
+        &self,
+        session_id: SessionId,
+        forked_from_session_id: SessionId,
+        forked_from_sequence: Option<i32>,
+    ) -> Result<()> {
+        if let Some(row) = self.sessions.write().get_mut(&session_id) {
+            row.forked_from_session_id = Some(forked_from_session_id);
+            row.forked_from_sequence = forked_from_sequence;
+            row.updated_at = Self::now();
+        }
+        Ok(())
     }
 
     /// Get session, validating org ownership directly
