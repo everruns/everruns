@@ -749,6 +749,12 @@ pub struct WebhookChannelConfig {
     pub session_mode: InvocationSessionMode,
     /// Message content or template sent when the webhook arrives.
     pub message: String,
+    /// Optional per-IP rate limit applied to this app's webhook endpoint, in
+    /// requests per minute. `None` or `Some(0)` disables the per-channel limit
+    /// (the global API limit still applies). Mirrors
+    /// `A2aChannelConfig::rate_limit_per_minute` (EVE-627).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
 }
 
 fn default_timezone() -> String {
@@ -1097,6 +1103,28 @@ mod tests {
             serde_json::from_str(r#"{"token":"top-secret","message":"{{payload.action}}"}"#)
                 .unwrap();
         assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+        // EVE-627: rate limit is optional and absent by default.
+        assert!(config.rate_limit_per_minute.is_none());
+    }
+
+    #[test]
+    fn test_webhook_channel_config_rate_limit_roundtrip() {
+        // EVE-627: an explicit per-channel rate limit parses and re-serializes.
+        let config: WebhookChannelConfig =
+            serde_json::from_str(r#"{"token":"t","message":"m","rate_limit_per_minute":120}"#)
+                .unwrap();
+        assert_eq!(config.rate_limit_per_minute, Some(120));
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(
+            json.get("rate_limit_per_minute").and_then(|v| v.as_u64()),
+            Some(120)
+        );
+
+        // Absent when None (skip_serializing_if).
+        let none_cfg: WebhookChannelConfig =
+            serde_json::from_str(r#"{"token":"t","message":"m"}"#).unwrap();
+        let none_json = serde_json::to_value(&none_cfg).unwrap();
+        assert!(none_json.get("rate_limit_per_minute").is_none());
     }
 
     fn test_app(channels: Vec<AppChannel>) -> App {
