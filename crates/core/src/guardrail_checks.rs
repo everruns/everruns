@@ -138,7 +138,39 @@ pub enum GuardrailRule {
     /// server-not-configured: the verdict defaults to `allow` so a guardrail
     /// outage never wedges a turn.
     Mcp { server: String, tool: String },
+    /// Model-backed moderation/classifier check (EVE-573). Sends the stage
+    /// text to the utility LLM as a content classifier and blocks/logs when
+    /// any configured category scores at or above `threshold` (a percentage,
+    /// `0..=100`). `categories` defaults to a built-in safety set when empty.
+    /// Valid only on the `output` stage — it runs on the end-of-message
+    /// post-generation seam, not in the sync `evaluate()` path.
+    /// Model-backed and higher-risk: the finalized assistant text is sent to
+    /// the org's configured utility model (data egress to that provider —
+    /// TM-LLM / TM-DOS). Fails open on timeout, LLM error, or parse failure:
+    /// the verdict defaults to `allow` so a moderation outage never wedges a
+    /// turn.
+    Moderation {
+        #[serde(default)]
+        categories: Vec<String>,
+        #[serde(default = "default_moderation_threshold")]
+        threshold: u8,
+    },
 }
+
+/// Default block threshold (percent) for a moderation check when unspecified.
+pub fn default_moderation_threshold() -> u8 {
+    50
+}
+
+/// Built-in moderation categories used when a check specifies none.
+pub const DEFAULT_MODERATION_CATEGORIES: &[&str] = &[
+    "hate",
+    "harassment",
+    "self_harm",
+    "sexual",
+    "violence",
+    "illicit",
+];
 
 impl GuardrailRule {
     pub fn rule_type(&self) -> &'static str {
@@ -148,6 +180,7 @@ impl GuardrailRule {
             GuardrailRule::ToolPattern { .. } => "tool_pattern",
             GuardrailRule::LlmJudge { .. } => "llm_judge",
             GuardrailRule::Mcp { .. } => "mcp",
+            GuardrailRule::Moderation { .. } => "moderation",
         }
     }
 }
@@ -200,6 +233,7 @@ impl GuardrailsConfig {
         let mut compiled = Vec::with_capacity(self.checks.len());
         let mut judge_checks = Vec::new();
         let mut mcp_checks = Vec::new();
+        let mut moderation_checks = Vec::new();
         for (index, check) in self.checks.iter().enumerate() {
             match &check.rule {
                 GuardrailRule::LlmJudge { prompt } => {
@@ -207,6 +241,14 @@ impl GuardrailsConfig {
                 }
                 GuardrailRule::Mcp { server, tool } => {
                     mcp_checks.push(compile_mcp_check(index, check, server, tool)?);
+                }
+                GuardrailRule::Moderation {
+                    categories,
+                    threshold,
+                } => {
+                    moderation_checks.push(compile_moderation_check(
+                        index, check, categories, *threshold,
+                    )?);
                 }
                 _ => compiled.push(compile_check(index, check)?),
             }
@@ -216,6 +258,7 @@ impl GuardrailsConfig {
             checks: compiled,
             judge_checks,
             mcp_checks,
+            moderation_checks,
         })
     }
 }
@@ -279,6 +322,24 @@ pub struct CompiledMcpCheck {
     pub tool: String,
 }
 
+/// A compiled `moderation` check, carried separately from the sync checks
+/// because it must be evaluated asynchronously (utility-LLM classifier call)
+/// on the end-of-message output seam (EVE-573).
+#[derive(Debug)]
+pub struct CompiledModerationCheck {
+    pub index: usize,
+    pub label: String,
+    pub stage: GuardrailStage,
+    pub on_fail: GuardrailOnFail,
+    pub replacement: Option<String>,
+    /// Categories to score. Never empty after compile — defaults to
+    /// [`DEFAULT_MODERATION_CATEGORIES`] when the config specifies none.
+    pub categories: Vec<String>,
+    /// Block threshold as a percentage (`0..=100`): a category scoring at or
+    /// above this value trips the check.
+    pub threshold: u8,
+}
+
 /// Validated, pre-compiled guardrails ready for evaluation.
 #[derive(Debug)]
 pub struct CompiledGuardrails {
@@ -290,6 +351,9 @@ pub struct CompiledGuardrails {
     /// MCP-served checks, separated from the sync deterministic checks.
     /// Evaluated asynchronously by capability hooks; never by `evaluate()`.
     mcp_checks: Vec<CompiledMcpCheck>,
+    /// Model-backed moderation checks, evaluated asynchronously on the
+    /// end-of-message output seam; never by `evaluate()`.
+    moderation_checks: Vec<CompiledModerationCheck>,
 }
 
 #[derive(Debug)]
@@ -319,11 +383,25 @@ impl CompiledGuardrails {
         self.mode
     }
 
-    /// Whether any check (deterministic, llm_judge, or mcp) applies to `stage`.
+    /// Whether any check (deterministic, llm_judge, mcp, or moderation)
+    /// applies to `stage`.
     pub fn has_stage(&self, stage: GuardrailStage) -> bool {
         self.checks.iter().any(|c| c.stage == stage)
             || self.judge_checks.iter().any(|c| c.stage == stage)
             || self.mcp_checks.iter().any(|c| c.stage == stage)
+            || self.moderation_checks.iter().any(|c| c.stage == stage)
+    }
+
+    /// Moderation checks that target `stage`. Empty when no `moderation` rule
+    /// targets `stage`. Callers run these asynchronously via the utility LLM
+    /// on the end-of-message output seam.
+    pub fn moderation_checks_for_stage(
+        &self,
+        stage: GuardrailStage,
+    ) -> impl Iterator<Item = &CompiledModerationCheck> {
+        self.moderation_checks
+            .iter()
+            .filter(move |c| c.stage == stage)
     }
 
     /// LLM-judge checks that target `stage`. Empty when no `llm_judge` rule
@@ -491,6 +569,11 @@ fn compile_check(index: usize, check: &GuardrailCheck) -> Result<CompiledCheck, 
                 "mcp checks are routed to compile_mcp_check before compile_check is called"
             )
         }
+        GuardrailRule::Moderation { .. } => {
+            unreachable!(
+                "moderation checks are routed to compile_moderation_check before compile_check is called"
+            )
+        }
     };
     Ok(CompiledCheck {
         index,
@@ -608,6 +691,67 @@ fn compile_mcp_check(
         replacement: check.replacement.clone(),
         server: server.to_string(),
         tool: tool.to_string(),
+    })
+}
+
+fn compile_moderation_check(
+    index: usize,
+    check: &GuardrailCheck,
+    categories: &[String],
+    threshold: u8,
+) -> Result<CompiledModerationCheck, String> {
+    let label = match &check.id {
+        Some(id) => {
+            if id.is_empty() || id.chars().count() > MAX_CHECK_ID_LEN {
+                return Err(format!(
+                    "check #{index}: id must be 1..={MAX_CHECK_ID_LEN} characters"
+                ));
+            }
+            id.clone()
+        }
+        None => format!("moderation#{index}"),
+    };
+    // Moderation is the first output-stage model-backed check; the seam it runs
+    // on (the end-of-message output seam) only exists for the `output` stage.
+    match check.stage {
+        GuardrailStage::Output => {}
+        GuardrailStage::ToolUse | GuardrailStage::ToolOutput => {
+            return Err(format!(
+                "check '{label}': moderation is only supported on the 'output' stage"
+            ));
+        }
+    }
+    if threshold > 100 {
+        return Err(format!(
+            "check '{label}': moderation threshold must be 0..=100 (got {threshold})"
+        ));
+    }
+    // Categories are optional; an empty list means "use the built-in set".
+    // A provided list is validated like other entry lists.
+    let categories = if categories.is_empty() {
+        DEFAULT_MODERATION_CATEGORIES
+            .iter()
+            .map(|c| (*c).to_string())
+            .collect()
+    } else {
+        validate_entries(&label, "categories", categories)?;
+        categories.to_vec()
+    };
+    if let Some(replacement) = &check.replacement
+        && replacement.len() > MAX_REPLACEMENT_LEN
+    {
+        return Err(format!(
+            "check '{label}': replacement exceeds {MAX_REPLACEMENT_LEN} bytes"
+        ));
+    }
+    Ok(CompiledModerationCheck {
+        index,
+        label,
+        stage: check.stage,
+        on_fail: check.on_fail,
+        replacement: check.replacement.clone(),
+        categories,
+        threshold,
     })
 }
 
