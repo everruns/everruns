@@ -1163,9 +1163,9 @@ Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec,
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-SANDBOX-001 | Container escape via kernel vulnerability | High | Configurable runtime: default `runc`, production `sysbox-runc` (user namespaces + procfs virtualization); operator chooses isolation level | **ACCEPTED** |
+| TM-SANDBOX-001 | Container escape via kernel vulnerability | High | Configurable runtime (`runtime` config field): default empty = plain `runc`; operator chooses a hardened runtime (`sysbox-runc`, `gvisor`, `kata`) for untrusted/multi-tenant workloads | **ACCEPTED** |
 | TM-SANDBOX-002 | Resource exhaustion (memory/CPU/PIDs) | High | cgroup limits enforced via Docker create flags (`memory_limit`, `cpu_limit`, `pids_limit`); defaults: 2 GiB, 1 CPU, 256 PIDs | MITIGATED |
-| TM-SANDBOX-003 | Network attacks from sandbox | High | Per-sandbox isolated Docker bridge network; egress filtering blocks private IPs and cloud metadata (169.254.0.0/16) | MITIGATED |
+| TM-SANDBOX-003 | Network attacks / SSRF / metadata access from sandbox | High | Per-sandbox isolated Docker bridge network limits cross-sandbox reachability, but **no egress / private-IP / cloud-metadata (169.254.169.254) filtering is implemented**; default bridge networking can route to RFC1918 and metadata endpoints. Egress restriction is the operator's responsibility at the network/firewall layer | **ACCEPTED** |
 | TM-SANDBOX-004 | Cross-session container access | Critical | Container names include `session_id`; all Docker API queries filtered by `session` + `managed-by` labels; sandbox state stored in session-scoped secrets | MITIGATED |
 | TM-SANDBOX-005 | Image supply chain attack | Medium | Image allowlist in capability config; only pre-approved images can be pulled | MITIGATED |
 | TM-SANDBOX-006 | Docker socket exposure inside sandbox | High | Docker socket never mounted into containers; no `--privileged` flag | MITIGATED |
@@ -1173,11 +1173,18 @@ Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec,
 | TM-SANDBOX-008 | Cross-tenant sandbox access | Critical | Tool scoping via `ToolContext.session_id` + per-sandbox network + Docker label filters; container names derived from session UUID, never user input | MITIGATED |
 | TM-SANDBOX-009 | Cross-tenant network reachability | High | Each sandbox gets its own isolated Docker bridge network (`sandbox-{org}-{session}`); sole member is the sandbox container | MITIGATED |
 | TM-SANDBOX-010 | Tenant resource starvation | High | Per-sandbox cgroups + per-org concurrent sandbox limits via leased resources | MITIGATED |
+| TM-SANDBOX-011 | Docker control-plane exposure via insecure host | High | Default Docker host is the host-local unix socket (`unix:///var/run/docker.sock`), never an unauthenticated plaintext TCP endpoint. The client fails closed when it cannot reach a usable daemon rather than defaulting to a network endpoint; TCP daemons must be set explicitly and protected with mTLS | MITIGATED |
 
 ### Mitigation Details
 
 **TM-SANDBOX-001 — Container Escape (ACCEPTED):**
-Container isolation depends on the kernel and runtime. Default `runc` provides namespace + cgroup isolation but shares the host kernel. For production multi-tenant deployments, operators should configure `sysbox-runc` (adds user namespaces, procfs/sysfs virtualization) or `kata`/`gvisor` for stronger isolation. The runtime is a deployment-time config field (`CONTAINER_SANDBOX_RUNTIME`), not baked into code.
+Container isolation depends on the kernel and runtime. The default (empty `runtime`) is plain `runc`, which provides namespace + cgroup isolation but shares the host kernel. This default is intentional so the capability works on stock Docker and in CI. For untrusted or multi-tenant workloads, the deploying operator is responsible for configuring a hardened runtime: `sysbox-runc` (adds user namespaces, procfs/sysfs virtualization) or `kata`/`gvisor` for stronger isolation. The runtime is a deployment-time config field (`runtime` in `ContainerSandboxConfig`), not baked into code.
+
+**TM-SANDBOX-003 — Network Egress (ACCEPTED):**
+Each sandbox runs on its own per-session Docker bridge network, which limits cross-sandbox reachability (TM-SANDBOX-009). However, no application-level egress filtering is implemented: a sandboxed container reaches whatever its bridge can route to, including RFC1918 private ranges and the cloud metadata endpoint (169.254.169.254) — so SSRF / internal-network probing from inside a sandbox is possible (see TM-AGENT-019). The `network_mode` config field is parsed but not yet consulted at container creation. Restricting egress (blocking RFC1918 + metadata) is the operator's responsibility at the network/firewall layer until in-product egress controls land.
+
+**TM-SANDBOX-011 — Docker Host Transport (MITIGATED):**
+The Docker Engine API is the control plane for the host's containers; an unauthenticated, plaintext TCP endpoint (e.g. `http://localhost:2375`) reachable over a network grants full Docker control and therefore host escape. The default host is the local unix socket (`unix:///var/run/docker.sock`), resolved via config → `CONTAINER_SANDBOX_DOCKER_HOST` env → default. The reqwest-based client does not speak the unix transport yet, so the default fails closed at request time with an actionable error rather than silently falling back to a network endpoint. Operators that need a TCP daemon must set `CONTAINER_SANDBOX_DOCKER_HOST` explicitly to an `http(s)://` URL and protect any non-loopback address with mTLS; plaintext TCP must never be exposed on a network. CI/dind sets this env explicitly to `http://localhost:2375` (loopback only), so the secure default does not affect tests.
 
 **TM-SANDBOX-004 — Cross-Session Isolation:**
 ```
@@ -1195,8 +1202,9 @@ Session A cannot access Session B's container:
 2. Per-sandbox Docker network: `sandbox-{org}-{session}`, sole member = the sandbox
 3. Label-filtered API calls: all queries include `session` + `managed-by` labels
 4. Per-org limits: max concurrent sandboxes checked at create time via leased resources
-5. Egress filtering: block private IPs + cloud metadata from sandbox bridges
-6. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
+5. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
+
+Note: egress filtering (blocking private IPs + cloud metadata) is **not** implemented in-product; it is the operator's network-layer responsibility (see TM-SANDBOX-003, TM-AGENT-019).
 
 ## 22. A2A Channel (TM-A2A)
 
@@ -1464,6 +1472,7 @@ path to any management API. Mitigations live in
 | TM-DENO-004 | Network probing from Deno sandbox | Same residual risk as other remote execution capabilities; requires Admin + operator egress controls |
 | TM-E2B-005 | Full-network sandbox misuse | Same residual risk class as other cloud sandboxes; require deployment egress isolation where needed |
 | TM-SANDBOX-001 | Container escape via kernel vulnerability | Configurable runtime; operator chooses isolation level (sysbox/kata/gvisor for production) |
+| TM-SANDBOX-003 | SSRF / metadata / internal-network access from sandbox | No in-product egress filtering; operator must restrict egress (block RFC1918 + 169.254.169.254) at the network/firewall layer |
 
 ### Caller Responsibilities
 

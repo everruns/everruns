@@ -2,7 +2,10 @@
 //!
 //! Gated behind:
 //! - Feature flag: `container-sandbox-live-tests`
-//! - Daemon availability on `CONTAINER_SANDBOX_DOCKER_HOST` (default `http://localhost:2375`).
+//! - Daemon availability on `CONTAINER_SANDBOX_DOCKER_HOST` (which the workflows
+//!   set explicitly to `http://localhost:2375`). The secure default host is the
+//!   local unix socket, which this client cannot speak yet, so these live tests
+//!   require the env var to point at an http(s):// daemon.
 //!   The workflow `.github/workflows/container-sandbox-integration.yml` runs a
 //!   `docker:dind` service with TLS disabled to provide this endpoint.
 //!

@@ -21,10 +21,27 @@ const DEFAULT_AUTO_STOP_MINUTES: u64 = 10;
 /// Configuration for the container sandbox capability.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerSandboxConfig {
-    /// Docker Engine host URL (config → env → "http://localhost:2375")
+    /// Docker Engine host URL (config → env `CONTAINER_SANDBOX_DOCKER_HOST` →
+    /// default `unix:///var/run/docker.sock`).
+    ///
+    /// Security: the default is the host-local unix socket, never an
+    /// unauthenticated plaintext TCP endpoint. This reqwest-based client cannot
+    /// speak the unix transport yet, so leaving it at the default fails closed
+    /// (see `client::resolve_docker_host`). Operators needing a TCP daemon must
+    /// set an explicit `http(s)://` host and protect any non-loopback address
+    /// with mTLS; plaintext TCP must never be exposed on a network. See
+    /// TM-SANDBOX-011.
     #[serde(default)]
     pub docker_host: Option<String>,
-    /// Container runtime (e.g., "sysbox-runc"). Empty for default runc.
+    /// Container runtime (e.g., "sysbox-runc"). Empty = the host's default OCI
+    /// runtime, i.e. plain `runc`.
+    ///
+    /// Security: plain `runc` shares the host kernel and provides only
+    /// namespace/cgroup isolation. For untrusted or multi-tenant workloads the
+    /// deploying operator is responsible for configuring a hardened runtime
+    /// (`sysbox-runc` for user namespaces, or `gvisor`/`kata` for stronger
+    /// isolation). The default is intentionally `runc` so it works on stock
+    /// Docker and in CI. See TM-SANDBOX-001.
     #[serde(default)]
     pub runtime: String,
     /// Container image.
@@ -43,7 +60,16 @@ pub struct ContainerSandboxConfig {
     #[serde(default = "default_working_dir")]
     pub working_dir: String,
     /// Network mode (e.g., "bridge" or a custom network name).
-    /// TODO: will be wired into container creation in a follow-up.
+    ///
+    /// Note: container creation currently always attaches the sandbox to its own
+    /// per-session isolated bridge network (`sandbox-{org}-{session}`), so this
+    /// field is not yet consulted at create time.
+    ///
+    /// Security: no egress/private-IP/cloud-metadata (169.254.169.254) filtering
+    /// is applied by default — a sandboxed container can reach whatever its
+    /// bridge network can route to. Restricting egress (blocking RFC1918 ranges
+    /// and the metadata endpoint) is the deploying operator's responsibility at
+    /// the network/firewall layer. See TM-SANDBOX-003 and TM-AGENT-019.
     #[serde(default = "default_network_mode")]
     pub network_mode: String,
     /// Auto-stop timeout in minutes (for lease duration).
