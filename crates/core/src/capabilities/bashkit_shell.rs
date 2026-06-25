@@ -71,6 +71,29 @@ fn execution_limits() -> ExecutionLimits {
         .parser_timeout(std::time::Duration::from_secs(5))
 }
 
+/// Resolve the shell working directory and `WORKSPACE` env value through the
+/// unified workspace path model (EVE-660).
+///
+/// Both reflect the file store's display root, so the in-VFS shell and the file
+/// tools speak one namespace: a model that learns a path from `read_file` can
+/// pass it straight to `cat`. Returns an error message when an explicit
+/// `working_dir` cannot be parsed. The tuple is `(cwd, workspace_env)`.
+fn resolve_shell_workspace(
+    context: &ToolContext,
+    working_dir_arg: Option<&str>,
+) -> std::result::Result<(String, String), String> {
+    let paths = context.workspace_paths();
+    let display_root = paths.display_root();
+    let cwd = match working_dir_arg {
+        Some(arg) => paths
+            .parse_input(arg)
+            .map(|rel| paths.to_display(&rel))
+            .map_err(|e| format!("invalid working_dir '{arg}': {e}"))?,
+        None => display_root.clone(),
+    };
+    Ok((cwd, display_root))
+}
+
 /// Configured bashkit tool instance with everruns settings.
 static BASHKIT_TOOL: LazyLock<BashkitTool> = LazyLock::new(|| {
     BashkitTool::builder()
@@ -276,10 +299,13 @@ impl Tool for BashTool {
             }
         };
 
-        let working_dir = arguments
-            .get("working_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("/workspace");
+        let (working_dir, workspace_env) = match resolve_shell_workspace(
+            context,
+            arguments.get("working_dir").and_then(|v| v.as_str()),
+        ) {
+            Ok(resolved) => resolved,
+            Err(msg) => return ToolExecutionResult::tool_error(msg),
+        };
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -317,13 +343,13 @@ impl Tool for BashTool {
         // is available without changing any existing limits or boundaries.
         let builder = Bash::builder()
             .fs(session_fs)
-            .cwd(working_dir)
+            .cwd(working_dir.as_str())
             .username("everruns")
             .hostname("everruns")
             .env("HOME", "/home/agent")
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-            .env("WORKSPACE", "/workspace")
+            .env("WORKSPACE", workspace_env.as_str())
             .env("LANG", locale)
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
@@ -503,10 +529,11 @@ impl BackgroundExecutableTool for BashTool {
             }
         };
 
-        let working_dir = arguments
-            .get("working_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("/workspace");
+        let (working_dir, workspace_env) = resolve_shell_workspace(
+            &context,
+            arguments.get("working_dir").and_then(|v| v.as_str()),
+        )
+        .map_err(ToolExecutionResult::tool_error)?;
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -537,13 +564,13 @@ impl BackgroundExecutableTool for BashTool {
 
         let builder = Bash::builder()
             .fs(session_fs)
-            .cwd(working_dir)
+            .cwd(working_dir.as_str())
             .username("everruns")
             .hostname("everruns")
             .env("HOME", "/home/agent")
             .env("SHELL", "/bin/bash")
             .env("PATH", "/usr/local/bin:/usr/bin:/bin")
-            .env("WORKSPACE", "/workspace")
+            .env("WORKSPACE", workspace_env.as_str())
             .env("LANG", locale)
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024)
@@ -793,38 +820,18 @@ impl SessionFileSystemAdapter {
         Self { session_id, store }
     }
 
-    /// Workspace mount point in the virtual filesystem
-    const WORKSPACE_PREFIX: &'static str = "/workspace";
-
-    /// Convert bash path to session file store path.
-    /// Paths under /workspace are mapped to session store.
-    /// Returns None for paths outside /workspace.
-    fn to_session_path(path: &Path) -> Option<String> {
-        let path_str = path.to_string_lossy();
-
-        // Normalize to absolute path
-        let abs_path = if path_str.starts_with('/') {
-            path_str.to_string()
-        } else {
-            format!("/{}", path_str)
-        };
-
-        // Check if path is under /workspace
-        if abs_path == Self::WORKSPACE_PREFIX {
-            // Root of workspace maps to root of session store
-            Some("/".to_string())
-        } else if let Some(stripped) = abs_path.strip_prefix(Self::WORKSPACE_PREFIX) {
-            // /workspace/foo -> /foo
-            if stripped.starts_with('/') {
-                Some(stripped.to_string())
-            } else {
-                // /workspacefoo is not valid
-                None
-            }
-        } else {
-            // Path is outside /workspace
-            None
-        }
+    /// Convert a bash VFS path to a canonical session file store path.
+    ///
+    /// Delegates to the store's unified [`WorkspacePaths`] (EVE-660): paths
+    /// inside the workspace mount — the `/workspace` alias *or* host-absolute
+    /// paths under the root — map to a session path; anything outside the mount
+    /// returns `None`. The adapter no longer hard-codes `/workspace` stripping,
+    /// so the shell and the file tools share one namespace.
+    fn to_session_path(&self, path: &Path) -> Option<String> {
+        self.store
+            .workspace_paths()
+            .parse_mounted(&path.to_string_lossy())
+            .map(|rel| rel.to_session_path())
     }
 }
 
@@ -834,7 +841,7 @@ impl FileSystemExt for SessionFileSystemAdapter {}
 #[async_trait]
 impl FileSystem for SessionFileSystemAdapter {
     async fn read_file(&self, path: &Path) -> bashkit::Result<Vec<u8>> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Path not in workspace: {}", path.display()),
@@ -856,7 +863,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!("Cannot write outside workspace: {}", path.display()),
@@ -873,7 +880,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!("Cannot write outside workspace: {}", path.display()),
@@ -904,7 +911,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!(
@@ -922,7 +929,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::PermissionDenied,
                 format!("Cannot delete outside workspace: {}", path.display()),
@@ -949,7 +956,7 @@ impl FileSystem for SessionFileSystemAdapter {
             });
         }
 
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Path not in workspace: {}", path.display()),
@@ -1006,7 +1013,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let session_path = Self::to_session_path(path).ok_or_else(|| {
+        let session_path = self.to_session_path(path).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Path not in workspace: {}", path.display()),
@@ -1050,7 +1057,7 @@ impl FileSystem for SessionFileSystemAdapter {
             return Ok(true);
         }
 
-        let session_path = match Self::to_session_path(path) {
+        let session_path = match self.to_session_path(path) {
             Some(p) => p,
             None => return Ok(false), // Paths outside workspace don't exist
         };
@@ -1074,7 +1081,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
-        let from_session = Self::to_session_path(from).ok_or_else(|| {
+        let from_session = self.to_session_path(from).ok_or_else(|| {
             bashkit::Error::Io(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
                 format!("Source not in workspace: {}", from.display()),
@@ -1134,7 +1141,7 @@ impl FileSystem for SessionFileSystemAdapter {
 impl SearchCapable for SessionFileSystemAdapter {
     fn search_provider(&self, path: &Path) -> Option<Box<dyn SearchProvider>> {
         // Only provide indexed search for paths inside /workspace
-        Self::to_session_path(path)?;
+        self.to_session_path(path)?;
         Some(Box::new(SessionSearchProvider {
             session_id: self.session_id,
             store: self.store.clone(),
@@ -1165,11 +1172,14 @@ impl SearchProvider for SessionSearchProvider {
             query.pattern.clone()
         };
 
-        // Convert root path from bash VFS path to session store path.
-        // search_provider already guards against paths outside /workspace,
-        // so to_session_path should always succeed here.
-        let session_root =
-            SessionFileSystemAdapter::to_session_path(Path::new(&root)).ok_or_else(|| {
+        // Convert root path from bash VFS path to session store path through
+        // the unified workspace path model (EVE-660). search_provider already
+        // guards against paths outside the workspace mount, so this succeeds.
+        let workspace_paths = self.store.workspace_paths();
+        let session_root = workspace_paths
+            .parse_mounted(&root)
+            .map(|rel| rel.to_session_path())
+            .ok_or_else(|| {
                 bashkit::Error::Io(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
                     format!("Path not in workspace: {}", root),
@@ -1210,8 +1220,13 @@ impl SearchProvider for SessionSearchProvider {
             .into_iter()
             .take(max_results.unwrap_or(usize::MAX))
             .map(|m| {
-                // Convert session store path back to bash VFS path
-                let vfs_path = format!("{}{}", SessionFileSystemAdapter::WORKSPACE_PREFIX, m.path);
+                // Convert session store path back to the bash VFS display path
+                // (the `/workspace` alias or host-absolute root) so matches read
+                // back in the same namespace the shell resolves against.
+                let vfs_path = workspace_paths
+                    .parse_input(&m.path)
+                    .map(|rel| workspace_paths.to_display(&rel))
+                    .unwrap_or_else(|_| m.path.clone());
                 BashkitSearchMatch {
                     path: PathBuf::from(vfs_path),
                     line_number: m.line_number,
@@ -1532,54 +1547,56 @@ mod tests {
     // Path translation tests
     // ========================================================================
 
+    // The adapter now delegates path translation to the store's unified
+    // `WorkspacePaths` (EVE-660). Over a VFS store the mount is `/workspace`, so
+    // these assert the same containment semantics as before.
+    fn vfs_adapter() -> SessionFileSystemAdapter {
+        SessionFileSystemAdapter::new(SessionId::new(), Arc::new(MockFileStore::new()))
+    }
+
     #[test]
     fn test_to_session_path_workspace_root() {
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspace"));
+        let result = vfs_adapter().to_session_path(Path::new("/workspace"));
         assert_eq!(result, Some("/".to_string()));
     }
 
     #[test]
     fn test_to_session_path_workspace_file() {
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspace/file.txt"));
+        let result = vfs_adapter().to_session_path(Path::new("/workspace/file.txt"));
         assert_eq!(result, Some("/file.txt".to_string()));
     }
 
     #[test]
     fn test_to_session_path_workspace_nested() {
-        let result =
-            SessionFileSystemAdapter::to_session_path(Path::new("/workspace/dir/subdir/file.txt"));
+        let result = vfs_adapter().to_session_path(Path::new("/workspace/dir/subdir/file.txt"));
         assert_eq!(result, Some("/dir/subdir/file.txt".to_string()));
     }
 
     #[test]
     fn test_to_session_path_outside_workspace() {
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("/tmp/file.txt"));
+        let result = vfs_adapter().to_session_path(Path::new("/tmp/file.txt"));
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_to_session_path_home_outside_workspace() {
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("/home/agent/file.txt"));
+        let result = vfs_adapter().to_session_path(Path::new("/home/agent/file.txt"));
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_to_session_path_workspacefoo_invalid() {
         // /workspacefoo is NOT under /workspace
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("/workspacefoo"));
+        let result = vfs_adapter().to_session_path(Path::new("/workspacefoo"));
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_to_session_path_relative_path() {
-        // Relative path gets normalized to absolute
-        let result = SessionFileSystemAdapter::to_session_path(Path::new("workspace/file.txt"));
-        // /workspace/file.txt would be valid, but "workspace/file.txt" -> "/workspace/file.txt"
-        // Wait, that's not right. Let me check the logic again.
-        // normalize adds "/" prefix: "workspace/file.txt" -> "/workspace/file.txt"
-        // Then it checks if it starts with "/workspace" - yes it does
-        // So this should return Some("/file.txt")
-        assert_eq!(result, Some("/file.txt".to_string()));
+        // A relative path maps into the workspace mount. `workspace/file.txt`
+        // is a path to a `workspace` subdirectory, not the `/workspace` alias.
+        let result = vfs_adapter().to_session_path(Path::new("workspace/file.txt"));
+        assert_eq!(result, Some("/workspace/file.txt".to_string()));
     }
 
     // ========================================================================

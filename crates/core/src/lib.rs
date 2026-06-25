@@ -116,6 +116,7 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod vector_store;
 pub mod workspace;
+pub mod workspace_paths;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;

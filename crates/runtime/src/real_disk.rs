@@ -17,6 +17,7 @@ use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_core::workspace_paths::WorkspacePaths;
 use ignore::WalkBuilder;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
@@ -39,7 +40,11 @@ use uuid::Uuid;
 /// other host processes can still modify the file directly.
 #[derive(Debug, Clone)]
 pub struct RealDiskFileStore {
-    root: PathBuf,
+    /// The unified workspace path model (EVE-660). Owns the host root and all
+    /// parsing/host-mapping/display logic; the store no longer hand-rolls
+    /// `/workspace` stripping or containment checks. The root is shared so an
+    /// embedder's worktree switch via `set_host_root` is seen everywhere.
+    paths: WorkspacePaths,
     readonly: Arc<RwLock<HashSet<String>>>,
 }
 
@@ -75,27 +80,8 @@ impl RealDiskFileStore {
     /// The root is canonicalized once at construction time. Any operation
     /// whose canonical-form path would escape the root is rejected.
     pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
-        let root = root.into();
-        if !root.exists() {
-            return Err(AgentLoopError::config(format!(
-                "RealDiskFileStore root does not exist: {}",
-                root.display()
-            )));
-        }
-        let canonical = std::fs::canonicalize(&root).map_err(|e| {
-            AgentLoopError::config(format!(
-                "failed to canonicalize RealDiskFileStore root {}: {e}",
-                root.display()
-            ))
-        })?;
-        if !canonical.is_dir() {
-            return Err(AgentLoopError::config(format!(
-                "RealDiskFileStore root is not a directory: {}",
-                canonical.display()
-            )));
-        }
         Ok(Self {
-            root: canonical,
+            paths: WorkspacePaths::host(root)?,
             readonly: Arc::new(RwLock::new(HashSet::new())),
         })
     }
@@ -113,61 +99,31 @@ impl RealDiskFileStore {
         }
     }
 
-    /// Borrow the canonicalized workspace root.
-    pub fn root(&self) -> &Path {
-        &self.root
+    /// The current canonicalized workspace root.
+    pub fn root(&self) -> PathBuf {
+        self.paths
+            .host_root()
+            .expect("RealDiskFileStore is always host-rooted")
     }
 
-    fn normalize_path(&self, path: &str) -> String {
-        let input = Path::new(path);
-        if input.is_absolute()
-            && let Ok(relative) = input.strip_prefix(&self.root)
-            && let Ok(path) = capability_path_from_relative(relative)
-        {
-            return path;
-        }
-        normalize_path(path)
+    /// Repoint the workspace root, e.g. when an embedder switches worktrees.
+    ///
+    /// The shared path model means every consumer that took its
+    /// [`WorkspacePaths`] from this store (file tools, shell cwd, host-path
+    /// capabilities) immediately addresses the new root. See EVE-660.
+    pub fn set_host_root(&self, root: impl Into<PathBuf>) -> Result<()> {
+        self.paths.set_host_root(root)
     }
 
     /// Resolve a capability-facing path to an absolute host path.
     ///
-    /// Returns an error if the input contains a `..` segment or if joining
-    /// produces a path outside the root. Symlink containment is checked by
-    /// `reject_symlink_path` at each filesystem access so missing write
-    /// targets can still be created safely.
+    /// All parsing (alias stripping, traversal rejection, host-absolute alias
+    /// handling, containment) is delegated to [`WorkspacePaths`]. Symlink
+    /// containment is checked by `reject_symlink_path` at each filesystem access
+    /// so missing write targets can still be created safely.
     fn resolve(&self, path: &str) -> Result<PathBuf> {
-        let normalized = self.normalize_path(path);
-        if normalized == "/" {
-            return Ok(self.root.clone());
-        }
-        // Drop the leading `/` so `Path::join` treats it as relative.
-        let relative = normalized.trim_start_matches('/');
-        let candidate = Path::new(relative);
-
-        for component in candidate.components() {
-            match component {
-                Component::Normal(_) => {}
-                Component::CurDir => {}
-                Component::ParentDir => {
-                    return Err(AgentLoopError::tool(format!(
-                        "path traversal rejected: {path}"
-                    )));
-                }
-                Component::RootDir | Component::Prefix(_) => {
-                    return Err(AgentLoopError::tool(format!(
-                        "absolute path component rejected: {path}"
-                    )));
-                }
-            }
-        }
-
-        let absolute = self.root.join(candidate);
-        if !absolute.starts_with(&self.root) {
-            return Err(AgentLoopError::tool(format!(
-                "path escapes workspace root: {path}"
-            )));
-        }
-        Ok(absolute)
+        let rel = self.paths.parse_input(path)?;
+        self.paths.to_host(&rel)
     }
 
     /// Reject symlinks anywhere in the resolved path before performing real
@@ -177,14 +133,15 @@ impl RealDiskFileStore {
     /// are allowed so callers can create new files/directories after all
     /// existing ancestors have been checked.
     async fn reject_symlink_path(&self, absolute: &Path) -> Result<()> {
-        let relative = absolute.strip_prefix(&self.root).map_err(|_| {
+        let root = self.root();
+        let relative = absolute.strip_prefix(&root).map_err(|_| {
             AgentLoopError::tool(format!(
                 "path is outside workspace root: {}",
                 absolute.display()
             ))
         })?;
 
-        let mut current = self.root.clone();
+        let mut current = root.clone();
         for component in relative.components() {
             match component {
                 Component::Normal(segment) => current.push(segment),
@@ -216,66 +173,17 @@ impl RealDiskFileStore {
         Ok(())
     }
 
+    /// Map an absolute host path under the root back to its canonical
+    /// leading-slash session path (e.g. `/src/lib.rs`).
     fn relative_capability_path(&self, absolute: &Path) -> Result<String> {
-        let rel = absolute.strip_prefix(&self.root).map_err(|_| {
-            AgentLoopError::tool(format!(
-                "path is outside workspace root: {}",
-                absolute.display()
-            ))
-        })?;
-        capability_path_from_relative(rel)
+        Ok(self.paths.from_host(absolute)?.to_session_path())
     }
-}
-
-fn capability_path_from_relative(relative: &Path) -> Result<String> {
-    if relative.as_os_str().is_empty() {
-        return Ok("/".to_string());
-    }
-    let mut segments = Vec::new();
-    for component in relative.components() {
-        match component {
-            Component::CurDir => {}
-            Component::Normal(s) => {
-                let segment = s.to_str().ok_or_else(|| {
-                    AgentLoopError::tool(format!(
-                        "non-UTF-8 path component: {}",
-                        relative.display()
-                    ))
-                })?;
-                segments.push(segment);
-            }
-            _ => {
-                return Err(AgentLoopError::tool(format!(
-                    "unexpected path component in {}",
-                    relative.display()
-                )));
-            }
-        }
-    }
-    if segments.is_empty() {
-        Ok("/".to_string())
-    } else {
-        Ok(format!("/{}", segments.join("/")))
-    }
-}
-
-fn display_join(root: &Path, path: &str) -> String {
-    if path == "/" {
-        return root.display().to_string();
-    }
-    root.join(path.trim_start_matches('/'))
-        .display()
-        .to_string()
 }
 
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
-    fn display_root(&self) -> String {
-        self.root.display().to_string()
-    }
-
-    fn display_path(&self, path: &str) -> String {
-        display_join(&self.root, &self.normalize_path(path))
+    fn workspace_paths(&self) -> WorkspacePaths {
+        self.paths.clone()
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
@@ -421,7 +329,7 @@ impl SessionFileSystem for RealDiskFileStore {
     ) -> Result<bool> {
         let absolute = self.resolve(path)?;
         self.reject_symlink_path(&absolute).await?;
-        if absolute == self.root {
+        if absolute == self.root() {
             return Err(AgentLoopError::tool(
                 "cannot delete workspace root".to_string(),
             ));
@@ -575,13 +483,12 @@ impl SessionFileSystem for RealDiskFileStore {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let root = self.root.clone();
+        let root = self.root();
         let pattern = pattern.to_string();
-        let path_pattern = path_pattern.map(|path| {
-            self.normalize_path(path)
-                .trim_start_matches('/')
-                .to_string()
-        });
+        let path_pattern = match path_pattern {
+            Some(path) => Some(self.paths.parse_input(path)?.as_relative().to_string()),
+            None => None,
+        };
 
         // `ignore::WalkBuilder` is sync; reading file content per match is
         // sync too. Push the whole walk onto `spawn_blocking` so we don't
@@ -693,25 +600,6 @@ impl SessionFileSystem for RealDiskFileStore {
             updated_at,
         })
     }
-}
-
-fn normalize_path(path: &str) -> String {
-    if path.is_empty() || path == "/" {
-        return "/".to_string();
-    }
-    let mut normalized = if let Some(stripped) = path.strip_prefix("/workspace/") {
-        format!("/{}", stripped)
-    } else if path == "/workspace" {
-        "/".to_string()
-    } else if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{}", path)
-    };
-    while normalized.len() > 1 && normalized.ends_with('/') {
-        normalized.pop();
-    }
-    normalized
 }
 
 fn path_id(canonical_path: &str) -> Uuid {
