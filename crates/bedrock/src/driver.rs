@@ -43,30 +43,38 @@ use crate::credential::BedrockCredential;
 /// Credentials come from the driver's declared typed credential fields.
 #[derive(Clone, Debug)]
 pub struct BedrockChatDriver {
-    credential: BedrockCredential,
+    /// AWS Bedrock client built once at construction. `aws_sdk_bedrockruntime::Client`
+    /// is cheap to clone and reuses its connection pool and credentials provider,
+    /// so we build it here instead of rebuilding the whole SDK client (credential
+    /// chain + pool) on every `chat_completion_stream` call (EVE-635).
+    client: Client,
 }
 
 impl BedrockChatDriver {
     pub fn from_config(config: &DriverConfig) -> Result<Self> {
         let credential = BedrockCredential::from_driver_config(config)?;
-        Ok(Self { credential })
+        Ok(Self {
+            client: build_client(&credential),
+        })
     }
+}
 
-    fn create_client(&self) -> Client {
-        let creds = Credentials::new(
-            self.credential.access_key_id.clone(),
-            self.credential.secret_access_key.clone(),
-            self.credential.session_token.clone(),
-            None,
-            "everruns-bedrock",
-        );
-        let config = BedrockConfigBuilder::new()
-            .behavior_version(BehaviorVersion::latest())
-            .credentials_provider(creds)
-            .region(Region::new(self.credential.region.clone()))
-            .build();
-        Client::from_conf(config)
-    }
+/// Build the AWS Bedrock runtime client from typed credentials. Called once per
+/// driver construction, not per request.
+fn build_client(credential: &BedrockCredential) -> Client {
+    let creds = Credentials::new(
+        credential.access_key_id.clone(),
+        credential.secret_access_key.clone(),
+        credential.session_token.clone(),
+        None,
+        "everruns-bedrock",
+    );
+    let config = BedrockConfigBuilder::new()
+        .behavior_version(BehaviorVersion::latest())
+        .credentials_provider(creds)
+        .region(Region::new(credential.region.clone()))
+        .build();
+    Client::from_conf(config)
 }
 
 /// Register the Bedrock driver with the given registry.
@@ -123,7 +131,7 @@ impl ChatDriver for BedrockChatDriver {
         messages: Vec<LlmMessage>,
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
-        let client = self.create_client();
+        let client = self.client.clone();
         let model_id = config.model.clone();
 
         let (system_blocks, bedrock_messages) = build_messages(&messages)?;
