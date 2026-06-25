@@ -89,6 +89,9 @@ fn terminal_subagent_status(wait_status: &str) -> Option<crate::session::Subagen
         "error" | "failed" => Some(crate::session::SubagentStatus::Failed),
         "cancelled" => Some(crate::session::SubagentStatus::Cancelled),
         "max_iterations_reached" => Some(crate::session::SubagentStatus::MaxIterationsReached),
+        // A sealed turn (no forward progress / budget exhausted) is terminal but
+        // distinct from a failure — surface it so the parent can decide next steps.
+        "sealed" => Some(crate::session::SubagentStatus::Sealed),
         _ => None,
     }
 }
@@ -828,8 +831,17 @@ mod tests {
             Some(crate::session::SubagentStatus::Cancelled)
         );
         assert_eq!(
+            terminal_subagent_status("sealed"),
+            Some(crate::session::SubagentStatus::Sealed)
+        );
+        assert_eq!(
             terminal_subagent_task_state(&crate::session::SubagentStatus::Completed),
             SessionTaskState::Succeeded
+        );
+        // A sealed subagent settles as a terminal, non-retryable failed task.
+        assert_eq!(
+            terminal_subagent_task_state(&crate::session::SubagentStatus::Sealed),
+            SessionTaskState::Failed
         );
         assert_eq!(
             terminal_subagent_task_state(&crate::session::SubagentStatus::Cancelled),

@@ -58,6 +58,7 @@ Spawning → Running → Completed
                    → Failed
                    → Cancelled
                    → MaxIterationsReached
+                   → Sealed
 ```
 
 | Status | Description |
@@ -68,6 +69,9 @@ Spawning → Running → Completed
 | `Failed` | Child session encountered an unrecoverable error |
 | `Cancelled` | Parent cancelled via `cancel_task` |
 | `MaxIterationsReached` | Child hit iteration limit |
+| `Sealed` | Durable engine deliberately stopped the child's turn to prevent waste (no forward progress, or budget exhausted; see `SealReason`). Terminal and non-retryable — distinct from `Failed` so the parent can decide what to do next. The seal reason is surfaced in the child's final assistant message / spawn `result`. |
+
+Terminal subagent statuses are derived from the child's terminal **turn event** (`turn.completed` / `turn.failed` / `turn.cancelled` / `turn.sealed`), not from the bare `idle` session status — a failed or sealed turn also leaves the session `idle`, so `idle` alone never settles a subagent.
 
 ### Database Migration
 

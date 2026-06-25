@@ -31,6 +31,12 @@ pub enum SubagentStatus {
     Failed,
     Cancelled,
     MaxIterationsReached,
+    /// The durable engine deliberately stopped (sealed) the child's turn to
+    /// prevent further waste (no forward progress, or budget exhausted). This is
+    /// terminal and non-retryable, and is intentionally distinct from `Failed`
+    /// so the parent agent can decide what to do next (the seal reason is
+    /// carried in the child's final assistant message / spawn `result`).
+    Sealed,
 }
 
 impl std::fmt::Display for SubagentStatus {
@@ -42,6 +48,7 @@ impl std::fmt::Display for SubagentStatus {
             SubagentStatus::Failed => write!(f, "failed"),
             SubagentStatus::Cancelled => write!(f, "cancelled"),
             SubagentStatus::MaxIterationsReached => write!(f, "max_iterations_reached"),
+            SubagentStatus::Sealed => write!(f, "sealed"),
         }
     }
 }
@@ -55,6 +62,7 @@ impl From<&str> for SubagentStatus {
             "failed" => SubagentStatus::Failed,
             "cancelled" => SubagentStatus::Cancelled,
             "max_iterations_reached" => SubagentStatus::MaxIterationsReached,
+            "sealed" => SubagentStatus::Sealed,
             _ => SubagentStatus::Spawning,
         }
     }
