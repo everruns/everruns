@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { IconTile } from "@/components/layout/page-layout";
 import {
   Server,
   Key,
@@ -12,6 +13,7 @@ import {
   User,
   WalletCards,
   FlaskConical,
+  Settings as SettingsIcon,
 } from "lucide-react";
 
 interface NavItem {
@@ -96,8 +98,14 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b px-6 py-4">
-        <h1 className="text-2xl font-bold">Settings</h1>
+      <div className="flex items-center gap-4 border-b px-6 py-4">
+        <IconTile icon={<SettingsIcon />} />
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Organization defaults, providers, members, and your personal preferences.
+          </p>
+        </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Settings Sidebar */}
@@ -105,7 +113,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
           <div className="space-y-6">
             {settingsSections.map((section) => (
               <div key={section.label}>
-                <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                <div className="px-3 pb-2 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
                   {section.label}
                 </div>
                 <div className="grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">

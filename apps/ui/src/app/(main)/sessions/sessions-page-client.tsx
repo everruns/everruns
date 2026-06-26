@@ -12,7 +12,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
@@ -28,11 +28,21 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { Label } from "@/components/ui/label";
-import { Plus, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
 import { exportSessionJsonl } from "@/lib/api/sessions";
 import type { ModelWithProvider, Agent } from "@/lib/api/types";
 import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  PageColumns,
+  PageMain,
+  PageFooter,
+} from "@/components/layout";
+import { pluralize } from "@/lib/formatting";
 
 const PAGE_SIZE = 20;
 
@@ -136,31 +146,49 @@ export default function SessionsPageClient() {
     });
   };
 
-  return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Sessions</h1>
-        <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={!harnesses?.length}>
-          <Plus className="w-4 h-4 mr-2" />
-          New Session
-        </Button>
-      </div>
+  const filterLabel = selectedAgentId
+    ? getDisplayName(agentMap.get(selectedAgentId)) || "Agent"
+    : "All agents";
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <div>
-            <CardTitle>
-              {selectedAgentId
-                ? getDisplayName(agentMap.get(selectedAgentId)) || "Agent"
-                : "All Agents"}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">
-              {totalSessions} session{totalSessions !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <AgentFilterMenu value={selectedAgentId} onValueChange={handleAgentFilterChange} />
-        </CardHeader>
-        <CardContent>
+  return (
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Sessions" }]} />
+
+      <PageMasthead
+        icon={<MessageSquare />}
+        title="Sessions"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {totalSessions}
+          </Badge>
+        }
+        description="Conversations and background runs across your agents."
+        meta={
+          <span>
+            Showing <span className="text-foreground">{filterLabel}</span>
+          </span>
+        }
+        actions={
+          <Button
+            variant="accent"
+            onClick={handleOpenNewSessionDialog}
+            disabled={!harnesses?.length}
+          >
+            <Plus className="size-4" />
+            New session
+          </Button>
+        }
+      />
+
+      <PageControlStrip className="flex items-center justify-between gap-3">
+        <span className="text-[13px] text-muted-foreground">
+          {totalSessions} {pluralize(totalSessions, "session")}
+        </span>
+        <AgentFilterMenu value={selectedAgentId} onValueChange={handleAgentFilterChange} />
+      </PageControlStrip>
+
+      <PageColumns className="lg:grid-cols-1">
+        <PageMain>
           {sessionsLoading || agentsLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -168,9 +196,9 @@ export default function SessionsPageClient() {
               ))}
             </div>
           ) : sessions.length === 0 ? (
-            <p className="text-center py-8 text-muted-foreground">
+            <div className="border border-dashed py-12 text-center text-muted-foreground">
               No sessions yet. Start a new session to begin chatting.
-            </p>
+            </div>
           ) : (
             <div className="space-y-2">
               {sessions.map((session) => {
@@ -197,40 +225,36 @@ export default function SessionsPageClient() {
               })}
             </div>
           )}
+        </PageMain>
+      </PageColumns>
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 pt-4 border-t">
-              <p className="text-sm text-muted-foreground">
-                Showing {offset + 1}-{Math.min(offset + PAGE_SIZE, totalSessions)} of{" "}
-                {totalSessions} sessions
-              </p>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handlePreviousPage}
-                  disabled={page === 0}
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  Page {page + 1} of {totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleNextPage}
-                  disabled={page >= totalPages - 1}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <PageFooter>
+        <span>
+          Showing {totalSessions === 0 ? 0 : offset + 1}-
+          {Math.min(offset + PAGE_SIZE, totalSessions)} of {totalSessions}{" "}
+          {pluralize(totalSessions, "session")}
+        </span>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={handlePreviousPage} disabled={page === 0}>
+              <ChevronLeft className="h-4 w-4" />
+              Previous
+            </Button>
+            <span>
+              Page {page + 1} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleNextPage}
+              disabled={page >= totalPages - 1}
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
+      </PageFooter>
 
       <Dialog open={newSessionDialogOpen} onOpenChange={setNewSessionDialogOpen}>
         <DialogContent>
@@ -280,6 +304,6 @@ export default function SessionsPageClient() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
