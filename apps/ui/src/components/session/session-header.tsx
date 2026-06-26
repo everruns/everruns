@@ -25,6 +25,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { IconTile } from "@/components/layout/page-layout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useUpdateSession } from "@/hooks/use-sessions";
 import {
@@ -385,35 +386,38 @@ export function SessionHeader({
       </Link>
 
       <div className="flex items-center justify-between gap-4">
-        <div className="group/title min-w-0">
-          <EditableSessionTitle
-            sessionId={sessionId}
-            title={session.title}
-            fallback={`Session ${shortenId(session.id)}`}
-            editable={allowTitleEditing}
-          />
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {agentReferenceLabel &&
-              (agent && agentId ? (
-                <Link
-                  href={`/agents/${agentId}`}
-                  className="inline-flex items-center gap-1 hover:text-foreground"
-                >
-                  <Bot className="icon-sharp h-3 w-3" />
-                  <span className={getEntityReferenceClassName(agentReferenceStatus)}>
-                    {agentReferenceLabel}
+        <div className="flex min-w-0 items-start gap-3">
+          <IconTile size="md" icon={<MessageSquare />} className="mt-0.5" />
+          <div className="group/title min-w-0">
+            <EditableSessionTitle
+              sessionId={sessionId}
+              title={session.title}
+              fallback={`Session ${shortenId(session.id)}`}
+              editable={allowTitleEditing}
+            />
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {agentReferenceLabel &&
+                (agent && agentId ? (
+                  <Link
+                    href={`/agents/${agentId}`}
+                    className="inline-flex items-center gap-1 hover:text-foreground"
+                  >
+                    <Bot className="icon-sharp h-3 w-3" />
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
+                      {agentReferenceLabel}
+                    </span>
+                  </Link>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <Bot className="icon-sharp h-3 w-3" />
+                    <span className={getEntityReferenceClassName(agentReferenceStatus)}>
+                      {agentReferenceLabel}
+                    </span>
                   </span>
-                </Link>
-              ) : (
-                <span className="inline-flex items-center gap-1">
-                  <Bot className="icon-sharp h-3 w-3" />
-                  <span className={getEntityReferenceClassName(agentReferenceStatus)}>
-                    {agentReferenceLabel}
-                  </span>
-                </span>
-              ))}
-            <span>•</span>
-            <span>{secondaryMetaText}</span>
+                ))}
+              <span>•</span>
+              <span>{secondaryMetaText}</span>
+            </div>
           </div>
         </div>
 

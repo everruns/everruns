@@ -179,12 +179,12 @@ describe("SettingsLayout", () => {
     const personalLabel = screen.getByText("Personal");
 
     expect(orgLabel).toHaveClass("uppercase");
-    expect(orgLabel).toHaveClass("tracking-wider");
-    expect(orgLabel).toHaveClass("text-xs");
-    expect(orgLabel).toHaveClass("font-semibold");
+    expect(orgLabel).toHaveClass("tracking-[0.08em]");
+    expect(orgLabel).toHaveClass("text-[11px]");
+    expect(orgLabel).toHaveClass("font-mono");
 
     expect(personalLabel).toHaveClass("uppercase");
-    expect(personalLabel).toHaveClass("tracking-wider");
+    expect(personalLabel).toHaveClass("tracking-[0.08em]");
   });
 
   it("applies inactive styles to non-active items", () => {
