@@ -34,7 +34,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
+    fold_system_messages,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
@@ -1426,8 +1427,10 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         let cached = *cache_read_tokens.lock().unwrap();
 
                                         Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                                            // `input` is OpenAI's cache-inclusive prompt count;
+                                            // normalize to non-cached input (disjoint convention).
                                             total_tokens: Some(input + output),
-                                            prompt_tokens: Some(input),
+                                            prompt_tokens: Some(disjoint_prompt_tokens(input, cached)),
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: None,
@@ -1701,8 +1704,10 @@ fn handle_streaming_event(
             let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                // `input` is OpenAI's cache-inclusive prompt count; normalize to
+                // non-cached input (disjoint convention).
                 total_tokens: Some(input + output),
-                prompt_tokens: Some(input),
+                prompt_tokens: Some(disjoint_prompt_tokens(input, cached)),
                 completion_tokens: Some(output),
                 cache_read_tokens: cached,
                 cache_creation_tokens: None,
@@ -4682,6 +4687,54 @@ mod tests {
             LlmStreamEvent::Done(metadata) => {
                 assert_eq!(metadata.response_id.as_deref(), Some("resp_tool_search"));
                 assert_eq!(metadata.finish_reason.as_deref(), Some("tool_calls"));
+            }
+            other => panic!("expected Done event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_completed_event_normalizes_cache_inclusive_prompt_tokens() {
+        // OpenAI reports `input_tokens` inclusive of cached reads. The driver
+        // must normalize to the disjoint convention: prompt_tokens carries only
+        // the non-cached remainder (input − cached), with cache reported on top.
+        let event_json = r#"{
+            "type": "response.completed",
+            "sequence_number": 9,
+            "response": {
+                "id": "resp_cache",
+                "object": "response",
+                "created_at": 1780000000,
+                "status": "completed",
+                "model": "gpt-5.5",
+                "output": [],
+                "usage": {
+                    "input_tokens": 1000,
+                    "output_tokens": 20,
+                    "total_tokens": 1020,
+                    "input_tokens_details": { "cached_tokens": 800 }
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+        let stream_event = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5.5".to_string(),
+            None,
+        );
+
+        match stream_event {
+            LlmStreamEvent::Done(metadata) => {
+                // 1000 reported − 800 cached = 200 non-cached input.
+                assert_eq!(metadata.prompt_tokens, Some(200));
+                assert_eq!(metadata.cache_read_tokens, Some(800));
+                // total_tokens stays the true prompt+output total (1000 + 20).
+                assert_eq!(metadata.total_tokens, Some(1020));
             }
             other => panic!("expected Done event, got {other:?}"),
         }

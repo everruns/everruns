@@ -24,7 +24,8 @@ use everruns_core::driver_helpers::{
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
+    LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
+    fold_system_messages,
 };
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
@@ -523,8 +524,10 @@ impl ChatDriver for GeminiChatDriver {
 
                             let result =
                                 Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                                    // Gemini's promptTokenCount includes cached content;
+                                    // normalize to non-cached input (disjoint convention).
                                     total_tokens: Some(in_tokens + out_tokens),
-                                    prompt_tokens: Some(in_tokens),
+                                    prompt_tokens: Some(disjoint_prompt_tokens(in_tokens, cached)),
                                     completion_tokens: Some(out_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,
@@ -657,8 +660,12 @@ impl ChatDriver for GeminiChatDriver {
 
                                             let result = Ok(LlmStreamEvent::Done(Box::new(
                                                 LlmCompletionMetadata {
+                                                    // Gemini's promptTokenCount includes cached
+                                                    // content; normalize to non-cached input.
                                                     total_tokens: Some(in_tokens + out_tokens),
-                                                    prompt_tokens: Some(in_tokens),
+                                                    prompt_tokens: Some(disjoint_prompt_tokens(
+                                                        in_tokens, cached,
+                                                    )),
                                                     completion_tokens: Some(out_tokens),
                                                     cache_read_tokens: cached,
                                                     cache_creation_tokens: None,
@@ -757,8 +764,10 @@ impl ChatDriver for GeminiChatDriver {
 
                             let result =
                                 Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
+                                    // Gemini's promptTokenCount includes cached content;
+                                    // normalize to non-cached input (disjoint convention).
                                     total_tokens: Some(in_tokens + out_tokens),
-                                    prompt_tokens: Some(in_tokens),
+                                    prompt_tokens: Some(disjoint_prompt_tokens(in_tokens, cached)),
                                     completion_tokens: Some(out_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,

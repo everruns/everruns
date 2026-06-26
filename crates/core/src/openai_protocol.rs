@@ -25,7 +25,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
-    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
+    LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
@@ -660,8 +660,13 @@ impl ChatDriver for OpenAIProtocolChatDriver {
 
                             events.push(Ok(LlmStreamEvent::Done(Box::new(
                                 LlmCompletionMetadata {
+                                    // `input_tokens` is OpenAI's cache-inclusive prompt count;
+                                    // normalize to non-cached input for the disjoint convention.
                                     total_tokens: Some(input_tokens + output_tokens),
-                                    prompt_tokens: Some(input_tokens),
+                                    prompt_tokens: Some(disjoint_prompt_tokens(
+                                        input_tokens,
+                                        cached,
+                                    )),
                                     completion_tokens: Some(output_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,

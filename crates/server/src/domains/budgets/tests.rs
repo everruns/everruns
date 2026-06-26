@@ -312,12 +312,13 @@ fn test_compute_debit_zero_tokens() {
 #[test]
 fn test_compute_debit_usd_discounts_cached_tokens() {
     let (svc, _) = make_service();
-    // OpenAI reports prompt tokens inclusive of cached reads. gpt-4o: input
-    // $2.50/M, cache_read $1.25/M. 800K of the 1M prompt tokens are cached.
+    // Disjoint buckets: `input_tokens` is non-cached, `cache_read_tokens`
+    // additive. gpt-4o: input $2.50/M, cache_read $1.25/M. A 1M-token prompt
+    // split as 200K non-cached + 800K cache reads.
     let cached = svc.compute_debit(
         "usd",
         1_000_000,
-        1_000_000,
+        200_000,
         0,
         800_000,
         0,
@@ -325,6 +326,7 @@ fn test_compute_debit_usd_discounts_cached_tokens() {
         Some("openai"),
         None,
     );
+    // The same prompt billed cache-blind (all 1M at the full input rate).
     let naive = svc.compute_debit(
         "usd",
         1_000_000,

@@ -99,21 +99,27 @@ pub struct DiscoveredModel {
 /// Metadata about LLM completion
 ///
 /// Contains token usage and completion information from the LLM response.
-/// Cache token fields are provider-specific:
-/// - OpenAI: `cache_read_tokens` from prompt_tokens_details.cached_tokens
-/// - Anthropic: `cache_read_tokens` from cache_read_input_tokens,
-///   `cache_creation_tokens` from cache_creation_input_tokens
+///
+/// Token buckets are **disjoint** by convention (see [`TokenUsage`]): drivers
+/// normalize provider wire formats at the boundary so `prompt_tokens` carries
+/// only non-cached input, with `cache_read_tokens` / `cache_creation_tokens`
+/// additive on top. Inclusive providers (OpenAI Responses / Chat Completions,
+/// Gemini) subtract their cached count from the reported prompt total via
+/// [`disjoint_prompt_tokens`]; Anthropic / Bedrock already report disjoint
+/// buckets and pass values through unchanged.
+///
+/// [`TokenUsage`]: crate::events::TokenUsage
 #[derive(Debug, Clone, Default)]
 pub struct LlmCompletionMetadata {
-    /// Total tokens used
+    /// Total tokens used (non-cached prompt + cache read/creation + completion)
     pub total_tokens: Option<u32>,
-    /// Prompt tokens
+    /// Non-cached prompt tokens (cached reads are excluded; see struct docs)
     pub prompt_tokens: Option<u32>,
     /// Completion tokens
     pub completion_tokens: Option<u32>,
-    /// Tokens read from cache (reduces cost)
+    /// Tokens read from cache (reduces cost), disjoint from `prompt_tokens`
     pub cache_read_tokens: Option<u32>,
-    /// Tokens written to cache (Anthropic-specific)
+    /// Tokens written to cache (Anthropic-specific), disjoint from `prompt_tokens`
     pub cache_creation_tokens: Option<u32>,
     /// Authoritative cost of this generation in USD, when the provider reports
     /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
@@ -132,6 +138,20 @@ pub struct LlmCompletionMetadata {
     /// When present, this value should be preserved on the assistant message and sent
     /// back as-is in subsequent requests. Only set by providers with native phase support.
     pub phase: Option<String>,
+}
+
+/// Normalize an inclusive provider's reported prompt-token count to the disjoint
+/// [`TokenUsage`] convention by subtracting the cached-read subset.
+///
+/// OpenAI (Responses & Chat Completions) and Gemini report a prompt token count
+/// that *includes* cached reads; callers pass that raw count plus the provider's
+/// cached-read count to get the non-cached remainder. Saturating subtraction
+/// guards against a provider reporting `cache_read > reported_input`. Anthropic /
+/// Bedrock already report disjoint buckets and must not call this.
+///
+/// [`TokenUsage`]: crate::events::TokenUsage
+pub fn disjoint_prompt_tokens(reported_input: u32, cache_read: Option<u32>) -> u32 {
+    reported_input.saturating_sub(cache_read.unwrap_or(0))
 }
 
 /// Trait for LLM drivers
@@ -2117,6 +2137,18 @@ fn truncate_tool_result(text: String) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_disjoint_prompt_tokens_subtracts_cached_subset() {
+        // Inclusive providers report a prompt count that includes cached reads;
+        // normalization yields the non-cached remainder.
+        assert_eq!(disjoint_prompt_tokens(1000, Some(800)), 200);
+        // No cache reported => prompt count passes through unchanged.
+        assert_eq!(disjoint_prompt_tokens(1000, None), 1000);
+        assert_eq!(disjoint_prompt_tokens(1000, Some(0)), 1000);
+        // Saturating: a provider reporting cache > input never underflows.
+        assert_eq!(disjoint_prompt_tokens(800, Some(1000)), 0);
+    }
 
     #[test]
     fn test_resolved_parallel_tool_calls_gating() {
