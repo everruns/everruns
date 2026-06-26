@@ -72,13 +72,6 @@ import { pluralize } from "@/lib/formatting";
 
 const McpIcon = capabilityIconMap.mcp;
 
-function authLabel(server: McpServer): string {
-  if (server.auth_mode === "oauth") return "OAuth";
-  if (server.auth_mode === "api_key")
-    return server.api_key_set ? "API key configured" : "API key missing";
-  return "None";
-}
-
 function McpServerRow({
   server,
   canDestroy,
@@ -96,7 +89,6 @@ function McpServerRow({
 }) {
   const isArchived = server.status === "archived";
   const isDeleted = server.status === "deleted";
-  const headerCount = Object.keys(server.headers ?? {}).length;
 
   return (
     <TableRow>
@@ -107,7 +99,7 @@ function McpServerRow({
             <div className={`font-medium ${getEntityNameClassName(server.status)}`}>
               {server.name}
             </div>
-            <div className="truncate text-xs text-muted-foreground">
+            <div className="max-w-[42ch] truncate text-xs text-muted-foreground">
               {server.description || server.url}
             </div>
           </div>
@@ -117,10 +109,6 @@ function McpServerRow({
         <Badge variant="secondary" className="font-mono">
           {server.transport_type.toUpperCase()}
         </Badge>
-      </TableCell>
-      <TableCell className="text-muted-foreground">{authLabel(server)}</TableCell>
-      <TableCell className="text-muted-foreground">
-        {headerCount > 0 ? `${headerCount} ${pluralize(headerCount, "header")}` : "—"}
       </TableCell>
       <TableCell>
         <Badge variant={getEntityStatusBadgeVariant(server.status)}>{server.status}</Badge>
@@ -683,12 +671,6 @@ function McpServerRowSkeleton() {
         <Skeleton className="h-5 w-14" />
       </TableCell>
       <TableCell>
-        <Skeleton className="h-4 w-24" />
-      </TableCell>
-      <TableCell>
-        <Skeleton className="h-4 w-10" />
-      </TableCell>
-      <TableCell>
         <Skeleton className="h-5 w-16" />
       </TableCell>
       <TableCell>
@@ -845,8 +827,6 @@ export default function McpServersPage() {
                     <TableRow>
                       <TableHead>Server</TableHead>
                       <TableHead>Transport</TableHead>
-                      <TableHead>Auth</TableHead>
-                      <TableHead>Headers</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>

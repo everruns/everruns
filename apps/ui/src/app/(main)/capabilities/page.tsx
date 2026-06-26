@@ -327,7 +327,7 @@ export default function CapabilitiesPage() {
           )}
 
           {isLoading ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2">
               {[...Array(6)].map((_, i) => (
                 <Card key={i}>
                   <CardHeader>
@@ -378,7 +378,7 @@ export default function CapabilitiesPage() {
                       {formatCountLabel(caps.length, "capability", "capabilities")}
                     </span>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid gap-4 md:grid-cols-2">
                     {caps.map((capability) => (
                       <CapabilityCard key={capability.id} capability={capability} />
                     ))}
