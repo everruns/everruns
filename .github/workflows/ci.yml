@@ -379,17 +379,12 @@ jobs:
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
-          # `--lib` runs the runtime backend unit tests (RealDiskFileStore,
-          # in-memory store); the named integration tests cover the runtime host
-          # paths and the EVE-660 mount-resolver conformance across a worktree switch.
-          cargo test -p everruns-runtime --lib --test in_process_runtime_test --test runtime_host_test --test workspace_paths_conformance_test -- --test-threads=1
-          # Doctests are excluded by the target-filtered runs above (--test/--lib
-          # skip the Doc-tests target), so run them explicitly to guard the
-          # crate-level embedding example in crates/runtime/src/lib.rs.
-          cargo test -p everruns-runtime --doc
-          # Lua code-mode capability: compiles the mlua engine (`lua` feature) and
-          # exercises the end-to-end routing contract + runnable example.
-          cargo test -p everruns-runtime --features lua --test lua_code_mode_test -- --test-threads=1
+          # Run the whole runtime crate (lib unit tests incl. RealDiskFileStore /
+          # in-memory store, ALL integration tests incl. the EVE-660 mount-resolver
+          # conformance, and doctests). No per-test enumeration: new test files are
+          # picked up automatically rather than silently skipped. `--features lua`
+          # so the lua code-mode integration test compiles and runs in the same pass.
+          cargo test -p everruns-runtime --features lua -- --test-threads=1
           cargo run -p everruns-runtime --features lua --example lua_code_mode_agent
           # Runnable demonstration of the EVE-660 mount resolver (/workspace mount + cwd).
           cargo run -p everruns-runtime --example mount_fs_workspace
