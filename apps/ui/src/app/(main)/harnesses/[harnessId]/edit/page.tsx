@@ -2,7 +2,6 @@
 
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   useHarness,
   useHarnesses,
@@ -16,13 +15,25 @@ import {
 import { usePolicies } from "@/hooks/use-policies";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 import {
   Dialog,
   DialogContent,
@@ -39,7 +50,7 @@ import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
-import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
+import { Trash2, Eye, Edit2, Check, X, Loader2, Shield, Pencil } from "lucide-react";
 import {
   getFieldErrors,
   harnessFormSchema,
@@ -249,347 +260,367 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
     );
   }
 
+  const harnessDisplayName = getDisplayName(harness);
+
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href={`/harnesses/${harnessId}`}
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Harness
-      </Link>
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Harnesses", href: "/harnesses" },
+          { label: harnessDisplayName, href: `/harnesses/${harnessId}` },
+          { label: "Edit" },
+        ]}
+      />
 
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Edit Harness</h1>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="edit">
-              <Edit2 className="w-4 h-4 mr-2" />
-              Edit
-            </TabsTrigger>
-            <TabsTrigger value="preview">
-              <Eye className="w-4 h-4 mr-2" />
-              Preview
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      <PageMasthead
+        icon={<Shield />}
+        title={harnessDisplayName}
+        badges={
+          <Badge variant="accent">
+            <Pencil className="size-3" />
+            Editing
+          </Badge>
+        }
+        description="Changes apply to new sessions only. Running sessions keep the current definition."
+        meta={
+          <>
+            <span>
+              Identity <span className="font-mono text-primary">{harness.name}</span>
+            </span>
+            <span>
+              Last edited{" "}
+              <span className="text-foreground">
+                {new Date(harness.updated_at).toLocaleDateString()}
+              </span>
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <Button type="submit" form="harness-edit-form" disabled={isSaving || isReadOnly}>
+              <Check className="size-4" />
+              {isReadOnly ? "Read-only" : isSaving ? "Saving..." : "Save changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        {/* Edit Tab Content */}
-        <TabsContent value="edit">
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Main form */}
-              <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Harness Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="my-harness"
-                        value={formData.name}
-                        onChange={(e) => handleFormChange("name", e.target.value)}
-                        aria-invalid={!!fieldErrors.name}
-                        disabled={isSaving || isReadOnly}
-                        required
-                      />
-                      {fieldErrors.name && (
-                        <p className="text-xs text-destructive">{fieldErrors.name}</p>
-                      )}
-                      {nameChanged && formData.name.length >= 2 && (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          {nameAvailability.isChecking ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                              <span className="text-muted-foreground">Checking availability…</span>
-                            </>
-                          ) : nameAvailability.available === true ? (
-                            <>
-                              <Check className="w-3 h-3 text-green-600" />
-                              <span className="text-green-600">Name is available</span>
-                            </>
-                          ) : nameAvailability.available === false ? (
-                            <>
-                              <X className="w-3 h-3 text-destructive" />
-                              <span className="text-destructive">
-                                Name is already taken or invalid
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      )}
-                    </div>
+      <PageControlStrip>
+        <SectionTabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          items={[
+            { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
+            { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+          ]}
+        />
+      </PageControlStrip>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="display_name">Display Name</Label>
-                      <Input
-                        id="display_name"
-                        placeholder={formData.name ? undefined : "My Harness"}
-                        value={formData.display_name}
-                        onChange={(e) => handleFormChange("display_name", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Optional human-readable label shown in the UI. Defaults to name if empty.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Describe what this harness does..."
-                        value={formData.description}
-                        onChange={(e) => handleFormChange("description", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                        rows={2}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="parent-harness">Parent Harness</Label>
-                      <HarnessSelect
-                        value={formData.parent_harness_id}
-                        onValueChange={(value) => handleFormChange("parent_harness_id", value)}
-                        placeholder="No parent harness"
-                        includeNoneOption
-                        noneLabel="No parent harness"
-                        excludeIds={[harnessId]}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Inherit prompt, capabilities, initial files, and model fallback from a
-                        parent harness.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="tags">Tags</Label>
-                      <Input
-                        id="tags"
-                        placeholder="tag1, tag2, tag3"
-                        value={formData.tags}
-                        onChange={(e) => handleFormChange("tags", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="model">Model (optional)</Label>
-                      <ModelPicker
-                        value={formData.default_model_id || ""}
-                        onChange={(value) => handleFormChange("default_model_id", value)}
-                        disabled={isSaving || isReadOnly}
-                        placeholder="Use default model"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Select a specific model or leave empty to use the default
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="system_prompt">System Prompt (optional)</Label>
-                      <PromptEditor
-                        id="system_prompt"
-                        placeholder="You are a helpful assistant..."
-                        value={formData.system_prompt}
-                        onChange={(value) => handleFormChange("system_prompt", value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      {fieldErrors.system_prompt && (
-                        <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Base instructions for the AI model (supports Markdown). Leave empty to
-                        contribute no base prompt — the parent harness, agent, session, and
-                        capabilities still apply.
-                      </p>
-                    </div>
-
-                    <InitialFilesEditor
-                      value={selectedInitialFiles}
-                      onChange={setLocalInitialFiles}
-                      disabled={isSaving || isReadOnly}
-                      description="Files copied into each new session created from this harness."
-                    />
-
-                    <NetworkAccessEditor
-                      value={initialNetworkAccess}
-                      onChange={setLocalNetworkAccess}
-                      disabled={isSaving || isReadOnly}
-                      description="Baseline network policy for every agent and session on this harness. Agents and sessions can only narrow it, never widen it."
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Danger Zone */}
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>Irreversible actions that affect this harness</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">
-                          {harness.status === "archived"
-                            ? "Delete this harness"
-                            : "Archive this harness"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {harness.status === "archived"
-                            ? "Permanently delete this archived harness. Existing references will render as deleted tombstones."
-                            : "Archive this harness. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
-                        </p>
-                      </div>
-                      {harness.status === "archived" ? (
-                        canDangerousDelete && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={() => setShowDeleteDialog(true)}
-                            disabled={destroyHarness.isPending}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {destroyHarness.isPending ? "Deleting..." : "Delete Harness"}
-                          </Button>
-                        )
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleArchive}
-                          disabled={deleteHarness.isPending}
-                        >
-                          {deleteHarness.isPending ? "Archiving..." : "Archive Harness"}
-                        </Button>
-                      )}
-                    </div>
-                    {deleteError && (
-                      <EntityDeleteErrorNotice
-                        entityKind="harness"
-                        action={deleteAction}
-                        message={deleteError.message}
-                        className="mt-4"
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Capabilities sidebar */}
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Capabilities</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CapabilitySelector
-                      capabilities={allCapabilities || []}
-                      selected={selectedCapabilities}
-                      onChange={handleCapabilitiesChange}
-                      disabled={isSaving || isReadOnly}
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Save button */}
-                <div className="flex gap-4">
-                  <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
-                    <Save className="w-4 h-4 mr-2" />
-                    {isReadOnly
-                      ? "Archived Harnesses Are Read-Only"
-                      : isSaving
-                        ? "Saving..."
-                        : "Save Changes"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    Cancel
-                  </Button>
-                </div>
-
-                {updateHarness.error && (
-                  <p className="text-sm text-destructive">Error: {updateHarness.error.message}</p>
-                )}
-              </div>
-            </div>
-          </form>
-        </TabsContent>
-
-        {/* Preview Tab Content */}
-        <TabsContent value="preview">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <HarnessPreview
-                systemPrompt={formData.system_prompt}
-                capabilities={selectedCapabilities}
-                initialFiles={selectedInitialFiles}
-                parentHarnessId={formData.parent_harness_id || undefined}
-              />
-            </div>
-
-            {/* Summary sidebar */}
-            <div className="space-y-6">
+      {activeTab === "edit" && (
+        <form id="harness-edit-form" onSubmit={handleSubmit}>
+          <PageColumns>
+            {/* Main form */}
+            <PageMain>
               <Card>
                 <CardHeader>
-                  <CardTitle>Harness Summary</CardTitle>
-                  <CardDescription>Current configuration</CardDescription>
+                  <CardTitle>Harness Details</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium">Name</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {formData.name || "(not set)"}
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="my-harness"
+                      value={formData.name}
+                      onChange={(e) => handleFormChange("name", e.target.value)}
+                      aria-invalid={!!fieldErrors.name}
+                      disabled={isSaving || isReadOnly}
+                      required
+                    />
+                    {fieldErrors.name && (
+                      <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                    )}
+                    {nameChanged && formData.name.length >= 2 && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        {nameAvailability.isChecking ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                            <span className="text-muted-foreground">Checking availability…</span>
+                          </>
+                        ) : nameAvailability.available === true ? (
+                          <>
+                            <Check className="w-3 h-3 text-green-600" />
+                            <span className="text-green-600">Name is available</span>
+                          </>
+                        ) : nameAvailability.available === false ? (
+                          <>
+                            <X className="w-3 h-3 text-destructive" />
+                            <span className="text-destructive">
+                              Name is already taken or invalid
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "My Harness"}
+                      value={formData.display_name}
+                      onChange={(e) => handleFormChange("display_name", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Display Name</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.display_name || "(not set)"}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Describe what this harness does..."
+                      value={formData.description}
+                      onChange={(e) => handleFormChange("description", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="parent-harness">Parent Harness</Label>
+                    <HarnessSelect
+                      value={formData.parent_harness_id}
+                      onValueChange={(value) => handleFormChange("parent_harness_id", value)}
+                      placeholder="No parent harness"
+                      includeNoneOption
+                      noneLabel="No parent harness"
+                      excludeIds={[harnessId]}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Inherit prompt, capabilities, initial files, and model fallback from a parent
+                      harness.
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Description</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.description || "(not set)"}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="tags">Tags</Label>
+                    <Input
+                      id="tags"
+                      placeholder="tag1, tag2, tag3"
+                      value={formData.tags}
+                      onChange={(e) => handleFormChange("tags", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model (optional)</Label>
+                    <ModelPicker
+                      value={formData.default_model_id || ""}
+                      onChange={(value) => handleFormChange("default_model_id", value)}
+                      disabled={isSaving || isReadOnly}
+                      placeholder="Use default model"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Select a specific model or leave empty to use the default
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Parent Harness</p>
-                    <p className="text-sm text-muted-foreground">
-                      {getDisplayName(selectedParentHarness) ||
-                        formData.parent_harness_id ||
-                        "(none)"}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="system_prompt">System Prompt (optional)</Label>
+                    <PromptEditor
+                      id="system_prompt"
+                      placeholder="You are a helpful assistant..."
+                      value={formData.system_prompt}
+                      onChange={(value) => handleFormChange("system_prompt", value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    {fieldErrors.system_prompt && (
+                      <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Base instructions for the AI model (supports Markdown). Leave empty to
+                      contribute no base prompt — the parent harness, agent, session, and
+                      capabilities still apply.
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Capabilities</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedCapabilities.length} capabilit
-                      {selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
-                    </p>
-                  </div>
+
+                  <InitialFilesEditor
+                    value={selectedInitialFiles}
+                    onChange={setLocalInitialFiles}
+                    disabled={isSaving || isReadOnly}
+                    description="Files copied into each new session created from this harness."
+                  />
+
+                  <NetworkAccessEditor
+                    value={initialNetworkAccess}
+                    onChange={setLocalNetworkAccess}
+                    disabled={isSaving || isReadOnly}
+                    description="Baseline network policy for every agent and session on this harness. Agents and sessions can only narrow it, never widen it."
+                  />
                 </CardContent>
               </Card>
 
-              <Card className="border-dashed">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground text-center">
-                    This preview shows what the final harness will look like after applying all
-                    capabilities. Switch to the Edit tab to make changes.
-                  </p>
+              {/* Danger Zone */}
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                  <CardDescription>Irreversible actions that affect this harness</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {harness.status === "archived"
+                          ? "Delete this harness"
+                          : "Archive this harness"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {harness.status === "archived"
+                          ? "Permanently delete this archived harness. Existing references will render as deleted tombstones."
+                          : "Archive this harness. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
+                      </p>
+                    </div>
+                    {harness.status === "archived" ? (
+                      canDangerousDelete && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setShowDeleteDialog(true)}
+                          disabled={destroyHarness.isPending}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {destroyHarness.isPending ? "Deleting..." : "Delete Harness"}
+                        </Button>
+                      )
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleArchive}
+                        disabled={deleteHarness.isPending}
+                      >
+                        {deleteHarness.isPending ? "Archiving..." : "Archive Harness"}
+                      </Button>
+                    )}
+                  </div>
+                  {deleteError && (
+                    <EntityDeleteErrorNotice
+                      entityKind="harness"
+                      action={deleteAction}
+                      message={deleteError.message}
+                      className="mt-4"
+                    />
+                  )}
                 </CardContent>
               </Card>
-            </div>
+            </PageMain>
+
+            {/* Capabilities sidebar */}
+            <PageRail>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capabilities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CapabilitySelector
+                    capabilities={allCapabilities || []}
+                    selected={selectedCapabilities}
+                    onChange={handleCapabilitiesChange}
+                    disabled={isSaving || isReadOnly}
+                  />
+                </CardContent>
+              </Card>
+
+              {updateHarness.error && (
+                <p className="text-sm text-destructive">Error: {updateHarness.error.message}</p>
+              )}
+            </PageRail>
+          </PageColumns>
+        </form>
+      )}
+
+      {/* Preview Tab Content */}
+      {activeTab === "preview" && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <HarnessPreview
+              systemPrompt={formData.system_prompt}
+              capabilities={selectedCapabilities}
+              initialFiles={selectedInitialFiles}
+              parentHarnessId={formData.parent_harness_id || undefined}
+            />
           </div>
-        </TabsContent>
-      </Tabs>
+
+          {/* Summary sidebar */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Harness Summary</CardTitle>
+                <CardDescription>Current configuration</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium">Name</p>
+                  <p className="text-sm text-muted-foreground font-mono">
+                    {formData.name || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Display Name</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.display_name || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Description</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.description || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Parent Harness</p>
+                  <p className="text-sm text-muted-foreground">
+                    {getDisplayName(selectedParentHarness) ||
+                      formData.parent_harness_id ||
+                      "(none)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Capabilities</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCapabilities.length} capabilit
+                    {selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  This preview shows what the final harness will look like after applying all
+                  capabilities. Switch to the Edit tab to make changes.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      <PageFooter>
+        <BackLink href={`/harnesses/${harnessId}`}>Back to {harnessDisplayName}</BackLink>
+      </PageFooter>
+
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
@@ -621,6 +652,6 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

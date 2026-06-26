@@ -1,0 +1,366 @@
+// Unified page layout — the single five-zone skeleton every standard page is built on.
+//
+// Zones (numbered ①–⑤ in the design source):
+//   1. Breadcrumb     — PageBreadcrumb: the context line (root → name → mode).
+//   2. Header         — PageMasthead: icon tile · title · status badge · meta, then a
+//                       right-aligned action cluster (primary verb first).
+//   3. Control strip   — the shape-shifter: filters on list, stats on view, section nav
+//                       on edit. Same slot, always. Compose with PageControlStrip plus
+//                       SectionTabs / StatGrid as needed.
+//   4. Body            — PageColumns: a primary column (PageMain) plus a fixed right rail
+//                       (PageRail) for context.
+//   5. Footer          — PageFooter: a quiet back link / count line that closes the page.
+//
+// Only the contents of each zone change per page; position and mechanics stay identical.
+// These primitives are presentational and prop-driven so any page can adopt the language.
+
+import { Fragment, type ReactNode } from "react";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+/* ─────────────────────────────── Container ─────────────────────────────── */
+
+interface PageContainerProps {
+  children: ReactNode;
+  /** Opt into full-bleed width for dense tool pages. Defaults to a centered container. */
+  fullWidth?: boolean;
+  className?: string;
+}
+
+/**
+ * Outer page wrapper. Provides padding and the consistent vertical rhythm between
+ * the five zones so callers never hand-roll spacing.
+ */
+export function PageContainer({ children, fullWidth = false, className }: PageContainerProps) {
+  return (
+    <div
+      className={cn(
+        fullWidth ? "w-full" : "container mx-auto",
+        "flex flex-col gap-6 p-6",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ────────────────────────────── 1 · Breadcrumb ─────────────────────────── */
+
+export interface BreadcrumbItem {
+  label: ReactNode;
+  href?: string;
+}
+
+/**
+ * Zone ① — the context line. Renders `Root → name → mode`; the final item reads as
+ * the current location and is never linked.
+ */
+export function PageBreadcrumb({
+  items,
+  className,
+}: {
+  items: BreadcrumbItem[];
+  className?: string;
+}) {
+  return (
+    <nav
+      aria-label="Breadcrumb"
+      className={cn(
+        "flex flex-wrap items-center gap-2 text-[13px] text-muted-foreground",
+        className,
+      )}
+    >
+      {items.map((item, index) => {
+        const isLast = index === items.length - 1;
+        return (
+          <Fragment key={index}>
+            {index > 0 && (
+              <span aria-hidden className="text-muted-foreground/50">
+                /
+              </span>
+            )}
+            {item.href && !isLast ? (
+              <Link href={item.href} className="transition-colors hover:text-foreground">
+                {item.label}
+              </Link>
+            ) : (
+              <span className={isLast ? "text-foreground" : undefined}>{item.label}</span>
+            )}
+          </Fragment>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* ──────────────────────────────── Icon tile ────────────────────────────── */
+
+/**
+ * The gold-tinted square that leads the header (and entity cards). `lg` is the
+ * masthead size; `md` matches inline card rows.
+ */
+export function IconTile({
+  icon,
+  size = "lg",
+  className,
+}: {
+  icon: ReactNode;
+  size?: "md" | "lg";
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex flex-none items-center justify-center border bg-accent/20 text-foreground",
+        size === "lg" ? "size-11 [&_svg]:size-[22px]" : "size-8 [&_svg]:size-4",
+        className,
+      )}
+    >
+      {icon}
+    </span>
+  );
+}
+
+/* ──────────────────────────────── 2 · Header ───────────────────────────── */
+
+interface PageMastheadProps {
+  /** Leading icon, wrapped in an IconTile automatically. */
+  icon?: ReactNode;
+  title: ReactNode;
+  /** Status badges / counts shown inline after the title. */
+  badges?: ReactNode;
+  /** One-line description under the title. */
+  description?: ReactNode;
+  /** Meta run — small key/value spans rendered below the description. */
+  meta?: ReactNode;
+  /** Right-aligned action cluster, primary verb first. */
+  actions?: ReactNode;
+  className?: string;
+}
+
+/**
+ * Zone ② — header anatomy shared by every page: gold icon tile · title · status
+ * badge · meta run, then a right-aligned action cluster.
+ */
+export function PageMasthead({
+  icon,
+  title,
+  badges,
+  description,
+  meta,
+  actions,
+  className,
+}: PageMastheadProps) {
+  return (
+    <div className={cn("flex items-start justify-between gap-4 border-b pb-4", className)}>
+      <div className="flex min-w-0 items-start gap-4">
+        {icon && <IconTile icon={icon} />}
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+            {badges}
+          </div>
+          {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
+          {meta && (
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+              {meta}
+            </div>
+          )}
+        </div>
+      </div>
+      {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
+    </div>
+  );
+}
+
+/* ─────────────────────────────── 3 · Control strip ─────────────────────── */
+
+/**
+ * Zone ③ — the shape-shifter slot. A thin wrapper so the zone keeps its position
+ * regardless of what it holds (filters, stats, or section nav).
+ */
+export function PageControlStrip({
+  children,
+  className,
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <div className={className}>{children}</div>;
+}
+
+export interface SectionTabItem {
+  value: string;
+  label: ReactNode;
+  icon?: ReactNode;
+}
+
+/**
+ * Underline section navigation used for the list status filter and the edit
+ * section nav. Controlled — pair with local state and conditional panels.
+ */
+export function SectionTabs({
+  value,
+  onValueChange,
+  items,
+  className,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  items: SectionTabItem[];
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex items-center border-b", className)} role="tablist">
+      {items.map((item) => {
+        const isActive = item.value === value;
+        return (
+          <button
+            key={item.value}
+            type="button"
+            role="tab"
+            aria-selected={isActive}
+            onClick={() => onValueChange(item.value)}
+            className={cn(
+              "-mb-px inline-flex items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors",
+              isActive
+                ? "border-primary text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {item.icon}
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * A single metric tile for the view control strip. Pass `value` for the big
+ * number, `hint` for the caption, or `children` for custom content (e.g. a chart).
+ */
+export function StatCard({
+  label,
+  value,
+  hint,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  value?: ReactNode;
+  hint?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("flex flex-col gap-1.5 border bg-card p-4", className)}>
+      <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </span>
+      {value !== undefined && (
+        <span className="text-2xl font-semibold tracking-tight text-foreground">{value}</span>
+      )}
+      {children}
+      {hint && <span className="text-[13px] text-muted-foreground">{hint}</span>}
+    </div>
+  );
+}
+
+/** Responsive grid for {@link StatCard}s. Defaults to four columns on wide screens. */
+export function StatGrid({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>{children}</div>;
+}
+
+/* ──────────────────────────────── 4 · Body ─────────────────────────────── */
+
+/**
+ * Zone ④ — the two-column body: a flexible primary column plus a fixed-width
+ * right rail. On narrow screens the rail stacks below.
+ */
+export function PageColumns({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div className={cn("grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]", className)}>
+      {children}
+    </div>
+  );
+}
+
+/** The primary column inside {@link PageColumns}. */
+export function PageMain({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex min-w-0 flex-col gap-4", className)}>{children}</div>;
+}
+
+/** The fixed right rail inside {@link PageColumns}. */
+export function PageRail({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex flex-col gap-4", className)}>{children}</div>;
+}
+
+/**
+ * A rail facet card: small mono uppercase label over content. For richer titled
+ * panels (e.g. "Recent sessions") use the standard Card component instead.
+ */
+export function RailSection({
+  label,
+  children,
+  className,
+}: {
+  label: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("border bg-card p-4", className)}>
+      <div className="mb-2.5 font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* ──────────────────────────────── 5 · Footer ───────────────────────────── */
+
+/**
+ * Zone ⑤ — the closing line. A quiet bordered strip; pass a {@link BackLink} and
+ * an optional count/secondary link.
+ */
+export function PageFooter({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-4 border-t pt-3.5 text-[13px] text-muted-foreground",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+/** Back link with a leading arrow, sized for the footer. */
+export function BackLink({
+  href,
+  children,
+  className,
+}: {
+  href: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex items-center gap-2 text-[13px] text-muted-foreground transition-colors hover:text-foreground",
+        className,
+      )}
+    >
+      <ArrowLeft className="size-4" />
+      {children}
+    </Link>
+  );
+}

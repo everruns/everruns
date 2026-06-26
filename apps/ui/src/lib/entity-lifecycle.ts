@@ -36,7 +36,7 @@ export function getEntityStatusBadgeVariant(
   switch (status) {
     case "active":
     case "published":
-      return "default";
+      return "success";
     case "deleted":
       return "destructive";
     case "archived":

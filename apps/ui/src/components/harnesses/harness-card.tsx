@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
+import { IconTile } from "@/components/layout/page-layout";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -46,6 +47,7 @@ export function HarnessCard({
 
   return (
     <EntityCard
+      icon={<IconTile size="md" icon={<Shield />} />}
       title={getDisplayName(harness)}
       href={`/harnesses/${harness.id}`}
       titleClassName={getEntityNameClassName(harness.status)}
