@@ -64,12 +64,14 @@ setup and `.deepsec/AGENTS.md` for agent usage.
 
 ### 4. Supply chain and platform scanning
 
-- **Licenses** — `cargo deny check licenses` (config in `deny.toml`), enforced
-  by `.github/workflows/licenses.yml` on PRs that touch Cargo or crate files.
-  This is a license allowlist check only; it does not run advisory checks.
-- **Advisories / dependency updates** — handled by Dependabot (`.github/dependabot.yml`),
-  with alerts reviewed in the GitHub Security tab. `cargo deny check advisories`
-  can be run locally for an ad-hoc audit but is not wired into CI.
+- **Licenses & advisories** — `cargo deny check licenses` and
+  `cargo deny check advisories` (config in `deny.toml`), enforced by
+  `.github/workflows/licenses.yml` on PRs that touch Cargo or crate files. The
+  advisories step gates against RustSec vulnerabilities and yanked crates
+  (vulnerabilities always fail; unmaintained advisories are not yet gated).
+- **Dependency updates** — handled by Dependabot (`.github/dependabot.yml`),
+  which covers the `cargo`, `docker`, and `npm` ecosystems, with security alerts
+  reviewed in the GitHub Security tab.
 - **Secret scanning** — GitHub push-protection and open-alert review.
 - **CI secret scoping** — fork-PR jobs never receive repository secrets
   (TM-CI-001..005); see `specs/threat-model.md`.

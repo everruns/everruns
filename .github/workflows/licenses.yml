@@ -60,3 +60,6 @@ jobs:
 
       - name: Check licenses
         run: cargo deny check licenses
+
+      - name: Check advisories (RustSec)
+        run: cargo deny check advisories
