@@ -105,16 +105,17 @@ describe("KnowledgeIndexDetailPage", () => {
     await renderWithSuspense();
 
     expect(screen.getByRole("heading", { level: 1, name: "Product Docs" })).toBeInTheDocument();
-    expect(screen.getByText("Synced product documentation")).toBeInTheDocument();
+    expect(screen.getAllByText("Synced product documentation").length).toBeGreaterThan(0);
     expect(screen.getByText("everruns/everruns")).toBeInTheDocument();
-    expect(screen.getByText("model_001")).toBeInTheDocument();
+    expect(screen.getAllByText("model_001").length).toBeGreaterThan(0);
     expect(screen.getByText("Readme")).toBeInTheDocument();
     expect(screen.getByText(/docs\/readme\.md/)).toBeInTheDocument();
-    expect(screen.getByText("4")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Knowledge Indexes/i })).toHaveAttribute(
-      "href",
-      "/knowledge-indexes",
-    );
+    expect(screen.getAllByText("4").length).toBeGreaterThan(0);
+    expect(
+      screen
+        .getAllByRole("link", { name: /Knowledge Indexes/i })
+        .some((l) => l.getAttribute("href") === "/knowledge-indexes"),
+    ).toBe(true);
   });
 
   it("triggers a manual sync", async () => {

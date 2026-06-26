@@ -141,7 +141,7 @@ describe("ModelsPage", () => {
   it("renders Models section header", () => {
     render(<ModelsPage />, { wrapper });
 
-    expect(screen.getByText("Models")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Models" })).toBeInTheDocument();
     expect(
       screen.getByText("Manage the models available from your configured providers."),
     ).toBeInTheDocument();

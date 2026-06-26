@@ -9,8 +9,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CopyButton } from "@/components/ui/copy-button";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageMain,
+  PageFooter,
+} from "@/components/layout";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +43,7 @@ import {
 import { usePageTitle } from "@/hooks";
 import {
   Plus,
+  Puzzle,
   Package,
   Store,
   RefreshCw,
@@ -44,6 +53,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from "lucide-react";
+import { pluralize } from "@/lib/formatting";
 import type {
   Marketplace,
   MarketplaceCatalogEntry,
@@ -650,35 +660,54 @@ export default function PluginsPage() {
     null,
   );
 
+  const installedCount = plugins?.length ?? 0;
+  const marketplaceCount = marketplaces?.length ?? 0;
+
+  const sectionItems = [
+    { value: "installed" as const, label: "Installed Plugins" },
+    { value: "marketplaces" as const, label: "Marketplaces" },
+  ];
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">Plugins</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Install plugins from marketplaces to extend agents with skills, commands, and MCP
-            servers packaged in the standard plugin format.
-          </p>
-        </div>
-        {activeTab === "marketplaces" && (
-          <Button onClick={() => setAddMarketplaceOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Marketplace
-          </Button>
-        )}
-      </div>
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Plugins" }]} />
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(v) => setActiveTab(v as "installed" | "marketplaces")}
-      >
-        <TabsList>
-          <TabsTrigger value="installed">Installed Plugins</TabsTrigger>
-          <TabsTrigger value="marketplaces">Marketplaces</TabsTrigger>
-        </TabsList>
+      <PageMasthead
+        icon={<Puzzle />}
+        title="Plugins"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {installedCount}
+          </Badge>
+        }
+        description="Install plugins from marketplaces to extend agents with skills, commands, and MCP servers packaged in the standard plugin format."
+        meta={
+          <>
+            <span>{installedCount} installed</span>
+            <span>{marketplaceCount} marketplaces</span>
+          </>
+        }
+        actions={
+          activeTab === "marketplaces" && (
+            <Button variant="accent" onClick={() => setAddMarketplaceOpen(true)}>
+              <Plus className="size-4" />
+              Add Marketplace
+            </Button>
+          )
+        }
+      />
 
+      <PageControlStrip>
+        <SectionTabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as "installed" | "marketplaces")}
+          items={sectionItems}
+        />
+      </PageControlStrip>
+
+      <PageMain>
         {/* ---- Installed Plugins tab ---- */}
-        <TabsContent value="installed">
+        {activeTab === "installed" && (
           <QueryStateWrapper
             isLoading={pluginsLoading}
             error={pluginsError}
@@ -717,10 +746,10 @@ export default function PluginsPage() {
               </div>
             )}
           </QueryStateWrapper>
-        </TabsContent>
+        )}
 
         {/* ---- Marketplaces tab ---- */}
-        <TabsContent value="marketplaces">
+        {activeTab === "marketplaces" && (
           <QueryStateWrapper
             isLoading={marketplacesLoading}
             error={marketplacesError}
@@ -760,8 +789,20 @@ export default function PluginsPage() {
               </div>
             )}
           </QueryStateWrapper>
-        </TabsContent>
-      </Tabs>
+        )}
+      </PageMain>
+
+      <PageFooter>
+        {activeTab === "installed" ? (
+          <span>
+            Showing {installedCount} {pluralize(installedCount, "plugin")}
+          </span>
+        ) : (
+          <span>
+            Showing {marketplaceCount} {pluralize(marketplaceCount, "marketplace")}
+          </span>
+        )}
+      </PageFooter>
 
       {/* Marketplace dialogs */}
       <AddMarketplaceDialog open={addMarketplaceOpen} onOpenChange={setAddMarketplaceOpen} />
@@ -782,6 +823,6 @@ export default function PluginsPage() {
         open={pendingUninstallPlugin !== null}
         onOpenChange={(open) => !open && setPendingUninstallPlugin(null)}
       />
-    </div>
+    </PageContainer>
   );
 }

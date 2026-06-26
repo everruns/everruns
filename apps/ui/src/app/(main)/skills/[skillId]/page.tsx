@@ -1,12 +1,13 @@
 "use client";
 
 import { use } from "react";
-import Link from "next/link";
-import { ArrowLeft, Archive, FileText } from "lucide-react";
+import { Archive, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { SkillDetailView } from "@/components/skills/skill-detail-view";
+import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 import { usePageTitle } from "@/hooks";
 import { useSkill, useSkillContent, useSkillsUsage } from "@/hooks/use-skills";
 import {
@@ -14,6 +15,17 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 
 export default function SkillDetailPage({ params }: { params: Promise<{ skillId: string }> }) {
   const { skillId } = use(params);
@@ -49,40 +61,105 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
     );
   }
 
+  const skillUsage = usage?.[skill.id];
+
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/skills"
-        className="mb-6 inline-flex items-center text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="mr-2 h-4 w-4" />
-        Back to Skills
-      </Link>
-
-      <header className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0">
-          <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-2xl font-bold">
-            {skill.source_type === "archive" ? (
-              <Archive className="h-6 w-6 shrink-0 text-primary" />
-            ) : (
-              <FileText className="h-6 w-6 shrink-0 text-primary" />
-            )}
-            <span className={getEntityNameClassName(skill.status)}>{getDisplayName(skill)}</span>
-            <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            {skill.description}
-          </p>
-        </div>
-      </header>
-
-      <SkillDetailView
-        skill={skill}
-        usage={usage?.[skill.id]}
-        content={content}
-        contentLoading={contentLoading}
-        contentError={contentError}
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Building blocks" },
+          { label: "Skills", href: "/skills" },
+          { label: getDisplayName(skill) },
+        ]}
       />
-    </div>
+
+      <PageMasthead
+        icon={skill.source_type === "archive" ? <Archive /> : <FileText />}
+        title={
+          <span className={getEntityNameClassName(skill.status)}>{getDisplayName(skill)}</span>
+        }
+        badges={
+          <>
+            <CopyButton value={skill.id} />
+            <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
+            <Badge variant="secondary" className="text-xs">
+              {skill.source_type}
+            </Badge>
+          </>
+        }
+        description={skill.description || undefined}
+        meta={
+          <>
+            <span>
+              Version <span className="text-primary">v{skill.version}</span>
+            </span>
+            {skill.license && (
+              <span>
+                License <span className="text-foreground">{skill.license}</span>
+              </span>
+            )}
+            <span>
+              Created{" "}
+              <span className="text-foreground">
+                {new Date(skill.created_at).toLocaleDateString()}
+              </span>
+            </span>
+          </>
+        }
+      />
+
+      <PageColumns>
+        <PageMain>
+          <SkillDetailView
+            skill={skill}
+            usage={skillUsage}
+            content={content}
+            contentLoading={contentLoading}
+            contentError={contentError}
+          />
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Used by">
+            <SkillUsageRow usage={skillUsage} />
+          </RailSection>
+
+          <RailSection label="Details">
+            <dl className="flex flex-col gap-2 text-[13px]">
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Source</dt>
+                <dd className="text-foreground">{skill.source_type}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Version</dt>
+                <dd className="text-foreground">v{skill.version}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">License</dt>
+                <dd className="text-foreground">{skill.license ?? "-"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Compatibility</dt>
+                <dd className="text-foreground">{skill.compatibility ?? "-"}</dd>
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <dt className="text-muted-foreground">Allowed tools</dt>
+                <dd className="break-words text-foreground">{skill.allowed_tools ?? "-"}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-muted-foreground">Updated</dt>
+                <dd className="text-foreground">
+                  {new Date(skill.updated_at).toLocaleDateString()}
+                </dd>
+              </div>
+            </dl>
+          </RailSection>
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <BackLink href="/skills">Back to Skills</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

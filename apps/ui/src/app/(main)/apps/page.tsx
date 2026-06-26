@@ -1,57 +1,212 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useApps, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
 import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/search-input";
+import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Plus, Rocket, Globe, GlobeLock, Copy, Clock3 } from "lucide-react";
-import { ArchiveFilter } from "@/components/archive-filter";
-import { CopyButton } from "@/components/ui/copy-button";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+  IconTile,
+} from "@/components/layout";
 import Link from "next/link";
-import type { App, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
+import type { App, AppChannel, ChannelType, ScheduleChannelConfig } from "@/lib/api/types";
+import {
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+  isArchivedStatus,
+} from "@/lib/entity-lifecycle";
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { pluralize } from "@/lib/formatting";
+
+type StatusTab = "all" | "active" | "archived";
 
 export default function AppsPage() {
   usePageTitle("Apps");
-  const [showArchived, setShowArchived] = useState(false);
-  const { data: apps, isLoading, error } = useApps({ includeArchived: showArchived });
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  const [search, setSearch] = useState("");
+  // Fetch the full set (including archived) so the facet rail can show accurate counts.
+  const { data: apps, isLoading, error } = useApps({ includeArchived: true });
+
+  const counts = useMemo(() => {
+    const list = apps ?? [];
+    const archived = list.filter((a) => isArchivedStatus(a.status)).length;
+    return { all: list.length, active: list.length - archived, archived };
+  }, [apps]);
+
+  const channelFacets = useMemo(() => {
+    const tally = new Map<ChannelType, number>();
+    for (const app of apps ?? []) {
+      for (const channel of app.channels) {
+        tally.set(channel.channel_type, (tally.get(channel.channel_type) ?? 0) + 1);
+      }
+    }
+    return [...tally.entries()]
+      .map(([type, count]) => ({ type, count, name: getChannelTypeDisplayName(type) }))
+      .sort((a, b) => b.count - a.count);
+  }, [apps]);
+
+  const filteredApps = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (apps ?? []).filter((app) => {
+      if (statusTab === "active" && isArchivedStatus(app.status)) return false;
+      if (statusTab === "archived" && !isArchivedStatus(app.status)) return false;
+      if (!query) return true;
+      const haystack = [app.name, app.description].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [apps, search, statusTab]);
+
+  const statusItems = [
+    { value: "all" as const, label: "All" },
+    { value: "active" as const, label: "Active" },
+    { value: "archived" as const, label: "Archived" },
+  ];
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-3">Apps</h1>
-        <div className="flex items-center gap-2">
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Apps" }]} />
+
+      <PageMasthead
+        icon={<Rocket />}
+        title="Apps"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {counts.all}
+          </Badge>
+        }
+        description="Deploy agents to channels — Slack, AG-UI, webhooks, and schedules."
+        meta={
+          <>
+            <span>{counts.active} active</span>
+            <span>{counts.archived} archived</span>
+          </>
+        }
+        actions={
           <Link href="/apps/new">
             <Button variant="accent">
-              <Plus className="w-4 h-4 mr-2" />
-              New App
+              <Plus className="size-4" />
+              New app
             </Button>
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={apps}
-        errorMessagePrefix="Failed to load apps"
-        skeletonCount={3}
-        emptyState={<EmptyState />}
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((app) => (
-              <AppCard key={app.id} app={app} />
-            ))}
-          </div>
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          placeholder="Search apps…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          containerClassName="w-64"
+        />
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredApps}
+            errorMessagePrefix="Failed to load apps"
+            skeletonCount={3}
+            emptyState={
+              <div className="border border-dashed py-12 text-center">
+                <p className="mb-4 text-muted-foreground">
+                  {search || statusTab !== "active"
+                    ? "No apps match your filters."
+                    : "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or trigger it from schedules and authenticated webhooks."}
+                </p>
+                {!search && statusTab === "active" && (
+                  <Link href="/apps/new">
+                    <Button variant="accent">
+                      <Plus className="size-4" />
+                      Create your first app
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            }
+          >
+            {(items) => (
+              <div className="grid gap-4 md:grid-cols-2">
+                {items.map((app) => (
+                  <AppCard key={app.id} app={app} />
+                ))}
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={
+                    statusTab === item.value
+                      ? "flex items-center justify-between text-foreground transition-colors hover:text-foreground"
+                      : "flex items-center justify-between text-muted-foreground transition-colors hover:text-foreground"
+                  }
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          {channelFacets.length > 0 && (
+            <RailSection label="Channels">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {channelFacets.map((facet) => (
+                  <div key={facet.type} className="flex items-center justify-between">
+                    <span>{facet.name}</span>
+                    <span>{facet.count}</span>
+                  </div>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          Showing {filteredApps.length} of {counts.all} {pluralize(counts.all, "app")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
         )}
-      </QueryStateWrapper>
-    </div>
+      </PageFooter>
+    </PageContainer>
   );
 }
 
@@ -64,107 +219,96 @@ function AppCard({ app }: { app: App }) {
   const primaryAccess = getPrimaryChannelAccess(app.id, primaryChannel);
 
   return (
-    <Link href={`/apps/${app.id}`}>
-      <Card className="cursor-pointer hover:border-accent/50 transition-colors">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Rocket className="w-5 h-5 text-muted-foreground" />
-              <h3 className={`font-semibold text-lg ${getEntityNameClassName(app.status)}`}>
-                {app.name}
-              </h3>
-              <CopyButton value={app.id} />
-            </div>
-            <Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {app.description && <p className="text-sm text-muted-foreground">{app.description}</p>}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            {app.channels.map((channel) => (
-              <Badge key={channel.id} variant="outline" className="text-xs">
-                {getChannelTypeDisplayName(channel.channel_type)}
-              </Badge>
-            ))}
-            {app.channels.length === 0 && <span>No channels</span>}
-          </div>
-
-          {isPublished && primaryAccess && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted p-2 rounded">
-              {primaryAccess.kind === "schedule" ? (
-                <Clock3 className="w-3 h-3 shrink-0" />
-              ) : (
-                <Globe className="w-3 h-3 shrink-0" />
-              )}
-              <span className="truncate font-mono">{primaryAccess.value}</span>
-              {primaryAccess.copyable && (
-                <button
-                  className="shrink-0 ml-1 hover:text-foreground"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(primaryAccess.value);
-                  }}
+    <EntityCard
+      icon={<IconTile size="md" icon={<Rocket />} />}
+      title={app.name}
+      href={`/apps/${app.id}`}
+      titleClassName={getEntityNameClassName(app.status)}
+      copyValue={app.id}
+      headerActions={<Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>}
+      footer={
+        <EntityCardFooter
+          meta={
+            <>
+              {app.channels.length === 0
+                ? "No channels"
+                : `${app.channels.length} ${pluralize(app.channels.length, "channel")}`}
+            </>
+          }
+          actions={
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions -- group container only suppresses click propagation; nested actions own interactivity
+            <div
+              role="group"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+            >
+              {isPublished ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => unpublishApp.mutate(app.id)}
+                  disabled={unpublishApp.isPending || isArchived}
                 >
-                  <Copy className="w-3 h-3" />
-                </button>
+                  <GlobeLock className="mr-1 size-3" />
+                  Unpublish
+                </Button>
+              ) : (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => publishApp.mutate(app.id)}
+                  disabled={publishApp.isPending || isArchived}
+                >
+                  <Globe className="mr-1 size-3" />
+                  Publish
+                </Button>
               )}
             </div>
+          }
+        />
+      }
+    >
+      {app.description ? (
+        <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">{app.description}</p>
+      ) : (
+        <p className="mb-3 text-sm italic text-muted-foreground">No description provided</p>
+      )}
+
+      {app.channels.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+          {app.channels.map((channel) => (
+            <Badge key={channel.id} variant="outline" className="text-xs">
+              {getChannelTypeDisplayName(channel.channel_type)}
+            </Badge>
+          ))}
+        </div>
+      )}
+
+      {isPublished && primaryAccess && (
+        <div className="mb-3 flex items-center gap-1 rounded bg-muted p-2 text-xs text-muted-foreground">
+          {primaryAccess.kind === "schedule" ? (
+            <Clock3 className="size-3 shrink-0" />
+          ) : (
+            <Globe className="size-3 shrink-0" />
           )}
-
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions -- group container only suppresses click propagation; nested actions own interactivity */}
-          <div
-            className="flex gap-2 pt-2"
-            role="group"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-          >
-            {isPublished ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => unpublishApp.mutate(app.id)}
-                disabled={unpublishApp.isPending || isArchived}
-              >
-                <GlobeLock className="w-3 h-3 mr-1" />
-                Unpublish
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => publishApp.mutate(app.id)}
-                disabled={publishApp.isPending || isArchived}
-              >
-                <Globe className="w-3 h-3 mr-1" />
-                Publish
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <Rocket className="w-12 h-12 text-muted-foreground mb-4" />
-      <h3 className="text-lg font-semibold mb-2">No Apps Yet</h3>
-      <p className="text-muted-foreground mb-4 max-w-md">
-        Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent
-        to the interface you need, or trigger it from schedules and authenticated webhooks.
-      </p>
-      <Link href="/apps/new">
-        <Button variant="accent">
-          <Plus className="w-4 h-4 mr-2" />
-          Create Your First App
-        </Button>
-      </Link>
-    </div>
+          <span className="truncate font-mono">{primaryAccess.value}</span>
+          {primaryAccess.copyable && (
+            <button
+              className="ml-1 shrink-0 hover:text-foreground"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigator.clipboard.writeText(primaryAccess.value);
+              }}
+            >
+              <Copy className="size-3" />
+            </button>
+          )}
+        </div>
+      )}
+    </EntityCard>
   );
 }
 

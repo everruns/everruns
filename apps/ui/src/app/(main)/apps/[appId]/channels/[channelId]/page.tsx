@@ -1,10 +1,9 @@
 "use client";
 
 import { use, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Play, Trash2 } from "lucide-react";
+import { Check, Pencil, Play, Radio, Trash2 } from "lucide-react";
 import { useApp } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
 import { deleteChannel, triggerChannel, updateChannel } from "@/lib/api/apps";
@@ -12,7 +11,6 @@ import { queryKeys } from "@/lib/query-keys";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { CronLabel } from "@/components/apps/cron-label";
 import { MiniTimeline } from "@/components/apps/mini-timeline";
@@ -23,6 +21,19 @@ import {
   isChannelFormValid,
   type ChannelFormState,
 } from "@/components/apps/channel-form";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+  type SectionTabItem,
+} from "@/components/layout";
 import type { ScheduleChannelConfig } from "@/lib/api/types";
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
@@ -142,166 +153,178 @@ export default function EditChannelPage({
     );
   }
 
-  return (
-    <div className="min-h-[calc(100vh-3rem)]">
-      <div className="border-b bg-background">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link href="/apps" className="hover:text-foreground">
-              Apps
-            </Link>
-            <span>/</span>
-            <Link href={`/apps/${app.id}`} className="hover:text-foreground">
-              {app.name}
-            </Link>
-            <span>/</span>
-            <span>{channelTitle(formState)}</span>
-          </div>
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="flex items-start gap-4">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => router.push(`/apps/${app.id}`)}
-              >
-                <ArrowLeft className="size-4" />
-              </Button>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-2xl font-semibold">{channelTitle(formState)}</h1>
-                  <Badge variant={formState.enabled ? "default" : "secondary"}>
-                    {formState.enabled ? "active" : "paused"}
-                  </Badge>
-                </div>
-                <p className="mt-1 text-muted-foreground">{subline}</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => toggleChannel.mutate(!formState.enabled)}
-                disabled={!canManage || toggleChannel.isPending}
-              >
-                {formState.enabled ? "Pause" : "Enable"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => runNow.mutate()}
-                disabled={!canRunNow || runNow.isPending}
-              >
-                <Play className="size-4" />
-                Run now
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
+  const tabItems: SectionTabItem[] = [
+    ...(formState.kind === "schedule" ? [{ value: "schedule", label: "Schedule" }] : []),
+    { value: "invocation", label: "Invocation" },
+    { value: "session", label: "Session" },
+    { value: "runs", label: "Runs" },
+  ];
 
-      <div className="container mx-auto grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card>
-          <CardContent className="py-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList>
-                {formState.kind === "schedule" && (
-                  <TabsTrigger value="schedule">Schedule</TabsTrigger>
-                )}
-                <TabsTrigger value="invocation">Invocation</TabsTrigger>
-                <TabsTrigger value="session">Session</TabsTrigger>
-                <TabsTrigger value="runs">Runs</TabsTrigger>
-              </TabsList>
-              {formState.kind === "schedule" && (
-                <TabsContent value="schedule" className="mt-6">
+  return (
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Apps", href: "/apps" },
+          { label: app.name, href: `/apps/${app.id}` },
+          { label: channelTitle(formState) },
+        ]}
+      />
+
+      <PageMasthead
+        icon={<Radio />}
+        title={channelTitle(formState)}
+        badges={
+          <>
+            <Badge variant="accent">
+              <Pencil className="size-3" />
+              Editing
+            </Badge>
+            <Badge variant={formState.enabled ? "default" : "secondary"}>
+              {formState.enabled ? "active" : "paused"}
+            </Badge>
+          </>
+        }
+        description={subline}
+        actions={
+          <>
+            <Button
+              type="submit"
+              form="channel-edit-form"
+              disabled={!canManage || !isChannelFormValid(formState) || saveChannel.isPending}
+            >
+              <Check className="size-4" />
+              {saveChannel.isPending ? "Saving..." : "Save"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => toggleChannel.mutate(!formState.enabled)}
+              disabled={!canManage || toggleChannel.isPending}
+            >
+              {formState.enabled ? "Pause" : "Enable"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => runNow.mutate()}
+              disabled={!canRunNow || runNow.isPending}
+            >
+              <Play className="size-4" />
+              Run now
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.push(`/apps/${app.id}`)}>
+              Discard
+            </Button>
+          </>
+        }
+      />
+
+      <PageControlStrip>
+        <SectionTabs value={activeTab} onValueChange={setActiveTab} items={tabItems} />
+      </PageControlStrip>
+
+      <form
+        id="channel-edit-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveChannel.mutate();
+        }}
+      >
+        <PageColumns>
+          <PageMain>
+            <Card>
+              <CardContent className="py-4">
+                {activeTab === "schedule" && formState.kind === "schedule" && (
                   <ChannelForm
                     state={formState}
                     onChange={setFormState}
                     mode="edit"
                     section="schedule"
                   />
-                </TabsContent>
-              )}
-              <TabsContent value="invocation" className="mt-6">
-                <ChannelForm
-                  state={formState}
-                  onChange={setFormState}
-                  mode="edit"
-                  section="invocation"
-                />
-              </TabsContent>
-              <TabsContent value="session" className="mt-6">
-                <ChannelForm
-                  state={formState}
-                  onChange={setFormState}
-                  mode="edit"
-                  section="session"
-                />
-              </TabsContent>
-              <TabsContent value="runs" className="mt-6">
-                <ChannelForm state={formState} onChange={setFormState} mode="edit" section="runs" />
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
+                )}
+                {activeTab === "invocation" && (
+                  <ChannelForm
+                    state={formState}
+                    onChange={setFormState}
+                    mode="edit"
+                    section="invocation"
+                  />
+                )}
+                {activeTab === "session" && (
+                  <ChannelForm
+                    state={formState}
+                    onChange={setFormState}
+                    mode="edit"
+                    section="session"
+                  />
+                )}
+                {activeTab === "runs" && (
+                  <ChannelForm
+                    state={formState}
+                    onChange={setFormState}
+                    mode="edit"
+                    section="runs"
+                  />
+                )}
+              </CardContent>
+            </Card>
+          </PageMain>
 
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>24h stats</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Runs</p>
-                <p className="mt-1 text-xl font-semibold">0</p>
-              </div>
-              <div className="border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Errors</p>
-                <p className="mt-1 text-xl font-semibold">0</p>
-              </div>
-              <div className="border p-3">
-                <p className="text-xs uppercase text-muted-foreground">p95</p>
-                <p className="mt-1 text-xl font-semibold">--</p>
-              </div>
-              <div className="border p-3">
-                <p className="text-xs uppercase text-muted-foreground">Success</p>
-                <p className="mt-1 text-xl font-semibold">--</p>
-              </div>
-            </div>
-            <MiniTimeline />
-            <div className="text-sm text-muted-foreground">
-              <p>Created {new Date(channel.created_at).toLocaleString()}</p>
-              <p>Updated {new Date(channel.updated_at).toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          <PageRail>
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle>24h stats</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="border p-3">
+                    <p className="text-xs uppercase text-muted-foreground">Runs</p>
+                    <p className="mt-1 text-xl font-semibold">0</p>
+                  </div>
+                  <div className="border p-3">
+                    <p className="text-xs uppercase text-muted-foreground">Errors</p>
+                    <p className="mt-1 text-xl font-semibold">0</p>
+                  </div>
+                  <div className="border p-3">
+                    <p className="text-xs uppercase text-muted-foreground">p95</p>
+                    <p className="mt-1 text-xl font-semibold">--</p>
+                  </div>
+                  <div className="border p-3">
+                    <p className="text-xs uppercase text-muted-foreground">Success</p>
+                    <p className="mt-1 text-xl font-semibold">--</p>
+                  </div>
+                </div>
+                <MiniTimeline />
+                <div className="text-sm text-muted-foreground">
+                  <p>Created {new Date(channel.created_at).toLocaleString()}</p>
+                  <p>Updated {new Date(channel.updated_at).toLocaleString()}</p>
+                </div>
+              </CardContent>
+            </Card>
 
-      <div className="sticky bottom-0 border-t bg-background/95 px-6 py-3 backdrop-blur">
-        <div className="container mx-auto flex items-center justify-between gap-2">
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => removeChannel.mutate()}
-            disabled={!canManage || removeChannel.isPending}
-          >
-            <Trash2 className="size-4" />
-            Delete
-          </Button>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => router.push(`/apps/${app.id}`)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={!canManage || !isChannelFormValid(formState) || saveChannel.isPending}
-              onClick={() => saveChannel.mutate()}
-            >
-              {saveChannel.isPending ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+            <Card className="h-fit border-destructive/50">
+              <CardHeader>
+                <CardTitle className="text-destructive">Danger zone</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => removeChannel.mutate()}
+                  disabled={!canManage || removeChannel.isPending}
+                >
+                  <Trash2 className="size-4" />
+                  Delete channel
+                </Button>
+              </CardContent>
+            </Card>
+          </PageRail>
+        </PageColumns>
+      </form>
+
+      <PageFooter>
+        <BackLink href={`/apps/${app.id}`}>Back to {app.name}</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

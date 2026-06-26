@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
+import { SearchInput } from "@/components/ui/search-input";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -32,7 +41,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Plug, Trash2, Key, Globe, X, Settings2 } from "lucide-react";
+import { Plus, Plug, Trash2, Key, X } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
 import {
   apiKeySecretSchema,
@@ -40,10 +49,37 @@ import {
   mcpServerFormSchema,
   type FieldErrors,
 } from "@/lib/form-validation";
-import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
-import { ArchiveFilter } from "@/components/archive-filter";
+import {
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+  isArchivedStatus,
+} from "@/lib/entity-lifecycle";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  IconTile,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+} from "@/components/layout";
+import { capabilityIconMap } from "@/lib/capability-icons";
+import { pluralize } from "@/lib/formatting";
 
-function McpServerCard({
+const McpIcon = capabilityIconMap.mcp;
+
+function authLabel(server: McpServer): string {
+  if (server.auth_mode === "oauth") return "OAuth";
+  if (server.auth_mode === "api_key")
+    return server.api_key_set ? "API key configured" : "API key missing";
+  return "None";
+}
+
+function McpServerRow({
   server,
   canDestroy,
   onDelete,
@@ -63,54 +99,34 @@ function McpServerCard({
   const headerCount = Object.keys(server.headers ?? {}).length;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+    <TableRow>
+      <TableCell className="py-2.5">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
-            <Plug className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <CardTitle className={`text-lg ${getEntityNameClassName(server.status)}`}>
+          <IconTile size="md" icon={<McpIcon />} />
+          <div className="min-w-0">
+            <div className={`font-medium ${getEntityNameClassName(server.status)}`}>
               {server.name}
-            </CardTitle>
-            <CardDescription className="text-sm">
-              {server.description || "No description"}
-            </CardDescription>
+            </div>
+            <div className="truncate text-xs text-muted-foreground">
+              {server.description || server.url}
+            </div>
           </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <Badge variant="secondary" className="font-mono">
+          {server.transport_type.toUpperCase()}
+        </Badge>
+      </TableCell>
+      <TableCell className="text-muted-foreground">{authLabel(server)}</TableCell>
+      <TableCell className="text-muted-foreground">
+        {headerCount > 0 ? `${headerCount} ${pluralize(headerCount, "header")}` : "—"}
+      </TableCell>
+      <TableCell>
         <Badge variant={getEntityStatusBadgeVariant(server.status)}>{server.status}</Badge>
-      </CardHeader>
-      <CardContent>
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground truncate">{server.url}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Key className="h-4 w-4 text-muted-foreground" />
-            <span className="text-muted-foreground">
-              Auth:{" "}
-              {server.auth_mode === "oauth"
-                ? "OAuth"
-                : server.auth_mode === "api_key"
-                  ? server.api_key_set
-                    ? "API key configured"
-                    : "API key missing"
-                  : "None"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className="text-xs">
-              {server.transport_type.toUpperCase()}
-            </Badge>
-            {headerCount > 0 && (
-              <Badge variant="outline" className="text-xs">
-                {headerCount} custom header{headerCount !== 1 ? "s" : ""}
-              </Badge>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center justify-end gap-2 mt-4">
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center justify-end gap-2">
           {server.auth_mode === "api_key" && (
             <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
               <Key className="h-4 w-4 mr-1" />
@@ -119,7 +135,6 @@ function McpServerCard({
           )}
           {!isArchived && !isDeleted && (
             <Button variant="outline" size="sm" onClick={() => onManageHeaders(server)}>
-              <Settings2 className="h-4 w-4 mr-1" />
               Headers
             </Button>
           )}
@@ -135,8 +150,8 @@ function McpServerCard({
             </Button>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </TableCell>
+    </TableRow>
   );
 }
 
@@ -652,35 +667,49 @@ function ArchiveConfirmDialog({
   );
 }
 
-function McpServerCardSkeleton() {
+function McpServerRowSkeleton() {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
+    <TableRow>
+      <TableCell className="py-2.5">
         <div className="flex items-center gap-3">
-          <Skeleton className="h-9 w-9" />
+          <Skeleton className="h-8 w-8" />
           <div className="space-y-2">
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-40" />
           </div>
         </div>
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-5 w-14" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-24" />
+      </TableCell>
+      <TableCell>
+        <Skeleton className="h-4 w-10" />
+      </TableCell>
+      <TableCell>
         <Skeleton className="h-5 w-16" />
-      </CardHeader>
-      <CardContent>
-        <Skeleton className="h-4 w-full mb-4" />
-        <Skeleton className="h-8 w-24 ml-auto" />
-      </CardContent>
-    </Card>
+      </TableCell>
+      <TableCell>
+        <Skeleton className="ml-auto h-8 w-24" />
+      </TableCell>
+    </TableRow>
   );
 }
 
+type StatusTab = "all" | "active" | "archived";
+
 export default function McpServersPage() {
   usePageTitle("MCP Servers");
-  const [showArchived, setShowArchived] = useState(false);
-  const { data: servers, isLoading, error } = useMcpServers({ includeArchived: showArchived });
+  // Always load archived so the facet rail and tab counts stay accurate; filter client-side.
+  const { data: servers, isLoading, error } = useMcpServers({ includeArchived: true });
   const destroyServer = useDestroyMcpServer();
   const { can: canPolicies } = usePolicies("mcp-servers");
   const canDestroy = canPolicies("mcp_server.dangerous");
 
+  const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
   const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
@@ -693,67 +722,204 @@ export default function McpServersPage() {
     setPendingDeleteServer(null);
   };
 
+  const counts = useMemo(() => {
+    const list = servers ?? [];
+    const archived = list.filter((s) => isArchivedStatus(s.status)).length;
+    return { all: list.length, active: list.length - archived, archived };
+  }, [servers]);
+
+  // Transport facet counts computed from loaded data.
+  const transportFacets = useMemo(() => {
+    const tally = new Map<string, number>();
+    for (const server of servers ?? []) {
+      const key = server.transport_type.toUpperCase();
+      tally.set(key, (tally.get(key) ?? 0) + 1);
+    }
+    return [...tally.entries()].map(([transport, count]) => ({ transport, count }));
+  }, [servers]);
+
+  const filteredServers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (servers ?? []).filter((server) => {
+      if (statusTab === "active" && isArchivedStatus(server.status)) return false;
+      if (statusTab === "archived" && !isArchivedStatus(server.status)) return false;
+      if (!query) return true;
+      const haystack = [server.name, server.description, server.url]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [servers, search, statusTab]);
+
+  const statusItems = [
+    { value: "all" as const, label: "All" },
+    { value: "active" as const, label: "Active" },
+    { value: "archived" as const, label: "Archived" },
+  ];
+
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">MCP Servers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Configure Model Context Protocol (MCP) servers to extend agent capabilities with
-            external tools and resources.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "MCP servers" }]} />
+
+      <PageMasthead
+        icon={<McpIcon />}
+        title="MCP Servers"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {counts.all}
+          </Badge>
+        }
+        description="Model Context Protocol servers that extend agents with external tools and resources."
+        meta={
+          <>
+            <span>{counts.active} active</span>
+            <span>{counts.archived} archived</span>
+          </>
+        }
+        actions={
           <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus className="size-4" />
             Add Server
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={servers}
-        errorMessagePrefix="Failed to load MCP servers"
-        loadingSkeleton={
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <McpServerCardSkeleton key={i} />
-            ))}
-          </div>
-        }
-        emptyState={
-          <Card className="p-8 text-center">
-            <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h2 className="mb-2 text-lg font-medium">No MCP servers configured</h2>
-            <p className="mb-4 text-muted-foreground">
-              Add an MCP server to extend your agents with external tools and resources.
-            </p>
-            <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Server
-            </Button>
-          </Card>
-        }
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((server) => (
-              <McpServerCard
-                key={server.id}
-                server={server}
-                canDestroy={canDestroy}
-                onDelete={setPendingDeleteServer}
-                onArchive={setPendingArchiveServer}
-                onSetApiKey={setApiKeyServer}
-                onManageHeaders={setHeadersServer}
-              />
-            ))}
-          </div>
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          placeholder="Search servers…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          containerClassName="w-64"
+        />
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredServers}
+            errorMessagePrefix="Failed to load MCP servers"
+            loadingSkeleton={
+              <Table>
+                <TableBody>
+                  {[...Array(3)].map((_, i) => (
+                    <McpServerRowSkeleton key={i} />
+                  ))}
+                </TableBody>
+              </Table>
+            }
+            emptyState={
+              <Card className="p-8 text-center">
+                <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                <h2 className="mb-2 text-lg font-medium">
+                  {search || statusTab !== "active"
+                    ? "No MCP servers match your filters"
+                    : "No MCP servers configured"}
+                </h2>
+                {!search && statusTab === "active" && (
+                  <>
+                    <p className="mb-4 text-muted-foreground">
+                      Add an MCP server to extend your agents with external tools and resources.
+                    </p>
+                    <Button variant="accent" onClick={() => setAddServerOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Server
+                    </Button>
+                  </>
+                )}
+              </Card>
+            }
+          >
+            {(items) => (
+              <div className="border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Server</TableHead>
+                      <TableHead>Transport</TableHead>
+                      <TableHead>Auth</TableHead>
+                      <TableHead>Headers</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((server) => (
+                      <McpServerRow
+                        key={server.id}
+                        server={server}
+                        canDestroy={canDestroy}
+                        onDelete={setPendingDeleteServer}
+                        onArchive={setPendingArchiveServer}
+                        onSetApiKey={setApiKeyServer}
+                        onManageHeaders={setHeadersServer}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={
+                    statusTab === item.value
+                      ? "flex items-center justify-between text-foreground transition-colors"
+                      : "flex items-center justify-between text-muted-foreground transition-colors hover:text-foreground"
+                  }
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          {transportFacets.length > 0 && (
+            <RailSection label="Transport">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {transportFacets.map((facet) => (
+                  <div key={facet.transport} className="flex items-center justify-between">
+                    <span>{facet.transport}</span>
+                    <span>{facet.count}</span>
+                  </div>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          Showing {filteredServers.length} of {counts.all} {pluralize(counts.all, "server")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
         )}
-      </QueryStateWrapper>
+      </PageFooter>
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
@@ -799,6 +965,6 @@ export default function McpServersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

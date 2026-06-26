@@ -79,7 +79,11 @@ describe("MemoryDetailPage", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: "Research" })).toBeInTheDocument();
     expect(screen.getByText("Shared research files")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Memory/i })).toHaveAttribute("href", "/memory");
+    expect(
+      screen
+        .getAllByRole("link", { name: /Memory/i })
+        .some((l) => l.getAttribute("href") === "/memory"),
+    ).toBe(true);
   });
 
   it("updates memory metadata", async () => {
