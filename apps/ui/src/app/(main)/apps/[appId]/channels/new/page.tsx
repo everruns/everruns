@@ -1,10 +1,9 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { Check, Radio } from "lucide-react";
 import { useApp } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
 import { addChannel } from "@/lib/api/apps";
@@ -21,6 +20,16 @@ import {
   getDefaultChannelFormState,
   isChannelFormValid,
 } from "@/components/apps/channel-form";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 import { isReadOnlyStatus } from "@/lib/entity-lifecycle";
 
 export default function NewChannelPage({ params }: { params: Promise<{ appId: string }> }) {
@@ -67,85 +76,79 @@ export default function NewChannelPage({ params }: { params: Promise<{ appId: st
   }
 
   return (
-    <div className="min-h-[calc(100vh-3rem)]">
-      <div className="border-b bg-background">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Link href="/apps" className="hover:text-foreground">
-              Apps
-            </Link>
-            <span>/</span>
-            <Link href={`/apps/${app.id}`} className="hover:text-foreground">
-              {app.name}
-            </Link>
-            <span>/</span>
-            <span>Add channel</span>
-          </div>
-          <div className="mt-4 flex items-start gap-4">
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Apps", href: "/apps" },
+          { label: app.name, href: `/apps/${app.id}` },
+          { label: "New channel" },
+        ]}
+      />
+
+      <PageMasthead
+        icon={<Radio />}
+        title="New channel"
+        badges={<Badge variant="outline">{app.status}</Badge>}
+        description="Invoke this app on a schedule, via webhook, through AG-UI, or from Slack."
+        actions={
+          <>
             <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={() => router.push(`/apps/${app.id}`)}
+              type="submit"
+              form="channel-edit-form"
+              disabled={!canManage || !isChannelFormValid(formState) || createChannel.isPending}
             >
-              <ArrowLeft className="size-4" />
+              <Check className="size-4" />
+              {createChannel.isPending ? "Saving..." : "Save channel"}
             </Button>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold">Add channel</h1>
-                <Badge variant="outline">{app.status}</Badge>
-              </div>
-              <p className="mt-1 text-muted-foreground">
-                Invoke this app on a schedule, via webhook, through AG-UI, or from Slack.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
+            <Button type="button" variant="outline" onClick={() => router.push(`/apps/${app.id}`)}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-      <div className="container mx-auto grid gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>1. Channel type</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChannelTypePicker
-                value={formState.kind}
-                onChange={(kind) => setFormState(getDefaultChannelFormState(kind))}
-              />
-            </CardContent>
-          </Card>
+      <form
+        id="channel-edit-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          createChannel.mutate();
+        }}
+      >
+        <PageColumns>
+          <PageMain>
+            <Card>
+              <CardHeader>
+                <CardTitle>1. Channel type</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ChannelTypePicker
+                  value={formState.kind}
+                  onChange={(kind) => setFormState(getDefaultChannelFormState(kind))}
+                />
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                2. Configure {formState.kind === "ag_ui" ? "AG-UI" : formState.kind}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ChannelForm state={formState} onChange={setFormState} mode="new" />
-            </CardContent>
-          </Card>
-        </div>
+            <Card>
+              <CardHeader>
+                <CardTitle>
+                  2. Configure {formState.kind === "ag_ui" ? "AG-UI" : formState.kind}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ChannelForm state={formState} onChange={setFormState} mode="new" />
+              </CardContent>
+            </Card>
+          </PageMain>
 
-        <ChannelFormSummary app={app} state={formState} />
-      </div>
+          <PageRail>
+            <ChannelFormSummary app={app} state={formState} />
+          </PageRail>
+        </PageColumns>
+      </form>
 
-      <div className="sticky bottom-0 border-t bg-background/95 px-6 py-3 backdrop-blur">
-        <div className="container mx-auto flex justify-end gap-2">
-          <Button type="button" variant="outline" onClick={() => router.push(`/apps/${app.id}`)}>
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            disabled={!canManage || !isChannelFormValid(formState) || createChannel.isPending}
-            onClick={() => createChannel.mutate()}
-          >
-            {createChannel.isPending ? "Saving..." : "Save channel"}
-          </Button>
-        </div>
-      </div>
-    </div>
+      <PageFooter>
+        <BackLink href={`/apps/${app.id}`}>Back to {app.name}</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

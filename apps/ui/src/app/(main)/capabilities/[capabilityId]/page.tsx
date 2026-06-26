@@ -10,7 +10,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import {
-  ArrowLeft,
   CircleOff,
   Wrench,
   FileText,
@@ -30,6 +29,16 @@ import {
 import { useLocale } from "@/providers/locale-provider";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
 import { formatCountLabel } from "@/lib/formatting";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 
 const DOCS_BASE_URL = "https://dev.everruns.com/capabilities";
 
@@ -129,55 +138,60 @@ export default function CapabilityDetailPage({
   const toolDefinitions = capability.tool_definitions || [];
 
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/capabilities"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Capabilities
-      </Link>
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Building blocks" },
+          { label: "Capabilities", href: "/capabilities" },
+          { label: localizedCapabilityName(capability, locale) },
+        ]}
+      />
 
-      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
-        <div className="flex items-center gap-4 min-w-0">
-          <div className="p-3 bg-muted shrink-0">
-            <IconComponent className="w-6 h-6" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold flex items-center gap-3 flex-wrap">
-              {localizedCapabilityName(capability, locale)}
-              <CopyButton value={capability.id} />
-              <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
-                {getStatusLabel(capability.status)}
-              </Badge>
-            </h1>
-            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <Bot className="h-3.5 w-3.5" />
-                {formatCountLabel(capability.agent_count ?? 0, "agent")}
+      <PageMasthead
+        icon={<IconComponent />}
+        title={localizedCapabilityName(capability, locale)}
+        badges={
+          <>
+            <CopyButton value={capability.id} />
+            <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
+              {getStatusLabel(capability.status)}
+            </Badge>
+          </>
+        }
+        meta={
+          <>
+            <span className="inline-flex items-center gap-1">
+              <Bot className="h-3.5 w-3.5" />
+              {formatCountLabel(capability.agent_count ?? 0, "agent")}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Layers className="h-3.5 w-3.5" />
+              {formatCountLabel(capability.harness_count ?? 0, "harness", "harnesses")}
+            </span>
+            {capability.category && (
+              <span>
+                Category <span className="text-foreground">{capability.category}</span>
               </span>
-              <span className="inline-flex items-center gap-1">
-                <Layers className="h-3.5 w-3.5" />
-                {formatCountLabel(capability.harness_count ?? 0, "harness", "harnesses")}
-              </span>
-            </div>
-          </div>
-        </div>
-        {capability.docs_slug && (
-          <a
-            href={`${DOCS_BASE_URL}/${capability.docs_slug}/`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
-          >
-            View documentation
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
-        )}
-      </div>
+            )}
+          </>
+        }
+        actions={
+          capability.docs_slug && (
+            <a
+              href={`${DOCS_BASE_URL}/${capability.docs_slug}/`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+            >
+              View documentation
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          )
+        }
+      />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
+      <PageColumns>
+        <PageMain>
           {/* Description Card */}
           <Card>
             <CardHeader>
@@ -230,10 +244,10 @@ export default function CapabilityDetailPage({
               </p>
             </Card>
           )}
-        </div>
+        </PageMain>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <PageRail>
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Details</CardTitle>
@@ -320,8 +334,12 @@ export default function CapabilityDetailPage({
               </div>
             </CardContent>
           </Card>
-        </div>
-      </div>
-    </div>
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <BackLink href="/capabilities">Back to Capabilities</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

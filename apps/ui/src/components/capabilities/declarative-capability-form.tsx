@@ -2,7 +2,6 @@
 
 import { useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,8 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft } from "lucide-react";
+import { Pencil, Plus, Puzzle, Settings, Wrench, BookOpen, FileText } from "lucide-react";
 import type { DeclarativeCapabilityDefinition } from "@/lib/api/types";
 import { useCreateDeclarativeCapability, useUpdateDeclarativeCapability } from "@/hooks";
 import { McpServersEditor } from "./mcp-servers-editor";
@@ -28,11 +26,26 @@ import {
   formStateToDefinition,
   type DeclarativeFormState,
 } from "./declarative-form-types";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+  type SectionTabItem,
+} from "@/components/layout";
+
+const FORM_ID = "capability-edit-form";
 
 function TabCount({ count }: { count: number }) {
   if (count === 0) return null;
   return (
-    <Badge variant="secondary" className="ml-1.5 h-4 px-1.5 text-[10px]">
+    <Badge variant="secondary" className="ml-0.5 h-4 px-1.5 text-[10px]">
       {count}
     </Badge>
   );
@@ -80,155 +93,244 @@ export function DeclarativeCapabilityForm({
     }
   };
 
-  return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/capabilities"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Capabilities
-      </Link>
+  const tabItems: SectionTabItem[] = [
+    { value: "general", label: "General", icon: <Settings className="size-4" /> },
+    {
+      value: "mcp",
+      label: (
+        <>
+          MCP Servers
+          <TabCount count={state.mcpServers.length} />
+        </>
+      ),
+      icon: <Wrench className="size-4" />,
+    },
+    {
+      value: "skills",
+      label: (
+        <>
+          Skills
+          <TabCount count={state.skills.length} />
+        </>
+      ),
+      icon: <BookOpen className="size-4" />,
+    },
+    {
+      value: "files",
+      label: (
+        <>
+          Files
+          <TabCount count={state.files.length} />
+        </>
+      ),
+      icon: <FileText className="size-4" />,
+    },
+  ];
 
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          <h1 className="text-2xl font-bold">
-            {mode === "create" ? "New Declarative Capability" : "Edit Declarative Capability"}
-          </h1>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="outline" onClick={() => router.push("/capabilities")}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isPending || !canSubmit}>
+  const title =
+    mode === "create" ? "New capability" : state.displayName || state.name || "Capability";
+
+  return (
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Building blocks" },
+          { label: "Capabilities", href: "/capabilities" },
+          { label: mode === "create" ? "New Declarative" : "Edit" },
+        ]}
+      />
+
+      <PageMasthead
+        icon={<Puzzle />}
+        title={title}
+        badges={
+          <Badge variant="accent">
+            {mode === "create" ? (
+              <>
+                <Plus className="size-3" />
+                New
+              </>
+            ) : (
+              <>
+                <Pencil className="size-3" />
+                Editing
+              </>
+            )}
+          </Badge>
+        }
+        description="Declarative capabilities bundle MCP servers, skills, and files into a reusable building block."
+        meta={
+          mode === "edit" ? (
+            <span>
+              Referenced as <span className="font-mono text-primary">declarative:{state.name}</span>
+            </span>
+          ) : undefined
+        }
+        actions={
+          <>
+            <Button type="submit" form={FORM_ID} disabled={isPending || !canSubmit}>
+              <Pencil className="size-4" />
               {isPending ? "Saving..." : mode === "create" ? "Create" : "Save changes"}
             </Button>
-          </div>
-        </div>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-        <Tabs value={tab} onValueChange={setTab}>
-          <TabsList>
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="mcp">
-              MCP Servers
-              <TabCount count={state.mcpServers.length} />
-            </TabsTrigger>
-            <TabsTrigger value="skills">
-              Skills
-              <TabCount count={state.skills.length} />
-            </TabsTrigger>
-            <TabsTrigger value="files">
-              Files
-              <TabCount count={state.files.length} />
-            </TabsTrigger>
-          </TabsList>
+      <PageControlStrip>
+        <SectionTabs value={tab} onValueChange={setTab} items={tabItems} />
+      </PageControlStrip>
 
-          <TabsContent value="general">
-            <Card>
-              <CardContent className="space-y-4 pt-6">
-                <div className="grid gap-2">
-                  <Label htmlFor="declarative-name">Unique name</Label>
-                  <Input
-                    id="declarative-name"
-                    placeholder="research_pack"
-                    value={state.name}
-                    onChange={(e) => set("name", e.target.value.toLowerCase())}
-                    disabled={mode === "edit"}
-                    required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Lowercase letters, digits, <code>_</code> and <code>-</code>. Referenced as{" "}
-                    <code>declarative:{state.name || "name"}</code>.
-                    {mode === "edit" && " The name cannot be changed after creation."}
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="declarative-display-name">Display name</Label>
-                  <Input
-                    id="declarative-display-name"
-                    placeholder="Research Pack"
-                    value={state.displayName}
-                    onChange={(e) => set("displayName", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="declarative-description">Description</Label>
-                  <Input
-                    id="declarative-description"
-                    value={state.description}
-                    onChange={(e) => set("description", e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="declarative-prompt">System prompt addition</Label>
-                  <Textarea
-                    id="declarative-prompt"
-                    value={state.systemPrompt}
-                    onChange={(e) => set("systemPrompt", e.target.value)}
-                    rows={8}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="declarative-risk">Risk level</Label>
-                  <Select
-                    value={state.riskLevel}
-                    onValueChange={(value) =>
-                      set("riskLevel", value as DeclarativeFormState["riskLevel"])
-                    }
-                  >
-                    <SelectTrigger id="declarative-risk" className="w-48">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="low">Low</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="high">High (admin only)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+      <form id={FORM_ID} onSubmit={handleSubmit}>
+        <PageColumns>
+          <PageMain>
+            {tab === "general" && (
+              <Card>
+                <CardContent className="space-y-4 pt-6">
+                  <div className="grid gap-2">
+                    <Label htmlFor="declarative-name">Unique name</Label>
+                    <Input
+                      id="declarative-name"
+                      placeholder="research_pack"
+                      value={state.name}
+                      onChange={(e) => set("name", e.target.value.toLowerCase())}
+                      disabled={mode === "edit"}
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Lowercase letters, digits, <code>_</code> and <code>-</code>. Referenced as{" "}
+                      <code>declarative:{state.name || "name"}</code>.
+                      {mode === "edit" && " The name cannot be changed after creation."}
+                    </p>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="declarative-display-name">Display name</Label>
+                    <Input
+                      id="declarative-display-name"
+                      placeholder="Research Pack"
+                      value={state.displayName}
+                      onChange={(e) => set("displayName", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="declarative-description">Description</Label>
+                    <Input
+                      id="declarative-description"
+                      value={state.description}
+                      onChange={(e) => set("description", e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="declarative-prompt">System prompt addition</Label>
+                    <Textarea
+                      id="declarative-prompt"
+                      value={state.systemPrompt}
+                      onChange={(e) => set("systemPrompt", e.target.value)}
+                      rows={8}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="declarative-risk">Risk level</Label>
+                    <Select
+                      value={state.riskLevel}
+                      onValueChange={(value) =>
+                        set("riskLevel", value as DeclarativeFormState["riskLevel"])
+                      }
+                    >
+                      <SelectTrigger id="declarative-risk" className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High (admin only)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
-          <TabsContent value="mcp">
+            {tab === "mcp" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">MCP Servers</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <McpServersEditor
+                    servers={state.mcpServers}
+                    onChange={(servers) => set("mcpServers", servers)}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {tab === "skills" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Skills</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <SkillsEditor
+                    skills={state.skills}
+                    onChange={(skills) => set("skills", skills)}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {tab === "files" && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Files</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <FilesEditor files={state.files} onChange={(files) => set("files", files)} />
+                </CardContent>
+              </Card>
+            )}
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
+          </PageMain>
+
+          <PageRail>
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">MCP Servers</CardTitle>
+                <CardTitle className="text-base">Summary</CardTitle>
               </CardHeader>
-              <CardContent>
-                <McpServersEditor
-                  servers={state.mcpServers}
-                  onChange={(servers) => set("mcpServers", servers)}
-                />
+              <CardContent className="space-y-3 text-sm">
+                <div>
+                  <p className="font-medium">Name</p>
+                  <p className="text-muted-foreground font-mono">{state.name || "(not set)"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Display name</p>
+                  <p className="text-muted-foreground">{state.displayName || "(not set)"}</p>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">MCP servers</span>
+                  <span className="text-muted-foreground">{state.mcpServers.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Skills</span>
+                  <span className="text-muted-foreground">{state.skills.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium">Files</span>
+                  <span className="text-muted-foreground">{state.files.length}</span>
+                </div>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="skills">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Skills</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <SkillsEditor skills={state.skills} onChange={(skills) => set("skills", skills)} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="files">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Files</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <FilesEditor files={state.files} onChange={(files) => set("files", files)} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {error && <p className="text-sm text-destructive">{error}</p>}
+          </PageRail>
+        </PageColumns>
       </form>
-    </div>
+
+      <PageFooter>
+        <BackLink href="/capabilities">Back to Capabilities</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

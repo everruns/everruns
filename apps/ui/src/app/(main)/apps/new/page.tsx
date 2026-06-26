@@ -19,8 +19,19 @@ import {
 import { AgentSelect } from "@/components/agent/agent-select";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
-import Link from "next/link";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
+import { Check, Plus, RefreshCw } from "lucide-react";
 import type {
   AgUiToolVisibility,
   ChannelType,
@@ -153,378 +164,430 @@ export default function NewAppPage() {
   };
 
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/apps"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Apps
-      </Link>
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Apps", href: "/apps" }, { label: "New app" }]} />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Create New App</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Support Bot"
-                required
-              />
-            </div>
+      <PageMasthead
+        icon={<Plus />}
+        title="New app"
+        badges={<Badge variant="accent">Draft</Badge>}
+        description="Deploy an agent to a channel — Slack, AG-UI, webhook, or schedule."
+        actions={
+          <>
+            <Button
+              type="submit"
+              form="app-edit-form"
+              disabled={createApp.isPending || !name || !harnessId || !isChannelConfigValid}
+            >
+              <Check className="size-4" />
+              {createApp.isPending ? "Creating..." : "Create App"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Input
-                id="description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Customer support bot for #help channel"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="harness">Harness</Label>
-                <HarnessSelect value={harnessId} onValueChange={setHarnessId} />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="agent">Agent (optional)</Label>
-                <AgentSelect
-                  value={agentId}
-                  onValueChange={setAgentId}
-                  includeNoneOption
-                  noneLabel="Choose later"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="agent_identity">Agent identity</Label>
-                <AgentIdentitySelect value={agentIdentityId} onValueChange={setAgentIdentityId} />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="channel_type">Channel (optional)</Label>
-              <Select value={channelType || "__none__"} onValueChange={handleChannelTypeChange}>
-                <SelectTrigger id="channel_type">
-                  <SelectValue placeholder="Choose later" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Choose later</SelectItem>
-                  <SelectItem value="slack">{getChannelTypeDisplayName("slack")}</SelectItem>
-                  <SelectItem value="ag_ui">{getChannelTypeDisplayName("ag_ui")}</SelectItem>
-                  <SelectItem value="schedule">{getChannelTypeDisplayName("schedule")}</SelectItem>
-                  <SelectItem value="webhook">{getChannelTypeDisplayName("webhook")}</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {channelType === "slack" && (
-              <div className="space-y-4 rounded-md border p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_signing_secret">Signing Secret</Label>
-                    <Input
-                      id="slack_signing_secret"
-                      type="password"
-                      value={slackSigningSecret}
-                      onChange={(e) => setSlackSigningSecret(e.target.value)}
-                      placeholder="Slack signing secret"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_bot_token">Bot Token</Label>
-                    <Input
-                      id="slack_bot_token"
-                      type="password"
-                      value={slackBotToken}
-                      onChange={(e) => setSlackBotToken(e.target.value)}
-                      placeholder="xoxb-..."
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_team_id">Workspace ID (optional)</Label>
-                    <Input
-                      id="slack_team_id"
-                      value={slackTeamId}
-                      onChange={(e) => setSlackTeamId(e.target.value)}
-                      placeholder="T0123456789"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_channel_id">Channel ID (optional)</Label>
-                    <Input
-                      id="slack_channel_id"
-                      value={slackChannelId}
-                      onChange={(e) => setSlackChannelId(e.target.value)}
-                      placeholder="C0123456789"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_session_strategy">Session Strategy</Label>
-                    <Select
-                      value={slackSessionStrategy}
-                      onValueChange={(value) => setSlackSessionStrategy(value as SessionStrategy)}
-                    >
-                      <SelectTrigger id="slack_session_strategy">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="per_thread">
-                          {getSessionStrategyDisplayName("per_thread")}
-                        </SelectItem>
-                        <SelectItem value="per_channel">
-                          {getSessionStrategyDisplayName("per_channel")}
-                        </SelectItem>
-                        <SelectItem value="per_user">
-                          {getSessionStrategyDisplayName("per_user")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="slack_reply_mode">Reply Mode</Label>
-                    <Select
-                      value={slackReplyMode}
-                      onValueChange={(value) => setSlackReplyMode(value as SlackReplyMode)}
-                    >
-                      <SelectTrigger id="slack_reply_mode">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all_messages">
-                          {getSlackReplyModeDisplayName("all_messages")}
-                        </SelectItem>
-                        <SelectItem value="report_progress_only">
-                          {getSlackReplyModeDisplayName("report_progress_only")}
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {channelType === "ag_ui" && (
-              <div className="space-y-4 rounded-md border p-4">
+      <form id="app-edit-form" onSubmit={handleSubmit}>
+        <PageColumns>
+          <PageMain>
+            <Card>
+              <CardHeader>
+                <CardTitle>App details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="ag_ui_token">Endpoint Token</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="ag_ui_token"
-                      value={agUiToken}
-                      onChange={(e) => setAgUiToken(e.target.value)}
-                      className="font-mono"
-                      placeholder="Generated bearer token"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setAgUiToken(generateChannelToken())}
-                      aria-label="Regenerate AG-UI token"
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
-                    `X-Everruns-AG-UI-Token`.
-                  </p>
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Support Bot"
+                    required
+                  />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="ag_ui_tool_visibility">Tool Activity</Label>
-                  <Select
-                    value={agUiToolVisibility}
-                    onValueChange={(value) => setAgUiToolVisibility(value as AgUiToolVisibility)}
-                  >
-                    <SelectTrigger id="ag_ui_tool_visibility">
-                      <SelectValue />
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Customer support bot for #help channel"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="harness">Harness</Label>
+                    <HarnessSelect value={harnessId} onValueChange={setHarnessId} />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="agent">Agent (optional)</Label>
+                    <AgentSelect
+                      value={agentId}
+                      onValueChange={setAgentId}
+                      includeNoneOption
+                      noneLabel="Choose later"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="agent_identity">Agent identity</Label>
+                    <AgentIdentitySelect
+                      value={agentIdentityId}
+                      onValueChange={setAgentIdentityId}
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="channel_type">Channel (optional)</Label>
+                  <Select value={channelType || "__none__"} onValueChange={handleChannelTypeChange}>
+                    <SelectTrigger id="channel_type">
+                      <SelectValue placeholder="Choose later" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">
-                        {getAgUiToolVisibilityDisplayName("none")}
+                      <SelectItem value="__none__">Choose later</SelectItem>
+                      <SelectItem value="slack">{getChannelTypeDisplayName("slack")}</SelectItem>
+                      <SelectItem value="ag_ui">{getChannelTypeDisplayName("ag_ui")}</SelectItem>
+                      <SelectItem value="schedule">
+                        {getChannelTypeDisplayName("schedule")}
                       </SelectItem>
-                      <SelectItem value="generic">
-                        {getAgUiToolVisibilityDisplayName("generic")}
-                      </SelectItem>
-                      <SelectItem value="narrated">
-                        {getAgUiToolVisibilityDisplayName("narrated")}
+                      <SelectItem value="webhook">
+                        {getChannelTypeDisplayName("webhook")}
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">
-                    Tool names, arguments, and results are never sent to public AG-UI clients.
-                  </p>
                 </div>
 
-                {agUiToolVisibility === "generic" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="ag_ui_generic_tool_text">Generic Activity Text</Label>
-                    <Input
-                      id="ag_ui_generic_tool_text"
-                      value={agUiGenericToolText}
-                      onChange={(e) => setAgUiGenericToolText(e.target.value)}
-                      maxLength={120}
-                      placeholder={DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
-                    />
+                {channelType === "slack" && (
+                  <div className="space-y-4 rounded-md border p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_signing_secret">Signing Secret</Label>
+                        <Input
+                          id="slack_signing_secret"
+                          type="password"
+                          value={slackSigningSecret}
+                          onChange={(e) => setSlackSigningSecret(e.target.value)}
+                          placeholder="Slack signing secret"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_bot_token">Bot Token</Label>
+                        <Input
+                          id="slack_bot_token"
+                          type="password"
+                          value={slackBotToken}
+                          onChange={(e) => setSlackBotToken(e.target.value)}
+                          placeholder="xoxb-..."
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_team_id">Workspace ID (optional)</Label>
+                        <Input
+                          id="slack_team_id"
+                          value={slackTeamId}
+                          onChange={(e) => setSlackTeamId(e.target.value)}
+                          placeholder="T0123456789"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_channel_id">Channel ID (optional)</Label>
+                        <Input
+                          id="slack_channel_id"
+                          value={slackChannelId}
+                          onChange={(e) => setSlackChannelId(e.target.value)}
+                          placeholder="C0123456789"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_session_strategy">Session Strategy</Label>
+                        <Select
+                          value={slackSessionStrategy}
+                          onValueChange={(value) =>
+                            setSlackSessionStrategy(value as SessionStrategy)
+                          }
+                        >
+                          <SelectTrigger id="slack_session_strategy">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="per_thread">
+                              {getSessionStrategyDisplayName("per_thread")}
+                            </SelectItem>
+                            <SelectItem value="per_channel">
+                              {getSessionStrategyDisplayName("per_channel")}
+                            </SelectItem>
+                            <SelectItem value="per_user">
+                              {getSessionStrategyDisplayName("per_user")}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="slack_reply_mode">Reply Mode</Label>
+                        <Select
+                          value={slackReplyMode}
+                          onValueChange={(value) => setSlackReplyMode(value as SlackReplyMode)}
+                        >
+                          <SelectTrigger id="slack_reply_mode">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all_messages">
+                              {getSlackReplyModeDisplayName("all_messages")}
+                            </SelectItem>
+                            <SelectItem value="report_progress_only">
+                              {getSlackReplyModeDisplayName("report_progress_only")}
+                            </SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {channelType === "schedule" && (
-              <div className="space-y-4 rounded-md border p-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="schedule_cron_expression">Cron Expression</Label>
-                    <Input
-                      id="schedule_cron_expression"
-                      value={scheduleCronExpression}
-                      onChange={(e) => setScheduleCronExpression(e.target.value)}
-                      placeholder="0 */5 * * * * *"
-                    />
-                    {scheduleCronExpression &&
-                      isSupportedCronExpression(scheduleCronExpression) &&
-                      (getCronIntervalSeconds(scheduleCronExpression) ?? 0) <
-                        CRON_MIN_INTERVAL_SECONDS && (
-                        <p className="text-xs text-destructive">
-                          Minimum interval is {Math.floor(CRON_MIN_INTERVAL_SECONDS / 60)} minutes.
-                        </p>
-                      )}
+                {channelType === "ag_ui" && (
+                  <div className="space-y-4 rounded-md border p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="ag_ui_token">Endpoint Token</Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="ag_ui_token"
+                          value={agUiToken}
+                          onChange={(e) => setAgUiToken(e.target.value)}
+                          className="font-mono"
+                          placeholder="Generated bearer token"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => setAgUiToken(generateChannelToken())}
+                          aria-label="Regenerate AG-UI token"
+                        >
+                          <RefreshCw className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
+                        `X-Everruns-AG-UI-Token`.
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="ag_ui_tool_visibility">Tool Activity</Label>
+                      <Select
+                        value={agUiToolVisibility}
+                        onValueChange={(value) =>
+                          setAgUiToolVisibility(value as AgUiToolVisibility)
+                        }
+                      >
+                        <SelectTrigger id="ag_ui_tool_visibility">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">
+                            {getAgUiToolVisibilityDisplayName("none")}
+                          </SelectItem>
+                          <SelectItem value="generic">
+                            {getAgUiToolVisibilityDisplayName("generic")}
+                          </SelectItem>
+                          <SelectItem value="narrated">
+                            {getAgUiToolVisibilityDisplayName("narrated")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground">
+                        Tool names, arguments, and results are never sent to public AG-UI clients.
+                      </p>
+                    </div>
+
+                    {agUiToolVisibility === "generic" && (
+                      <div className="space-y-2">
+                        <Label htmlFor="ag_ui_generic_tool_text">Generic Activity Text</Label>
+                        <Input
+                          id="ag_ui_generic_tool_text"
+                          value={agUiGenericToolText}
+                          onChange={(e) => setAgUiGenericToolText(e.target.value)}
+                          maxLength={120}
+                          placeholder={DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
+                        />
+                      </div>
+                    )}
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="schedule_timezone">Timezone</Label>
-                    <Input
-                      id="schedule_timezone"
-                      value={scheduleTimezone}
-                      onChange={(e) => setScheduleTimezone(e.target.value)}
-                      placeholder="UTC"
-                    />
+                )}
+
+                {channelType === "schedule" && (
+                  <div className="space-y-4 rounded-md border p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule_cron_expression">Cron Expression</Label>
+                        <Input
+                          id="schedule_cron_expression"
+                          value={scheduleCronExpression}
+                          onChange={(e) => setScheduleCronExpression(e.target.value)}
+                          placeholder="0 */5 * * * * *"
+                        />
+                        {scheduleCronExpression &&
+                          isSupportedCronExpression(scheduleCronExpression) &&
+                          (getCronIntervalSeconds(scheduleCronExpression) ?? 0) <
+                            CRON_MIN_INTERVAL_SECONDS && (
+                            <p className="text-xs text-destructive">
+                              Minimum interval is {Math.floor(CRON_MIN_INTERVAL_SECONDS / 60)}{" "}
+                              minutes.
+                            </p>
+                          )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="schedule_timezone">Timezone</Label>
+                        <Input
+                          id="schedule_timezone"
+                          value={scheduleTimezone}
+                          onChange={(e) => setScheduleTimezone(e.target.value)}
+                          placeholder="UTC"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="schedule_session_mode">Invocation Session Mode</Label>
+                      <Select
+                        value={invocationSessionMode}
+                        onValueChange={(value) =>
+                          setInvocationSessionMode(value as InvocationSessionMode)
+                        }
+                      >
+                        <SelectTrigger id="schedule_session_mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="shared_session">
+                            {getInvocationSessionModeDisplayName("shared_session")}
+                          </SelectItem>
+                          <SelectItem value="session_per_invocation">
+                            {getInvocationSessionModeDisplayName("session_per_invocation")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="schedule_message">Invocation Message</Label>
+                      <Textarea
+                        id="schedule_message"
+                        value={channelMessage}
+                        onChange={(e) => setChannelMessage(e.target.value)}
+                        placeholder="Run repository checks for {{app.name}}"
+                      />
+                    </div>
                   </div>
+                )}
+
+                {channelType === "webhook" && (
+                  <div className="space-y-4 rounded-md border p-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="webhook_token">Webhook Token</Label>
+                      <Input
+                        id="webhook_token"
+                        type="password"
+                        value={webhookToken}
+                        onChange={(e) => setWebhookToken(e.target.value)}
+                        placeholder="shared-secret"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="webhook_session_mode">Invocation Session Mode</Label>
+                      <Select
+                        value={invocationSessionMode}
+                        onValueChange={(value) =>
+                          setInvocationSessionMode(value as InvocationSessionMode)
+                        }
+                      >
+                        <SelectTrigger id="webhook_session_mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="shared_session">
+                            {getInvocationSessionModeDisplayName("shared_session")}
+                          </SelectItem>
+                          <SelectItem value="session_per_invocation">
+                            {getInvocationSessionModeDisplayName("session_per_invocation")}
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="webhook_message">Invocation Message</Label>
+                      <Textarea
+                        id="webhook_message"
+                        value={channelMessage}
+                        onChange={(e) => setChannelMessage(e.target.value)}
+                        placeholder="Process webhook payload for {{payload.repo.name}}"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-sm text-muted-foreground">
+                  {channelType === "slack"
+                    ? "Slack needs credentials up front. You can still refine webhook setup and manifest details on the app detail page."
+                    : channelType === "ag_ui"
+                      ? "After creating the app, publish it and point your AG-UI client at the channel endpoint on the detail page."
+                      : channelType === "schedule"
+                        ? "This creates an app-level scheduled invocation channel. It activates only when the app is published."
+                        : channelType === "webhook"
+                          ? "This creates an authenticated app webhook channel. The detail page will show the endpoint URL to call."
+                          : `Create the draft now, then assign an agent or add ${getChannelTypeDisplayName("slack")}, ${getChannelTypeDisplayName("ag_ui")}, ${getChannelTypeDisplayName("schedule")}, or ${getChannelTypeDisplayName("webhook")} later from the detail page.`}
+                </p>
+
+                {createApp.error && (
+                  <p className="text-sm text-destructive">Error: {createApp.error.message}</p>
+                )}
+              </CardContent>
+            </Card>
+          </PageMain>
+
+          <PageRail>
+            <RailSection label="Summary">
+              <div className="flex flex-col gap-3 text-sm">
+                <div>
+                  <p className="font-medium">Name</p>
+                  <p className="text-muted-foreground">{name || "(not set)"}</p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schedule_session_mode">Invocation Session Mode</Label>
-                  <Select
-                    value={invocationSessionMode}
-                    onValueChange={(value) =>
-                      setInvocationSessionMode(value as InvocationSessionMode)
-                    }
-                  >
-                    <SelectTrigger id="schedule_session_mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="shared_session">
-                        {getInvocationSessionModeDisplayName("shared_session")}
-                      </SelectItem>
-                      <SelectItem value="session_per_invocation">
-                        {getInvocationSessionModeDisplayName("session_per_invocation")}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div>
+                  <p className="font-medium">Channel</p>
+                  <p className="text-muted-foreground">
+                    {channelType ? getChannelTypeDisplayName(channelType) : "Choose later"}
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="schedule_message">Invocation Message</Label>
-                  <Textarea
-                    id="schedule_message"
-                    value={channelMessage}
-                    onChange={(e) => setChannelMessage(e.target.value)}
-                    placeholder="Run repository checks for {{app.name}}"
-                  />
+                <div>
+                  <p className="font-medium">Agent</p>
+                  <p className="text-muted-foreground">{agentId ? "Assigned" : "Choose later"}</p>
                 </div>
               </div>
-            )}
+            </RailSection>
 
-            {channelType === "webhook" && (
-              <div className="space-y-4 rounded-md border p-4">
-                <div className="space-y-2">
-                  <Label htmlFor="webhook_token">Webhook Token</Label>
-                  <Input
-                    id="webhook_token"
-                    type="password"
-                    value={webhookToken}
-                    onChange={(e) => setWebhookToken(e.target.value)}
-                    placeholder="shared-secret"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="webhook_session_mode">Invocation Session Mode</Label>
-                  <Select
-                    value={invocationSessionMode}
-                    onValueChange={(value) =>
-                      setInvocationSessionMode(value as InvocationSessionMode)
-                    }
-                  >
-                    <SelectTrigger id="webhook_session_mode">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="shared_session">
-                        {getInvocationSessionModeDisplayName("shared_session")}
-                      </SelectItem>
-                      <SelectItem value="session_per_invocation">
-                        {getInvocationSessionModeDisplayName("session_per_invocation")}
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="webhook_message">Invocation Message</Label>
-                  <Textarea
-                    id="webhook_message"
-                    value={channelMessage}
-                    onChange={(e) => setChannelMessage(e.target.value)}
-                    placeholder="Process webhook payload for {{payload.repo.name}}"
-                  />
-                </div>
-              </div>
-            )}
+            <RailSection label="About">
+              <p className="text-sm text-muted-foreground">
+                Apps deploy your agents to channels like Slack and AG-UI. Create the draft first,
+                then refine channel setup on the detail page.
+              </p>
+            </RailSection>
+          </PageRail>
+        </PageColumns>
+      </form>
 
-            <p className="text-sm text-muted-foreground">
-              {channelType === "slack"
-                ? "Slack needs credentials up front. You can still refine webhook setup and manifest details on the app detail page."
-                : channelType === "ag_ui"
-                  ? "After creating the app, publish it and point your AG-UI client at the channel endpoint on the detail page."
-                  : channelType === "schedule"
-                    ? "This creates an app-level scheduled invocation channel. It activates only when the app is published."
-                    : channelType === "webhook"
-                      ? "This creates an authenticated app webhook channel. The detail page will show the endpoint URL to call."
-                      : `Create the draft now, then assign an agent or add ${getChannelTypeDisplayName("slack")}, ${getChannelTypeDisplayName("ag_ui")}, ${getChannelTypeDisplayName("schedule")}, or ${getChannelTypeDisplayName("webhook")} later from the detail page.`}
-            </p>
-
-            <div className="flex gap-4">
-              <Button
-                type="submit"
-                disabled={createApp.isPending || !name || !harnessId || !isChannelConfigValid}
-              >
-                {createApp.isPending ? "Creating..." : "Create App"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => router.back()}>
-                Cancel
-              </Button>
-            </div>
-
-            {createApp.error && (
-              <p className="text-sm text-destructive">Error: {createApp.error.message}</p>
-            )}
-          </form>
-        </CardContent>
-      </Card>
-    </div>
+      <PageFooter>
+        <BackLink href="/apps">Back to Apps</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Archive,
@@ -13,15 +13,33 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
-import { ArchiveFilter } from "@/components/archive-filter";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { SearchInput } from "@/components/ui/search-input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+} from "@/components/layout";
 import {
   useArchiveKnowledgeIndex,
   useCreateKnowledgeIndex,
@@ -38,71 +56,239 @@ import type {
 import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
+  isArchivedStatus,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
-import { formatRelativeTime } from "@/lib/formatting";
+import { formatRelativeTime, pluralize } from "@/lib/formatting";
 import { syncStatusBadgeVariant } from "@/lib/knowledge-index-sync";
+import { cn } from "@/lib/utils";
+
+type StatusTab = "all" | "active" | "archived";
+
+const statusItems = [
+  { value: "all" as const, label: "All" },
+  { value: "active" as const, label: "Active" },
+  { value: "archived" as const, label: "Archived" },
+];
 
 export default function KnowledgeIndexesPage() {
   usePageTitle("Knowledge Indexes");
-  const [showArchived, setShowArchived] = useState(false);
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<KnowledgeIndex | null>(null);
   const [archivingIndex, setArchivingIndex] = useState<KnowledgeIndex | null>(null);
+  // Fetch the full set (including archived) so the facet rail can show accurate counts;
+  // the active/archived/all split is applied client-side from the same response.
   const {
     data: indexes,
     isLoading,
     error,
-  } = useKnowledgeIndexes({ includeArchived: showArchived, search });
+  } = useKnowledgeIndexes({ includeArchived: true, search });
   const createIndex = useCreateKnowledgeIndex();
   const updateIndex = useUpdateKnowledgeIndex();
   const syncIndex = useSyncKnowledgeIndex();
   const archiveIndex = useArchiveKnowledgeIndex();
 
-  return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <h1 className="flex items-center gap-3 text-2xl font-bold">Knowledge Indexes</h1>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <SearchInput
-            containerClassName="sm:w-64"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search knowledge indexes"
-            aria-label="Search knowledge indexes"
-          />
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-          <Button variant="accent" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
-            New Index
-          </Button>
-        </div>
-      </div>
+  const counts = useMemo(() => {
+    const list = indexes ?? [];
+    const archived = list.filter((i) => isArchivedStatus(i.status)).length;
+    return { all: list.length, active: list.length - archived, archived };
+  }, [indexes]);
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={indexes}
-        errorMessagePrefix="Failed to load knowledge indexes"
-        skeletonCount={6}
-        emptyState={<EmptyState hasSearch={!!search.trim()} onCreate={() => setCreateOpen(true)} />}
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((index) => (
-              <KnowledgeIndexCard
-                key={index.id}
-                index={index}
-                onEdit={setEditingIndex}
-                onArchive={setArchivingIndex}
-                onSync={(candidate) => syncIndex.mutate(candidate.id)}
-                isSyncing={syncIndex.isPending}
-              />
-            ))}
-          </div>
+  const sourceFacets = useMemo(() => {
+    const tally = new Map<string, number>();
+    for (const index of indexes ?? []) {
+      tally.set(index.source_type, (tally.get(index.source_type) ?? 0) + 1);
+    }
+    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  }, [indexes]);
+
+  const syncFacets = useMemo(() => {
+    const tally = new Map<string, number>();
+    for (const index of indexes ?? []) {
+      tally.set(index.sync_status, (tally.get(index.sync_status) ?? 0) + 1);
+    }
+    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  }, [indexes]);
+
+  const filteredIndexes = useMemo(() => {
+    return (indexes ?? []).filter((index) => {
+      if (statusTab === "active" && isArchivedStatus(index.status)) return false;
+      if (statusTab === "archived" && !isArchivedStatus(index.status)) return false;
+      return true;
+    });
+  }, [indexes, statusTab]);
+
+  return (
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Knowledge Indexes" }]} />
+
+      <PageMasthead
+        icon={<Library />}
+        title="Knowledge Indexes"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {counts.all}
+          </Badge>
+        }
+        description="Synced document collections that power retrieval — sources, embeddings, and sync state."
+        meta={
+          <>
+            <span>{counts.active} active</span>
+            <span>{counts.archived} archived</span>
+          </>
+        }
+        actions={
+          <Button variant="accent" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-4" />
+            New index
+          </Button>
+        }
+      />
+
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          placeholder="Search knowledge indexes…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          aria-label="Search knowledge indexes"
+          containerClassName="w-64"
+        />
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredIndexes}
+            errorMessagePrefix="Failed to load knowledge indexes"
+            skeletonCount={6}
+            emptyState={
+              <div className="border border-dashed py-12 text-center">
+                <Library className="mx-auto mb-4 size-10 text-muted-foreground" />
+                <p className="mb-4 text-muted-foreground">
+                  {search.trim() || statusTab !== "active"
+                    ? "No knowledge indexes match your filters."
+                    : "No knowledge indexes yet"}
+                </p>
+                {!search.trim() && statusTab === "active" && (
+                  <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                    <Plus className="size-4" />
+                    New index
+                  </Button>
+                )}
+              </div>
+            }
+          >
+            {(items) => (
+              <div className="border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Sync</TableHead>
+                      <TableHead>Last synced</TableHead>
+                      <TableHead>Updated</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((index) => (
+                      <KnowledgeIndexRow
+                        key={index.id}
+                        index={index}
+                        onEdit={setEditingIndex}
+                        onArchive={setArchivingIndex}
+                        onSync={(candidate) => syncIndex.mutate(candidate.id)}
+                        isSyncing={syncIndex.isPending}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          {sourceFacets.length > 0 && (
+            <RailSection label="Source">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {sourceFacets.map(([source, count]) => (
+                  <div key={source} className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5">
+                      {source === "github" ? (
+                        <Github className="size-3.5" />
+                      ) : (
+                        <GitBranch className="size-3.5" />
+                      )}
+                      {source}
+                    </span>
+                    <span>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </RailSection>
+          )}
+
+          {syncFacets.length > 0 && (
+            <RailSection label="Sync status">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {syncFacets.map(([syncStatus, count]) => (
+                  <div key={syncStatus} className="flex items-center justify-between">
+                    <span>{syncStatus}</span>
+                    <span>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          Showing {filteredIndexes.length} of {counts.all}{" "}
+          {pluralize(counts.all, "index", "indexes")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
         )}
-      </QueryStateWrapper>
+      </PageFooter>
 
       <KnowledgeIndexFormDialog
         mode="create"
@@ -133,11 +319,11 @@ export default function KnowledgeIndexesPage() {
         onOpenChange={(open) => !open && setArchivingIndex(null)}
         onArchive={() => archiveIndex.mutateAsync(archivingIndex!.id)}
       />
-    </div>
+    </PageContainer>
   );
 }
 
-function KnowledgeIndexCard({
+function KnowledgeIndexRow({
   index,
   onEdit,
   onArchive,
@@ -154,59 +340,53 @@ function KnowledgeIndexCard({
   const canSync = index.status === "active";
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
-            <Library className="h-5 w-5 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <CardTitle className={`truncate text-lg ${getEntityNameClassName(index.status)}`}>
-              {index.name}
-            </CardTitle>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="truncate font-mono">{index.id}</span>
-              <CopyButton value={index.id} />
-            </div>
-          </div>
+    <TableRow>
+      <TableCell>
+        <div className="flex items-start gap-2">
+          <Link
+            href={`/knowledge-indexes/${index.id}`}
+            className={cn("font-medium hover:underline", getEntityNameClassName(index.status))}
+          >
+            {index.name}
+          </Link>
+          <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
         </div>
-        <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="min-h-10 text-sm text-muted-foreground">
-          {index.description || "No description"}
-        </p>
-        <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-          <div>
-            <div className="font-medium text-foreground">Source</div>
-            <div className="flex items-center gap-1">
-              {index.source_type === "github" ? (
-                <Github className="h-3.5 w-3.5" />
-              ) : (
-                <GitBranch className="h-3.5 w-3.5" />
-              )}
-              <span>{index.source_type}</span>
-            </div>
+        {index.description && (
+          <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
+            {index.description}
           </div>
-          <div>
-            <div className="font-medium text-foreground">Sync</div>
-            <Badge variant={syncStatusBadgeVariant(index.sync_status)}>{index.sync_status}</Badge>
-          </div>
-          <div>
-            <div className="font-medium text-foreground">Last synced</div>
-            <div>{index.last_synced_at ? formatRelativeTime(index.last_synced_at) : "Never"}</div>
-          </div>
-          <div>
-            <div className="font-medium text-foreground">Updated</div>
-            <div>{formatRelativeTime(index.updated_at)}</div>
-          </div>
+        )}
+        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="truncate font-mono">{index.id}</span>
+          <CopyButton value={index.id} />
         </div>
         {index.last_sync_error && (
-          <div className="flex gap-2 text-xs text-destructive">
-            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <div className="mt-1 flex gap-1.5 text-xs text-destructive">
+            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
             <span className="line-clamp-2">{index.last_sync_error}</span>
           </div>
         )}
+      </TableCell>
+      <TableCell>
+        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+          {index.source_type === "github" ? (
+            <Github className="size-3.5" />
+          ) : (
+            <GitBranch className="size-3.5" />
+          )}
+          {index.source_type}
+        </span>
+      </TableCell>
+      <TableCell>
+        <Badge variant={syncStatusBadgeVariant(index.sync_status)}>{index.sync_status}</Badge>
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {index.last_synced_at ? formatRelativeTime(index.last_synced_at) : "Never"}
+      </TableCell>
+      <TableCell className="text-muted-foreground">
+        {formatRelativeTime(index.updated_at)}
+      </TableCell>
+      <TableCell>
         <div className="flex items-center justify-end gap-2">
           {canSync && (
             <Button
@@ -217,45 +397,28 @@ function KnowledgeIndexCard({
                 isSyncing || index.sync_status === "pending" || index.sync_status === "syncing"
               }
             >
-              <RefreshCw className="h-4 w-4" />
+              <RefreshCw className="size-4" />
               Sync
             </Button>
           )}
           <Link href={`/knowledge-indexes/${index.id}`}>
             <Button variant="outline" size="sm">
-              <FolderOpen className="h-4 w-4" />
+              <FolderOpen className="size-4" />
               Open
             </Button>
           </Link>
           <Button variant="outline" size="sm" onClick={() => onEdit(index)} disabled={isReadOnly}>
-            <Pencil className="h-4 w-4" />
+            <Pencil className="size-4" />
             Edit
           </Button>
           {!isReadOnly && (
             <Button variant="outline" size="sm" onClick={() => onArchive(index)}>
-              <Archive className="h-4 w-4" />
+              <Archive className="size-4" />
               Archive
             </Button>
           )}
         </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function EmptyState({ hasSearch, onCreate }: { hasSearch: boolean; onCreate: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <Library className="mb-4 h-12 w-12 text-muted-foreground" />
-      <h3 className="mb-2 text-lg font-semibold">
-        {hasSearch ? "No knowledge indexes found" : "No knowledge indexes"}
-      </h3>
-      {!hasSearch && (
-        <Button variant="accent" onClick={onCreate}>
-          <Plus className="h-4 w-4" />
-          New Index
-        </Button>
-      )}
-    </div>
+      </TableCell>
+    </TableRow>
   );
 }

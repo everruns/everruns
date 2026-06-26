@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   Archive,
+  Brain,
   FolderOpen,
   GitBranch,
   HardDrive,
@@ -13,15 +14,26 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
-import { ArchiveFilter } from "@/components/archive-filter";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveMemoryDialog } from "@/components/memory/archive-memory-dialog";
 import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { SearchInput } from "@/components/ui/search-input";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+  IconTile,
+} from "@/components/layout";
 import {
   useArchiveMemory,
   useCreateMemory,
@@ -34,66 +46,180 @@ import type { CreateMemoryRequest, UpdateMemoryRequest, Memory } from "@/lib/api
 import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
+  isArchivedStatus,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
-import { formatRelativeTime } from "@/lib/formatting";
+import { formatRelativeTime, pluralize } from "@/lib/formatting";
+import { cn } from "@/lib/utils";
+
+type StatusTab = "active" | "archived";
 
 export default function MemoryPage() {
   usePageTitle("Memory");
-  const [showArchived, setShowArchived] = useState(false);
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [archivingMemory, setArchivingMemory] = useState<Memory | null>(null);
+  const showArchived = statusTab === "archived";
   const { data: memory, isLoading, error } = useMemories({ includeArchived: showArchived, search });
   const createMemory = useCreateMemory();
   const updateMemory = useUpdateMemory();
   const syncMemory = useSyncMemory();
   const archiveMemory = useArchiveMemory();
 
+  const list = useMemo(() => memory ?? [], [memory]);
+
+  // When showing archived, the API includes both active and archived; narrow to
+  // the selected tab so the count and grid stay consistent with the filter.
+  const filteredMemory = useMemo(() => {
+    if (!showArchived) return list;
+    return list.filter((m) => isArchivedStatus(m.status));
+  }, [list, showArchived]);
+
+  const counts = useMemo(() => {
+    const archived = list.filter((m) => isArchivedStatus(m.status)).length;
+    return { active: list.length - archived, archived };
+  }, [list]);
+
+  // Source-type usage counts for the rail facet.
+  const sourceFacets = useMemo(() => {
+    const tally = new Map<string, number>();
+    for (const m of filteredMemory) {
+      tally.set(m.source_type, (tally.get(m.source_type) ?? 0) + 1);
+    }
+    return [...tally.entries()].sort((a, b) => b[1] - a[1]);
+  }, [filteredMemory]);
+
+  const statusItems = [
+    { value: "active" as const, label: "Active" },
+    { value: "archived" as const, label: "Archived" },
+  ];
+
   return (
-    <div className="container mx-auto p-6">
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <h1 className="flex items-center gap-3 text-2xl font-bold">Memory</h1>
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <SearchInput
-            containerClassName="sm:w-64"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search memory"
-            aria-label="Search memory"
-          />
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Memory" }]} />
+
+      <PageMasthead
+        icon={<Brain />}
+        title="Memory"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {filteredMemory.length}
+          </Badge>
+        }
+        description="Knowledge stores that agents can read — manual notes or synced from Git."
+        actions={
           <Button variant="accent" onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4" />
+            <Plus className="size-4" />
             New Memory
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={memory}
-        errorMessagePrefix="Failed to load memory"
-        skeletonCount={6}
-        emptyState={<EmptyState hasSearch={!!search.trim()} onCreate={() => setCreateOpen(true)} />}
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {items.map((memory) => (
-              <MemoryCard
-                key={memory.id}
-                memory={memory}
-                onEdit={setEditingMemory}
-                onArchive={setArchivingMemory}
-                onSync={(candidate) => syncMemory.mutate(candidate.id)}
-                isSyncing={syncMemory.isPending}
-              />
-            ))}
-          </div>
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          containerClassName="w-64"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search memory"
+          aria-label="Search memory"
+        />
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredMemory}
+            errorMessagePrefix="Failed to load memory"
+            skeletonCount={6}
+            emptyState={
+              <EmptyState hasSearch={!!search.trim()} onCreate={() => setCreateOpen(true)} />
+            }
+          >
+            {(items) => (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {items.map((memory) => (
+                  <MemoryCard
+                    key={memory.id}
+                    memory={memory}
+                    onEdit={setEditingMemory}
+                    onArchive={setArchivingMemory}
+                    onSync={(candidate) => syncMemory.mutate(candidate.id)}
+                    isSyncing={syncMemory.isPending}
+                  />
+                ))}
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          {sourceFacets.length > 0 && (
+            <RailSection label="Source">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {sourceFacets.map(([source, count]) => (
+                  <div key={source} className="flex items-center justify-between">
+                    <span className="inline-flex items-center gap-1.5">
+                      {source === "github" ? (
+                        <Github className="size-3.5" />
+                      ) : source === "git" ? (
+                        <GitBranch className="size-3.5" />
+                      ) : (
+                        <HardDrive className="size-3.5" />
+                      )}
+                      {source === "manual" ? "Manual" : source}
+                    </span>
+                    <span>{count}</span>
+                  </div>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          Showing {filteredMemory.length} {pluralize(filteredMemory.length, "memory", "memories")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
         )}
-      </QueryStateWrapper>
+      </PageFooter>
 
       <MemoryFormDialog
         mode="create"
@@ -124,7 +250,7 @@ export default function MemoryPage() {
         onOpenChange={(open) => !open && setArchivingMemory(null)}
         onArchive={() => archiveMemory.mutateAsync(archivingMemory!.id)}
       />
-    </div>
+    </PageContainer>
   );
 }
 
@@ -145,97 +271,101 @@ function MemoryCard({
   const canSync = memory.source_type !== "manual" && memory.status === "active";
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
-            <HardDrive className="h-5 w-5 text-primary" />
-          </div>
-          <div className="min-w-0">
-            <CardTitle className={`truncate text-lg ${getEntityNameClassName(memory.status)}`}>
-              {memory.name}
-            </CardTitle>
-            <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="truncate font-mono">{memory.id}</span>
-              <CopyButton value={memory.id} />
-            </div>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
+    <EntityCard
+      icon={<IconTile size="md" icon={<Brain />} />}
+      title={memory.name}
+      href={`/memory/${memory.id}`}
+      titleClassName={getEntityNameClassName(memory.status)}
+      copyValue={memory.id}
+      headerActions={
+        <div className="flex flex-col items-end gap-1">
           <Badge variant={getEntityStatusBadgeVariant(memory.status)}>{memory.status}</Badge>
           {memory.is_readonly && <Badge variant="secondary">Read-only</Badge>}
         </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="min-h-10 text-sm text-muted-foreground">
-          {memory.description || "No description"}
-        </p>
-        <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-          <div>
-            <div className="font-medium text-foreground">Source</div>
-            <div className="flex items-center gap-1">
-              {memory.source_type === "github" ? (
-                <Github className="h-3.5 w-3.5" />
-              ) : memory.source_type === "git" ? (
-                <GitBranch className="h-3.5 w-3.5" />
-              ) : (
-                <HardDrive className="h-3.5 w-3.5" />
+      }
+      footer={
+        <EntityCardFooter
+          className="mt-4"
+          actions={
+            <div className="flex items-center gap-2">
+              {canSync && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onSync(memory)}
+                  disabled={
+                    isSyncing ||
+                    memory.sync_status === "pending" ||
+                    memory.sync_status === "syncing"
+                  }
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Sync
+                </Button>
               )}
-              <span>{memory.source_type === "manual" ? "Manual" : memory.source_type}</span>
+              <Link href={`/memory/${memory.id}`}>
+                <Button variant="outline" size="sm">
+                  <FolderOpen className="h-4 w-4" />
+                  Open
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onEdit(memory)}
+                disabled={isReadOnly}
+              >
+                <Pencil className="h-4 w-4" />
+                Edit
+              </Button>
+              {!isReadOnly && (
+                <Button variant="outline" size="sm" onClick={() => onArchive(memory)}>
+                  <Archive className="h-4 w-4" />
+                  Archive
+                </Button>
+              )}
             </div>
-          </div>
-          <div>
-            <div className="font-medium text-foreground">Sync</div>
-            <div>{formatSyncStatus(memory)}</div>
-          </div>
-          <div>
-            <div className="font-medium text-foreground">Created</div>
-            <div>{formatRelativeTime(memory.created_at)}</div>
-          </div>
-          <div>
-            <div className="font-medium text-foreground">Updated</div>
-            <div>{formatRelativeTime(memory.updated_at)}</div>
+          }
+        />
+      }
+    >
+      <p className="mb-3 min-h-10 text-sm text-muted-foreground">
+        {memory.description || "No description"}
+      </p>
+      <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+        <div>
+          <div className="font-medium text-foreground">Source</div>
+          <div className="flex items-center gap-1">
+            {memory.source_type === "github" ? (
+              <Github className="h-3.5 w-3.5" />
+            ) : memory.source_type === "git" ? (
+              <GitBranch className="h-3.5 w-3.5" />
+            ) : (
+              <HardDrive className="h-3.5 w-3.5" />
+            )}
+            <span>{memory.source_type === "manual" ? "Manual" : memory.source_type}</span>
           </div>
         </div>
-        {memory.last_sync_error && (
-          <div className="flex gap-2 text-xs text-destructive">
-            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span className="line-clamp-2">{memory.last_sync_error}</span>
-          </div>
-        )}
-        <div className="flex items-center justify-end gap-2">
-          {canSync && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onSync(memory)}
-              disabled={
-                isSyncing || memory.sync_status === "pending" || memory.sync_status === "syncing"
-              }
-            >
-              <RefreshCw className="h-4 w-4" />
-              Sync
-            </Button>
-          )}
-          <Link href={`/memory/${memory.id}`}>
-            <Button variant="outline" size="sm">
-              <FolderOpen className="h-4 w-4" />
-              Open
-            </Button>
-          </Link>
-          <Button variant="outline" size="sm" onClick={() => onEdit(memory)} disabled={isReadOnly}>
-            <Pencil className="h-4 w-4" />
-            Edit
-          </Button>
-          {!isReadOnly && (
-            <Button variant="outline" size="sm" onClick={() => onArchive(memory)}>
-              <Archive className="h-4 w-4" />
-              Archive
-            </Button>
-          )}
+        <div>
+          <div className="font-medium text-foreground">Sync</div>
+          <div>{formatSyncStatus(memory)}</div>
         </div>
-      </CardContent>
-    </Card>
+        <div>
+          <div className="font-medium text-foreground">Created</div>
+          <div>{formatRelativeTime(memory.created_at)}</div>
+        </div>
+        <div>
+          <div className="font-medium text-foreground">Updated</div>
+          <div>{formatRelativeTime(memory.updated_at)}</div>
+        </div>
+      </div>
+      {memory.last_sync_error && (
+        <div className="mt-4 flex gap-2 text-xs text-destructive">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="line-clamp-2">{memory.last_sync_error}</span>
+        </div>
+      )}
+    </EntityCard>
   );
 }
 
@@ -271,8 +401,8 @@ function formatSyncInterval(memory: Memory) {
 
 function EmptyState({ hasSearch, onCreate }: { hasSearch: boolean; onCreate: () => void }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <HardDrive className="mb-4 h-12 w-12 text-muted-foreground" />
+    <div className="flex flex-col items-center justify-center border border-dashed py-12 text-center">
+      <Brain className="mb-4 h-12 w-12 text-muted-foreground" />
       <h3 className="mb-2 text-lg font-semibold">{hasSearch ? "No memory found" : "No memory"}</h3>
       {!hasSearch && (
         <Button variant="accent" onClick={onCreate}>

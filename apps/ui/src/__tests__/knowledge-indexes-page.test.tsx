@@ -167,7 +167,7 @@ describe("KnowledgeIndexesPage", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Product Docs")).toBeInTheDocument();
     expect(screen.getByText("Synced product documentation")).toBeInTheDocument();
-    expect(screen.getByText("synced")).toBeInTheDocument();
+    expect(screen.getAllByText("synced").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /Open/i })).toHaveAttribute(
       "href",
       "/knowledge-indexes/kidx_019dfb261a407c6085dcdd602402c3f7",
@@ -180,7 +180,7 @@ describe("KnowledgeIndexesPage", () => {
       target: { value: "docs" },
     });
     expect(mockUseKnowledgeIndexes).toHaveBeenLastCalledWith({
-      includeArchived: false,
+      includeArchived: true,
       search: "docs",
     });
   });
@@ -190,7 +190,7 @@ describe("KnowledgeIndexesPage", () => {
     mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
     render(<KnowledgeIndexesPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New Index" }));
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "API Docs" } });
     fireEvent.change(within(dialog).getByLabelText("Embedding model"), {
@@ -225,7 +225,7 @@ describe("KnowledgeIndexesPage", () => {
     mockUseCreateKnowledgeIndex.mockReturnValue({ mutateAsync, isPending: false });
     render(<KnowledgeIndexesPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "New Index" }));
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "No Model" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create Index" }));
@@ -252,6 +252,6 @@ describe("KnowledgeIndexesPage", () => {
   it("renders the empty state", () => {
     mockUseKnowledgeIndexes.mockReturnValue({ data: [], isLoading: false, error: null });
     render(<KnowledgeIndexesPage />);
-    expect(screen.getByText("No knowledge indexes")).toBeInTheDocument();
+    expect(screen.getByText(/No knowledge indexes/)).toBeInTheDocument();
   });
 });

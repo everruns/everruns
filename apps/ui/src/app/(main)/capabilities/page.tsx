@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Bot, Layers, X, Plus, Pencil } from "lucide-react";
+import { CircleOff, Bot, Layers, Plus, Pencil, Puzzle } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
@@ -24,10 +24,24 @@ import {
 import { useLocale } from "@/providers/locale-provider";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
-import { formatCountLabel } from "@/lib/formatting";
+import { formatCountLabel, pluralize } from "@/lib/formatting";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  IconTile,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+} from "@/components/layout";
 import { cn } from "@/lib/utils";
 
 const UNCATEGORIZED = "Uncategorized";
+type StatusTab = "all" | CapabilityStatus;
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -38,17 +52,6 @@ function getStatusLabel(status: CapabilityStatus): string {
     case "deprecated":
       return "Deprecated";
   }
-}
-
-function NewDeclarativeButton() {
-  return (
-    <Link href="/capabilities/declarative/new">
-      <Button type="button" size="sm">
-        <Plus className="mr-1.5 h-4 w-4" />
-        New Declarative
-      </Button>
-    </Link>
-  );
 }
 
 function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
@@ -114,9 +117,7 @@ function CapabilityCard({ capability }: { capability: Capability }) {
       <Card className="h-full cursor-pointer bg-background transition-colors hover:bg-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="border bg-muted p-2 shrink-0">
-              <IconComponent className="icon-sharp h-5 w-5" />
-            </div>
+            <IconTile size="md" icon={<IconComponent />} />
             <div className="flex items-center gap-2 min-w-0">
               <CardTitle className="text-lg truncate">
                 {localizedCapabilityName(capability, locale)}
@@ -182,64 +183,13 @@ function matchesDeclarative(capability: DeclarativeCapability, query: string): b
   );
 }
 
-function CategoryFilter({
-  categories,
-  selected,
-  counts,
-  onSelect,
-}: {
-  categories: string[];
-  selected: string | null;
-  counts: Record<string, number>;
-  onSelect: (category: string | null) => void;
-}) {
-  if (categories.length === 0) return null;
-
-  return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by category">
-      <button
-        type="button"
-        onClick={() => onSelect(null)}
-        aria-pressed={selected === null}
-        className={cn(
-          "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
-          selected === null
-            ? "bg-primary text-primary-foreground border-primary"
-            : "bg-background hover:bg-muted",
-        )}
-      >
-        All
-        <span className="text-[10px] opacity-70">
-          {Object.values(counts).reduce((a, b) => a + b, 0)}
-        </span>
-      </button>
-      {categories.map((category) => (
-        <button
-          key={category}
-          type="button"
-          onClick={() => onSelect(category === selected ? null : category)}
-          aria-pressed={selected === category}
-          className={cn(
-            "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
-            selected === category
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-background hover:bg-muted",
-          )}
-        >
-          {category}
-          <span className="text-[10px] opacity-70">{counts[category] ?? 0}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 export default function CapabilitiesPage() {
   usePageTitle("Capabilities");
   const { data: capabilities, isLoading, error } = useCapabilities();
   const { data: declarativeCapabilities } = useDeclarativeCapabilities();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [statusTab, setStatusTab] = useState<StatusTab>("all");
 
   const { categories, categoryCounts } = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -255,16 +205,27 @@ export default function CapabilitiesPage() {
     return { categories: cats, categoryCounts: counts };
   }, [capabilities]);
 
+  const statusCounts = useMemo(() => {
+    const list = capabilities ?? [];
+    return {
+      all: list.length,
+      available: list.filter((c) => c.status === "available").length,
+      coming_soon: list.filter((c) => c.status === "coming_soon").length,
+      deprecated: list.filter((c) => c.status === "deprecated").length,
+    } satisfies Record<StatusTab, number>;
+  }, [capabilities]);
+
   const filtered = useMemo(() => {
     return (capabilities ?? []).filter((cap) => {
       if (!matches(cap, searchQuery)) return false;
+      if (statusTab !== "all" && cap.status !== statusTab) return false;
       if (selectedCategory) {
         const key = cap.category || UNCATEGORIZED;
         if (key !== selectedCategory) return false;
       }
       return true;
     });
-  }, [capabilities, searchQuery, selectedCategory]);
+  }, [capabilities, searchQuery, selectedCategory, statusTab]);
 
   const filteredDeclarative = useMemo(
     () =>
@@ -288,139 +249,226 @@ export default function CapabilitiesPage() {
     });
   }, [filtered]);
 
-  if (error) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold">Capabilities</h1>
-        </div>
-        <div className="text-red-500">Error loading capabilities: {error.message}</div>
-      </div>
-    );
-  }
-
   const totalCount = capabilities?.length ?? 0;
   const filteredCount = filtered.length;
-  const isFiltering = searchQuery.length > 0 || selectedCategory !== null;
+  const isFiltering = searchQuery.length > 0 || selectedCategory !== null || statusTab !== "all";
+
+  const statusItems = [
+    { value: "all" as const, label: "All" },
+    { value: "available" as const, label: "Available" },
+    { value: "coming_soon" as const, label: "Coming Soon" },
+    { value: "deprecated" as const, label: "Deprecated" },
+  ];
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Capabilities</h1>
-          <span className="text-sm text-muted-foreground">
-            {isFiltering
-              ? `${filteredCount} of ${totalCount}`
-              : formatCountLabel(totalCount, "capability", "capabilities")}
-          </span>
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Capabilities" }]} />
+
+      <PageMasthead
+        icon={<Puzzle />}
+        title="Capabilities"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {totalCount}
+          </Badge>
+        }
+        description="Building blocks — system prompt additions and tools agents and harnesses can use."
+        meta={
+          <>
+            <span>{statusCounts.available} available</span>
+            <span>{statusCounts.coming_soon} coming soon</span>
+            <span>{statusCounts.deprecated} deprecated</span>
+          </>
+        }
+        actions={
+          <Link href="/capabilities/declarative/new">
+            <Button variant="accent">
+              <Plus className="size-4" />
+              New Declarative
+            </Button>
+          </Link>
+        }
+      />
+
+      {error && (
+        <div className="border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          Error loading capabilities: {error.message}
         </div>
-        <NewDeclarativeButton />
-      </div>
-
-      {filteredDeclarative.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Declarative Capabilities</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {filteredDeclarative.map((capability) => (
-              <DeclarativeCapabilityRow key={capability.id} capability={capability} />
-            ))}
-          </CardContent>
-        </Card>
       )}
 
-      {/* Search */}
-      <SearchInput
-        containerClassName="max-w-xl"
-        className="pr-9"
-        placeholder="Search by name, description, ID, or category..."
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-      >
-        {searchQuery && (
-          <button
-            type="button"
-            onClick={() => setSearchQuery("")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
-            aria-label="Clear search"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </SearchInput>
-
-      {/* Category filter */}
-      {!isLoading && (
-        <CategoryFilter
-          categories={categories}
-          selected={selectedCategory}
-          counts={categoryCounts}
-          onSelect={setSelectedCategory}
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          placeholder="Search by name, description, ID, or category…"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          containerClassName="w-72"
         />
-      )}
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+      </PageControlStrip>
 
-      {/* Loading skeleton */}
-      {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
+      <PageColumns>
+        <PageMain>
+          {filteredDeclarative.length > 0 && (
+            <Card>
               <CardHeader>
-                <Skeleton className="h-6 w-3/4" />
+                <CardTitle className="text-base">Declarative Capabilities</CardTitle>
               </CardHeader>
-              <CardContent>
-                <Skeleton className="h-4 w-full mb-2" />
-                <Skeleton className="h-4 w-2/3" />
+              <CardContent className="space-y-2">
+                {filteredDeclarative.map((capability) => (
+                  <DeclarativeCapabilityRow key={capability.id} capability={capability} />
+                ))}
               </CardContent>
             </Card>
-          ))}
-        </div>
-      ) : totalCount === 0 ? (
-        <Card className="p-8 text-center">
-          <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
-          <p className="text-muted-foreground">
-            Capabilities will appear here once they are configured.
-          </p>
-        </Card>
-      ) : filteredCount === 0 ? (
-        <Card className="p-8 text-center">
-          <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium mb-2">No matches</h3>
-          <p className="text-muted-foreground mb-4">
-            No capabilities match the current search and filters.
-          </p>
-          <Button
-            variant="outline"
+          )}
+
+          {isLoading ? (
+            <div className="grid gap-4 md:grid-cols-2">
+              {[...Array(6)].map((_, i) => (
+                <Card key={i}>
+                  <CardHeader>
+                    <Skeleton className="h-6 w-3/4" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-4 w-full mb-2" />
+                    <Skeleton className="h-4 w-2/3" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : totalCount === 0 ? (
+            <Card className="p-8 text-center">
+              <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
+              <p className="text-muted-foreground">
+                Capabilities will appear here once they are configured.
+              </p>
+            </Card>
+          ) : filteredCount === 0 ? (
+            <Card className="p-8 text-center">
+              <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-medium mb-2">No matches</h3>
+              <p className="text-muted-foreground mb-4">
+                No capabilities match the current search and filters.
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory(null);
+                  setStatusTab("all");
+                }}
+              >
+                Clear filters
+              </Button>
+            </Card>
+          ) : (
+            <div className="space-y-8">
+              {grouped.map(([category, caps]) => (
+                <section key={category}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                      {category}
+                    </h2>
+                    <span className="text-xs text-muted-foreground">
+                      {formatCountLabel(caps.length, "capability", "capabilities")}
+                    </span>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {caps.map((capability) => (
+                      <CapabilityCard key={capability.id} capability={capability} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{statusCounts[item.value]}</span>
+                </button>
+              ))}
+            </div>
+          </RailSection>
+
+          {categories.length > 0 && (
+            <RailSection label="Category">
+              <div className="flex flex-col gap-1.5 text-[13px]">
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory(null)}
+                  aria-pressed={selectedCategory === null}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    selectedCategory === null ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>All</span>
+                  <span className="text-muted-foreground">
+                    {Object.values(categoryCounts).reduce((a, b) => a + b, 0)}
+                  </span>
+                </button>
+                {categories.map((category) => (
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() =>
+                      setSelectedCategory(category === selectedCategory ? null : category)
+                    }
+                    aria-pressed={selectedCategory === category}
+                    className={cn(
+                      "flex items-center justify-between transition-colors hover:text-foreground",
+                      selectedCategory === category ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
+                    <span>{category}</span>
+                    <span className="text-muted-foreground">{categoryCounts[category] ?? 0}</span>
+                  </button>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
+
+      <PageFooter>
+        <span>
+          {isFiltering
+            ? `Showing ${filteredCount} of ${totalCount} ${pluralize(totalCount, "capability", "capabilities")}`
+            : `Showing ${formatCountLabel(totalCount, "capability", "capabilities")}`}
+        </span>
+        {isFiltering && (
+          <button
+            type="button"
             onClick={() => {
               setSearchQuery("");
               setSelectedCategory(null);
+              setStatusTab("all");
             }}
+            className="text-primary transition-colors hover:underline"
           >
-            Clear filters
-          </Button>
-        </Card>
-      ) : (
-        <div className="space-y-8">
-          {grouped.map(([category, caps]) => (
-            <section key={category}>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                  {category}
-                </h2>
-                <span className="text-xs text-muted-foreground">
-                  {formatCountLabel(caps.length, "capability", "capabilities")}
-                </span>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {caps.map((capability) => (
-                  <CapabilityCard key={capability.id} capability={capability} />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-    </div>
+            Clear filters →
+          </button>
+        )}
+      </PageFooter>
+    </PageContainer>
   );
 }

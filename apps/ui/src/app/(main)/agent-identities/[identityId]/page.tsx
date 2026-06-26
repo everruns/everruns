@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, Trash2 } from "lucide-react";
+import { Check, Pencil, Trash2, UserRound } from "lucide-react";
 import {
   useAgentIdentity,
   useDeleteAgentIdentity,
@@ -30,7 +29,21 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { PromptEditor } from "@/components/ui/prompt-editor";
-import { getEntityStatusBadgeVariant, isReadOnlyStatus } from "@/lib/entity-lifecycle";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
+import {
+  getEntityNameClassName,
+  getEntityStatusBadgeVariant,
+  isReadOnlyStatus,
+} from "@/lib/entity-lifecycle";
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 import { IdentityConnections } from "@/components/agent-identity/identity-connections";
 
@@ -139,27 +152,64 @@ export default function AgentIdentityDetailPage({
   }
 
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/agent-identities"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Agent Identities
-      </Link>
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Building blocks" },
+          { label: "Agent Identities", href: "/agent-identities" },
+          { label: identity.name },
+        ]}
+      />
 
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold">{identity.name}</h1>
-          <CopyButton value={identity.id} />
-          <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
-        </div>
-      </div>
+      <PageMasthead
+        icon={<UserRound />}
+        title={<span className={getEntityNameClassName(identity.status)}>{identity.name}</span>}
+        badges={
+          <>
+            <CopyButton value={identity.id} />
+            <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
+            {!isReadOnly && (
+              <Badge variant="accent">
+                <Pencil className="size-3" />
+                Editing
+              </Badge>
+            )}
+          </>
+        }
+        description={identity.description || undefined}
+        meta={
+          <>
+            <span>
+              Locale <span className="text-primary">{identity.locale || "—"}</span>
+            </span>
+            <span>
+              Timezone <span className="text-primary">{identity.timezone || "—"}</span>
+            </span>
+            <span>
+              Created{" "}
+              <span className="text-foreground">
+                {new Date(identity.created_at).toLocaleDateString()}
+              </span>
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <Button type="submit" form="identity-edit-form" disabled={isSaving || isReadOnly}>
+              <Check className="size-4" />
+              {isReadOnly ? "Read-only" : isSaving ? "Saving..." : "Save changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-      <form onSubmit={handleSubmit}>
-        <div className="grid gap-6 lg:grid-cols-3">
+      <form id="identity-edit-form" onSubmit={handleSubmit}>
+        <PageColumns>
           {/* Main form */}
-          <div className="lg:col-span-2 space-y-6">
+          <PageMain>
             <Card>
               <CardHeader>
                 <CardTitle>Identity Details</CardTitle>
@@ -287,20 +337,10 @@ export default function AgentIdentityDetailPage({
                 )}
               </CardContent>
             </Card>
-          </div>
+          </PageMain>
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            <div className="flex gap-4">
-              <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
-                <Save className="w-4 h-4 mr-2" />
-                {isReadOnly ? "Read-Only" : isSaving ? "Saving..." : "Save Changes"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => router.back()}>
-                Cancel
-              </Button>
-            </div>
-
+          {/* Summary sidebar */}
+          <PageRail>
             {updateIdentity.error && (
               <p className="text-sm text-destructive">Error: {updateIdentity.error.message}</p>
             )}
@@ -338,9 +378,13 @@ export default function AgentIdentityDetailPage({
                 </div>
               </CardContent>
             </Card>
-          </div>
-        </div>
+          </PageRail>
+        </PageColumns>
       </form>
+
+      <PageFooter>
+        <BackLink href="/agent-identities">Back to Agent Identities</BackLink>
+      </PageFooter>
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
@@ -373,6 +417,6 @@ export default function AgentIdentityDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }
