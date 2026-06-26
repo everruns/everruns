@@ -222,7 +222,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
     // Agent name should be visible
-    expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Test Agent" })).toBeInTheDocument();
     // Sessions section header should be visible
     expect(screen.getByText("Sessions")).toBeInTheDocument();
   });
@@ -245,7 +245,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
     // Agent name should be visible
-    expect(screen.getByText("Test Agent")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Test Agent" })).toBeInTheDocument();
   });
 
   it("does not display model badge when model data is not loaded", async () => {
@@ -293,7 +293,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
 
     // Default model should be displayed in configuration section
     expect(screen.getByText("Default Model")).toBeInTheDocument();
-    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
+    expect(screen.getAllByText("GPT-4o").length).toBeGreaterThan(0);
   });
 
   it("handles empty sessions list", async () => {
@@ -338,7 +338,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
 
     // Check that default model section is visible
     expect(screen.getByText("Default Model")).toBeInTheDocument();
-    expect(screen.getByText("GPT-4o")).toBeInTheDocument();
+    expect(screen.getAllByText("GPT-4o").length).toBeGreaterThan(0);
     // Provider icon should be rendered
     expect(screen.getByTestId("provider-icon-openai")).toBeInTheDocument();
   });
@@ -353,7 +353,7 @@ describe("AgentDetailPage - Default Model Display in Configuration", () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
     expect(screen.getByText("Default Model")).toBeInTheDocument();
-    expect(screen.getByText("Claude 3.5 Sonnet")).toBeInTheDocument();
+    expect(screen.getAllByText("Claude 3.5 Sonnet").length).toBeGreaterThan(0);
     expect(screen.getByTestId("provider-icon-anthropic")).toBeInTheDocument();
   });
 

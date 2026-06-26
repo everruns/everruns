@@ -137,7 +137,8 @@ describe("EditAgentPage", () => {
   it("renders the form when tags is null", async () => {
     await renderWithSuspense({ agentId: "agent_123" });
 
-    expect(screen.getByRole("heading", { name: "Edit Agent" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Test Agent" })).toBeInTheDocument();
+    expect(screen.getByText("Editing")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags")).toHaveValue("");
     expect(screen.getByDisplayValue("test-agent")).toBeInTheDocument();
   });
@@ -148,7 +149,7 @@ describe("EditAgentPage", () => {
 
     await renderWithSuspense({ agentId: "agent_123" });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
     });
 
     expect(mutateAsync).toHaveBeenCalledTimes(1);
@@ -167,7 +168,7 @@ describe("EditAgentPage", () => {
       target: { value: "internal.corp" },
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
     });
 
     expect(mutateAsync).toHaveBeenCalledTimes(1);
@@ -190,7 +191,7 @@ describe("EditAgentPage", () => {
 
     fireEvent.change(screen.getByLabelText("Allowed hosts"), { target: { value: "" } });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: /Save Changes/ }));
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
     });
 
     expect(mutateAsync).toHaveBeenCalledTimes(1);
