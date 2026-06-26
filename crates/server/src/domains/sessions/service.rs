@@ -18,7 +18,9 @@ use crate::server::ResourceLimitsConfig;
 use crate::services::PrincipalService;
 use crate::storage::{
     StorageBackend,
-    models::{CreateSessionRow, MemoryFileRow, UpdateSession},
+    models::{
+        CreateEventRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow, UpdateSession,
+    },
 };
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
@@ -55,6 +57,19 @@ pub const SESSION_MANAGE: Policy = Policy {
     id: "session.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgSessionsManage)],
 };
+
+/// Optional, caller-supplied overrides applied when forking a session
+/// (specs/forking-sessions.md). Every field omitted (`None`) inherits the
+/// parent session's value.
+#[derive(Debug, Clone, Default)]
+pub struct ForkOverrides {
+    pub title: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub model_id: Option<ModelId>,
+    pub agent_id: Option<AgentId>,
+    pub locale: Option<String>,
+    pub system_prompt: Option<String>,
+}
 
 /// Session counts grouped by status.
 #[derive(Debug, Clone, Default)]
@@ -181,6 +196,173 @@ impl SessionService {
             req,
         )
         .await
+    }
+
+    /// Fork a session into a new, independent session (specs/forking-sessions.md).
+    ///
+    /// Creates a fresh session that is config-identical to `parent_id` (modulo
+    /// `overrides`), then deep-copies the parent's conversation history (events)
+    /// and workspace files into it. Leased resources, sandboxes, tasks, and
+    /// schedules are intentionally not copied — the fork re-leases on demand.
+    /// Fork provenance is recorded via `set_session_fork_lineage`.
+    ///
+    /// Existence/active-status of the parent are also checked by the calling
+    /// command for precise HTTP status codes; this method is the service-side
+    /// source of truth for the config to copy and the workspace to clone.
+    pub async fn fork(
+        &self,
+        caller: &Caller,
+        parent_id: SessionId,
+        overrides: ForkOverrides,
+    ) -> Result<Session> {
+        let org_id = caller.org_id;
+
+        let parent_row = self
+            .db
+            .get_session(org_id, parent_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Session"))?;
+        let parent_workspace = parent_row.workspace_id;
+        let parent = Self::row_to_session(parent_row, &caller.org_public_id, None);
+
+        // Resolve the agent's internal id (public -> internal) when one is
+        // assigned, mirroring CreateSession.
+        let agent_public = overrides.agent_id.or(parent.agent_id);
+        let (agent_internal_id, agent_public_id) = if let Some(agent_id) = agent_public {
+            match self
+                .db
+                .get_agent_by_public_id(org_id, &agent_id.to_string())
+                .await?
+            {
+                Some(row) => {
+                    let public_id: AgentId = row
+                        .public_id
+                        .parse()
+                        .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+                    (Some(row.id.uuid()), Some(public_id))
+                }
+                None => {
+                    return Err(ResourceNotFoundError::new("Agent").into());
+                }
+            }
+        } else {
+            (None, None)
+        };
+
+        let title = overrides.title.or_else(|| {
+            Some(match parent.title.as_deref() {
+                Some(t) => format!("{t} (fork)"),
+                None => "Fork".to_string(),
+            })
+        });
+        let harness_uuid = parent.harness_id.uuid();
+
+        // Build a create request from the parent's config + overrides. A new
+        // isolated workspace is forced (`workspace_id: None`); never a subagent
+        // (`parent_session_id: None`).
+        let req = CreateSessionRequest {
+            harness_id: Some(parent.harness_id),
+            harness_name: None,
+            agent_id: agent_public_id,
+            agent_identity_id: parent.agent_identity_id,
+            title,
+            locale: overrides.locale.or(parent.locale),
+            tags: overrides.tags.unwrap_or(parent.tags),
+            model_id: overrides.model_id.or(parent.model_id),
+            capabilities: parent.capabilities,
+            tools: parent.tools,
+            mcp_servers: parent.mcp_servers,
+            system_prompt: overrides.system_prompt.or(parent.system_prompt),
+            initial_files: parent.initial_files,
+            hints: parent.hints,
+            network_access: parent.network_access,
+            max_iterations: parent.max_iterations,
+            parallel_tool_calls: parent.parallel_tool_calls,
+            parent_session_id: None,
+            workspace_id: None,
+        };
+
+        let mut child = self
+            .create_inner(
+                caller,
+                harness_uuid,
+                agent_internal_id,
+                agent_public_id,
+                None,
+                None,
+                req,
+            )
+            .await?;
+
+        // Copy conversation history (persisted events) in sequence order. Each
+        // copy re-allocates a fresh per-session sequence (1..N) via
+        // create_event, so the child's ordering matches the parent's. Original
+        // EventContext ids are preserved so intra-history correlation stays
+        // consistent; the fork's own new turns mint their own ids.
+        let mut events = self
+            .db
+            .list_events(parent_id, None, None, &[], &[], None, None)
+            .await?;
+        events.sort_by_key(|e| e.sequence);
+        let fork_sequence = events.last().map(|e| e.sequence);
+        for event in events {
+            self.db
+                .create_event(CreateEventRow {
+                    session_id: child.id,
+                    event_type: event.event_type,
+                    ts: event.ts,
+                    context: event.context,
+                    data: event.data,
+                    metadata: event.metadata,
+                    tags: event.tags,
+                })
+                .await?;
+        }
+
+        // Deep-copy workspace files into the child's new, isolated workspace.
+        // The file repo keys rows by workspace id (the `session_id` parameter is
+        // the workspace id under the 1:1 invariant), so read from the parent
+        // workspace and write to the child workspace. Path-ascending order
+        // copies parents before children. Paths already populated by the
+        // child's capability mounts / initial files are skipped so the copy
+        // never collides with the freshly-mounted, typically read-only set.
+        let child_workspace = child.workspace_id.uuid();
+        let files = self.db.list_all_session_files(parent_workspace).await?;
+        for file in files {
+            if self
+                .db
+                .get_session_file(child_workspace, &file.path)
+                .await?
+                .is_some()
+            {
+                continue;
+            }
+            let content = if file.is_directory {
+                None
+            } else {
+                self.db
+                    .get_session_file(parent_workspace, &file.path)
+                    .await?
+                    .and_then(|row| row.content)
+            };
+            self.db
+                .create_session_file(CreateSessionFileRow {
+                    session_id: SessionId::from_uuid(child_workspace),
+                    path: file.path,
+                    content,
+                    is_directory: file.is_directory,
+                    is_readonly: file.is_readonly,
+                })
+                .await?;
+        }
+
+        self.db
+            .set_session_fork_lineage(child.id, parent_id, fork_sequence)
+            .await?;
+        child.forked_from_session_id = Some(parent_id);
+        child.forked_from_sequence = fork_sequence;
+
+        Ok(child)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1748,6 +1930,8 @@ impl SessionService {
             active_schedule_count: None, // Populated by caller
             features: vec![],            // Populated by caller via populate_features()
             parent_session_id: row.parent_session_id,
+            forked_from_session_id: row.forked_from_session_id,
+            forked_from_sequence: row.forked_from_sequence,
             blueprint_id: row.blueprint_id,
             blueprint_config: row.blueprint_config,
         }
@@ -2127,6 +2311,119 @@ mod tests {
             .unwrap()
             .expect("normal session should be stored");
         assert_eq!(stored_normal_session.app_id, None);
+    }
+
+    #[tokio::test]
+    async fn fork_copies_history_files_and_records_lineage() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(1);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "fork-harness".to_string(),
+            display_name: Some("Fork Harness".to_string()),
+            description: None,
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let parent = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        // Seed the parent with conversation history and a workspace file.
+        for (etype, text) in [
+            ("input.message", "hello"),
+            ("output.message.completed", "hi there"),
+        ] {
+            db.create_event(CreateEventRow {
+                session_id: parent.id,
+                event_type: etype.to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({}),
+                data: serde_json::json!({ "text": text }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        }
+        db.create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(parent.workspace_id.uuid()),
+            path: "/notes.txt".to_string(),
+            content: Some(b"fork me".to_vec()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .unwrap();
+
+        let parent_events = db
+            .list_events(parent.id, None, None, &[], &[], None, None)
+            .await
+            .unwrap();
+
+        let child = session_service
+            .fork(
+                &caller,
+                parent.id,
+                ForkOverrides {
+                    title: Some("Branched".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Independent identity + recorded lineage.
+        assert_ne!(child.id, parent.id);
+        assert_ne!(child.workspace_id.uuid(), parent.workspace_id.uuid());
+        assert_eq!(child.forked_from_session_id, Some(parent.id));
+        assert_eq!(
+            child.forked_from_sequence,
+            parent_events.iter().map(|e| e.sequence).max()
+        );
+        assert_eq!(child.title.as_deref(), Some("Branched"));
+
+        // History copied verbatim (same count and per-type ordering).
+        let child_events = db
+            .list_events(child.id, None, None, &[], &[], None, None)
+            .await
+            .unwrap();
+        assert_eq!(child_events.len(), parent_events.len());
+        let parent_types: Vec<_> = parent_events.iter().map(|e| e.event_type.clone()).collect();
+        let child_types: Vec<_> = child_events.iter().map(|e| e.event_type.clone()).collect();
+        assert_eq!(child_types, parent_types);
+
+        // Workspace file copied into the child's isolated workspace.
+        let copied = db
+            .get_session_file(child.workspace_id.uuid(), "/notes.txt")
+            .await
+            .unwrap()
+            .expect("forked workspace should contain the parent's file");
+        assert_eq!(copied.content.as_deref(), Some(b"fork me".as_slice()));
+
+        // The parent is untouched.
+        let parent_after = db.get_session(1, parent.id).await.unwrap().unwrap();
+        assert_eq!(parent_after.forked_from_session_id, None);
     }
 
     #[tokio::test]

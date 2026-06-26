@@ -61,6 +61,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/object-storage.md` - Optional S3-compatible blob backend for file/image content
 - `specs/session-sqldb.md` - Session-scoped SQL databases
 - `specs/session-export.md` - Session export to JSONL
+- `specs/forking-sessions.md` - Fork a session into an independent copy (history + workspace + state)
 - `specs/knowledge-bases.md` - Curated organization knowledge
 - `specs/okf-adoption.md` - Open Knowledge Format (OKF) import/export adoption for Knowledge Bases
 - `specs/knowledge-indexes.md` - Source-backed, embedded, citable knowledge indexes

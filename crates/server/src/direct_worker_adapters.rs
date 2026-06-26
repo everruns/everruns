@@ -584,6 +584,8 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 active_schedule_count: None,
                 features: vec![],
                 parent_session_id: r.parent_session_id,
+                forked_from_session_id: r.forked_from_session_id,
+                forked_from_sequence: r.forked_from_sequence,
                 blueprint_id: r.blueprint_id,
                 blueprint_config: r.blueprint_config,
             }

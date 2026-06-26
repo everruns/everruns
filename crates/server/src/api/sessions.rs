@@ -5,7 +5,7 @@
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
-    CancelSession, CreateSession, DeleteSession, GetOrCreateChatSession, GetSession,
+    CancelSession, CreateSession, DeleteSession, ForkSession, GetOrCreateChatSession, GetSession,
     GetSessionContextReport, GetSessionStats, ListSessions, PinSession, SESSION_MANAGE,
     SESSION_VIEW, SessionService, UnpinSession, UpdateSessionCmd,
 };
@@ -136,6 +136,36 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "wsp_01933b5a00007000800000000000001")]
     pub workspace_id: Option<WorkspaceId>,
+}
+
+/// Request to fork a session (specs/forking-sessions.md). Every field is
+/// optional; omitted fields inherit the parent session's value. Title defaults
+/// to "{parent title} (fork)" when omitted.
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct ForkSessionRequest {
+    /// Title for the fork. Defaults to "{parent title} (fork)".
+    #[serde(default)]
+    #[schema(example = "Branch: try the async rewrite")]
+    pub title: Option<String>,
+    /// Tags for the fork. Replaces (does not merge with) the parent's tags.
+    #[serde(default)]
+    #[schema(example = json!(["experiment"]))]
+    pub tags: Option<Vec<String>>,
+    /// Override the LLM model for the fork.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
+    pub model_id: Option<ModelId>,
+    /// Override the agent assigned to the fork.
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
+    /// Override the locale (BCP 47).
+    #[serde(default)]
+    #[schema(example = "uk-UA")]
+    pub locale: Option<String>,
+    /// Override the session-level system prompt.
+    #[serde(default)]
+    pub system_prompt: Option<String>,
 }
 
 // Trust boundary (client-side tools deprecation rollout): the `tools` field
@@ -410,6 +440,8 @@ pub fn routes(state: AppState) -> Router {
         )
         // Cancel turn endpoint
         .route("/v1/sessions/{session_id}/cancel", post(cancel_turn))
+        // Fork a session into an independent copy
+        .route("/v1/sessions/{session_id}/fork", post(fork_session))
         .with_state(state)
 }
 
@@ -505,6 +537,41 @@ pub async fn create_session(
     req.parent_session_id = None;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
+
+    Ok((StatusCode::CREATED, Json(urls.wrap(session))))
+}
+
+/// POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/{session_id}/fork",
+    params(("session_id" = String, Path, description = "Session to fork")),
+    request_body(
+        content = ForkSessionRequest,
+        example = json!({ "title": "Branch: try the async rewrite", "tags": ["experiment"] })
+    ),
+    responses(
+        (status = 201, description = "Fork created successfully", body = WithUrls<Session>),
+        (status = 404, description = "Parent session, agent, or harness not found", body = ErrorResponse),
+        (status = 409, description = "Parent session is mid-turn and cannot be forked", body = ErrorResponse),
+        (status = 500, description = "Internal server error")
+    ),
+    extensions(("x-cost-tier" = json!("paid"))),
+    tag = "sessions"
+)]
+pub async fn fork_session(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    body: Option<Json<ForkSessionRequest>>,
+) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    let session = ForkSession {
+        session_id,
+        overrides: body.map(|Json(b)| b).unwrap_or_default(),
+    }
+    .run(&state.ctx(&org))
+    .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
 }

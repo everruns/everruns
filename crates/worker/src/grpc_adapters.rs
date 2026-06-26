@@ -1391,6 +1391,9 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         active_schedule_count: None,
         features: vec![], // Computed at API read time, not in worker
         parent_session_id,
+        // Fork lineage is API-read-time metadata, not carried over gRPC.
+        forked_from_session_id: None,
+        forked_from_sequence: None,
         blueprint_id: proto_session.blueprint_id,
         blueprint_config,
     })

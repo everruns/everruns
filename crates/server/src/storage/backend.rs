@@ -707,6 +707,23 @@ impl StorageBackend {
         dispatch!(self, create_session, input)
     }
 
+    /// Record fork provenance on an already-created session
+    /// (specs/forking-sessions.md).
+    pub async fn set_session_fork_lineage(
+        &self,
+        session_id: SessionId,
+        forked_from_session_id: SessionId,
+        forked_from_sequence: Option<i32>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            set_session_fork_lineage,
+            session_id,
+            forked_from_session_id,
+            forked_from_sequence
+        )
+    }
+
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         dispatch!(self, get_session, org_id, id)
     }

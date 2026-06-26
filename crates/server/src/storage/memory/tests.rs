@@ -169,6 +169,65 @@ async fn test_create_and_list_sessions() {
 }
 
 #[tokio::test]
+async fn test_set_session_fork_lineage_roundtrip() {
+    let db = InMemoryDatabase::new();
+
+    let new_session = || CreateSessionRow {
+        workspace_id: None,
+        org_id: DEFAULT_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id: None,
+        agent_identity_id: None,
+        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        title: None,
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+    };
+
+    let parent = db.create_session(new_session()).await.unwrap();
+    let child = db.create_session(new_session()).await.unwrap();
+
+    // Fresh sessions have no fork lineage.
+    assert_eq!(child.forked_from_session_id, None);
+    assert_eq!(child.forked_from_sequence, None);
+
+    db.set_session_fork_lineage(child.id, parent.id, Some(7))
+        .await
+        .unwrap();
+
+    let reloaded_child = db
+        .get_session(DEFAULT_ORG_ID, child.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reloaded_child.forked_from_session_id, Some(parent.id));
+    assert_eq!(reloaded_child.forked_from_sequence, Some(7));
+
+    // The parent is untouched.
+    let reloaded_parent = db
+        .get_session(DEFAULT_ORG_ID, parent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reloaded_parent.forked_from_session_id, None);
+}
+
+#[tokio::test]
 async fn test_session_aggregate_stats_by_agent_and_harness() {
     let db = InMemoryDatabase::new();
 

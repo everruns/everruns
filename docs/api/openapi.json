@@ -10890,6 +10890,78 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/fork": {
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy",
+        "operationId": "fork_session",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session to fork",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkSessionRequest"
+              },
+              "example": {
+                "tags": [
+                  "experiment"
+                ],
+                "title": "Branch: try the async rewrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Fork created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Session"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Parent session, agent, or harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Parent session is mid-turn and cannot be forked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-cost-tier": "paid"
+      }
+    },
     "/v1/sessions/{session_id}/git/branches": {
       "post": {
         "tags": [
@@ -19184,6 +19256,64 @@
           }
         }
       },
+      "ForkSessionRequest": {
+        "type": "object",
+        "description": "Request to fork a session (specs/forking-sessions.md). Every field is\noptional; omitted fields inherit the parent session's value. Title defaults\nto \"{parent title} (fork)\" when omitted.",
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Override the agent assigned to the fork.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "locale": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Override the locale (BCP 47).",
+            "example": "uk-UA"
+          },
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Override the LLM model for the fork.",
+            "example": "model_01933b5a00007000800000000000001"
+          },
+          "system_prompt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Override the session-level system prompt."
+          },
+          "tags": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for the fork. Replaces (does not merge with) the parent's tags.",
+            "example": [
+              "experiment"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title for the fork. Defaults to \"{parent title} (fork)\".",
+            "example": "Branch: try the async rewrite"
+          }
+        }
+      },
       "FormField": {
         "type": "object",
         "description": "A single form field.",
@@ -26968,6 +27098,22 @@
                   "description": "Timestamp when the session finished (completed or failed).",
                   "example": "2026-05-25T10:14:32Z"
                 },
+                "forked_from_sequence": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "format": "int32",
+                  "description": "Parent event sequence the fork was taken at (the fork point). NULL unless\nthis session is a fork.",
+                  "example": 42
+                },
+                "forked_from_session_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
+                },
                 "harness_id": {
                   "type": "string",
                   "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -27874,6 +28020,22 @@
                       "format": "date-time",
                       "description": "Timestamp when the session finished (completed or failed).",
                       "example": "2026-05-25T10:14:32Z"
+                    },
+                    "forked_from_sequence": {
+                      "type": [
+                        "integer",
+                        "null"
+                      ],
+                      "format": "int32",
+                      "description": "Parent event sequence the fork was taken at (the fork point). NULL unless\nthis session is a fork.",
+                      "example": 42
+                    },
+                    "forked_from_session_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
                     },
                     "harness_id": {
                       "type": "string",
@@ -30429,6 +30591,22 @@
             "format": "date-time",
             "description": "Timestamp when the session finished (completed or failed).",
             "example": "2026-05-25T10:14:32Z"
+          },
+          "forked_from_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Parent event sequence the fork was taken at (the fork point). NULL unless\nthis session is a fork.",
+            "example": 42
+          },
+          "forked_from_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
           },
           "harness_id": {
             "type": "string",
@@ -36689,6 +36867,22 @@
                 "format": "date-time",
                 "description": "Timestamp when the session finished (completed or failed).",
                 "example": "2026-05-25T10:14:32Z"
+              },
+              "forked_from_sequence": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int32",
+                "description": "Parent event sequence the fork was taken at (the fork point). NULL unless\nthis session is a fork.",
+                "example": 42
+              },
+              "forked_from_session_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
               },
               "harness_id": {
                 "type": "string",

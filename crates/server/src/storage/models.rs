@@ -735,6 +735,11 @@ pub struct SessionRow {
     // -- Subagent nesting fields --
     #[sqlx(default)]
     pub parent_session_id: Option<SessionId>,
+    // -- Fork lineage fields (specs/forking-sessions.md) --
+    #[sqlx(default)]
+    pub forked_from_session_id: Option<SessionId>,
+    #[sqlx(default)]
+    pub forked_from_sequence: Option<i32>,
     // -- Blueprint fields --
     #[sqlx(default)]
     pub blueprint_id: Option<String>,
