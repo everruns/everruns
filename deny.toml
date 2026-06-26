@@ -1,4 +1,17 @@
-# cargo-deny configuration for license checking
+# cargo-deny configuration for dependency license and security checking
+
+[advisories]
+# RustSec advisory database (https://github.com/rustsec/advisory-db).
+# Security vulnerabilities always fail `cargo deny check advisories`; this is the
+# supply-chain gate that was previously missing (EVE-624). Yanked crates are
+# denied too. Unmaintained advisories are surfaced but do not fail the build yet
+# — tighten to "workspace"/"all" once the dependency tree is triaged.
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+unmaintained = "none"
+# Advisory IDs to ignore, each with a justification comment. Keep this empty;
+# prefer upgrading the affected crate over ignoring.
+ignore = []
 
 [licenses]
 # Allow these license types
