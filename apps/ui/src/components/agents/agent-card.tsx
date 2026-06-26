@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil } from "lucide-react";
+import { Pencil, Boxes } from "lucide-react";
+import { IconTile } from "@/components/layout/page-layout";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -48,6 +49,7 @@ export function AgentCard({
 
   return (
     <EntityCard
+      icon={<IconTile size="md" icon={<Boxes />} />}
       title={getDisplayName(agent)}
       href={`/agents/${agent.id}`}
       titleClassName={getEntityNameClassName(agent.status)}
