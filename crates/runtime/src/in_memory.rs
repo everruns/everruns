@@ -542,23 +542,9 @@ async fn list_storage(
 }
 
 fn normalize_path(path: &str) -> String {
-    if path == "/" || path.is_empty() {
-        return "/".to_string();
-    }
-    let mut normalized = if let Some(stripped) = path.strip_prefix("/workspace/") {
-        format!("/{}", stripped)
-    } else if path == "/workspace" {
-        "/".to_string()
-    } else if path.starts_with('/') {
-        path.to_string()
-    } else {
-        format!("/{}", path)
-    };
-
-    while normalized.len() > 1 && normalized.ends_with('/') {
-        normalized.pop();
-    }
-    normalized
+    // Single workspace path normalizer (EVE-660): the in-memory VFS shares the
+    // same `/workspace`-alias handling as every other backend.
+    everruns_core::workspace_paths::to_session_path(path)
 }
 
 fn root_directory(session_id: SessionId) -> SessionFile {

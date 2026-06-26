@@ -144,28 +144,15 @@ fn effective_read_defaults(
     }
 }
 
-/// Normalize a file path by stripping the /workspace prefix.
-/// This ensures both file_system and bashkit_shell capabilities use the same
-/// path format in the session file store.
+/// Normalize a file-tool path input to a canonical leading-slash session path.
 ///
-/// Examples:
+/// Delegates to the single workspace path normalizer (EVE-660) so capabilities
+/// no longer hand-roll `/workspace` stripping. Examples:
 /// - `/workspace/foo.txt` -> `/foo.txt`
 /// - `/workspace` -> `/`
 /// - `/foo.txt` -> `/foo.txt` (already normalized)
 fn normalize_path(path: &str) -> String {
-    if path == WORKSPACE_PREFIX {
-        "/".to_string()
-    } else if let Some(stripped) = path.strip_prefix(WORKSPACE_PREFIX) {
-        if stripped.starts_with('/') {
-            stripped.to_string()
-        } else {
-            // path like "/workspacefoo" - not a valid workspace path
-            path.to_string()
-        }
-    } else {
-        // Path doesn't start with /workspace - use as-is
-        path.to_string()
-    }
+    crate::workspace_paths::to_session_path(path)
 }
 
 fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
@@ -565,7 +552,7 @@ impl Tool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read a file from the session workspace (/workspace). Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually. This is NOT for reading files in cloud sandboxes — use the sandbox-specific read tool instead."
+        "Read a file from the session workspace. Returns text content directly. For image files (PNG, JPEG, GIF, WebP), the image is returned as a native image so you can see it visually. This is NOT for reading files in cloud sandboxes — use the sandbox-specific read tool instead."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -574,7 +561,7 @@ impl Tool for ReadFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the file (e.g., '/workspace/docs/readme.txt')"
+                    "description": "Workspace-relative path to the file (e.g., 'docs/readme.txt'). A leading '/' or '/workspace/' prefix is also accepted."
                 },
                 "offset": {
                     "type": "integer",
@@ -881,7 +868,7 @@ impl Tool for WriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Create or update a file in the session workspace (/workspace). Parent directories are created automatically. This is NOT for writing files in cloud sandboxes — use sandbox-specific write tools (e.g. daytona_write_file, e2b_write_file) instead."
+        "Create or update a file in the session workspace. Parent directories are created automatically. This is NOT for writing files in cloud sandboxes — use sandbox-specific write tools (e.g. daytona_write_file, e2b_write_file) instead."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -890,7 +877,7 @@ impl Tool for WriteFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path for the file (e.g., '/workspace/docs/notes.txt')"
+                    "description": "Workspace-relative path for the file (e.g., 'docs/notes.txt'). A leading '/' or '/workspace/' prefix is also accepted."
                 },
                 "content": {
                     "type": "string",
@@ -1028,7 +1015,7 @@ impl Tool for EditFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the existing text file (e.g., '/workspace/src/main.rs')"
+                    "description": "Workspace-relative path to the existing text file (e.g., 'src/main.rs'). A leading '/' or '/workspace/' prefix is also accepted."
                 },
                 "expected_hash": {
                     "type": "string",
@@ -1285,7 +1272,7 @@ impl Tool for ListDirectoryTool {
                 "path": {
                     "type": "string",
                     "default": "/workspace",
-                    "description": "Directory path to list (default: '/workspace')"
+                    "description": "Workspace-relative directory path to list (e.g., 'src'). Defaults to the workspace root; a leading '/' or '/workspace/' prefix is also accepted."
                 },
                 "offset": {
                     "type": "integer",
@@ -1460,7 +1447,7 @@ impl Tool for GrepFilesTool {
                 },
                 "path_pattern": {
                     "type": "string",
-                    "description": "Optional path pattern to filter files (e.g., '*.txt', '/workspace/docs/*')"
+                    "description": "Optional path pattern to filter files (e.g., '*.txt', 'docs/*')"
                 },
                 "offset": {
                     "type": "integer",

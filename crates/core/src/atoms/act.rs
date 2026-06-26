@@ -1526,6 +1526,12 @@ where
                 ));
             }
         }
+        // Resolve model paths through the mount resolver (EVE-660): `/workspace`
+        // is a mount + cwd, not a per-store prefix. Applied over the
+        // workspace-keyed store so resolution sits above re-keying.
+        if let Some(store) = tool_context.file_store.take() {
+            tool_context.file_store = Some(crate::mount_fs::MountFs::wrap(store));
+        }
         if let Some(ref store) = self.sqldb_store {
             tool_context.sqldb_store = Some(store.clone());
         }

@@ -98,6 +98,7 @@ pub mod memory;
 pub mod model;
 pub mod model_profiles;
 pub mod model_router;
+pub mod mount_fs;
 pub mod network_access;
 pub mod observer;
 pub mod organization;
@@ -116,6 +117,7 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod vector_store;
 pub mod workspace;
+pub mod workspace_paths;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
@@ -204,6 +206,7 @@ pub use message_filter::{
     MessageFilterProvider, MessageQuery, PrependTransform,
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
+pub use mount_fs::{MountFs, WORKSPACE_MOUNT};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
     AssembledTurnContext, ResolvedRuntimeCapabilities, assemble_turn_context, inspect_turn_context,

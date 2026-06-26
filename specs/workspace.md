@@ -179,8 +179,12 @@ multi-session sharing story for API clients.
 ### Decision 5: Workspace Mount Point
 **Chosen:** Workspace files exposed to agents at `/workspace`
 **Rationale:** `/workspace` is a common convention (VS Code DevContainers,
-GitHub Codespaces). All capabilities normalize paths by stripping/adding
-the `/workspace` prefix when interfacing with the workspace file store.
+GitHub Codespaces). It is a **display alias** over the workspace root, not a
+separate namespace: the canonical path model is workspace-relative
+(`everruns_core::workspace_paths::WorkspacePaths`, EVE-660). Capabilities do not
+strip/add `/workspace` themselves — they route every path through
+`WorkspacePaths`, which parses all accepted spellings and formats display paths.
+See `specs/file-store.md`.
 
 ### Decision 6: Per-Workspace Storage Quotas
 **Chosen:** Enforce byte-level quotas at the application layer in both
