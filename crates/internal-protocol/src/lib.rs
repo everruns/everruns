@@ -80,6 +80,13 @@ pub fn uuid_to_proto_uuid(value: uuid::Uuid) -> proto::Uuid {
     }
 }
 
+/// Build a typed-id string (`<prefix>_<hex>`) from a proto Uuid, stripping the
+/// dashes the typed-id layer does not use. Centralizes the prefixed-id
+/// construction the proto↔schema conversions repeat (EVE-652).
+fn prefixed_id(prefix: &str, value: &proto::Uuid) -> String {
+    format!("{prefix}_{}", value.value.replace('-', ""))
+}
+
 /// Convert from proto Timestamp to chrono `DateTime<Utc>`
 pub fn proto_timestamp_to_datetime(value: &proto::Timestamp) -> DateTime<Utc> {
     Utc.timestamp_opt(value.seconds, value.nanos as u32)
@@ -435,12 +442,12 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
     let id_str = value
         .id
         .as_ref()
-        .map(|u| format!("agent_{}", u.value.replace("-", "")))
+        .map(|u| prefixed_id("agent", u))
         .ok_or(ConversionError::MissingField("id"))?;
     let model_id_str = value
         .default_model_id
         .as_ref()
-        .map(|u| format!("model_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("model", u));
 
     let json = serde_json::json!({
         "id": id_str,
@@ -522,16 +529,16 @@ pub fn proto_harness_to_schema(
     let id_str = value
         .id
         .as_ref()
-        .map(|u| format!("harness_{}", u.value.replace("-", "")))
+        .map(|u| prefixed_id("harness", u))
         .ok_or(ConversionError::MissingField("id"))?;
     let model_id_str = value
         .default_model_id
         .as_ref()
-        .map(|u| format!("model_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("model", u));
     let parent_harness_id_str = value
         .parent_harness_id
         .as_ref()
-        .map(|u| format!("harness_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("harness", u));
 
     let capabilities: Vec<serde_json::Value> = value
         .capability_ids
@@ -572,23 +579,20 @@ pub fn proto_session_to_schema(
         .id
         .as_ref()
         .ok_or(ConversionError::MissingField("id"))?;
-    let id_str = format!("session_{}", session_uuid.value.replace("-", ""));
+    let id_str = prefixed_id("session", session_uuid);
     // The proto Session does not carry a workspace id yet; reconstruct it from
     // the session id under the workspace.id == session.id equality invariant
     // (see specs/workspace.md). Revisit when shared workspaces add it to proto.
-    let workspace_id_str = format!("wsp_{}", session_uuid.value.replace("-", ""));
-    let agent_id_str = value
-        .agent_id
-        .as_ref()
-        .map(|u| format!("agent_{}", u.value.replace("-", "")));
+    let workspace_id_str = prefixed_id("wsp", session_uuid);
+    let agent_id_str = value.agent_id.as_ref().map(|u| prefixed_id("agent", u));
     let agent_version_id_str = value
         .agent_version_id
         .as_ref()
-        .map(|u| format!("agentver_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("agentver", u));
     let harness_id_str = value
         .harness_id
         .as_ref()
-        .map(|u| format!("harness_{}", u.value.replace("-", "")))
+        .map(|u| prefixed_id("harness", u))
         .unwrap_or_else(|| {
             // EVE-652: a session without a harness id falls back to the nil
             // harness (preserved behavior). Log so the substitution is visible.
@@ -601,16 +605,16 @@ pub fn proto_session_to_schema(
     let model_id_str = value
         .default_model_id
         .as_ref()
-        .map(|u| format!("model_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("model", u));
     let owner_principal_id_str = value
         .owner_principal_id
         .as_ref()
-        .map(|u| format!("principal_{}", u.value.replace("-", "")))
+        .map(|u| prefixed_id("principal", u))
         .ok_or(ConversionError::MissingField("owner_principal_id"))?;
     let parent_session_id_str = value
         .parent_session_id
         .as_ref()
-        .map(|u| format!("session_{}", u.value.replace("-", "")));
+        .map(|u| prefixed_id("session", u));
     // EVE-652: malformed blueprint config JSON previously vanished (None) with no
     // trace. Keep it optional but log which session carried bad config.
     let blueprint_config = value.blueprint_config_json.as_deref().and_then(|json| {
@@ -1271,7 +1275,13 @@ fn parse_message_role(s: &str) -> everruns_core::MessageRole {
         "user" => everruns_core::MessageRole::User,
         "assistant" | "agent" => everruns_core::MessageRole::Agent,
         "tool_result" => everruns_core::MessageRole::ToolResult,
-        _ => everruns_core::MessageRole::User,
+        _ => {
+            // EVE-652: an unrecognized role used to be silently coerced to `User`,
+            // which can mislabel provenance (e.g. an assistant message rendered as
+            // a user turn). Keep the safe default but surface the coercion.
+            tracing::warn!(role = %s, "internal-protocol: unknown message role; defaulting to User");
+            everruns_core::MessageRole::User
+        }
     }
 }
 
@@ -1859,6 +1869,8 @@ mod tests {
             parent_session_id: None,
             blueprint_id: None,
             blueprint_config: None,
+            forked_from_session_id: None,
+            forked_from_sequence: None,
         };
 
         let mut proto_session = schema_session_to_proto(&session);
@@ -1872,5 +1884,40 @@ mod tests {
         // The bad entry is dropped; the valid capability survives.
         assert_eq!(schema_session.capabilities.len(), 1);
         assert_eq!(schema_session.capabilities[0].capability_id(), "session");
+    }
+
+    // EVE-652: prefixed_id centralizes the `<prefix>_<hex>` construction that the
+    // conversions repeat; it strips dashes so the typed-id layer parses the value.
+    #[test]
+    fn test_prefixed_id_strips_dashes_and_prefixes() {
+        let u = proto::Uuid {
+            value: "0191e1a2-3b4c-7d8e-9f00-112233445566".to_string(),
+        };
+        assert_eq!(
+            prefixed_id("agent", &u),
+            "agent_0191e1a23b4c7d8e9f00112233445566"
+        );
+    }
+
+    // EVE-652: known roles map exactly; an unknown role still defaults to User
+    // (now logged) rather than erroring or being dropped.
+    #[test]
+    fn test_parse_message_role_known_and_unknown() {
+        use everruns_core::MessageRole;
+        assert!(matches!(parse_message_role("system"), MessageRole::System));
+        assert!(matches!(parse_message_role("USER"), MessageRole::User));
+        assert!(matches!(
+            parse_message_role("assistant"),
+            MessageRole::Agent
+        ));
+        assert!(matches!(parse_message_role("agent"), MessageRole::Agent));
+        assert!(matches!(
+            parse_message_role("tool_result"),
+            MessageRole::ToolResult
+        ));
+        assert!(matches!(
+            parse_message_role("something_unknown"),
+            MessageRole::User
+        ));
     }
 }
