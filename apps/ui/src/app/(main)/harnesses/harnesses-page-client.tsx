@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useMemo } from "react";
 import {
   useCapabilities,
   useHarnessExamples,
@@ -10,21 +10,46 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { SearchInput } from "@/components/ui/search-input";
+import { ArrowRight, Plus, Shield, LayoutGrid, List as ListIcon } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { HarnessCard, HarnessExampleCard } from "@/components/harnesses";
-import { ArchiveFilter } from "@/components/archive-filter";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  RailSection,
+  PageFooter,
+} from "@/components/layout";
+import { getCapabilityIcon } from "@/lib/capability-icons";
+import { localizedCapabilityName } from "@/lib/capability-localization";
+import { useLocale } from "@/providers/locale-provider";
+import { isArchivedStatus } from "@/lib/entity-lifecycle";
+import { normalizeTags } from "@/lib/tags";
+import { pluralize } from "@/lib/formatting";
+import { cn } from "@/lib/utils";
 
-const PREVIEW_LIMIT = 6;
+const EXAMPLE_PREVIEW_LIMIT = 6;
+type StatusTab = "all" | "active" | "archived";
 
 export default function HarnessesPageClient() {
   const router = useRouter();
-  const [showArchived, setShowArchived] = useState(false);
-  const { data: harnesses, isLoading, error } = useHarnesses({ includeArchived: showArchived });
+  const { locale } = useLocale();
+  const { data: harnesses, isLoading, error } = useHarnesses({ includeArchived: true });
   const { data: allCapabilities } = useCapabilities();
   const { data: examples, isLoading: examplesLoading, error: examplesError } = useHarnessExamples();
   const importExample = useImportHarnessExample();
   const [importingName, setImportingName] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [statusTab, setStatusTab] = useState<StatusTab>("active");
+  const [view, setView] = useState<"grid" | "list">("grid");
 
   const handleImport = useCallback(
     async (name: string) => {
@@ -41,62 +66,260 @@ export default function HarnessesPageClient() {
     [importExample, router],
   );
 
-  const previewExamples = examples?.slice(0, PREVIEW_LIMIT);
-  const hasMoreExamples = (examples?.length ?? 0) > PREVIEW_LIMIT;
+  const counts = useMemo(() => {
+    const list = harnesses ?? [];
+    const archived = list.filter((h) => isArchivedStatus(h.status)).length;
+    return { all: list.length, active: list.length - archived, archived };
+  }, [harnesses]);
+
+  const capabilityFacets = useMemo(() => {
+    const tally = new Map<string, number>();
+    for (const harness of harnesses ?? []) {
+      for (const cap of harness.capabilities ?? []) {
+        tally.set(cap.ref, (tally.get(cap.ref) ?? 0) + 1);
+      }
+    }
+    return [...tally.entries()]
+      .map(([ref, count]) => ({
+        ref,
+        count,
+        name: (() => {
+          const cap = allCapabilities?.find((c) => c.id === ref);
+          return cap ? localizedCapabilityName(cap, locale) : ref;
+        })(),
+        icon: getCapabilityIcon(allCapabilities?.find((c) => c.id === ref)?.icon),
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [harnesses, allCapabilities, locale]);
+
+  const tagFacets = useMemo(() => {
+    const tags = new Set<string>();
+    for (const harness of harnesses ?? []) {
+      for (const tag of normalizeTags(harness.tags)) tags.add(tag);
+    }
+    return [...tags].slice(0, 12);
+  }, [harnesses]);
+
+  const filteredHarnesses = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return (harnesses ?? []).filter((harness) => {
+      if (statusTab === "active" && isArchivedStatus(harness.status)) return false;
+      if (statusTab === "archived" && !isArchivedStatus(harness.status)) return false;
+      if (!query) return true;
+      const haystack = [harness.display_name, harness.name, harness.description]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [harnesses, search, statusTab]);
+
+  const previewExamples = examples?.slice(0, EXAMPLE_PREVIEW_LIMIT);
+  const hasMoreExamples = (examples?.length ?? 0) > EXAMPLE_PREVIEW_LIMIT;
+
+  const statusItems = [
+    { value: "all" as const, label: "All" },
+    { value: "active" as const, label: "Active" },
+    { value: "archived" as const, label: "Archived" },
+  ];
 
   return (
-    <div className="container mx-auto p-6 space-y-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Harnesses</h1>
-        <div className="flex items-center gap-2">
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Building blocks" }, { label: "Harnesses" }]} />
+
+      <PageMasthead
+        icon={<Shield />}
+        title="Harnesses"
+        badges={
+          <Badge variant="outline" className="font-mono">
+            {counts.all}
+          </Badge>
+        }
+        description="Shared runtime configuration — base prompt, capabilities, and policies sessions inherit."
+        meta={
+          <>
+            <span>{counts.active} active</span>
+            <span>{counts.archived} archived</span>
+          </>
+        }
+        actions={
           <Link href="/harnesses/new">
             <Button variant="accent">
-              <Plus className="w-4 h-4 mr-2" />
-              New Harness
+              <Plus className="size-4" />
+              New harness
             </Button>
           </Link>
-        </div>
-      </div>
+        }
+      />
 
-      <section>
-        <QueryStateWrapper
-          isLoading={isLoading}
-          error={error}
-          data={harnesses}
-          errorMessagePrefix="Failed to load harnesses"
-          emptyState={
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-4">No harnesses yet</p>
-              <Link href="/harnesses/new">
-                <Button>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Create your first harness
-                </Button>
-              </Link>
-            </div>
-          }
-        >
-          {(items) => (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((harness) => (
-                <HarnessCard
-                  key={harness.id}
-                  harness={harness}
-                  allCapabilities={allCapabilities}
-                  showEditButton
-                />
+      <PageControlStrip className="flex flex-wrap items-center gap-3">
+        <SearchInput
+          placeholder="Search harnesses…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          containerClassName="w-64"
+        />
+        <div className="flex-1" />
+        <SectionTabs
+          value={statusTab}
+          onValueChange={(v) => setStatusTab(v as StatusTab)}
+          items={statusItems}
+        />
+        <div className="flex border">
+          <button
+            type="button"
+            aria-label="Grid view"
+            aria-pressed={view === "grid"}
+            onClick={() => setView("grid")}
+            className={cn(
+              "inline-flex size-8 items-center justify-center border-r",
+              view === "grid"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/50",
+            )}
+          >
+            <LayoutGrid className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="List view"
+            aria-pressed={view === "list"}
+            onClick={() => setView("list")}
+            className={cn(
+              "inline-flex size-8 items-center justify-center",
+              view === "list"
+                ? "bg-muted text-foreground"
+                : "text-muted-foreground hover:bg-muted/50",
+            )}
+          >
+            <ListIcon className="size-4" />
+          </button>
+        </div>
+      </PageControlStrip>
+
+      <PageColumns>
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={filteredHarnesses}
+            errorMessagePrefix="Failed to load harnesses"
+            emptyState={
+              <div className="border border-dashed py-12 text-center">
+                <p className="mb-4 text-muted-foreground">
+                  {search || statusTab !== "active"
+                    ? "No harnesses match your filters."
+                    : "No harnesses yet"}
+                </p>
+                {!search && statusTab === "active" && (
+                  <Link href="/harnesses/new">
+                    <Button>
+                      <Plus className="size-4" />
+                      Create your first harness
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            }
+          >
+            {(items) => (
+              <div className={cn("grid gap-4", view === "grid" ? "md:grid-cols-2" : "grid-cols-1")}>
+                {items.map((harness) => (
+                  <HarnessCard
+                    key={harness.id}
+                    harness={harness}
+                    allCapabilities={allCapabilities}
+                    showEditButton
+                  />
+                ))}
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+
+        <PageRail>
+          <RailSection label="Status">
+            <div className="flex flex-col gap-1.5 text-[13px]">
+              {statusItems.map((item) => (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => setStatusTab(item.value)}
+                  className={cn(
+                    "flex items-center justify-between transition-colors hover:text-foreground",
+                    statusTab === item.value ? "text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <span>{item.label}</span>
+                  <span className="text-muted-foreground">{counts[item.value]}</span>
+                </button>
               ))}
             </div>
+          </RailSection>
+
+          {capabilityFacets.length > 0 && (
+            <RailSection label="Capability">
+              <div className="flex flex-col gap-1.5 text-[13px] text-muted-foreground">
+                {capabilityFacets.map((facet) => {
+                  const Icon = facet.icon;
+                  return (
+                    <div key={facet.ref} className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Icon className="size-3.5" />
+                        {facet.name}
+                      </span>
+                      <span>{facet.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </RailSection>
           )}
-        </QueryStateWrapper>
-      </section>
 
-      <hr className="border-border" />
+          {tagFacets.length > 0 && (
+            <RailSection label="Tags">
+              <div className="flex flex-wrap gap-1.5">
+                {tagFacets.map((tag) => (
+                  <span key={tag} className="border bg-muted px-2 py-0.5 text-xs">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </RailSection>
+          )}
+        </PageRail>
+      </PageColumns>
 
-      <section>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Example harnesses</h2>
+      <PageFooter>
+        <span>
+          Showing {filteredHarnesses.length} of {counts.all}{" "}
+          {pluralize(counts.all, "harness", "harnesses")}
+        </span>
+        {counts.archived > 0 && statusTab !== "archived" && (
+          <button
+            type="button"
+            onClick={() => setStatusTab("archived")}
+            className="text-primary transition-colors hover:underline"
+          >
+            View archived →
+          </button>
+        )}
+      </PageFooter>
+
+      {/* Example harnesses — a secondary discovery section below the primary frame. */}
+      <section className="mt-4">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold tracking-tight">Example harnesses</h2>
+          {hasMoreExamples && (
+            <Link
+              href="/harnesses/examples"
+              className="inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-foreground"
+            >
+              All examples
+              <ArrowRight className="size-3.5" />
+            </Link>
+          )}
         </div>
         <QueryStateWrapper
           isLoading={examplesLoading}
@@ -104,7 +327,7 @@ export default function HarnessesPageClient() {
           data={previewExamples}
           errorMessagePrefix="Failed to load examples"
           emptyState={
-            <div className="text-center py-12">
+            <div className="py-8 text-center">
               <p className="text-muted-foreground">No examples available</p>
             </div>
           }
@@ -123,17 +346,7 @@ export default function HarnessesPageClient() {
             </div>
           )}
         </QueryStateWrapper>
-        {hasMoreExamples && (
-          <div className="flex justify-end mt-4">
-            <Link href="/harnesses/examples">
-              <Button variant="outline">
-                All examples
-                <ArrowRight className="w-4 h-4 ml-2" />
-              </Button>
-            </Link>
-          </div>
-        )}
       </section>
-    </div>
+    </PageContainer>
   );
 }

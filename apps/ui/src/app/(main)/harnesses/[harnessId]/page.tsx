@@ -21,12 +21,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { IntegrationGuide } from "@/components/integration/integration-guide";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import {
-  ArrowLeft,
   Pencil,
   Copy,
   Trash2,
@@ -35,9 +33,23 @@ import {
   BarChart3,
   Rocket,
   Terminal,
+  Shield,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+  type SectionTabItem,
+} from "@/components/layout";
 import type { Capability, ModelWithProvider } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -131,270 +143,289 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     );
   }
 
-  return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/harnesses"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Harnesses
-      </Link>
+  const defaultModelName = defaultModel?.display_name ?? defaultModel?.id;
+  const harnessSessionCountLabel = harness.session_count ?? 0;
 
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(harness.status)}>
-              {getDisplayName(harness)}
-            </span>
+  const tabItems: SectionTabItem[] = [
+    { value: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
+    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+    { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
+    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
+  ];
+
+  return (
+    <PageContainer>
+      <PageBreadcrumb
+        items={[{ label: "Harnesses", href: "/harnesses" }, { label: getDisplayName(harness) }]}
+      />
+
+      <PageMasthead
+        icon={<Shield />}
+        title={
+          <span className={getEntityNameClassName(harness.status)}>{getDisplayName(harness)}</span>
+        }
+        badges={
+          <>
             <CopyButton value={harness.id} />
             {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
             <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
-          </h1>
-        </div>
-        <div className="flex gap-2">
-          {harness.status === "active" && (
-            <Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }}>
-              <Button variant="accent">
-                <Rocket className="w-4 h-4 mr-2" />
-                Create app
-              </Button>
-            </Link>
-          )}
-          <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
-            <Copy className="w-4 h-4 mr-2" />
-            {copyHarness.isPending ? "Copying..." : "Copy"}
-          </Button>
-          {!harness.is_built_in && (
-            <>
-              {harness.status === "active" && (
-                <Link href={`/harnesses/${harnessId}/edit`}>
-                  <Button variant="outline">
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit
-                  </Button>
-                </Link>
-              )}
-              <Button
-                variant="outline"
-                onClick={handleDelete}
-                disabled={deleteHarness.isPending || harness.status !== "active"}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                {deleteHarness.isPending ? "Archiving..." : "Archive"}
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+          </>
+        }
+        description={harness.description || undefined}
+        meta={
+          <>
+            <span>
+              Identity <span className="font-mono text-primary">{harness.name}</span>
+            </span>
+            {defaultModelName && (
+              <span>
+                Model <span className="text-primary">{defaultModelName}</span>
+              </span>
+            )}
+            <span>
+              Created{" "}
+              <span className="text-foreground">
+                {new Date(harness.created_at).toLocaleDateString()}
+              </span>
+            </span>
+            <span>
+              <span className="text-foreground">{harnessSessionCountLabel}</span>{" "}
+              {pluralize(harnessSessionCountLabel, "session")}
+            </span>
+          </>
+        }
+        actions={
+          <>
+            {harness.status === "active" && (
+              <Link href={{ pathname: "/apps/new", query: { harness_id: harnessId } }}>
+                <Button variant="accent">
+                  <Rocket className="size-4" />
+                  Create app
+                </Button>
+              </Link>
+            )}
+            <Button variant="outline" onClick={handleCopy} disabled={copyHarness.isPending}>
+              <Copy className="size-4" />
+              {copyHarness.isPending ? "Copying..." : "Copy"}
+            </Button>
+            {!harness.is_built_in && (
+              <>
+                {harness.status === "active" && (
+                  <Link href={`/harnesses/${harnessId}/edit`}>
+                    <Button variant="outline">
+                      <Pencil className="size-4" />
+                      Edit
+                    </Button>
+                  </Link>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={handleDelete}
+                  disabled={deleteHarness.isPending || harness.status !== "active"}
+                >
+                  <Trash2 className="size-4" />
+                  {deleteHarness.isPending ? "Archiving..." : "Archive"}
+                </Button>
+              </>
+            )}
+          </>
+        }
+      />
+
       {deleteError && (
         <EntityDeleteErrorNotice
           entityKind="harness"
           action="archive"
           message={deleteError.message}
-          className="mb-4"
         />
       )}
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="overview">
-            <LayoutDashboard className="w-4 h-4 mr-2" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="preview">
-            <Eye className="w-4 h-4 mr-2" />
-            Preview
-          </TabsTrigger>
-          <TabsTrigger value="integrate">
-            <Terminal className="w-4 h-4 mr-2" />
-            Integrate
-          </TabsTrigger>
-          <TabsTrigger value="stats">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Stats
-          </TabsTrigger>
-        </TabsList>
+      <PageControlStrip>
+        <SectionTabs value={activeTab} onValueChange={setActiveTab} items={tabItems} />
+      </PageControlStrip>
 
-        <TabsContent value="overview">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Prompt</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {harness.system_prompt?.trim() ? (
-                    <MarkdownDisplay content={harness.system_prompt} />
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      This harness contributes no base prompt. The effective prompt comes from the
-                      parent harness, agent, session, and capabilities.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
+      {activeTab === "overview" && (
+        <PageColumns>
+          <PageMain>
+            <Card>
+              <CardHeader>
+                <CardTitle>System Prompt</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {harness.system_prompt?.trim() ? (
+                  <MarkdownDisplay content={harness.system_prompt} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    This harness contributes no base prompt. The effective prompt comes from the
+                    parent harness, agent, session, and capabilities.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </PageMain>
 
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Capabilities</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {harnessCapabilities.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      {harness.parent_harness_id
-                        ? "No local capabilities configured on this harness. Preview shows inherited capabilities."
-                        : "No capabilities enabled. "}
-                      {!harness.parent_harness_id && (
-                        <Link
-                          href={`/harnesses/${harnessId}/edit`}
-                          className="text-primary hover:underline"
+          <PageRail>
+            <Card>
+              <CardHeader>
+                <CardTitle>Capabilities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {harnessCapabilities.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {harness.parent_harness_id
+                      ? "No local capabilities configured on this harness. Preview shows inherited capabilities."
+                      : "No capabilities enabled. "}
+                    {!harness.parent_harness_id && (
+                      <Link
+                        href={`/harnesses/${harnessId}/edit`}
+                        className="text-primary hover:underline"
+                      >
+                        Add some
+                      </Link>
+                    )}
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {harnessCapabilities.map((capConfig) => {
+                      const cap = getCapabilityInfo(capConfig.ref);
+                      if (!cap) return null;
+                      const IconComponent = getCapabilityIcon(cap.icon);
+
+                      return (
+                        <div
+                          key={capConfig.ref}
+                          className="flex items-center gap-2 p-2 border bg-muted/50"
                         >
-                          Add some
-                        </Link>
-                      )}
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {harnessCapabilities.map((capConfig) => {
-                        const cap = getCapabilityInfo(capConfig.ref);
-                        if (!cap) return null;
-                        const IconComponent = getCapabilityIcon(cap.icon);
-
-                        return (
-                          <div
-                            key={capConfig.ref}
-                            className="flex items-center gap-2 p-2 border bg-muted/50"
-                          >
-                            <IconComponent className="w-4 h-4" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">
-                                {localizedCapabilityName(cap, locale)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {localizedCapabilityDescription(cap, locale)}
-                              </p>
-                            </div>
+                          <IconComponent className="w-4 h-4" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">
+                              {localizedCapabilityName(cap, locale)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {localizedCapabilityDescription(cap, locale)}
+                            </p>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {defaultModel && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Default Model</p>
-                      <div className="flex items-center gap-2">
-                        <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                        <span className="text-sm">{defaultModel.display_name}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {harness.parent_harness_id && (
-                    <div>
-                      <p className="text-sm font-medium">Inherits From</p>
-                      {parentHarness ? (
-                        <Link
-                          href={`/harnesses/${parentHarness.id}`}
-                          className="text-sm text-primary hover:underline"
-                        >
-                          {getDisplayName(parentHarness)}
-                        </Link>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">{harness.parent_harness_id}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {harness.description && (
-                    <div>
-                      <p className="text-sm font-medium">Description</p>
-                      <div className="text-sm text-muted-foreground">
-                        <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
-                      </div>
-                    </div>
-                  )}
-
-                  {harnessTags.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Tags</p>
-                      <div className="flex flex-wrap gap-1">
-                        {harnessTags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {defaultModel && (
                   <div>
-                    <p className="text-sm font-medium mb-2">Usage</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="border bg-muted/50 p-2">
-                        <p className="text-sm font-medium">{harnessSessionCount}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {pluralize(harnessSessionCount, "session")}
-                        </p>
-                      </div>
-                      <div className="border bg-muted/50 p-2">
-                        <p className="text-sm font-medium">{harnessAppCount}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {pluralize(harnessAppCount, "app")}
-                        </p>
-                      </div>
+                    <p className="text-sm font-medium mb-2">Default Model</p>
+                    <div className="flex items-center gap-2">
+                      <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
+                      <span className="text-sm">{defaultModel.display_name}</span>
                     </div>
                   </div>
+                )}
 
+                {harness.parent_harness_id && (
                   <div>
-                    <p className="text-sm font-medium">Created</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(harness.created_at).toLocaleString()}
-                    </p>
+                    <p className="text-sm font-medium">Inherits From</p>
+                    {parentHarness ? (
+                      <Link
+                        href={`/harnesses/${parentHarness.id}`}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        {getDisplayName(parentHarness)}
+                      </Link>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">{harness.parent_harness_id}</p>
+                    )}
                   </div>
+                )}
 
+                {harness.description && (
                   <div>
-                    <p className="text-sm font-medium">Updated</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(harness.updated_at).toLocaleString()}
-                    </p>
+                    <p className="text-sm font-medium">Description</p>
+                    <div className="text-sm text-muted-foreground">
+                      <InlineStreamdownMessage>{harness.description}</InlineStreamdownMessage>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+                )}
 
-        <TabsContent value="preview">
-          <HarnessPreview
-            systemPrompt={harness.system_prompt}
-            parentHarnessId={harness.parent_harness_id || undefined}
-            capabilities={harnessCapabilities.map((cap) => ({
-              ref: cap.ref,
-              config: cap.config,
-            }))}
-            initialFiles={harness.initial_files}
-          />
-        </TabsContent>
+                {harnessTags.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Tags</p>
+                    <div className="flex flex-wrap gap-1">
+                      {harnessTags.map((tag) => (
+                        <Badge key={tag} variant="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-        <TabsContent value="integrate">
-          <IntegrationGuide kind="harness" id={harness.id} name={getDisplayName(harness)} />
-        </TabsContent>
+                <div>
+                  <p className="text-sm font-medium mb-2">Usage</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="border bg-muted/50 p-2">
+                      <p className="text-sm font-medium">{harnessSessionCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pluralize(harnessSessionCount, "session")}
+                      </p>
+                    </div>
+                    <div className="border bg-muted/50 p-2">
+                      <p className="text-sm font-medium">{harnessAppCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pluralize(harnessAppCount, "app")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
 
-        <TabsContent value="stats">
-          <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-        </TabsContent>
-      </Tabs>
-    </div>
+                <div>
+                  <p className="text-sm font-medium">Created</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(harness.created_at).toLocaleString()}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium">Updated</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(harness.updated_at).toLocaleString()}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </PageRail>
+        </PageColumns>
+      )}
+
+      {activeTab === "preview" && (
+        <HarnessPreview
+          systemPrompt={harness.system_prompt}
+          parentHarnessId={harness.parent_harness_id || undefined}
+          capabilities={harnessCapabilities.map((cap) => ({
+            ref: cap.ref,
+            config: cap.config,
+          }))}
+          initialFiles={harness.initial_files}
+        />
+      )}
+
+      {activeTab === "integrate" && (
+        <IntegrationGuide kind="harness" id={harness.id} name={getDisplayName(harness)} />
+      )}
+
+      {activeTab === "stats" && (
+        <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+      )}
+
+      <PageFooter>
+        <BackLink href="/harnesses">Back to Harnesses</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

@@ -4,10 +4,19 @@ import { useState } from "react";
 import { useAgents, useCapabilities } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Plus, ArrowLeft } from "lucide-react";
+import { Plus, Boxes } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { AgentCard } from "@/components/agents";
 import { ArchiveFilter } from "@/components/archive-filter";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageColumns,
+  PageMain,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 
 export default function AgentsAllPageClient() {
   const [showArchived, setShowArchived] = useState(false);
@@ -15,57 +24,64 @@ export default function AgentsAllPageClient() {
   const { data: allCapabilities } = useCapabilities();
 
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <Link href="/agents">
-            <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Back to agents">
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold">All Agents</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
-          <Link href="/agents/new">
-            <Button variant="accent">
-              <Plus className="w-4 h-4 mr-2" />
-              New Agent
-            </Button>
-          </Link>
-        </div>
-      </div>
+    <PageContainer>
+      <PageBreadcrumb items={[{ label: "Agents", href: "/agents" }, { label: "All agents" }]} />
 
-      <QueryStateWrapper
-        isLoading={isLoading}
-        error={error}
-        data={agents}
-        errorMessagePrefix="Failed to load agents"
-        emptyState={
-          <div className="text-center py-12">
-            <p className="text-muted-foreground mb-4">No agents yet</p>
+      <PageMasthead
+        icon={<Boxes />}
+        title="All agents"
+        description="Every agent definition in this organization."
+        actions={
+          <>
+            <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
             <Link href="/agents/new">
-              <Button>
-                <Plus className="w-4 h-4 mr-2" />
-                Create your first agent
+              <Button variant="accent">
+                <Plus className="size-4" />
+                New agent
               </Button>
             </Link>
-          </div>
+          </>
         }
-      >
-        {(items) => (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {items.map((agent, index) => (
-              <AgentCard
-                key={agent.id ?? `agent-${index}`}
-                agent={agent}
-                allCapabilities={allCapabilities}
-                showEditButton
-              />
-            ))}
-          </div>
-        )}
-      </QueryStateWrapper>
-    </div>
+      />
+
+      <PageColumns className="lg:grid-cols-1">
+        <PageMain>
+          <QueryStateWrapper
+            isLoading={isLoading}
+            error={error}
+            data={agents}
+            errorMessagePrefix="Failed to load agents"
+            emptyState={
+              <div className="border border-dashed py-12 text-center">
+                <p className="mb-4 text-muted-foreground">No agents yet</p>
+                <Link href="/agents/new">
+                  <Button>
+                    <Plus className="size-4" />
+                    Create your first agent
+                  </Button>
+                </Link>
+              </div>
+            }
+          >
+            {(items) => (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {items.map((agent, index) => (
+                  <AgentCard
+                    key={agent.id ?? `agent-${index}`}
+                    agent={agent}
+                    allCapabilities={allCapabilities}
+                    showEditButton
+                  />
+                ))}
+              </div>
+            )}
+          </QueryStateWrapper>
+        </PageMain>
+      </PageColumns>
+
+      <PageFooter>
+        <BackLink href="/agents">Back to Agents</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }

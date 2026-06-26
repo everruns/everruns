@@ -2,7 +2,6 @@
 
 import { use, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import {
   useAgent,
   useUpdateAgent,
@@ -15,13 +14,25 @@ import {
 import { usePolicies } from "@/hooks/use-policies";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+} from "@/components/layout";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +49,7 @@ import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
-import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
+import { Trash2, Eye, Edit2, Check, X, Loader2, Boxes, Pencil } from "lucide-react";
 import {
   agentFormSchema,
   getFieldErrors,
@@ -242,331 +253,349 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const agentDisplayName = getDisplayName(agent);
 
   return (
-    <div className="container mx-auto p-6">
-      <Link
-        href={`/agents/${agentId}`}
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Agent
-      </Link>
+    <PageContainer>
+      <PageBreadcrumb
+        items={[
+          { label: "Agents", href: "/agents" },
+          { label: agentDisplayName, href: `/agents/${agentId}` },
+          { label: "Edit" },
+        ]}
+      />
 
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">Edit Agent</h1>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
-            <TabsTrigger value="edit">
-              <Edit2 className="w-4 h-4 mr-2" />
-              Edit
-            </TabsTrigger>
-            <TabsTrigger value="preview">
-              <Eye className="w-4 h-4 mr-2" />
-              Preview
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
+      <PageMasthead
+        icon={<Boxes />}
+        title={agentDisplayName}
+        badges={
+          <Badge variant="accent">
+            <Pencil className="size-3" />
+            Editing
+          </Badge>
+        }
+        description="Changes apply to new sessions only. Running sessions keep the current definition."
+        meta={
+          <>
+            <span>
+              Identity <span className="font-mono text-primary">{agent.name}</span>
+            </span>
+            <span>
+              Last edited{" "}
+              <span className="text-foreground">
+                {new Date(agent.updated_at).toLocaleDateString()}
+              </span>
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <Button type="submit" form="agent-edit-form" disabled={isSaving || isReadOnly}>
+              <Check className="size-4" />
+              {isReadOnly ? "Read-only" : isSaving ? "Saving..." : "Save changes"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              Discard
+            </Button>
+          </>
+        }
+      />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        {/* Edit Tab Content */}
-        <TabsContent value="edit">
-          <form onSubmit={handleSubmit}>
-            <div className="grid gap-6 lg:grid-cols-3">
-              {/* Main form */}
-              <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Agent Details</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="customer-support"
-                        value={formData.name}
-                        onChange={(e) => handleFormChange("name", e.target.value)}
-                        aria-invalid={!!fieldErrors.name}
-                        disabled={isSaving || isReadOnly}
-                        required
-                      />
-                      {fieldErrors.name && (
-                        <p className="text-xs text-destructive">{fieldErrors.name}</p>
-                      )}
-                      {nameChanged && formData.name.length >= 2 && (
-                        <div className="flex items-center gap-1.5 text-xs">
-                          {nameAvailability.isChecking ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                              <span className="text-muted-foreground">Checking availability…</span>
-                            </>
-                          ) : nameAvailability.available === true ? (
-                            <>
-                              <Check className="w-3 h-3 text-green-600" />
-                              <span className="text-green-600">Name is available</span>
-                            </>
-                          ) : nameAvailability.available === false ? (
-                            <>
-                              <X className="w-3 h-3 text-destructive" />
-                              <span className="text-destructive">
-                                Name is already taken or invalid
-                              </span>
-                            </>
-                          ) : null}
-                        </div>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Unique identifier used in URLs and API. Lowercase letters, numbers, and
-                        hyphens.
-                      </p>
-                    </div>
+      <PageControlStrip>
+        <SectionTabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          items={[
+            { value: "edit", label: "Edit", icon: <Edit2 className="size-4" /> },
+            { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+          ]}
+        />
+      </PageControlStrip>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="display_name">Display Name</Label>
-                      <Input
-                        id="display_name"
-                        placeholder={formData.name ? undefined : "Customer Support Agent"}
-                        value={formData.display_name}
-                        onChange={(e) => handleFormChange("display_name", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Optional human-readable label shown in the UI. Defaults to name if empty.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Describe what this agent does..."
-                        value={formData.description}
-                        onChange={(e) => handleFormChange("description", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                        rows={2}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="tags">Tags</Label>
-                      <Input
-                        id="tags"
-                        placeholder="tag1, tag2, tag3"
-                        value={formData.tags}
-                        onChange={(e) => handleFormChange("tags", e.target.value)}
-                        disabled={isSaving || isReadOnly}
-                      />
-                      <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="model">Model (optional)</Label>
-                      <ModelPicker
-                        value={formData.default_model_id || ""}
-                        onChange={(value) => handleFormChange("default_model_id", value)}
-                        disabled={isSaving || isReadOnly}
-                        placeholder="Use default model"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Select a specific model or leave empty to use the default
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="system_prompt">System Prompt</Label>
-                      <PromptEditor
-                        id="system_prompt"
-                        placeholder="You are a helpful assistant..."
-                        value={formData.system_prompt}
-                        onChange={(value) => handleFormChange("system_prompt", value)}
-                        disabled={isSaving || isReadOnly}
-                        required
-                      />
-                      {fieldErrors.system_prompt && (
-                        <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
-                      )}
-                      <p className="text-xs text-muted-foreground">
-                        Instructions for the AI model (supports Markdown)
-                      </p>
-                    </div>
-
-                    <InitialFilesEditor
-                      value={selectedInitialFiles}
-                      onChange={setLocalInitialFiles}
-                      disabled={isSaving || isReadOnly}
-                      description="Files copied into each new session for this agent."
-                    />
-
-                    <NetworkAccessEditor
-                      value={initialNetworkAccess}
-                      onChange={setLocalNetworkAccess}
-                      disabled={isSaving || isReadOnly}
-                      description="Control which hosts this agent's sessions can reach via network-capable tools. Narrows the harness policy; sessions can narrow it further."
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Danger Zone */}
-                <Card className="border-destructive/50">
-                  <CardHeader>
-                    <CardTitle className="text-destructive">Danger Zone</CardTitle>
-                    <CardDescription>Irreversible actions that affect this agent</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">
-                          {agent.status === "archived" ? "Delete this agent" : "Archive this agent"}
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {agent.status === "archived"
-                            ? "Permanently delete this archived agent. Existing references will render as deleted tombstones."
-                            : "Archive this agent. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
-                        </p>
-                      </div>
-                      {agent.status === "archived" ? (
-                        canDangerousDelete && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={() => setShowDeleteDialog(true)}
-                            disabled={destroyAgent.isPending}
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
-                          </Button>
-                        )
-                      ) : (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleArchive}
-                          disabled={deleteAgent.isPending}
-                        >
-                          {deleteAgent.isPending ? "Archiving..." : "Archive Agent"}
-                        </Button>
-                      )}
-                    </div>
-                    {deleteError && (
-                      <EntityDeleteErrorNotice
-                        entityKind="agent"
-                        action={deleteAction}
-                        message={deleteError.message}
-                        className="mt-4"
-                      />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Capabilities sidebar */}
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Capabilities</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CapabilitySelector
-                      capabilities={allCapabilities || []}
-                      selected={selectedCapabilities}
-                      onChange={handleCapabilitiesChange}
-                      disabled={isSaving || isReadOnly}
-                    />
-                  </CardContent>
-                </Card>
-
-                {/* Save button */}
-                <div className="flex gap-4">
-                  <Button type="submit" disabled={isSaving || isReadOnly} className="flex-1">
-                    <Save className="w-4 h-4 mr-2" />
-                    {isReadOnly
-                      ? "Archived Agents Are Read-Only"
-                      : isSaving
-                        ? "Saving..."
-                        : "Save Changes"}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => router.back()}>
-                    Cancel
-                  </Button>
-                </div>
-
-                {updateAgent.error && (
-                  <p className="text-sm text-destructive">Error: {updateAgent.error.message}</p>
-                )}
-              </div>
-            </div>
-          </form>
-        </TabsContent>
-
-        {/* Preview Tab Content */}
-        <TabsContent value="preview">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2">
-              <AgentPreview
-                systemPrompt={formData.system_prompt}
-                capabilities={selectedCapabilities}
-                initialFiles={selectedInitialFiles}
-                tools={agent.tools ?? []}
-                onApplyFix={(start, end, replacement) =>
-                  handleFormChange(
-                    "system_prompt",
-                    applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
-                  )
-                }
-              />
-              <div className="mt-6">
-                <AgentHealthCheck agentId={agent.id} />
-              </div>
-            </div>
-
-            {/* Summary sidebar */}
-            <div className="space-y-6">
+      {activeTab === "edit" && (
+        <form id="agent-edit-form" onSubmit={handleSubmit}>
+          <PageColumns>
+            {/* Main form */}
+            <PageMain>
               <Card>
                 <CardHeader>
-                  <CardTitle>Agent Summary</CardTitle>
-                  <CardDescription>Current configuration</CardDescription>
+                  <CardTitle>Agent Details</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm font-medium">Name</p>
-                    <p className="text-sm text-muted-foreground font-mono">
-                      {formData.name || "(not set)"}
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name</Label>
+                    <Input
+                      id="name"
+                      placeholder="customer-support"
+                      value={formData.name}
+                      onChange={(e) => handleFormChange("name", e.target.value)}
+                      aria-invalid={!!fieldErrors.name}
+                      disabled={isSaving || isReadOnly}
+                      required
+                    />
+                    {fieldErrors.name && (
+                      <p className="text-xs text-destructive">{fieldErrors.name}</p>
+                    )}
+                    {nameChanged && formData.name.length >= 2 && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        {nameAvailability.isChecking ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                            <span className="text-muted-foreground">Checking availability…</span>
+                          </>
+                        ) : nameAvailability.available === true ? (
+                          <>
+                            <Check className="w-3 h-3 text-green-600" />
+                            <span className="text-green-600">Name is available</span>
+                          </>
+                        ) : nameAvailability.available === false ? (
+                          <>
+                            <X className="w-3 h-3 text-destructive" />
+                            <span className="text-destructive">
+                              Name is already taken or invalid
+                            </span>
+                          </>
+                        ) : null}
+                      </div>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Unique identifier used in URLs and API. Lowercase letters, numbers, and
+                      hyphens.
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Display Name</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.display_name || "(not set)"}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="display_name">Display Name</Label>
+                    <Input
+                      id="display_name"
+                      placeholder={formData.name ? undefined : "Customer Support Agent"}
+                      value={formData.display_name}
+                      onChange={(e) => handleFormChange("display_name", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Optional human-readable label shown in the UI. Defaults to name if empty.
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Description</p>
-                    <p className="text-sm text-muted-foreground">
-                      {formData.description || "(not set)"}
+
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Describe what this agent does..."
+                      value={formData.description}
+                      onChange={(e) => handleFormChange("description", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                      rows={2}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="tags">Tags</Label>
+                    <Input
+                      id="tags"
+                      placeholder="tag1, tag2, tag3"
+                      value={formData.tags}
+                      onChange={(e) => handleFormChange("tags", e.target.value)}
+                      disabled={isSaving || isReadOnly}
+                    />
+                    <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="model">Model (optional)</Label>
+                    <ModelPicker
+                      value={formData.default_model_id || ""}
+                      onChange={(value) => handleFormChange("default_model_id", value)}
+                      disabled={isSaving || isReadOnly}
+                      placeholder="Use default model"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Select a specific model or leave empty to use the default
                     </p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium">Capabilities</p>
-                    <p className="text-sm text-muted-foreground">
-                      {selectedCapabilities.length} capabilit
-                      {selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
+
+                  <div className="space-y-2">
+                    <Label htmlFor="system_prompt">System Prompt</Label>
+                    <PromptEditor
+                      id="system_prompt"
+                      placeholder="You are a helpful assistant..."
+                      value={formData.system_prompt}
+                      onChange={(value) => handleFormChange("system_prompt", value)}
+                      disabled={isSaving || isReadOnly}
+                      required
+                    />
+                    {fieldErrors.system_prompt && (
+                      <p className="text-xs text-destructive">{fieldErrors.system_prompt}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Instructions for the AI model (supports Markdown)
                     </p>
                   </div>
+
+                  <InitialFilesEditor
+                    value={selectedInitialFiles}
+                    onChange={setLocalInitialFiles}
+                    disabled={isSaving || isReadOnly}
+                    description="Files copied into each new session for this agent."
+                  />
+
+                  <NetworkAccessEditor
+                    value={initialNetworkAccess}
+                    onChange={setLocalNetworkAccess}
+                    disabled={isSaving || isReadOnly}
+                    description="Control which hosts this agent's sessions can reach via network-capable tools. Narrows the harness policy; sessions can narrow it further."
+                  />
                 </CardContent>
               </Card>
 
-              <Card className="border-dashed">
-                <CardContent className="pt-6">
-                  <p className="text-sm text-muted-foreground text-center">
-                    This preview shows what the final agent will look like after applying all
-                    capabilities. Switch to the Edit tab to make changes.
-                  </p>
+              {/* Danger Zone */}
+              <Card className="border-destructive/50">
+                <CardHeader>
+                  <CardTitle className="text-destructive">Danger Zone</CardTitle>
+                  <CardDescription>Irreversible actions that affect this agent</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">
+                        {agent.status === "archived" ? "Delete this agent" : "Archive this agent"}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {agent.status === "archived"
+                          ? "Permanently delete this archived agent. Existing references will render as deleted tombstones."
+                          : "Archive this agent. It will stay visible when archived items are shown, become read-only, and stop being assignable."}
+                      </p>
+                    </div>
+                    {agent.status === "archived" ? (
+                      canDangerousDelete && (
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={() => setShowDeleteDialog(true)}
+                          disabled={destroyAgent.isPending}
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          {destroyAgent.isPending ? "Deleting..." : "Delete Agent"}
+                        </Button>
+                      )
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleArchive}
+                        disabled={deleteAgent.isPending}
+                      >
+                        {deleteAgent.isPending ? "Archiving..." : "Archive Agent"}
+                      </Button>
+                    )}
+                  </div>
+                  {deleteError && (
+                    <EntityDeleteErrorNotice
+                      entityKind="agent"
+                      action={deleteAction}
+                      message={deleteError.message}
+                      className="mt-4"
+                    />
+                  )}
                 </CardContent>
               </Card>
+            </PageMain>
+
+            {/* Capabilities sidebar */}
+            <PageRail>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Capabilities</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <CapabilitySelector
+                    capabilities={allCapabilities || []}
+                    selected={selectedCapabilities}
+                    onChange={handleCapabilitiesChange}
+                    disabled={isSaving || isReadOnly}
+                  />
+                </CardContent>
+              </Card>
+
+              {updateAgent.error && (
+                <p className="text-sm text-destructive">Error: {updateAgent.error.message}</p>
+              )}
+            </PageRail>
+          </PageColumns>
+        </form>
+      )}
+
+      {/* Preview Tab Content */}
+      {activeTab === "preview" && (
+        <div className="grid gap-6 lg:grid-cols-3">
+          <div className="lg:col-span-2">
+            <AgentPreview
+              systemPrompt={formData.system_prompt}
+              capabilities={selectedCapabilities}
+              initialFiles={selectedInitialFiles}
+              tools={agent.tools ?? []}
+              onApplyFix={(start, end, replacement) =>
+                handleFormChange(
+                  "system_prompt",
+                  applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
+                )
+              }
+            />
+            <div className="mt-6">
+              <AgentHealthCheck agentId={agent.id} />
             </div>
           </div>
-        </TabsContent>
-      </Tabs>
+
+          {/* Summary sidebar */}
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Agent Summary</CardTitle>
+                <CardDescription>Current configuration</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <p className="text-sm font-medium">Name</p>
+                  <p className="text-sm text-muted-foreground font-mono">
+                    {formData.name || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Display Name</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.display_name || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Description</p>
+                  <p className="text-sm text-muted-foreground">
+                    {formData.description || "(not set)"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm font-medium">Capabilities</p>
+                  <p className="text-sm text-muted-foreground">
+                    {selectedCapabilities.length} capabilit
+                    {selectedCapabilities.length !== 1 ? "ies" : "y"} enabled
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-dashed">
+              <CardContent className="pt-6">
+                <p className="text-sm text-muted-foreground text-center">
+                  This preview shows what the final agent will look like after applying all
+                  capabilities. Switch to the Edit tab to make changes.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      <PageFooter>
+        <BackLink href={`/agents/${agentId}`}>Back to {agentDisplayName}</BackLink>
+      </PageFooter>
+
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent>
           <DialogHeader>
@@ -594,6 +623,6 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </PageContainer>
   );
 }

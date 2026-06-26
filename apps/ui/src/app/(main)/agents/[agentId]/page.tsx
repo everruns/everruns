@@ -24,12 +24,10 @@ import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { AgentVersionHistory } from "@/components/agents/agent-version-history";
 import { IntegrationGuide } from "@/components/integration/integration-guide";
 import {
-  ArrowLeft,
   Plus,
   Pencil,
   Download,
@@ -41,9 +39,23 @@ import {
   GitBranch,
   Rocket,
   Terminal,
+  Boxes,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
+import {
+  PageContainer,
+  PageBreadcrumb,
+  PageMasthead,
+  PageControlStrip,
+  SectionTabs,
+  PageColumns,
+  PageMain,
+  PageRail,
+  PageFooter,
+  BackLink,
+  type SectionTabItem,
+} from "@/components/layout";
 import type { Capability, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -171,312 +183,321 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     );
   }
 
-  return (
-    <div className="container mx-auto p-6">
-      <Link
-        href="/agents"
-        className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-6"
-      >
-        <ArrowLeft className="w-4 h-4 mr-2" />
-        Back to Agents
-      </Link>
+  const defaultModelName = defaultModel?.display_name ?? defaultModel?.id;
 
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
+  const tabItems: SectionTabItem[] = [
+    { value: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
+    { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
+    { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
+    { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
+    ...(agentVersionsEnabled
+      ? [{ value: "versions", label: "Versions", icon: <GitBranch className="size-4" /> }]
+      : []),
+  ];
+
+  return (
+    <PageContainer>
+      <PageBreadcrumb
+        items={[{ label: "Agents", href: "/agents" }, { label: getDisplayName(agent) }]}
+      />
+
+      <PageMasthead
+        icon={<Boxes />}
+        title={
+          <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
+        }
+        badges={
+          <>
             <CopyButton value={agent.id} />
             <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
-          </h1>
-          <p className="text-sm text-muted-foreground font-mono mt-1">{agent.name}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
-            <Copy className="w-4 h-4 mr-2" />
-            {copyAgent.isPending ? "Copying..." : "Copy"}
-          </Button>
-          <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
-            <Download className="w-4 h-4 mr-2" />
-            {exportAgent.isPending ? "Exporting..." : "Export"}
-          </Button>
-          {agent.status === "active" && (
-            <Link href={`/agents/${agentId}/edit`}>
-              <Button variant="outline">
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </Button>
-            </Link>
-          )}
-          {agent.status === "active" && (
-            <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
-              <Button variant="outline">
-                <Rocket className="w-4 h-4 mr-2" />
-                Create app
-              </Button>
-            </Link>
-          )}
-          <Button
-            variant="accent"
-            onClick={handleNewSession}
-            disabled={createSession.isPending || agent.status !== "active"}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            {createSession.isPending ? "Creating..." : "New Session"}
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+        description={agent.description || undefined}
+        meta={
+          <>
+            <span>
+              Identity <span className="font-mono text-primary">{agent.name}</span>
+            </span>
+            {defaultModelName && (
+              <span>
+                Model <span className="text-primary">{defaultModelName}</span>
+              </span>
+            )}
+            <span>
+              Created{" "}
+              <span className="text-foreground">
+                {new Date(agent.created_at).toLocaleDateString()}
+              </span>
+            </span>
+            <span>
+              <span className="text-foreground">{agentSessionCount}</span>{" "}
+              {pluralize(agentSessionCount, "session")}
+            </span>
+          </>
+        }
+        actions={
+          <>
+            <Button variant="outline" onClick={handleCopy} disabled={copyAgent.isPending}>
+              <Copy className="size-4" />
+              {copyAgent.isPending ? "Copying..." : "Copy"}
+            </Button>
+            <Button variant="outline" onClick={handleExport} disabled={exportAgent.isPending}>
+              <Download className="size-4" />
+              {exportAgent.isPending ? "Exporting..." : "Export"}
+            </Button>
+            {agent.status === "active" && (
+              <Link href={`/agents/${agentId}/edit`}>
+                <Button variant="outline">
+                  <Pencil className="size-4" />
+                  Edit
+                </Button>
+              </Link>
+            )}
+            {agent.status === "active" && (
+              <Link href={{ pathname: "/apps/new", query: { agent_id: agentId } }}>
+                <Button variant="outline">
+                  <Rocket className="size-4" />
+                  Create app
+                </Button>
+              </Link>
+            )}
+            <Button
+              variant="accent"
+              onClick={handleNewSession}
+              disabled={createSession.isPending || agent.status !== "active"}
+            >
+              <Plus className="size-4" />
+              {createSession.isPending ? "Creating..." : "New session"}
+            </Button>
+          </>
+        }
+      />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="overview">
-            <LayoutDashboard className="w-4 h-4 mr-2" />
-            Overview
-          </TabsTrigger>
-          <TabsTrigger value="preview">
-            <Eye className="w-4 h-4 mr-2" />
-            Preview
-          </TabsTrigger>
-          <TabsTrigger value="integrate">
-            <Terminal className="w-4 h-4 mr-2" />
-            Integrate
-          </TabsTrigger>
-          <TabsTrigger value="stats">
-            <BarChart3 className="w-4 h-4 mr-2" />
-            Stats
-          </TabsTrigger>
-          {agentVersionsEnabled && (
-            <TabsTrigger value="versions">
-              <GitBranch className="w-4 h-4 mr-2" />
-              Versions
-            </TabsTrigger>
-          )}
-        </TabsList>
+      <PageControlStrip>
+        <SectionTabs value={activeTab} onValueChange={setActiveTab} items={tabItems} />
+      </PageControlStrip>
 
-        <TabsContent value="overview">
-          <div className="grid gap-6 lg:grid-cols-3">
-            <div className="lg:col-span-2 space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>System Prompt</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <MarkdownDisplay content={agent.system_prompt} />
-                </CardContent>
-              </Card>
+      {activeTab === "overview" && (
+        <PageColumns>
+          <PageMain>
+            <Card>
+              <CardHeader>
+                <CardTitle>System Prompt</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <MarkdownDisplay content={agent.system_prompt} />
+              </CardContent>
+            </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Sessions</CardTitle>
-                  {hasMoreSessions && (
-                    <Link
-                      href={`/agents/${agentId}/sessions`}
-                      className="text-sm text-muted-foreground hover:text-foreground"
-                    >
-                      View all {totalSessions} sessions →
-                    </Link>
-                  )}
-                </CardHeader>
-                <CardContent>
-                  {sessionsLoading ? (
-                    <div className="space-y-2">
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                    </div>
-                  ) : sessions.length === 0 ? (
-                    <p className="text-center py-8 text-muted-foreground">
-                      No sessions yet. Start a new session to begin chatting.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {sessions.map((session) => (
-                        <SessionCard
-                          key={session.id}
-                          session={session}
-                          model={session.model_id ? modelMap.get(session.model_id) : undefined}
-                        />
-                      ))}
-                      {hasMoreSessions && (
-                        <Link
-                          href={`/agents/${agentId}/sessions`}
-                          className="flex items-center justify-center p-3 border border-dashed hover:bg-muted transition-colors text-muted-foreground"
-                        >
-                          View all {totalSessions} sessions
-                        </Link>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Capabilities</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {agentCapabilities.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      No capabilities enabled.{" "}
-                      <Link
-                        href={`/agents/${agentId}/edit`}
-                        className="text-primary hover:underline"
-                      >
-                        Add some
-                      </Link>
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {agentCapabilities.map((capConfig) => {
-                        const cap = getCapabilityInfo(capConfig.ref);
-                        if (!cap) return null;
-                        const IconComponent = getCapabilityIcon(cap.icon);
-
-                        return (
-                          <div
-                            key={capConfig.ref}
-                            className="flex items-center gap-2 p-2 border bg-muted/50"
-                          >
-                            <IconComponent className="w-4 h-4" />
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">
-                                {localizedCapabilityName(cap, locale)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">
-                                {localizedCapabilityDescription(cap, locale)}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Configuration</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {defaultModel && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Default Model</p>
-                      <div className="flex items-center gap-2">
-                        <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
-                        <span className="text-sm">{defaultModel.display_name}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {agent.description && (
-                    <div>
-                      <p className="text-sm font-medium">Description</p>
-                      <div className="text-sm text-muted-foreground">
-                        <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
-                      </div>
-                    </div>
-                  )}
-
-                  {agentTags.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Tags</p>
-                      <div className="flex flex-wrap gap-1">
-                        {agentTags.map((tag) => (
-                          <Badge key={tag} variant="outline">
-                            {tag}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-sm font-medium mb-2">Usage</p>
-                    <div className="grid grid-cols-2 gap-2">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Sessions</CardTitle>
+                {hasMoreSessions && (
+                  <Link
+                    href={`/agents/${agentId}/sessions`}
+                    className="text-sm text-muted-foreground hover:text-foreground"
+                  >
+                    View all {totalSessions} sessions →
+                  </Link>
+                )}
+              </CardHeader>
+              <CardContent>
+                {sessionsLoading ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-12 w-full" />
+                    <Skeleton className="h-12 w-full" />
+                  </div>
+                ) : sessions.length === 0 ? (
+                  <p className="text-center py-8 text-muted-foreground">
+                    No sessions yet. Start a new session to begin chatting.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {sessions.map((session) => (
+                      <SessionCard
+                        key={session.id}
+                        session={session}
+                        model={session.model_id ? modelMap.get(session.model_id) : undefined}
+                      />
+                    ))}
+                    {hasMoreSessions && (
                       <Link
                         href={`/agents/${agentId}/sessions`}
-                        className="border bg-muted/50 p-2 hover:bg-muted"
+                        className="flex items-center justify-center p-3 border border-dashed hover:bg-muted transition-colors text-muted-foreground"
                       >
-                        <p className="text-sm font-medium">{agentSessionCount}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {pluralize(agentSessionCount, "session")}
-                        </p>
+                        View all {totalSessions} sessions
                       </Link>
-                      <div className="border bg-muted/50 p-2">
-                        <p className="text-sm font-medium">{agentAppCount}</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </PageMain>
+
+          <PageRail>
+            <Card>
+              <CardHeader>
+                <CardTitle>Capabilities</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {agentCapabilities.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No capabilities enabled.{" "}
+                    <Link href={`/agents/${agentId}/edit`} className="text-primary hover:underline">
+                      Add some
+                    </Link>
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {agentCapabilities.map((capConfig) => {
+                      const cap = getCapabilityInfo(capConfig.ref);
+                      if (!cap) return null;
+                      const IconComponent = getCapabilityIcon(cap.icon);
+
+                      return (
+                        <div
+                          key={capConfig.ref}
+                          className="flex items-center gap-2 p-2 border bg-muted/50"
+                        >
+                          <IconComponent className="w-4 h-4" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium">
+                              {localizedCapabilityName(cap, locale)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {localizedCapabilityDescription(cap, locale)}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Configuration</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {defaultModel && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Default Model</p>
+                    <div className="flex items-center gap-2">
+                      <ProviderIcon providerType={defaultModel.provider_type} size="sm" />
+                      <span className="text-sm">{defaultModel.display_name}</span>
+                    </div>
+                  </div>
+                )}
+
+                {agent.description && (
+                  <div>
+                    <p className="text-sm font-medium">Description</p>
+                    <div className="text-sm text-muted-foreground">
+                      <InlineStreamdownMessage>{agent.description}</InlineStreamdownMessage>
+                    </div>
+                  </div>
+                )}
+
+                {agentTags.length > 0 && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Tags</p>
+                    <div className="flex flex-wrap gap-1">
+                      {agentTags.map((tag) => (
+                        <Badge key={tag} variant="outline">
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <p className="text-sm font-medium mb-2">Usage</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Link
+                      href={`/agents/${agentId}/sessions`}
+                      className="border bg-muted/50 p-2 hover:bg-muted"
+                    >
+                      <p className="text-sm font-medium">{agentSessionCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pluralize(agentSessionCount, "session")}
+                      </p>
+                    </Link>
+                    <div className="border bg-muted/50 p-2">
+                      <p className="text-sm font-medium">{agentAppCount}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {pluralize(agentAppCount, "app")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {agent.usage && (
+                  <div>
+                    <p className="text-sm font-medium mb-2">Token Usage</p>
+                    <div className="flex items-center gap-2 p-2 border bg-muted/50">
+                      <Zap className="w-4 h-4 text-yellow-500" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">
+                          {formatTokens(totalTokens(agent.usage))} total
+                        </p>
                         <p className="text-xs text-muted-foreground">
-                          {pluralize(agentAppCount, "app")}
+                          {formatTokens(agent.usage.input_tokens)} input /{" "}
+                          {formatTokens(agent.usage.output_tokens)} output
+                          {agent.usage.cache_read_tokens &&
+                            ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
                         </p>
                       </div>
                     </div>
                   </div>
+                )}
 
-                  {agent.usage && (
-                    <div>
-                      <p className="text-sm font-medium mb-2">Token Usage</p>
-                      <div className="flex items-center gap-2 p-2 border bg-muted/50">
-                        <Zap className="w-4 h-4 text-yellow-500" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">
-                            {formatTokens(totalTokens(agent.usage))} total
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {formatTokens(agent.usage.input_tokens)} input /{" "}
-                            {formatTokens(agent.usage.output_tokens)} output
-                            {agent.usage.cache_read_tokens &&
-                              ` / ${formatTokens(agent.usage.cache_read_tokens)} cached`}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                <div>
+                  <p className="text-sm font-medium">Created</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(agent.created_at).toLocaleString()}
+                  </p>
+                </div>
 
-                  <div>
-                    <p className="text-sm font-medium">Created</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(agent.created_at).toLocaleString()}
-                    </p>
-                  </div>
+                <div>
+                  <p className="text-sm font-medium">Updated</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date(agent.updated_at).toLocaleString()}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </PageRail>
+        </PageColumns>
+      )}
 
-                  <div>
-                    <p className="text-sm font-medium">Updated</p>
-                    <p className="text-sm text-muted-foreground">
-                      {new Date(agent.updated_at).toLocaleString()}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
+      {activeTab === "preview" && (
+        <AgentPreview
+          systemPrompt={agent.system_prompt}
+          capabilities={agentCapabilities.map((cap) => ({
+            ref: cap.ref,
+            config: cap.config,
+          }))}
+          initialFiles={agent.initial_files}
+          tools={agent.tools ?? []}
+        />
+      )}
 
-        <TabsContent value="preview">
-          <AgentPreview
-            systemPrompt={agent.system_prompt}
-            capabilities={agentCapabilities.map((cap) => ({
-              ref: cap.ref,
-              config: cap.config,
-            }))}
-            initialFiles={agent.initial_files}
-            tools={agent.tools ?? []}
-          />
-        </TabsContent>
+      {activeTab === "integrate" && (
+        <IntegrationGuide kind="agent" id={agent.id} name={getDisplayName(agent)} />
+      )}
 
-        <TabsContent value="integrate">
-          <IntegrationGuide kind="agent" id={agent.id} name={getDisplayName(agent)} />
-        </TabsContent>
+      {activeTab === "stats" && (
+        <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
+      )}
 
-        <TabsContent value="stats">
-          <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
-        </TabsContent>
+      {agentVersionsEnabled && activeTab === "versions" && <AgentVersionHistory agent={agent} />}
 
-        {agentVersionsEnabled && (
-          <TabsContent value="versions">
-            <AgentVersionHistory agent={agent} />
-          </TabsContent>
-        )}
-      </Tabs>
-    </div>
+      <PageFooter>
+        <BackLink href="/agents">Back to Agents</BackLink>
+      </PageFooter>
+    </PageContainer>
   );
 }
