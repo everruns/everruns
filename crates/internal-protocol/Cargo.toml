@@ -41,6 +41,9 @@ serde_json.workspace = true
 uuid.workspace = true
 chrono.workspace = true
 
+# Observability: make conversion data-loss visible instead of silent (EVE-652)
+tracing.workspace = true
+
 [build-dependencies]
 tonic-prost-build.workspace = true
 protox = "0.9"
