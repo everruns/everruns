@@ -84,7 +84,17 @@ pub fn uuid_to_proto_uuid(value: uuid::Uuid) -> proto::Uuid {
 pub fn proto_timestamp_to_datetime(value: &proto::Timestamp) -> DateTime<Utc> {
     Utc.timestamp_opt(value.seconds, value.nanos as u32)
         .single()
-        .unwrap_or_else(Utc::now)
+        .unwrap_or_else(|| {
+            // EVE-652: an out-of-range timestamp previously fell back to "now"
+            // silently, corrupting event sequencing / audit timing. Keep the
+            // fallback (this is an infallible conversion) but make the loss visible.
+            tracing::warn!(
+                seconds = value.seconds,
+                nanos = value.nanos,
+                "internal-protocol: out-of-range proto timestamp; falling back to current time"
+            );
+            Utc::now()
+        })
 }
 
 /// Convert from chrono `DateTime<Utc>` to proto Timestamp
@@ -124,7 +134,15 @@ pub fn proto_value_to_json(value: &Value) -> serde_json::Value {
             // Fall back to f64 for actual floating point numbers
             serde_json::Number::from_f64(*n)
                 .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null)
+                .unwrap_or_else(|| {
+                    // EVE-652: NaN/Infinity has no JSON number representation.
+                    // It becomes null (unchanged), but the loss is now visible.
+                    tracing::warn!(
+                        value = *n,
+                        "internal-protocol: non-finite number has no JSON representation; emitting null"
+                    );
+                    serde_json::Value::Null
+                })
         }
         Some(Kind::StringValue(s)) => serde_json::Value::String(s.clone()),
         Some(Kind::ListValue(list)) => proto_list_to_json(list),
@@ -154,7 +172,15 @@ pub fn json_to_proto_value(value: &serde_json::Value) -> Value {
         kind: Some(match value {
             serde_json::Value::Null => Kind::NullValue(0),
             serde_json::Value::Bool(b) => Kind::BoolValue(*b),
-            serde_json::Value::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or(0.0)),
+            serde_json::Value::Number(n) => Kind::NumberValue(n.as_f64().unwrap_or_else(|| {
+                // EVE-652: a JSON number outside f64 range previously became 0.0
+                // silently. Keep the fallback but surface the loss.
+                tracing::warn!(
+                    number = %n,
+                    "internal-protocol: JSON number not representable as f64; using 0.0"
+                );
+                0.0
+            })),
             serde_json::Value::String(s) => Kind::StringValue(s.clone()),
             serde_json::Value::Array(arr) => Kind::ListValue(json_array_to_proto_list(arr)),
             serde_json::Value::Object(obj) => Kind::StructValue(json_object_to_proto_struct(obj)),
@@ -209,6 +235,22 @@ fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> everruns
     everruns_core::events::deserialize_event_data(event_type, data)
 }
 
+/// Fallback for an event-data serialization failure on this infallible path.
+///
+/// EVE-652: every arm of [`serialize_event_data`] previously used
+/// `.unwrap_or_default()`, silently emitting an empty `{}`/`null` and dropping the
+/// whole event payload on any serde error. Serialization of well-formed domain
+/// structs does not fail in practice, so a hit here signals upstream corruption
+/// that must not vanish silently. We keep the empty placeholder (this conversion
+/// is infallible by design) but log the loss.
+fn event_data_serialize_fallback(err: serde_json::Error) -> serde_json::Value {
+    tracing::error!(
+        error = %err,
+        "internal-protocol: failed to serialize event data; emitting empty payload (data lost)"
+    );
+    serde_json::Value::Null
+}
+
 /// Serialize EventData to JSON Value
 ///
 /// Converts the typed EventData variant to its JSON representation.
@@ -217,55 +259,153 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
     use everruns_core::EventData;
 
     match data {
-        EventData::InputMessage(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::OutputMessageStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::OutputMessageDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::OutputMessageReplaced(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::OutputMessageCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TurnStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TurnCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TurnFailed(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TurnSealed(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TurnCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonRecovered(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::CapabilityUsage(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ActStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ActCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolProgress(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolOutputDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolCallRequested(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::LlmGeneration(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonThinkingCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ReasonItem(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TaskCreated(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TaskUpdated(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TaskMessageSent(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TaskMessageReceived(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ContextCompacting(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ContextCompacted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::BudgetWarning(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::BudgetPaused(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::BudgetExhausted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::BudgetResumed(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::FileWritten(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceSessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceInputTranscriptDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceInputTranscriptCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceOutputTranscriptDelta(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceOutputTranscriptCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceSessionEnded(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::VoiceSessionFailed(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::TranscriptRepaired(d) => serde_json::to_value(d).unwrap_or_default(),
-        EventData::ToolCallRepaired(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::InputMessage(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::OutputMessageStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::OutputMessageDelta(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::OutputMessageReplaced(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::OutputMessageCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TurnStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TurnCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TurnFailed(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TurnSealed(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TurnCancelled(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonRecovered(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::CapabilityUsage(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ActStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ActCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolProgress(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolOutputDelta(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolCallRequested(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::LlmGeneration(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonThinkingStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonThinkingDelta(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonThinkingCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ReasonItem(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::SessionStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::SessionActivated(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::SessionIdled(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TaskCreated(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TaskUpdated(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TaskMessageSent(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TaskMessageReceived(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ContextCompacting(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ContextCompacted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::BudgetWarning(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::BudgetPaused(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::BudgetExhausted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::BudgetResumed(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::FileWritten(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceSessionStarted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceInputTranscriptDelta(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceInputTranscriptCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceOutputTranscriptDelta(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceOutputTranscriptCompleted(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceSessionEnded(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::VoiceSessionFailed(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::TranscriptRepaired(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
+        EventData::ToolCallRepaired(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
         EventData::Unsupported { data, .. } => {
             // Should not happen in production - unsupported events are filtered before reaching here
             data.clone()
@@ -289,12 +429,14 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         .map(|id| serde_json::json!({"ref": id, "config": {}}))
         .collect();
 
-    // Convert UUID string to prefixed format for typed IDs
+    // Convert UUID string to prefixed format for typed IDs.
+    // EVE-652: a missing id previously became "" and failed later as an opaque
+    // JsonError; surface it as the precise MissingField instead.
     let id_str = value
         .id
         .as_ref()
         .map(|u| format!("agent_{}", u.value.replace("-", "")))
-        .unwrap_or_default();
+        .ok_or(ConversionError::MissingField("id"))?;
     let model_id_str = value
         .default_model_id
         .as_ref()
@@ -375,11 +517,13 @@ pub fn schema_harness_to_proto(value: &everruns_core::Harness) -> proto::Harness
 pub fn proto_harness_to_schema(
     value: proto::Harness,
 ) -> Result<everruns_core::Harness, ConversionError> {
+    // EVE-652: a missing harness id previously became "" (opaque downstream
+    // failure); surface the precise MissingField instead.
     let id_str = value
         .id
         .as_ref()
         .map(|u| format!("harness_{}", u.value.replace("-", "")))
-        .unwrap_or_default();
+        .ok_or(ConversionError::MissingField("id"))?;
     let model_id_str = value
         .default_model_id
         .as_ref()
@@ -421,20 +565,18 @@ pub fn proto_session_to_schema(
     let started_at: Option<String> = None;
     let finished_at: Option<String> = None;
 
-    // Convert UUID string to prefixed format for typed IDs
-    let id_str = value
+    // Convert UUID string to prefixed format for typed IDs.
+    // EVE-652: the session id is required; a missing id previously became ""
+    // and failed later as an opaque JsonError. Surface MissingField instead.
+    let session_uuid = value
         .id
         .as_ref()
-        .map(|u| format!("session_{}", u.value.replace("-", "")))
-        .unwrap_or_default();
+        .ok_or(ConversionError::MissingField("id"))?;
+    let id_str = format!("session_{}", session_uuid.value.replace("-", ""));
     // The proto Session does not carry a workspace id yet; reconstruct it from
     // the session id under the workspace.id == session.id equality invariant
     // (see specs/workspace.md). Revisit when shared workspaces add it to proto.
-    let workspace_id_str = value
-        .id
-        .as_ref()
-        .map(|u| format!("wsp_{}", u.value.replace("-", "")))
-        .unwrap_or_default();
+    let workspace_id_str = format!("wsp_{}", session_uuid.value.replace("-", ""));
     let agent_id_str = value
         .agent_id
         .as_ref()
@@ -447,7 +589,15 @@ pub fn proto_session_to_schema(
         .harness_id
         .as_ref()
         .map(|u| format!("harness_{}", u.value.replace("-", "")))
-        .unwrap_or_else(|| format!("harness_{}", uuid::Uuid::nil().simple()));
+        .unwrap_or_else(|| {
+            // EVE-652: a session without a harness id falls back to the nil
+            // harness (preserved behavior). Log so the substitution is visible.
+            tracing::warn!(
+                session_id = %id_str,
+                "internal-protocol: proto Session missing harness_id; using nil harness"
+            );
+            format!("harness_{}", uuid::Uuid::nil().simple())
+        });
     let model_id_str = value
         .default_model_id
         .as_ref()
@@ -461,15 +611,40 @@ pub fn proto_session_to_schema(
         .parent_session_id
         .as_ref()
         .map(|u| format!("session_{}", u.value.replace("-", "")));
-    let blueprint_config = value
-        .blueprint_config_json
-        .as_deref()
-        .and_then(|json| serde_json::from_str::<serde_json::Value>(json).ok());
+    // EVE-652: malformed blueprint config JSON previously vanished (None) with no
+    // trace. Keep it optional but log which session carried bad config.
+    let blueprint_config = value.blueprint_config_json.as_deref().and_then(|json| {
+        match serde_json::from_str::<serde_json::Value>(json) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %id_str,
+                    error = %e,
+                    "internal-protocol: dropping unparseable blueprint_config_json"
+                );
+                None
+            }
+        }
+    });
 
+    // EVE-652: a capability that fails to parse previously truncated the array
+    // silently, weakening the session's declared capability set with no signal.
+    // Surface each drop (this conversion stays lenient to avoid failing the whole
+    // session on one bad entry, but the loss is no longer silent).
     let capabilities: Vec<serde_json::Value> = value
         .capabilities
         .iter()
-        .filter_map(|c| serde_json::from_str(c).ok())
+        .filter_map(|c| match serde_json::from_str(c) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %id_str,
+                    error = %e,
+                    "internal-protocol: dropping unparseable session capability"
+                );
+                None
+            }
+        })
         .collect();
 
     let json = serde_json::json!({
@@ -523,7 +698,19 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
         capabilities: value
             .capabilities
             .iter()
-            .filter_map(|c| serde_json::to_string(c).ok())
+            .filter_map(|c| match serde_json::to_string(c) {
+                Ok(s) => Some(s),
+                Err(e) => {
+                    // EVE-652: surface a dropped capability instead of silently
+                    // shrinking the array sent to the worker.
+                    tracing::error!(
+                        session_id = %value.id,
+                        error = %e,
+                        "internal-protocol: failed to serialize session capability; dropping it"
+                    );
+                    None
+                }
+            })
             .collect(),
         harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
         tags: value.tags.clone(),
@@ -533,16 +720,40 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .parent_session_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         blueprint_id: value.blueprint_id.clone(),
-        blueprint_config_json: value
-            .blueprint_config
-            .as_ref()
-            .and_then(|config| serde_json::to_string(config).ok()),
+        blueprint_config_json: value.blueprint_config.as_ref().and_then(|config| {
+            serde_json::to_string(config)
+                .map_err(|e| {
+                    // EVE-652: don't silently drop blueprint config on serialize error.
+                    tracing::error!(
+                        session_id = %value.id,
+                        error = %e,
+                        "internal-protocol: failed to serialize blueprint_config; omitting it"
+                    );
+                })
+                .ok()
+        }),
         hints: value.hints.as_ref().map(|h| {
-            let json = serde_json::to_value(h).unwrap_or_default();
+            let json = serde_json::to_value(h).unwrap_or_else(|e| {
+                // EVE-652: empty hints on serialize error, but make it visible.
+                tracing::error!(
+                    session_id = %value.id,
+                    error = %e,
+                    "internal-protocol: failed to serialize session hints; sending empty"
+                );
+                serde_json::Value::Null
+            });
             json_to_proto_struct(&json)
         }),
         system_prompt: value.system_prompt.clone(),
-        initial_files_json: serde_json::to_string(&value.initial_files).unwrap_or_default(),
+        initial_files_json: serde_json::to_string(&value.initial_files).unwrap_or_else(|e| {
+            // EVE-652: empty initial_files on serialize error, but make it visible.
+            tracing::error!(
+                session_id = %value.id,
+                error = %e,
+                "internal-protocol: failed to serialize initial_files; sending empty"
+            );
+            String::new()
+        }),
         parallel_tool_calls: value.parallel_tool_calls,
     }
 }
@@ -609,26 +820,42 @@ pub fn proto_message_to_schema(
 
 /// Convert schemas Message to proto Message
 pub fn schema_message_to_proto(value: &everruns_core::Message) -> proto::Message {
+    // EVE-652: serializing a message field previously fell back to an empty
+    // value silently — for `content` that means dropping the entire message
+    // payload (text/images/tool calls). Keep the empty fallback (infallible
+    // path) but log the loss with the message id and field name.
+    let serialize_field =
+        |field: &'static str, result: Result<serde_json::Value, serde_json::Error>| {
+            result.unwrap_or_else(|e| {
+            tracing::error!(
+                message_id = %value.id,
+                field,
+                error = %e,
+                "internal-protocol: failed to serialize message field; sending empty (data lost)"
+            );
+            serde_json::Value::Null
+        })
+        };
+
     // Convert content to ListValue
-    let content_json = serde_json::to_value(&value.content).unwrap_or_default();
+    let content_json = serialize_field("content", serde_json::to_value(&value.content));
     let content = Some(json_to_proto_list(&content_json));
 
     // Convert controls to Struct
-    let controls = value.controls.as_ref().map(|c| {
-        let json = serde_json::to_value(c).unwrap_or_default();
-        json_to_proto_struct(&json)
-    });
+    let controls = value
+        .controls
+        .as_ref()
+        .map(|c| json_to_proto_struct(&serialize_field("controls", serde_json::to_value(c))));
 
     // Convert metadata to Struct
-    let metadata = value.metadata.as_ref().map(|m| {
-        let json = serde_json::to_value(m).unwrap_or_default();
-        json_to_proto_struct(&json)
-    });
+    let metadata = value
+        .metadata
+        .as_ref()
+        .map(|m| json_to_proto_struct(&serialize_field("metadata", serde_json::to_value(m))));
 
     // Convert external_actor to Struct
     let external_actor = value.external_actor.as_ref().map(|ea| {
-        let json = serde_json::to_value(ea).unwrap_or_default();
-        json_to_proto_struct(&json)
+        json_to_proto_struct(&serialize_field("external_actor", serde_json::to_value(ea)))
     });
 
     proto::Message {
@@ -1537,5 +1764,111 @@ mod tests {
         let status: tonic::Status = err.into();
         assert_eq!(status.code(), tonic::Code::InvalidArgument);
         assert!(status.message().contains("JSON error"));
+    }
+
+    // EVE-652: a proto entity missing its required id used to build an empty-string
+    // typed id and fail later as an opaque JsonError. It now fails with the precise
+    // MissingField, instead of silently corrupting the id.
+    #[test]
+    fn test_proto_agent_missing_id_is_missing_field_error() {
+        let proto_agent = proto::Agent {
+            id: None,
+            ..Default::default()
+        };
+        let err = proto_agent_to_schema(proto_agent).unwrap_err();
+        assert!(
+            matches!(err, ConversionError::MissingField("id")),
+            "expected MissingField(\"id\"), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_proto_harness_missing_id_is_missing_field_error() {
+        let proto_harness = proto::Harness {
+            id: None,
+            ..Default::default()
+        };
+        let err = proto_harness_to_schema(proto_harness).unwrap_err();
+        assert!(
+            matches!(err, ConversionError::MissingField("id")),
+            "expected MissingField(\"id\"), got {err:?}"
+        );
+    }
+
+    #[test]
+    fn test_proto_session_missing_id_is_missing_field_error() {
+        let proto_session = proto::Session {
+            id: None,
+            ..Default::default()
+        };
+        let err = proto_session_to_schema(proto_session).unwrap_err();
+        assert!(
+            matches!(err, ConversionError::MissingField("id")),
+            "expected MissingField(\"id\"), got {err:?}"
+        );
+    }
+
+    // EVE-652: an unparseable capability string is dropped (lenient, so one bad
+    // entry can't fail the whole session) but no longer silently — the valid
+    // capabilities still round-trip and the array is not otherwise corrupted.
+    #[test]
+    fn test_proto_session_drops_unparseable_capability_but_keeps_valid() {
+        use chrono::Utc;
+        use everruns_core::AgentCapabilityConfig;
+
+        let now = Utc::now();
+        let session_id = everruns_core::SessionId::new();
+        let session = everruns_core::Session {
+            id: session_id,
+            workspace_id: everruns_core::WorkspaceId::from_uuid(session_id.uuid()),
+            organization_id: "org_00000000000000000000000000000001".to_string(),
+            harness_id: everruns_core::HarnessId::new(),
+            agent_id: None,
+            agent_version_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            title: None,
+            locale: None,
+            preview: None,
+            output_preview: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![AgentCapabilityConfig::new("session")],
+            tools: vec![],
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            mcp_servers: Default::default(),
+            status: everruns_core::SessionStatus::Idle,
+            created_at: now,
+            updated_at: now,
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        };
+
+        let mut proto_session = schema_session_to_proto(&session);
+        // Inject a malformed capability JSON string alongside the valid one.
+        proto_session
+            .capabilities
+            .push("{not valid json".to_string());
+        assert_eq!(proto_session.capabilities.len(), 2);
+
+        let schema_session = proto_session_to_schema(proto_session).unwrap();
+        // The bad entry is dropped; the valid capability survives.
+        assert_eq!(schema_session.capabilities.len(), 1);
+        assert_eq!(schema_session.capabilities[0].capability_id(), "session");
     }
 }
