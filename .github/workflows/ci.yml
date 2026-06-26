@@ -382,6 +382,11 @@ jobs:
           # doctests), not just --lib, so integration tests aren't silently skipped.
           # Both are pure (llmsim-based, no credentials or network).
           cargo test -p everruns-core -p everruns-local --all-features
+          # mcp: whole crate (lib + http_transport + stdio_transport + doctests).
+          # Was not tested in CI at all. --all-features enables the `stdio` transport
+          # (off in hosted builds) so its transport test runs here. All in-process,
+          # no network/credentials.
+          cargo test -p everruns-mcp --all-features
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
@@ -428,8 +433,10 @@ jobs:
         with:
           shared-key: "test"
 
-      - name: Run worker library tests
-        run: cargo test -p everruns-worker --lib -- --test-threads=1
+      - name: Run worker tests
+        # Whole crate (lib + integration), not just --lib: the network_reliability
+        # integration test is pure (no network/credentials) and was being skipped.
+        run: cargo test -p everruns-worker --all-features -- --test-threads=1
 
   shell-test:
     name: Shell Tests (Repo Scripts)
