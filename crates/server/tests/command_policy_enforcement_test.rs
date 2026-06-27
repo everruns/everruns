@@ -20,8 +20,8 @@
 use std::sync::Arc;
 
 use everruns_core::{
-    Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
-    PermissionResolver,
+    Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags,
+    OrgRole, Permission, PermissionResolver,
 };
 use everruns_server::api::evals::CreateEvalRunRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
@@ -434,10 +434,16 @@ async fn agent_health_check_requires_session_permission() {
 async fn eval_manage_without_session_permission_still_allows_list() {
     // A caller with only OrgAgentsManage can still list evals — the EVAL_VIEW
     // policy only requires OrgAgentsManage. Only run creation needs more.
+    // Evals are feature-gated (require_evals_enabled), so enable the flag here;
+    // this test asserts policy behavior, not the gate.
     let ctx = make_ctx(
         caller_with_role(OrgRole::Owner),
         Arc::new(AgentsOnlyResolver),
-    );
+    )
+    .with_feature_flags(FeatureFlags {
+        evals: true,
+        ..Default::default()
+    });
     ListEvals {
         search: None,
         include_archived: false,
