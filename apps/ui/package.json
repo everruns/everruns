@@ -20,6 +20,7 @@
     "format": "oxfmt --write ./src",
     "format:check": "oxfmt --check ./src",
     "typecheck": "tsc --noEmit",
+    "design:lint": "npx --yes @google/design.md@latest lint DESIGN.md",
     "test": "jest",
     "test:watch": "jest --watch",
     "e2e": "playwright test",

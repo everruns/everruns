@@ -16,6 +16,17 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Design system
+
+The Slate design system is documented in [`DESIGN.md`](./DESIGN.md), an agent- and
+human-readable file in the [DESIGN.md format](https://github.com/google-labs-code/design.md).
+Its tokens mirror `src/app/design-system.css`, which remains the runtime source
+of truth — edit both together. Validate the file with:
+
+```bash
+pnpm run design:lint
+```
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
