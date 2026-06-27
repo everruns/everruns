@@ -215,6 +215,14 @@ impl SessionFileSystem for MountFs {
         WORKSPACE_MOUNT.to_string()
     }
 
+    fn resolve_path(&self, input: &str) -> String {
+        // The absolute virtual path: relative inputs resolve against cwd,
+        // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
+        // the shell sees — `/workspace` is just the default cwd, and any path
+        // is reachable from the root mount.
+        normalize_virtual(input, &self.cwd())
+    }
+
     fn display_path(&self, path: &str) -> String {
         // `path` is a backend keyspace path (e.g. `/foo`); render it under the
         // workspace mount.

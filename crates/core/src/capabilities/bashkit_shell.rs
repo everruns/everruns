@@ -71,27 +71,25 @@ fn execution_limits() -> ExecutionLimits {
         .parser_timeout(std::time::Duration::from_secs(5))
 }
 
-/// Resolve the shell working directory and `WORKSPACE` env value through the
-/// unified workspace path model (EVE-660).
+/// Resolve the shell working directory and `WORKSPACE` env value from the file
+/// store's namespace (EVE-660).
 ///
-/// Both reflect the file store's display root, so the in-VFS shell and the file
-/// tools speak one namespace: a model that learns a path from `read_file` can
-/// pass it straight to `cat`. Returns an error message when an explicit
-/// `working_dir` cannot be parsed. The tuple is `(cwd, workspace_env)`.
+/// The file store ([`MountFs`](crate::mount_fs::MountFs)) is the single path
+/// authority: `working_dir` is resolved through it to an absolute path in the
+/// same namespace the file tools use, so a model that learns a path from
+/// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
+/// starts at the store's display root (`/workspace`). The tuple is
+/// `(cwd, workspace_env)`.
 fn resolve_shell_workspace(
-    context: &ToolContext,
+    store: &dyn SessionFileSystem,
     working_dir_arg: Option<&str>,
-) -> std::result::Result<(String, String), String> {
-    let paths = context.workspace_paths();
-    let display_root = paths.display_root();
+) -> (String, String) {
+    let workspace_env = store.display_root();
     let cwd = match working_dir_arg {
-        Some(arg) => paths
-            .parse_input(arg)
-            .map(|rel| paths.to_display(&rel))
-            .map_err(|e| format!("invalid working_dir '{arg}': {e}"))?,
-        None => display_root.clone(),
+        Some(arg) => store.resolve_path(arg),
+        None => workspace_env.clone(),
     };
-    Ok((cwd, display_root))
+    (cwd, workspace_env)
 }
 
 /// Configured bashkit tool instance with everruns settings.
@@ -299,13 +297,19 @@ impl Tool for BashTool {
             }
         };
 
-        let (working_dir, workspace_env) = match resolve_shell_workspace(
-            context,
-            arguments.get("working_dir").and_then(|v| v.as_str()),
-        ) {
-            Ok(resolved) => resolved,
-            Err(msg) => return ToolExecutionResult::tool_error(msg),
+        let file_store = match &context.file_store {
+            Some(store) => store.clone(),
+            None => {
+                return ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                );
+            }
         };
+
+        let (working_dir, workspace_env) = resolve_shell_workspace(
+            file_store.as_ref(),
+            arguments.get("working_dir").and_then(|v| v.as_str()),
+        );
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -319,15 +323,6 @@ impl Tool for BashTool {
             .get("output")
             .and_then(|v| v.as_str())
             .unwrap_or("auto");
-
-        let file_store = match &context.file_store {
-            Some(store) => store.clone(),
-            None => {
-                return ToolExecutionResult::tool_error(
-                    "File system not available in this context",
-                );
-            }
-        };
 
         // Create filesystem adapter that bridges to session file store
         let session_fs = Arc::new(SessionFileSystemAdapter::new(
@@ -529,11 +524,19 @@ impl BackgroundExecutableTool for BashTool {
             }
         };
 
+        let file_store = match &context.file_store {
+            Some(store) => store.clone(),
+            None => {
+                return Err(ToolExecutionResult::tool_error(
+                    "File system not available in this context",
+                ));
+            }
+        };
+
         let (working_dir, workspace_env) = resolve_shell_workspace(
-            &context,
+            file_store.as_ref(),
             arguments.get("working_dir").and_then(|v| v.as_str()),
-        )
-        .map_err(ToolExecutionResult::tool_error)?;
+        );
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -546,15 +549,6 @@ impl BackgroundExecutableTool for BashTool {
             .get("output")
             .and_then(|v| v.as_str())
             .unwrap_or("auto");
-
-        let file_store = match &context.file_store {
-            Some(store) => store.clone(),
-            None => {
-                return Err(ToolExecutionResult::tool_error(
-                    "File system not available in this context",
-                ));
-            }
-        };
 
         let session_fs = Arc::new(SessionFileSystemAdapter::new(
             context.session_id,
@@ -820,18 +814,17 @@ impl SessionFileSystemAdapter {
         Self { session_id, store }
     }
 
-    /// Convert a bash VFS path to a canonical session file store path.
+    /// The bash VFS path as a string for the store to resolve.
     ///
-    /// Delegates to the store's unified [`WorkspacePaths`] (EVE-660): paths
-    /// inside the workspace mount — the `/workspace` alias *or* host-absolute
-    /// paths under the root — map to a session path; anything outside the mount
-    /// returns `None`. The adapter no longer hard-codes `/workspace` stripping,
-    /// so the shell and the file tools share one namespace.
-    fn to_session_path(&self, path: &Path) -> Option<String> {
-        self.store
-            .workspace_paths()
-            .parse_mounted(&path.to_string_lossy())
-            .map(|rel| rel.to_session_path())
+    /// The store ([`MountFs`](crate::mount_fs::MountFs)) is the single path
+    /// authority (EVE-660): it routes the `/workspace` alias, the root mount,
+    /// relative-to-cwd, and host-absolute paths to the right backend, and the
+    /// backend enforces containment (host stores reject symlinks and clamp to
+    /// their root). The adapter no longer parses paths itself, so the shell, the
+    /// file tools, and the resolver share one namespace — and the shell can
+    /// address files anywhere from `/`, with `/workspace` as just its cwd.
+    fn store_path(path: &Path) -> String {
+        path.to_string_lossy().into_owned()
     }
 }
 
@@ -841,12 +834,7 @@ impl FileSystemExt for SessionFileSystemAdapter {}
 #[async_trait]
 impl FileSystem for SessionFileSystemAdapter {
     async fn read_file(&self, path: &Path) -> bashkit::Result<Vec<u8>> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Path not in workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         match self.store.read_file(self.session_id, &session_path).await {
             Ok(Some(file)) => {
@@ -863,12 +851,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn write_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!("Cannot write outside workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         let (encoded, encoding) = SessionFile::encode_content(content);
 
@@ -880,12 +863,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn append_file(&self, path: &Path, content: &[u8]) -> bashkit::Result<()> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!("Cannot write outside workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         // Read existing content
         let mut existing = match self.store.read_file(self.session_id, &session_path).await {
@@ -911,15 +889,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn mkdir(&self, path: &Path, _recursive: bool) -> bashkit::Result<()> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!(
-                    "Cannot create directory outside workspace: {}",
-                    path.display()
-                ),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         self.store
             .create_directory(self.session_id, &session_path)
@@ -929,12 +899,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn remove(&self, path: &Path, recursive: bool) -> bashkit::Result<()> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::PermissionDenied,
-                format!("Cannot delete outside workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         self.store
             .delete_file(self.session_id, &session_path, recursive)
@@ -956,12 +921,7 @@ impl FileSystem for SessionFileSystemAdapter {
             });
         }
 
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Path not in workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         // Check if it's a file
         match self.store.read_file(self.session_id, &session_path).await {
@@ -1013,12 +973,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn read_dir(&self, path: &Path) -> bashkit::Result<Vec<DirEntry>> {
-        let session_path = self.to_session_path(path).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Path not in workspace: {}", path.display()),
-            ))
-        })?;
+        let session_path = Self::store_path(path);
 
         let entries = self
             .store
@@ -1057,10 +1012,7 @@ impl FileSystem for SessionFileSystemAdapter {
             return Ok(true);
         }
 
-        let session_path = match self.to_session_path(path) {
-            Some(p) => p,
-            None => return Ok(false), // Paths outside workspace don't exist
-        };
+        let session_path = Self::store_path(path);
 
         // Check file
         if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
@@ -1081,12 +1033,7 @@ impl FileSystem for SessionFileSystemAdapter {
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
-        let from_session = self.to_session_path(from).ok_or_else(|| {
-            bashkit::Error::Io(std::io::Error::new(
-                std::io::ErrorKind::NotFound,
-                format!("Source not in workspace: {}", from.display()),
-            ))
-        })?;
+        let from_session = Self::store_path(from);
 
         // Read source file
         let content = self.read_file(from).await?;
@@ -1139,9 +1086,9 @@ impl FileSystem for SessionFileSystemAdapter {
 // ============================================================================
 
 impl SearchCapable for SessionFileSystemAdapter {
-    fn search_provider(&self, path: &Path) -> Option<Box<dyn SearchProvider>> {
-        // Only provide indexed search for paths inside /workspace
-        self.to_session_path(path)?;
+    fn search_provider(&self, _path: &Path) -> Option<Box<dyn SearchProvider>> {
+        // The store resolves any path (root mount included), so indexed search is
+        // available everywhere the shell can address.
         Some(Box::new(SessionSearchProvider {
             session_id: self.session_id,
             store: self.store.clone(),
@@ -1172,23 +1119,14 @@ impl SearchProvider for SessionSearchProvider {
             query.pattern.clone()
         };
 
-        // Convert root path from bash VFS path to session store path through
-        // the unified workspace path model (EVE-660). search_provider already
-        // guards against paths outside the workspace mount, so this succeeds.
-        let workspace_paths = self.store.workspace_paths();
-        let session_root = workspace_paths
-            .parse_mounted(&root)
-            .map(|rel| rel.to_session_path())
-            .ok_or_else(|| {
-                bashkit::Error::Io(std::io::Error::new(
-                    std::io::ErrorKind::NotFound,
-                    format!("Path not in workspace: {}", root),
-                ))
-            })?;
-        let path_pattern = if session_root == "/" {
+        // The store ([`MountFs`]) resolves the search root, so search shares the
+        // shell's namespace. A root at the workspace top searches the whole tree
+        // (no path filter); anything deeper is passed through for the store to
+        // resolve and scope.
+        let path_pattern = if root == crate::mount_fs::WORKSPACE_MOUNT || root == "/" {
             None
         } else {
-            Some(session_root)
+            Some(root)
         };
 
         // Bridge async grep_files to sync SearchProvider::search.
@@ -1220,13 +1158,10 @@ impl SearchProvider for SessionSearchProvider {
             .into_iter()
             .take(max_results.unwrap_or(usize::MAX))
             .map(|m| {
-                // Convert session store path back to the bash VFS display path
-                // (the `/workspace` alias or host-absolute root) so matches read
-                // back in the same namespace the shell resolves against.
-                let vfs_path = workspace_paths
-                    .parse_input(&m.path)
-                    .map(|rel| workspace_paths.to_display(&rel))
-                    .unwrap_or_else(|_| m.path.clone());
+                // Render the backend match path back into the shell's namespace
+                // (the `/workspace` view) so matches read back in the same
+                // namespace the shell resolves against.
+                let vfs_path = self.store.display_path(&m.path);
                 BashkitSearchMatch {
                     path: PathBuf::from(vfs_path),
                     line_number: m.line_number,
@@ -1544,59 +1479,46 @@ mod tests {
     }
 
     // ========================================================================
-    // Path translation tests
+    // Path resolution (delegated to the store / MountFs)
     // ========================================================================
 
-    // The adapter now delegates path translation to the store's unified
-    // `WorkspacePaths` (EVE-660). Over a VFS store the mount is `/workspace`, so
-    // these assert the same containment semantics as before.
-    fn vfs_adapter() -> SessionFileSystemAdapter {
-        SessionFileSystemAdapter::new(SessionId::new(), Arc::new(MockFileStore::new()))
+    // The adapter no longer parses paths itself (EVE-660): it hands them to the
+    // store, which is a `MountFs` in production. These confirm the delegation, so
+    // the shell shares the file tools' namespace — `/workspace` is the cwd view,
+    // and the root mount makes any path addressable. Resolution edge cases live
+    // in `mount_fs::tests`.
+    fn mount_adapter() -> SessionFileSystemAdapter {
+        let store = crate::mount_fs::MountFs::wrap(Arc::new(MockFileStore::new()));
+        SessionFileSystemAdapter::new(SessionId::new(), store)
     }
 
-    #[test]
-    fn test_to_session_path_workspace_root() {
-        let result = vfs_adapter().to_session_path(Path::new("/workspace"));
-        assert_eq!(result, Some("/".to_string()));
+    #[tokio::test]
+    async fn adapter_maps_workspace_alias_to_backend_root() {
+        let adapter = mount_adapter();
+        adapter
+            .write_file(Path::new("/workspace/file.txt"), b"hi")
+            .await
+            .unwrap();
+        // The same file is visible via the `/workspace` alias and the
+        // backend-native path — one namespace.
+        assert_eq!(
+            adapter.read_file(Path::new("/workspace/file.txt")).await.unwrap(),
+            b"hi"
+        );
+        assert_eq!(adapter.read_file(Path::new("/file.txt")).await.unwrap(), b"hi");
     }
 
-    #[test]
-    fn test_to_session_path_workspace_file() {
-        let result = vfs_adapter().to_session_path(Path::new("/workspace/file.txt"));
-        assert_eq!(result, Some("/file.txt".to_string()));
-    }
-
-    #[test]
-    fn test_to_session_path_workspace_nested() {
-        let result = vfs_adapter().to_session_path(Path::new("/workspace/dir/subdir/file.txt"));
-        assert_eq!(result, Some("/dir/subdir/file.txt".to_string()));
-    }
-
-    #[test]
-    fn test_to_session_path_outside_workspace() {
-        let result = vfs_adapter().to_session_path(Path::new("/tmp/file.txt"));
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_to_session_path_home_outside_workspace() {
-        let result = vfs_adapter().to_session_path(Path::new("/home/agent/file.txt"));
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_to_session_path_workspacefoo_invalid() {
-        // /workspacefoo is NOT under /workspace
-        let result = vfs_adapter().to_session_path(Path::new("/workspacefoo"));
-        assert_eq!(result, None);
-    }
-
-    #[test]
-    fn test_to_session_path_relative_path() {
-        // A relative path maps into the workspace mount. `workspace/file.txt`
-        // is a path to a `workspace` subdirectory, not the `/workspace` alias.
-        let result = vfs_adapter().to_session_path(Path::new("workspace/file.txt"));
-        assert_eq!(result, Some("/workspace/file.txt".to_string()));
+    #[tokio::test]
+    async fn adapter_addresses_any_path_from_root() {
+        // The old adapter rejected paths outside `/workspace`; with the root
+        // mount they resolve into the backend instead (write anywhere from root,
+        // still contained by the backend).
+        let adapter = mount_adapter();
+        adapter
+            .write_file(Path::new("/tmp/file.txt"), b"x")
+            .await
+            .unwrap();
+        assert_eq!(adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(), b"x");
     }
 
     // ========================================================================
@@ -1651,7 +1573,9 @@ mod tests {
 
     fn create_context_with_mock_store() -> (ToolContext, SessionId) {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
+        // Wrap in MountFs exactly as production does, so the shell resolves
+        // `/workspace` and the root mount through the same path it uses live.
+        let store = crate::mount_fs::MountFs::wrap(Arc::new(MockFileStore::new()));
         let mut context = ToolContext::new(session_id);
         context.file_store = Some(store);
         (context, session_id)
@@ -1835,80 +1759,56 @@ mod tests {
     }
 
     // ========================================================================
-    // Negative tests - paths outside workspace
+    // Paths outside /workspace resolve into the backend (EVE-660)
     // ========================================================================
+    //
+    // `/workspace` is just the shell's cwd; the root mount makes any path
+    // addressable. A path like `/tmp/x` resolves into the backend rather than
+    // being rejected. For a host-backed store this stays contained under the
+    // store's root (with symlink rejection) — it is never the host `/tmp`.
 
     #[tokio::test]
-    async fn test_bash_write_outside_workspace_fails() {
+    async fn test_bash_write_from_root_succeeds() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool;
 
-        // Try to write to /tmp (outside workspace)
+        // Writing and reading back a path outside /workspace round-trips.
         let result = tool
-            .execute_with_context(json!({"commands": "echo 'hack' > /tmp/evil.txt"}), &context)
+            .execute_with_context(
+                json!({"commands": "echo hi > /tmp/note.txt && cat /tmp/note.txt"}),
+                &context,
+            )
             .await;
 
-        // This should fail because /tmp is outside /workspace
-        if let ToolExecutionResult::ToolError(msg) = result {
-            assert!(
-                msg.contains("outside workspace") || msg.contains("Permission"),
-                "Expected workspace error, got: {}",
-                msg
-            );
-        } else if let ToolExecutionResult::Success(output) = result {
-            // If bashkit doesn't error, the write should silently fail
-            // Let's verify by trying to read it
-            let read_result = tool
-                .execute_with_context(json!({"commands": "cat /tmp/evil.txt"}), &context)
-                .await;
-            // Should not find the file
-            assert!(
-                matches!(read_result, ToolExecutionResult::ToolError(_))
-                    || matches!(&read_result, ToolExecutionResult::Success(o) if o["exit_code"] != 0),
-                "File should not exist outside workspace"
-            );
-            // Also check that /tmp read fails
-            assert!(
-                output["stderr"]
-                    .as_str()
-                    .unwrap_or("")
-                    .contains("Permission")
-                    || output["stderr"]
-                        .as_str()
-                        .unwrap_or("")
-                        .contains("workspace")
-                    || output["exit_code"] != 0,
-                "Write outside workspace should fail or be blocked"
-            );
-        } else {
-            // Either behavior is acceptable - error or silent failure
+        match result {
+            ToolExecutionResult::Success(output) => {
+                assert_eq!(output["exit_code"], 0, "got: {:?}", output);
+                assert_eq!(output["stdout"], "hi\n");
+            }
+            other => panic!("expected success, got: {:?}", other),
         }
     }
 
     #[tokio::test]
-    async fn test_bash_read_outside_workspace_fails() {
+    async fn test_bash_read_missing_file_fails_as_not_found() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool;
 
-        // Try to read from /etc (outside workspace)
+        // A nonexistent path resolves but has no file — `cat` fails with a
+        // non-zero exit, not a containment error.
         let result = tool
             .execute_with_context(json!({"commands": "cat /etc/passwd"}), &context)
             .await;
 
-        // Should fail - either as tool error or with non-zero exit code
         match result {
+            ToolExecutionResult::Success(output) => {
+                assert_ne!(output["exit_code"], 0, "missing file should fail: {:?}", output);
+            }
             ToolExecutionResult::ToolError(msg) => {
                 assert!(
-                    msg.contains("workspace") || msg.contains("not found"),
-                    "Expected workspace error, got: {}",
+                    msg.contains("not found") || msg.contains("No such"),
+                    "got: {}",
                     msg
-                );
-            }
-            ToolExecutionResult::Success(output) => {
-                // Exit code should be non-zero since file doesn't exist
-                assert_ne!(
-                    output["exit_code"], 0,
-                    "Reading /etc/passwd should fail with non-zero exit"
                 );
             }
             _ => panic!("Unexpected result type"),
@@ -1916,37 +1816,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_bash_mkdir_outside_workspace_fails() {
+    async fn test_bash_mkdir_from_root_succeeds() {
         let (context, _) = create_context_with_mock_store();
         let tool = BashTool;
 
-        // Try to create directory in /tmp
         let result = tool
-            .execute_with_context(json!({"commands": "mkdir /tmp/evil_dir"}), &context)
+            .execute_with_context(json!({"commands": "mkdir /tmp/sub && echo done"}), &context)
             .await;
 
-        // Should fail
         match result {
-            ToolExecutionResult::ToolError(msg) => {
-                assert!(
-                    msg.contains("workspace") || msg.contains("Permission"),
-                    "Got: {}",
-                    msg
-                );
-            }
             ToolExecutionResult::Success(output) => {
-                // If it "succeeds", the directory shouldn't actually exist
-                // Or exit code should be non-zero
-                assert!(
-                    output["exit_code"] != 0
-                        || output["stderr"]
-                            .as_str()
-                            .unwrap_or("")
-                            .contains("Permission"),
-                    "mkdir outside workspace should fail"
-                );
+                assert_eq!(output["exit_code"], 0, "got: {:?}", output);
+                assert_eq!(output["stdout"], "done\n");
             }
-            _ => {}
+            other => panic!("expected success, got: {:?}", other),
         }
     }
 
@@ -2046,31 +1929,29 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_adapter_read_outside_workspace_fails() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
+    async fn test_adapter_read_missing_file_is_not_found() {
+        let adapter = mount_adapter();
 
+        // A path outside /workspace resolves but has no file: NotFound, not a
+        // containment rejection.
         let result = adapter.read_file(Path::new("/tmp/file.txt")).await;
-        assert!(result.is_err());
-
         let err = result.unwrap_err();
-        assert!(err.to_string().contains("workspace"));
+        assert!(
+            matches!(&err, bashkit::Error::Io(io) if io.kind() == std::io::ErrorKind::NotFound),
+            "expected NotFound, got: {err}"
+        );
     }
 
     #[tokio::test]
-    async fn test_adapter_write_outside_workspace_fails() {
-        let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
-        let adapter = SessionFileSystemAdapter::new(session_id, store);
+    async fn test_adapter_write_from_root_succeeds() {
+        let adapter = mount_adapter();
 
-        let result = adapter
+        // Writing outside /workspace now resolves into the backend and reads back.
+        adapter
             .write_file(Path::new("/tmp/file.txt"), b"data")
-            .await;
-        assert!(result.is_err());
-
-        let err = result.unwrap_err();
-        assert!(err.to_string().contains("workspace"));
+            .await
+            .unwrap();
+        assert_eq!(adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(), b"data");
     }
 
     #[tokio::test]

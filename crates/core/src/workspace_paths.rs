@@ -207,50 +207,6 @@ impl WorkspacePaths {
         rel_from_path(relative)
     }
 
-    /// Parse an absolute path produced by a shell (bashkit resolves every path
-    /// against cwd before handing it to the filesystem), returning `None` when
-    /// it falls *outside* the workspace mount rather than leniently
-    /// reinterpreting it as workspace-relative.
-    ///
-    /// This preserves the "the shell can only touch the workspace" containment
-    /// while recognizing every accepted spelling of an in-mount path: the
-    /// `/workspace` alias, the configured display prefix, and — crucially for
-    /// real-disk stores — host-absolute paths under the root. The latter is
-    /// what lets a model use the same path with `read_file` and with `cat`.
-    pub fn parse_mounted(&self, input: &str) -> Option<RelPath> {
-        let trimmed = input.trim();
-
-        // The `/workspace` alias / configured display prefix is always in-mount.
-        let stripped = strip_alias_prefix(trimmed, self.display_prefix.as_deref());
-        if !std::ptr::eq(stripped, trimmed) {
-            return rel_from_str(stripped).ok();
-        }
-
-        match self.host_root() {
-            Some(root) => {
-                let candidate = Path::new(trimmed);
-                if candidate.is_absolute() {
-                    // Only host-absolute paths under the root are in the mount.
-                    candidate
-                        .strip_prefix(&root)
-                        .ok()
-                        .and_then(|rel| rel_from_path(rel).ok())
-                } else {
-                    rel_from_str(trimmed).ok()
-                }
-            }
-            None => {
-                // VFS: an absolute path that didn't match the alias is outside
-                // the mount; relative paths map into it.
-                if trimmed.starts_with('/') {
-                    None
-                } else {
-                    rel_from_str(trimmed).ok()
-                }
-            }
-        }
-    }
-
     /// Canonical path → model-facing display string.
     pub fn to_display(&self, path: &RelPath) -> String {
         let root = self.display_root();
@@ -591,49 +547,6 @@ mod tests {
         assert!(wp.to_host(&rel).is_err());
         assert!(wp.spawn_cwd().is_err());
         assert!(wp.set_host_root("/tmp").is_err());
-    }
-
-    #[test]
-    fn parse_mounted_vfs_contains_only_workspace() {
-        let wp = WorkspacePaths::vfs();
-        assert_eq!(
-            wp.parse_mounted("/workspace/src/lib.rs")
-                .unwrap()
-                .to_session_path(),
-            "/src/lib.rs"
-        );
-        assert_eq!(
-            wp.parse_mounted("/workspace").unwrap().to_session_path(),
-            "/"
-        );
-        // Absolute paths outside the alias are outside the mount.
-        assert!(wp.parse_mounted("/tmp/file.txt").is_none());
-        assert!(wp.parse_mounted("/home/agent/x").is_none());
-        assert!(wp.parse_mounted("/workspacefoo").is_none());
-    }
-
-    #[test]
-    fn parse_mounted_host_accepts_host_absolute_and_alias() {
-        let dir = TempDir::new().unwrap();
-        let wp = WorkspacePaths::host(dir.path()).unwrap();
-        let root = std::fs::canonicalize(dir.path()).unwrap();
-
-        // Host-absolute under the root is in-mount (the real-disk fix).
-        assert_eq!(
-            wp.parse_mounted(&root.join("src/lib.rs").display().to_string())
-                .unwrap()
-                .to_session_path(),
-            "/src/lib.rs"
-        );
-        // The `/workspace` alias still works even on a host store.
-        assert_eq!(
-            wp.parse_mounted("/workspace/src/lib.rs")
-                .unwrap()
-                .to_session_path(),
-            "/src/lib.rs"
-        );
-        // Host-absolute outside the root is rejected.
-        assert!(wp.parse_mounted("/etc/passwd").is_none());
     }
 
     #[test]

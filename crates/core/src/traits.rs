@@ -457,6 +457,20 @@ pub trait SessionFileSystem: Send + Sync {
         }
     }
 
+    /// Resolve an input path (any accepted spelling, relative or absolute) to an
+    /// absolute path within this filesystem's namespace. Relative inputs resolve
+    /// against the filesystem's current directory.
+    ///
+    /// This is how a shell seeds its working directory: a resolver like
+    /// [`MountFs`] returns the virtual path (`/workspace/sub`), so the shell and
+    /// the file tools address one namespace without the shell re-implementing
+    /// any `/workspace` handling. The default is the flat VFS session form.
+    ///
+    /// [`MountFs`]: crate::mount_fs::MountFs
+    fn resolve_path(&self, input: &str) -> String {
+        crate::workspace_paths::to_session_path(input)
+    }
+
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -637,6 +651,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn display_path(&self, path: &str) -> String {
         self.inner.display_path(path)
     }
+
+    fn resolve_path(&self, input: &str) -> String {
+        self.inner.resolve_path(input)
+    }
 }
 
 #[async_trait]
@@ -651,6 +669,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn display_path(&self, path: &str) -> String {
         (**self).display_path(path)
+    }
+
+    fn resolve_path(&self, input: &str) -> String {
+        (**self).resolve_path(input)
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
