@@ -394,17 +394,6 @@ impl SystemPromptContext {
         self.model = Some(model.into());
         self
     }
-
-    /// The unified workspace path model for this context (EVE-660), derived from
-    /// the attached file store. Capabilities use this for path display/parsing
-    /// instead of hand-rolling `/workspace` handling. Falls back to the VFS
-    /// model when no file store is wired.
-    pub fn workspace_paths(&self) -> crate::workspace_paths::WorkspacePaths {
-        self.file_store
-            .as_ref()
-            .map(|store| store.workspace_paths())
-            .unwrap_or_default()
-    }
 }
 
 // ============================================================================

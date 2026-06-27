@@ -544,7 +544,7 @@ async fn list_storage(
 fn normalize_path(path: &str) -> String {
     // Single workspace path normalizer (EVE-660): the in-memory VFS shares the
     // same `/workspace`-alias handling as every other backend.
-    everruns_core::workspace_paths::to_session_path(path)
+    everruns_core::session_path::to_session_path(path)
 }
 
 fn root_directory(session_id: SessionId) -> SessionFile {

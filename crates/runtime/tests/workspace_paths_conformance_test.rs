@@ -3,7 +3,7 @@
 //
 // The agent's filesystem is `MountFs` over the workspace backend: `/workspace`
 // is a mount + the default cwd, not a per-store prefix. This proves that
-// `read_file`, `grep_files`, a host-path scanner capability, the bash cwd, and
+// `read_file`, `grep_files`, the on-disk files themselves, the bash cwd, and
 // cwd-relative resolution all agree on the same root — and that repointing the
 // host root (the worktree-switch scenario) moves every surface together while
 // the model-facing namespace stays a stable `/workspace`.
@@ -16,18 +16,6 @@ use everruns_runtime::RealDiskFileStore;
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;
-
-/// Read a path the way a host-path capability (e.g. `repo_map`, `ast_grep`)
-/// would: resolve through the workspace path model to a host path, then scan the
-/// real file. No local `/workspace` stripping.
-fn host_scanner_read(ctx: &ToolContext, input: &str) -> std::io::Result<String> {
-    let paths = ctx.workspace_paths();
-    let rel = paths
-        .parse_input(input)
-        .expect("scanner: parse workspace path");
-    let host = paths.to_host(&rel).expect("scanner: map to host");
-    std::fs::read_to_string(host)
-}
 
 /// Run `pwd` through the bash tool and return the reported working directory.
 async fn bash_pwd(ctx: &ToolContext) -> String {
@@ -85,9 +73,10 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0].path, "/marker.txt");
 
-    // Host-path scanner agrees — and reads from worktree A on disk.
+    // The file is physically on disk under worktree A's root — what a host-path
+    // tool (e.g. ast_grep) shelling out against `backend.root()` would scan.
     assert_eq!(
-        host_scanner_read(&ctx, "/workspace/marker.txt").unwrap(),
+        std::fs::read_to_string(backend.root().join("marker.txt")).unwrap(),
         "ALPHA"
     );
 
@@ -120,18 +109,16 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
     assert_eq!(hits_b.len(), 1);
     assert_eq!(hits_b[0].path, "/marker.txt");
 
+    // The write landed on disk under the new root, not the old one.
     assert_eq!(
-        host_scanner_read(&ctx, "/workspace/marker.txt").unwrap(),
+        std::fs::read_to_string(root_b.join("marker.txt")).unwrap(),
         "BETA"
     );
-
-    // The scanner's host path is under the new root, not the old one.
-    let paths = ctx.workspace_paths();
-    let host_b = paths
-        .to_host(&paths.parse_input("/marker.txt").unwrap())
-        .unwrap();
-    assert!(host_b.starts_with(&root_b));
-    assert!(!host_b.starts_with(&root_a));
+    assert_eq!(
+        std::fs::read_to_string(root_a.join("marker.txt")).unwrap(),
+        "ALPHA",
+        "worktree A is untouched by writes after the switch"
+    );
 
     // The model-facing namespace is unchanged: still /workspace.
     assert_eq!(store.display_root(), "/workspace");
