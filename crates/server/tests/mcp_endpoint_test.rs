@@ -3169,6 +3169,119 @@ async fn test_oauth_register_and_metadata() {
         .assert_status(StatusCode::NOT_FOUND);
 }
 
+/// Build a `/oauth/authorize` query string for `client_id` with fixed,
+/// well-formed PKCE/state values (PKCE is only verified at the token step).
+fn authorize_query_string(client_id: &str) -> String {
+    format!(
+        "/oauth/authorize?client_id={client_id}\
+         &redirect_uri=http://localhost:9999/callback\
+         &response_type=code\
+         &code_challenge=abc123challenge\
+         &code_challenge_method=S256\
+         &state=xyz-state\
+         &scope=mcp"
+    )
+}
+
+/// Pull the hidden `csrf_token` (the signed consent token) out of the rendered
+/// confirmation page.
+fn extract_csrf_token(html: &str) -> String {
+    let needle = r#"name="csrf_token" value=""#;
+    let start = html
+        .find(needle)
+        .expect("confirm page must embed a csrf_token field")
+        + needle.len();
+    let end = html[start..].find('"').expect("csrf_token must be closed");
+    html[start..start + end].to_string()
+}
+
+/// The browser-facing consent step must NOT depend on a second cookie set by
+/// the GET round-tripping to the POST: in real MCP-client browser contexts that
+/// cookie is not reliably stored even though the session cookie is, which
+/// surfaced as a spurious "Missing CSRF cookie" 401. This drives the full
+/// GET -> POST confirm flow without threading any cookie and asserts an
+/// authorization code is issued. (In test/`AuthMode::None` the session is the
+/// anonymous user, so the consent token's `sub` binding still applies.)
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
+    let server = TestServer::in_memory().await;
+    let (client_id, _) = register_oauth_client(&server).await;
+
+    // GET the confirmation page. No cookie is set/threaded by the test client.
+    let page = server.get(&authorize_query_string(&client_id)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+    let csrf_token = extract_csrf_token(&page.text());
+
+    // POST the consent form back with the embedded token but no cookies.
+    let body = format!(
+        "client_id={client_id}\
+         &redirect_uri=http://localhost:9999/callback\
+         &response_type=code\
+         &code_challenge=abc123challenge\
+         &code_challenge_method=S256\
+         &state=xyz-state\
+         &scope=mcp\
+         &csrf_token={csrf_token}"
+    );
+    let resp = server
+        .request_raw(
+            Method::POST,
+            "/oauth/authorize",
+            vec![("content-type", "application/x-www-form-urlencoded")],
+            body.into_bytes(),
+        )
+        .await;
+
+    assert_eq!(
+        resp.status(),
+        StatusCode::SEE_OTHER,
+        "confirm must redirect to the client callback with a code"
+    );
+    let location = resp
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        location.starts_with("http://localhost:9999/callback?"),
+        "unexpected redirect target: {location}"
+    );
+    assert!(location.contains("code="), "redirect must carry a code");
+    assert!(
+        location.contains("state=xyz-state"),
+        "state must round-trip"
+    );
+}
+
+/// A forged/garbage consent token must be rejected — the anti-CSRF guarantee
+/// must survive moving from a cookie to a signed session-bound token.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorize_confirm_rejects_invalid_consent_token() {
+    let server = TestServer::in_memory().await;
+    let (client_id, _) = register_oauth_client(&server).await;
+
+    let body = format!(
+        "client_id={client_id}\
+         &redirect_uri=http://localhost:9999/callback\
+         &response_type=code\
+         &code_challenge=abc123challenge\
+         &code_challenge_method=S256\
+         &state=xyz-state\
+         &scope=mcp\
+         &csrf_token=not-a-valid-token"
+    );
+    let resp = server
+        .request_raw(
+            Method::POST,
+            "/oauth/authorize",
+            vec![("content-type", "application/x-www-form-urlencoded")],
+            body.into_bytes(),
+        )
+        .await;
+
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+}
+
 /// TM-DOS: the unauthenticated dynamic client registration endpoint must be
 /// per-IP rate limited so it cannot be used to create unbounded `oauth_clients`
 /// rows. The in-memory register limit is 5/min; the 6th request from the same

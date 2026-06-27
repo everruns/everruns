@@ -29,10 +29,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use axum_extra::extract::{
-    CookieJar,
-    cookie::{Cookie, SameSite},
-};
+use axum_extra::extract::CookieJar;
 use chrono::{Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -45,7 +42,6 @@ const AUTH_CODE_TTL_SECS: i64 = 300;
 
 /// MCP refresh token lifetime (30 days)
 const MCP_REFRESH_TOKEN_LIFETIME_SECS: i64 = 30 * 24 * 3600;
-const OAUTH_AUTHORIZE_CSRF_COOKIE: &str = "mcp_oauth_authorize_csrf";
 
 /// Generate a random hex string (32 bytes = 64 hex chars)
 fn generate_random_hex() -> String {
@@ -512,14 +508,19 @@ async fn oauth_authorize(
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
 
-    let csrf_token = generate_random_hex();
-    let csrf_cookie = Cookie::build((OAUTH_AUTHORIZE_CSRF_COOKIE, csrf_token.clone()))
-        .path("/")
-        .http_only(true)
-        .secure(true)
-        .same_site(SameSite::Lax)
-        .build();
-    let jar = jar.add(csrf_cookie);
+    // Anti-CSRF: bind the confirmation form to this session with a short-lived
+    // signed consent token instead of a separate cookie. The session cookie
+    // that authenticates the POST reliably round-trips from real MCP-client
+    // browser contexts; a freshly-set second cookie does not always (popup /
+    // embedded webview / partitioned storage), which surfaced as a spurious
+    // "Missing CSRF cookie" 401 on confirm. See `generate_oauth_consent_token`.
+    let csrf_token = state
+        .jwt_service
+        .generate_oauth_consent_token(user.id)
+        .map_err(|e| {
+            tracing::error!("Failed to mint OAuth consent token: {}", e);
+            AuthError::unauthorized("Failed to start authorization")
+        })?;
 
     let confirm_page =
         render_authorize_confirm_page(&query, &client.client_name, &user, &csrf_token);
@@ -534,7 +535,7 @@ async fn oauth_authorize(
         ip,
         serde_json::json!({"client_id": query.client_id}),
     );
-    Ok((jar, Html(confirm_page)).into_response())
+    Ok(Html(confirm_page).into_response())
 }
 
 async fn oauth_authorize_confirm(
@@ -548,11 +549,19 @@ async fn oauth_authorize_confirm(
         .await
         .ok_or_else(|| AuthError::unauthorized("Authentication required"))?;
 
-    let csrf_cookie = jar
-        .get(OAUTH_AUTHORIZE_CSRF_COOKIE)
-        .ok_or_else(|| AuthError::unauthorized("Missing CSRF cookie"))?;
-    if csrf_cookie.value() != form.csrf_token {
-        return Err(AuthError::unauthorized("Invalid CSRF token"));
+    // Anti-CSRF: the consent token must be one this server signed (proves it
+    // originated from our rendered confirm page) and must be bound to the same
+    // user the session authenticates as. Both checks are required: the
+    // signature alone proves issuance, the `sub` match prevents replaying a
+    // token minted for a different session. See `generate_oauth_consent_token`.
+    let consent = state
+        .jwt_service
+        .validate_oauth_consent_token(&form.csrf_token)
+        .map_err(|_| AuthError::unauthorized("Invalid or expired authorization request"))?;
+    if !constant_time_eq(consent.sub.as_bytes(), user.id.to_string().as_bytes()) {
+        return Err(AuthError::unauthorized(
+            "Authorization request user mismatch",
+        ));
     }
 
     if form.response_type != "code" {
@@ -578,8 +587,7 @@ async fn oauth_authorize_confirm(
     validate_authorize_client(&state, &query).await?;
     let redirect_url = issue_authorization_code(&state, &query, &user, ip).await?;
 
-    let jar = jar.remove(Cookie::build(OAUTH_AUTHORIZE_CSRF_COOKIE).path("/"));
-    Ok((jar, Redirect::to(&redirect_url)).into_response())
+    Ok(Redirect::to(&redirect_url).into_response())
 }
 
 async fn validate_authorize_client(
