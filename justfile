@@ -89,7 +89,7 @@ test-integration: start-infra
     # Run tests
     cargo test -p everruns-server --lib
     cargo test -p everruns-server --test api_integration_test -- --test-threads=1
-    cargo test -p everruns-server --test repository_integration_test -- --test-threads=1
+    cargo test -p everruns-server --test repository_integration_test --test repository_conformance_test -- --test-threads=1
     cargo test -p everruns-server \
         --test ag_ui_integration_test \
         --test auth_integration_test \

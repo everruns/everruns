@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use super::memory::InMemoryDatabase;
 use super::models::*;
+use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
 use crate::api::common::Pagination;
 
@@ -705,6 +706,23 @@ impl StorageBackend {
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         dispatch!(self, create_session, input)
+    }
+
+    pub async fn list_reporting_outbox(
+        &self,
+        org_id: i64,
+        source_type: &str,
+        source_id: &str,
+        reason: &str,
+    ) -> Result<Vec<ReportingOutboxRow>> {
+        dispatch!(
+            self,
+            list_reporting_outbox,
+            org_id,
+            source_type,
+            source_id,
+            reason
+        )
     }
 
     /// Record fork provenance on an already-created session

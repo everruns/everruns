@@ -249,6 +249,15 @@ impl InMemoryDatabase {
             None => None,
         };
 
+        self.enqueue_reporting_outbox(
+            entry.org_id,
+            "usage_ledger",
+            &entry.id.to_string(),
+            Some(&entry.id.to_string()),
+            "budget_posting_projection",
+        )
+        .await?;
+
         Ok((entry, updated_budget))
     }
 
