@@ -691,16 +691,6 @@ fn render_authorize_confirm_page(
     user: &AuthUser,
     csrf_token: &str,
 ) -> String {
-    let org = user.organizations.first();
-    let org_name = org
-        .map(|org| org.name.as_str())
-        .unwrap_or("Default Organization");
-    let org_public_id = org
-        .map(|org| org.public_id.as_str())
-        .unwrap_or(everruns_core::DEFAULT_ORG_PUBLIC_ID);
-    let org_role = org
-        .map(|org| org.role.to_string())
-        .unwrap_or_else(|| "owner".to_string());
     let normalized_scope = normalize_scope(&query.scope);
     let cancel_url = build_oauth_redirect_url(
         &query.redirect_uri,
@@ -900,10 +890,6 @@ button {
           <span class="field-value">{user_name} &lt;{user_email}&gt;</span>
         </div>
         <div class="field">
-          <span class="field-label">Organization</span>
-          <span class="field-value">{org_name} ({org_public_id}, {org_role})</span>
-        </div>
-        <div class="field">
           <span class="field-label">Redirect URI</span>
           <span class="field-value">{redirect_uri}</span>
         </div>
@@ -917,11 +903,11 @@ button {
       <ul class="grant-list">
         <li>
           <span class="grant-title">Use Everruns MCP</span>
-          <span class="grant-copy">Call MCP tools and read MCP resources exposed for this organization.</span>
+          <span class="grant-copy">Call MCP tools and read MCP resources across the organizations you can access.</span>
         </li>
         <li>
           <span class="grant-title">Act as your signed-in user</span>
-          <span class="grant-copy">Requests are authorized as {user_name} with your current {org_role} role in {org_name}.</span>
+          <span class="grant-copy">Requests are authorized as {user_name} using your access to each organization you are a member of.</span>
         </li>
         <li>
           <span class="grant-title">Keep a connection token</span>
@@ -954,9 +940,6 @@ button {
         client_id = escape_html(&query.client_id),
         user_name = escape_html(&user.name),
         user_email = escape_html(&user.email),
-        org_name = escape_html(org_name),
-        org_public_id = escape_html(org_public_id),
-        org_role = escape_html(&org_role),
         redirect_uri = escape_html(&query.redirect_uri),
         scope_chips = scope_chips,
         response_type = escape_html(&query.response_type),
@@ -1546,7 +1529,10 @@ mod tests {
         assert!(html.contains("Authorize this MCP client?"));
         assert!(html.contains("<strong>Cursor</strong>"));
         assert!(html.contains("Ava Root &lt;ava@example.com&gt;"));
-        assert!(html.contains("User Personal (org_test, admin)"));
+        // The consent page is intentionally org-free: MCP OAuth tokens are
+        // user-scoped and resolve org per request, so showing a single org
+        // here would be misleading.
+        assert!(!html.contains("Organization"));
         assert!(html.contains("Call MCP tools and read MCP resources"));
         assert!(html.contains("access token and refresh token"));
         assert!(html.contains(r#"<span class="scope">mcp</span>"#));
@@ -1566,7 +1552,6 @@ mod tests {
         let mut user = auth_user_for_render();
         user.name = "Ava \"Root\" <Ops>".to_string();
         user.email = "ava+ops@example.com".to_string();
-        user.organizations[0].name = "Org <One>".to_string();
 
         let html = render_authorize_confirm_page(
             &query,
@@ -1579,7 +1564,6 @@ mod tests {
         assert!(html.contains("Cursor &lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt;"));
         assert!(html.contains("client_&lt;id&gt;"));
         assert!(html.contains("Ava &quot;Root&quot; &lt;Ops&gt;"));
-        assert!(html.contains("Org &lt;One&gt;"));
         assert!(html.contains("custom&lt;scope&gt;"));
         assert!(html.contains("csrf&amp;token"));
         assert!(html.contains("next=%3Cbad%3E&amp;ok=1&amp;error=access_denied&amp;state=a%26b"));
