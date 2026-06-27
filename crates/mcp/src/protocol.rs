@@ -137,13 +137,12 @@ pub fn session_id_from_headers(headers: &BTreeMap<String, String>) -> Option<Str
 pub fn looks_like_handshake_required(status: u16, body: &str) -> bool {
     let lower = body.to_ascii_lowercase();
     // HTTP-level signals from servers that reject session-less requests.
-    if matches!(status, 400 | 404 | 405 | 409 | 426) {
-        if lower.contains("session")
+    if matches!(status, 400 | 404 | 405 | 409 | 426)
+        && (lower.contains("session")
             || lower.contains("initialize")
-            || lower.contains("mcp-session-id")
-        {
-            return true;
-        }
+            || lower.contains("mcp-session-id"))
+    {
+        return true;
     }
     // JSON-RPC-level signals (may arrive on a 200).
     lower.contains("server not initialized")

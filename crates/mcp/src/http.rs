@@ -169,6 +169,7 @@ async fn do_handshake(
 
 /// Send an already-built operation body under a negotiated protocol, attaching
 /// routable headers and the session id when stateful.
+#[allow(clippy::too_many_arguments)]
 async fn send_op(
     egress: &dyn EgressService,
     url: &str,
