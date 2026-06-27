@@ -650,7 +650,7 @@ jobs:
         run: cargo test -p everruns-server --lib
 
       - name: Run server integration tests (API + repository)
-        run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test -- --test-threads=1
+        run: cargo test -p everruns-server --test api_integration_test --test repository_integration_test --test repository_conformance_test -- --test-threads=1
 
       # Blob-offload suite against the in-memory object_store backend (no S3
       # container). Exercises the same offload code paths the S3 job covers,

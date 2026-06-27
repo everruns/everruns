@@ -1,16 +1,12 @@
 // In-memory storage: Events
 
 use super::super::models::*;
+use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{EventId, SessionId};
 use uuid::Uuid;
-
-/// Safety cap for otherwise-unbounded full-history message reads. Mirrors the
-/// Postgres backend's `MESSAGE_SAFETY_LIMIT` so both backends bound the
-/// no-explicit-limit paths identically.
-pub(crate) const MESSAGE_SAFETY_LIMIT: usize = 5_000;
 
 impl InMemoryDatabase {
     // ============================================
@@ -42,6 +38,20 @@ impl InMemoryDatabase {
             created_at: now,
         };
         self.events.write().insert(id, row.clone());
+        let org_id = {
+            let sessions = self.sessions.read();
+            sessions.get(&row.session_id).map(|session| session.org_id)
+        };
+        if let Some(org_id) = org_id {
+            self.enqueue_reporting_outbox(
+                org_id,
+                "event",
+                &row.id.uuid().to_string(),
+                Some(&row.id.uuid().to_string()),
+                "event_projection",
+            )
+            .await?;
+        }
         Ok(row)
     }
 
@@ -387,10 +397,9 @@ impl InMemoryDatabase {
         } else if limit.is_some() {
             result.clear();
         } else if result.len() > MESSAGE_SAFETY_LIMIT {
-            // No explicit limit: cap to the most recent N rows, matching the
+            // No explicit limit: cap to the earliest N rows, matching the
             // Postgres backend's safety cap on this path.
-            let len = result.len();
-            result = result.split_off(len - MESSAGE_SAFETY_LIMIT);
+            result.truncate(MESSAGE_SAFETY_LIMIT);
         }
         Ok(result)
     }

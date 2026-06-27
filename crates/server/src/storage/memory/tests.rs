@@ -614,7 +614,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
     // result set from the (offset=None, limit=None) full-history branch. The
     // cap keeps the most recent N rows so the prompt window stays anchored to
     // recent history.
-    let cap = super::events::MESSAGE_SAFETY_LIMIT;
+    let cap = crate::storage::repository::MESSAGE_SAFETY_LIMIT;
     let total = cap + 25;
 
     let db = InMemoryDatabase::new();

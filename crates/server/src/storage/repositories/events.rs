@@ -1,6 +1,7 @@
 // PostgreSQL repository: Events (source of truth for messages)
 
 use super::super::models::*;
+use super::super::repository::MESSAGE_SAFETY_LIMIT;
 use super::Database;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
@@ -61,8 +62,6 @@ fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &Lis
 /// both `list_message_events_limited` (no explicit limit) and the
 /// `(offset=None, limit=None)` branch of `list_message_events_filtered`, so
 /// neither path can materialize an unbounded result set for a huge session.
-const MESSAGE_SAFETY_LIMIT: i64 = 5_000;
-
 impl Database {
     // ============================================
     // Events (source of truth for messages)
@@ -522,7 +521,7 @@ impl Database {
                 "#,
             )
             .bind(session_id.uuid())
-            .bind(MESSAGE_SAFETY_LIMIT)
+            .bind(MESSAGE_SAFETY_LIMIT as i64)
             .fetch_all(&self.pool)
             .await?
         };
@@ -705,7 +704,8 @@ impl Database {
                 // path (line ~508). Callers wanting a precise window pass an
                 // explicit limit, which takes the bounded branches above.
                 sql.push_str(&format!(
-                    " ORDER BY sequence DESC LIMIT {MESSAGE_SAFETY_LIMIT}"
+                    " ORDER BY sequence DESC LIMIT {}",
+                    MESSAGE_SAFETY_LIMIT
                 ));
                 needs_reverse = true;
             }

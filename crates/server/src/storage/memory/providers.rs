@@ -101,7 +101,7 @@ impl InMemoryDatabase {
             .filter(|p| p.org_id == org_id)
             .cloned()
             .collect();
-        result.sort_by_key(|provider| provider.name.clone());
+        result.sort_by_key(|provider| std::cmp::Reverse(provider.created_at));
         Ok(result)
     }
 
