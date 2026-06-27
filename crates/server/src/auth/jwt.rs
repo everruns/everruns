@@ -22,6 +22,27 @@ pub const ACCESS_TOKEN_TYPE: &str = "access";
 /// closes the OAuth confused-deputy / missing-audience gap (TM-MCP-006).
 pub const MCP_ACCESS_TOKEN_TYPE: &str = "mcp_access";
 
+/// `token_type` claim value for the short-lived MCP OAuth consent (anti-CSRF)
+/// token embedded in the `/oauth/authorize` confirmation form.
+///
+/// The browser-facing consent step must guarantee that the POST which mints an
+/// authorization code was driven by a form this server rendered for the
+/// signed-in user — not auto-submitted by a malicious page. That was previously
+/// enforced with a freshly-set `SameSite=Lax` cookie that had to round-trip
+/// from the rendered form back to the POST. In real MCP-client browser contexts
+/// (popup / embedded webview / partitioned third-party storage) that second
+/// cookie is not reliably stored, while the pre-existing session cookie still
+/// rides along — so the POST authenticated the user yet failed with "Missing
+/// CSRF cookie". Binding the anti-CSRF token to the session instead (a signed
+/// token whose `sub` must equal the POSTing user) removes the dependency on
+/// that second cookie while keeping the CSRF guarantee: an attacker cannot mint
+/// a token for the victim without the server secret.
+pub const OAUTH_CONSENT_TOKEN_TYPE: &str = "mcp_oauth_consent";
+
+/// Lifetime of the MCP OAuth consent token (30 minutes) — i.e. how long a
+/// rendered `/oauth/authorize` confirmation page stays submittable.
+const OAUTH_CONSENT_TOKEN_LIFETIME_SECS: i64 = 30 * 60;
+
 /// Generate a random identifier string (32 hex characters)
 fn generate_random_id() -> String {
     let mut rng = rand::rng();
@@ -67,6 +88,21 @@ pub struct RefreshTokenClaims {
     pub iat: i64,
     /// Unique token ID (for revocation)
     pub jti: String,
+}
+
+/// Claims for the short-lived MCP OAuth consent (anti-CSRF) token embedded in
+/// the `/oauth/authorize` confirmation form. See [`OAUTH_CONSENT_TOKEN_TYPE`].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OAuthConsentClaims {
+    /// Subject (user ID) the consent form was rendered for. The POST handler
+    /// must confirm this equals the authenticated session user.
+    pub sub: String,
+    /// Token type — always [`OAUTH_CONSENT_TOKEN_TYPE`].
+    pub token_type: String,
+    /// Expiration time (Unix timestamp).
+    pub exp: i64,
+    /// Issued at (Unix timestamp).
+    pub iat: i64,
 }
 
 /// Token pair returned after successful authentication
@@ -248,6 +284,49 @@ impl JwtService {
             Some(aud) if aud == expected_resource => Ok(token_data.claims),
             _ => anyhow::bail!("MCP access token audience mismatch"),
         }
+    }
+
+    /// Generate a short-lived signed consent token binding the
+    /// `/oauth/authorize` confirmation form to `user_id`.
+    ///
+    /// Embedded as a hidden form field and re-validated on POST against the
+    /// authenticated session user (anti-CSRF). Replaces the previous
+    /// freshly-set cookie that did not reliably round-trip from real MCP-client
+    /// browser contexts — see [`OAUTH_CONSENT_TOKEN_TYPE`].
+    pub fn generate_oauth_consent_token(&self, user_id: Uuid) -> Result<String> {
+        let now = Utc::now();
+        let exp = now + Duration::seconds(OAUTH_CONSENT_TOKEN_LIFETIME_SECS);
+
+        let claims = OAuthConsentClaims {
+            sub: user_id.to_string(),
+            token_type: OAUTH_CONSENT_TOKEN_TYPE.to_string(),
+            exp: exp.timestamp(),
+            iat: now.timestamp(),
+        };
+
+        encode(&Header::default(), &claims, &self.encoding_key)
+            .context("Failed to encode OAuth consent token")
+    }
+
+    /// Validate and decode an OAuth consent token minted by
+    /// [`generate_oauth_consent_token`].
+    ///
+    /// Checks the signature, expiry, and token type. The caller MUST additionally
+    /// confirm the returned `sub` matches the authenticated session user — the
+    /// signature alone only proves this server issued the token, not for whom.
+    pub fn validate_oauth_consent_token(&self, token: &str) -> Result<OAuthConsentClaims> {
+        let mut validation = Validation::default();
+        validation.validate_exp = true;
+        validation.validate_aud = false;
+
+        let token_data = decode::<OAuthConsentClaims>(token, &self.decoding_key, &validation)
+            .context("Invalid OAuth consent token")?;
+
+        if token_data.claims.token_type != OAUTH_CONSENT_TOKEN_TYPE {
+            anyhow::bail!("Invalid token type for OAuth consent");
+        }
+
+        Ok(token_data.claims)
     }
 
     /// Validate and decode a refresh token
@@ -455,6 +534,47 @@ mod tests {
                 .validate_mcp_access_token(&token, "https://evil.example.com/mcp")
                 .is_err(),
             "MCP token must be bound to its audience"
+        );
+    }
+
+    #[test]
+    fn test_oauth_consent_token_roundtrips_and_binds_user() {
+        let service = JwtService::new(test_config());
+        let user_id = Uuid::from_u128(0x1234_5678);
+
+        let token = service.generate_oauth_consent_token(user_id).unwrap();
+        let claims = service.validate_oauth_consent_token(&token).unwrap();
+
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.token_type, OAUTH_CONSENT_TOKEN_TYPE);
+    }
+
+    #[test]
+    fn test_oauth_consent_token_rejects_other_token_types() {
+        // A regular access token must not be accepted as a consent token, and a
+        // consent token must not be accepted on the general access path.
+        let service = JwtService::new(test_config());
+        let access = service
+            .generate_access_token(Uuid::nil(), "u@example.com", "U", &["user".to_string()])
+            .unwrap();
+        assert!(service.validate_oauth_consent_token(&access).is_err());
+
+        let consent = service.generate_oauth_consent_token(Uuid::nil()).unwrap();
+        assert!(service.validate_access_token(&consent).is_err());
+    }
+
+    #[test]
+    fn test_oauth_consent_token_rejected_under_wrong_secret() {
+        let issuer = JwtService::new(test_config());
+        let token = issuer.generate_oauth_consent_token(Uuid::nil()).unwrap();
+
+        let attacker = JwtService::new(JwtConfig {
+            secret: "a-totally-different-secret".to_string(),
+            ..test_config()
+        });
+        assert!(
+            attacker.validate_oauth_consent_token(&token).is_err(),
+            "consent token must not validate under a different signing secret"
         );
     }
 
