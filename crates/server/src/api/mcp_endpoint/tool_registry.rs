@@ -11,7 +11,7 @@ use everruns_core::McpToolAnnotations;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-const MCP_PROTOCOL_VERSION_LATEST: &str = "2025-06-18";
+use super::supports_rich_tool_shape;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,9 +55,10 @@ pub fn tool_definitions(
         execute_tool(protocol_version, org_id_description),
     ];
     // Entity cards (specs/mcp-cards.md) require `text/html` embedded
-    // resources and tool annotations introduced in MCP 2025-06-18. Older
-    // clients negotiate the fallback protocol and don't see card tools.
-    if protocol_version == MCP_PROTOCOL_VERSION_LATEST {
+    // resources and tool annotations introduced in MCP 2025-06-18 (and carried
+    // forward in 2026-07-28). Older clients negotiate the fallback protocol and
+    // don't see card tools.
+    if supports_rich_tool_shape(protocol_version) {
         tools.push(agent_get_card_tool(protocol_version, org_id_description));
     }
     tools
@@ -514,7 +515,7 @@ fn tool(
     annotations: Option<McpToolAnnotations>,
     timeout_ms: u64,
 ) -> McpEndpointToolDefinition {
-    let supports_2025_06 = protocol_version == MCP_PROTOCOL_VERSION_LATEST;
+    let supports_2025_06 = supports_rich_tool_shape(protocol_version);
     McpEndpointToolDefinition {
         name: name.to_string(),
         title: supports_2025_06.then(|| title.to_string()),

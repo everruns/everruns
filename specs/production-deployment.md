@@ -123,6 +123,15 @@ See [`specs/correlation-ids.md`](./correlation-ids.md) for the `X-Request-ID` co
 - OAuth discovery metadata stays at root: `/.well-known/oauth-authorization-server`
 - If the UI is deployed separately, it still must target the same public `/api` base and root-level `/oauth/*`, `/mcp`
 
+### MCP Endpoint Scaling
+
+`/mcp` is stateless request/response per JSON-RPC call (see [`specs/mcp.md`](./mcp.md)). It satisfies the MCP `2026-07-28` stateless model out of the box:
+
+- **No sticky sessions, no shared session store.** There is no `Mcp-Session-Id` and no server-side per-connection state, so any MCP request can route to any backend instance. Plain round-robin behind any load balancer is sufficient; horizontal scaling is "add instances."
+- **All state is in PostgreSQL** (sessions, OAuth clients/tokens, MCP server configs). Instances share one source of truth, so there are no read-after-write affinity requirements at the proxy.
+- **Routing headers are honored, not required.** When clients send the `2026-07-28` `Mcp-Method` / `Mcp-Name` headers, gateways/load-balancers/rate-limiters may route and throttle on them without parsing the JSON-RPC body. The body stays authoritative; the server rejects a header that disagrees with the body. Proxies that forward these headers unchanged enable body-free routing but are not mandatory.
+- **SSE buffering.** `tools/call` responses may carry SSE-framed results from remote MCP servers; keep proxy buffering disabled on the `/mcp` route as for `/api/*`.
+
 Canonical references:
 - [`specs/apis.md`](./apis.md)
 - [`specs/mcp.md`](./mcp.md)

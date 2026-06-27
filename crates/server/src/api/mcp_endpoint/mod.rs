@@ -16,7 +16,13 @@
 //   extractors accept personal access tokens and resource-bound MCP OAuth tokens
 //   (validate_mcp_token), plus anonymous in no-auth mode — never a regular
 //   session/access JWT or cookie. Org context resolves the same as session auth.
-// - No MCP session state — stateless request/response per JSON-RPC call
+// - No MCP session state — stateless request/response per JSON-RPC call.
+//   This already satisfies the MCP 2026-07-28 stateless model (no
+//   `Mcp-Session-Id`, no sticky sessions); any request can hit any instance.
+// - Protocol versions: 2026-07-28, 2025-06-18, 2025-03-26 (fallback). 2026
+//   dropped the `initialize` handshake — client info rides in per-request
+//   `_meta` and routing rides in `Mcp-Method`/`Mcp-Name` headers — but we keep
+//   `initialize` for older clients since it creates no server state either way.
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
 mod cards;
@@ -127,9 +133,26 @@ impl JsonRpcResponse {
 const MCP_SERVER_NAME: &str = "everruns";
 const MCP_SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 const MCP_PROTOCOL_VERSION_FALLBACK: &str = "2025-03-26";
-const MCP_PROTOCOL_VERSION_LATEST: &str = "2025-06-18";
-const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
-    &[MCP_PROTOCOL_VERSION_LATEST, MCP_PROTOCOL_VERSION_FALLBACK];
+const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
+const MCP_PROTOCOL_VERSION_LATEST: &str = "2026-07-28";
+// Newest first — negotiation and the "supported" error message both rely on
+// this ordering reading high-to-low.
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
+    MCP_PROTOCOL_VERSION_LATEST,
+    MCP_PROTOCOL_VERSION_2025_06,
+    MCP_PROTOCOL_VERSION_FALLBACK,
+];
+
+/// The richer tool shape introduced in MCP 2025-06-18 — `title`,
+/// `outputSchema`, `structuredContent`, and entity-card tools — applies to
+/// that version and every later one (2026-07-28 is a superset). Only the
+/// 2025-03-26 fallback omits it.
+pub(crate) fn supports_rich_tool_shape(protocol_version: &str) -> bool {
+    matches!(
+        protocol_version,
+        MCP_PROTOCOL_VERSION_2025_06 | MCP_PROTOCOL_VERSION_LATEST
+    )
+}
 
 const ORG_ID_DESCRIPTION: &str = "Optional organization ID (format: org_{32-hex}). MCP has no current-organization switch; pass this on each org-scoped call to override the default organization. Use list_organizations to see available orgs.";
 
@@ -152,11 +175,27 @@ fn find_tool_definition(
 }
 
 fn negotiate_protocol_version(requested: Option<&str>) -> &'static str {
-    match requested {
-        Some(MCP_PROTOCOL_VERSION_FALLBACK) => MCP_PROTOCOL_VERSION_FALLBACK,
-        Some(version) if version < MCP_PROTOCOL_VERSION_LATEST => MCP_PROTOCOL_VERSION_FALLBACK,
-        Some(_) => MCP_PROTOCOL_VERSION_LATEST,
-        None => MCP_PROTOCOL_VERSION_FALLBACK,
+    let Some(requested) = requested else {
+        return MCP_PROTOCOL_VERSION_FALLBACK;
+    };
+    // Echo a version we support exactly.
+    if let Some(version) = SUPPORTED_PROTOCOL_VERSIONS
+        .iter()
+        .copied()
+        .find(|&v| v == requested)
+    {
+        return version;
+    }
+    // Unknown version: offer the newest version we support that is not newer
+    // than what the client asked for. The date-string ordering is
+    // lexicographic-safe (YYYY-MM-DD). A client ahead of us gets our latest
+    // and decides whether to proceed.
+    if requested > MCP_PROTOCOL_VERSION_LATEST {
+        MCP_PROTOCOL_VERSION_LATEST
+    } else if requested > MCP_PROTOCOL_VERSION_2025_06 {
+        MCP_PROTOCOL_VERSION_2025_06
+    } else {
+        MCP_PROTOCOL_VERSION_FALLBACK
     }
 }
 
@@ -167,16 +206,75 @@ fn protocol_version_from_headers(headers: &HeaderMap) -> Result<&'static str, St
             let version = value
                 .to_str()
                 .map_err(|_| "Invalid MCP-Protocol-Version header".to_string())?;
-            match version {
-                MCP_PROTOCOL_VERSION_FALLBACK => Ok(MCP_PROTOCOL_VERSION_FALLBACK),
-                MCP_PROTOCOL_VERSION_LATEST => Ok(MCP_PROTOCOL_VERSION_LATEST),
-                _ => Err(format!(
-                    "Unsupported MCP-Protocol-Version: {version}. Supported: {}",
-                    SUPPORTED_PROTOCOL_VERSIONS.join(", ")
-                )),
-            }
+            SUPPORTED_PROTOCOL_VERSIONS
+                .iter()
+                .copied()
+                .find(|&v| v == version)
+                .ok_or_else(|| {
+                    format!(
+                        "Unsupported MCP-Protocol-Version: {version}. Supported: {}",
+                        SUPPORTED_PROTOCOL_VERSIONS.join(", ")
+                    )
+                })
         }
     }
+}
+
+/// MCP 2026-07-28 removed the `initialize`/`initialized` handshake (SEP-2575):
+/// protocol version, client info, and capabilities now ride on every request.
+/// Client info arrives in `params._meta["io.modelcontextprotocol/clientInfo"]`.
+/// The endpoint is stateless and stores nothing — we surface it for telemetry
+/// only. Returns `(name, version)`, defaulting either field to `"unknown"`.
+fn client_info_from_params(params: &Value) -> Option<(String, String)> {
+    let info = params
+        .get("_meta")
+        .and_then(|meta| meta.get("io.modelcontextprotocol/clientInfo"))?;
+    let name = info
+        .get("name")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    let version = info
+        .get("version")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown")
+        .to_string();
+    Some((name, version))
+}
+
+/// MCP 2026-07-28 Streamable HTTP adds the `Mcp-Method` and `Mcp-Name` request
+/// headers (SEP) so load balancers, gateways, and rate-limiters can route on
+/// the operation without parsing the JSON-RPC body. They are optional and the
+/// body stays authoritative, but when a client sends them they MUST agree with
+/// the body — a disagreement is a request-smuggling signal, so we reject it.
+fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result<(), String> {
+    if let Some(value) = headers.get("Mcp-Method") {
+        let header_method = value
+            .to_str()
+            .map_err(|_| "Invalid Mcp-Method header".to_string())?;
+        if header_method != req.method {
+            return Err(format!(
+                "Mcp-Method header ({header_method}) does not match request method ({})",
+                req.method
+            ));
+        }
+    }
+    if let Some(value) = headers.get("Mcp-Name") {
+        let header_name = value
+            .to_str()
+            .map_err(|_| "Invalid Mcp-Name header".to_string())?;
+        // `Mcp-Name` identifies the specific tool/resource/prompt. We can only
+        // cross-check it on `tools/call`, where the body carries `params.name`.
+        if req.method == "tools/call"
+            && let Some(body_name) = req.params.get("name").and_then(Value::as_str)
+            && body_name != header_name
+        {
+            return Err(format!(
+                "Mcp-Name header ({header_name}) does not match tool name ({body_name})"
+            ));
+        }
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -461,6 +559,27 @@ async fn handle_mcp(
             "Invalid Request: jsonrpc must be \"2.0\"",
         ))
         .into_response();
+    }
+
+    // MCP 2026-07-28 routing headers: optional, but must agree with the body.
+    if let Err(msg) = validate_routing_headers(&headers, &req) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(JsonRpcResponse::error(req.id, -32600, msg)),
+        )
+            .into_response();
+    }
+
+    // MCP 2026-07-28 carries client info in `_meta` on every request instead of
+    // a once-per-connection `initialize`. Surface it for telemetry; we store
+    // nothing.
+    if let Some((name, version)) = client_info_from_params(&req.params) {
+        tracing::debug!(
+            mcp.client.name = %name,
+            mcp.client.version = %version,
+            mcp.method = %req.method,
+            "MCP request client info"
+        );
     }
 
     let response = match req.method.as_str() {
@@ -828,13 +947,12 @@ async fn handle_tools_call(
 
     match result {
         Ok(content) => {
-            let structured_content = if _protocol_version == MCP_PROTOCOL_VERSION_LATEST
-                && tool_def.has_output_schema()
-            {
-                serde_json::from_str::<Value>(&content).ok()
-            } else {
-                None
-            };
+            let structured_content =
+                if supports_rich_tool_shape(_protocol_version) && tool_def.has_output_schema() {
+                    serde_json::from_str::<Value>(&content).ok()
+                } else {
+                    None
+                };
 
             let mut result = json!({
                 "content": [{ "type": "text", "text": content }]
@@ -1874,5 +1992,184 @@ mod resources_read_policy_tests {
             matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("agent.view")),
             "expected Forbidden(agent.view), got {err:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod protocol_version_tests {
+    use super::*;
+
+    #[test]
+    fn negotiate_echoes_each_supported_version() {
+        assert_eq!(
+            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_LATEST)),
+            MCP_PROTOCOL_VERSION_LATEST
+        );
+        assert_eq!(
+            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_2025_06)),
+            MCP_PROTOCOL_VERSION_2025_06
+        );
+        assert_eq!(
+            negotiate_protocol_version(Some(MCP_PROTOCOL_VERSION_FALLBACK)),
+            MCP_PROTOCOL_VERSION_FALLBACK
+        );
+    }
+
+    #[test]
+    fn negotiate_missing_version_falls_back() {
+        assert_eq!(
+            negotiate_protocol_version(None),
+            MCP_PROTOCOL_VERSION_FALLBACK
+        );
+    }
+
+    #[test]
+    fn negotiate_future_version_offers_latest() {
+        // A client newer than us gets our latest and decides what to do.
+        assert_eq!(
+            negotiate_protocol_version(Some("2099-01-01")),
+            MCP_PROTOCOL_VERSION_LATEST
+        );
+    }
+
+    #[test]
+    fn negotiate_in_between_version_picks_highest_supported_below() {
+        // Between 2025-06-18 and 2026-07-28 → 2025-06-18.
+        assert_eq!(
+            negotiate_protocol_version(Some("2025-12-01")),
+            MCP_PROTOCOL_VERSION_2025_06
+        );
+        // Below the floor → fallback.
+        assert_eq!(
+            negotiate_protocol_version(Some("2024-01-01")),
+            MCP_PROTOCOL_VERSION_FALLBACK
+        );
+    }
+
+    #[test]
+    fn header_accepts_supported_versions() {
+        for version in SUPPORTED_PROTOCOL_VERSIONS {
+            let mut headers = HeaderMap::new();
+            headers.insert("MCP-Protocol-Version", version.parse().unwrap());
+            assert_eq!(protocol_version_from_headers(&headers), Ok(*version));
+        }
+    }
+
+    #[test]
+    fn header_missing_falls_back() {
+        let headers = HeaderMap::new();
+        assert_eq!(
+            protocol_version_from_headers(&headers),
+            Ok(MCP_PROTOCOL_VERSION_FALLBACK)
+        );
+    }
+
+    #[test]
+    fn header_unsupported_version_is_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.insert("MCP-Protocol-Version", "2099-01-01".parse().unwrap());
+        let err = protocol_version_from_headers(&headers).expect_err("must reject");
+        assert!(err.contains("Unsupported"));
+        assert!(err.contains(MCP_PROTOCOL_VERSION_LATEST));
+    }
+
+    #[test]
+    fn rich_tool_shape_gated_by_version() {
+        assert!(supports_rich_tool_shape(MCP_PROTOCOL_VERSION_LATEST));
+        assert!(supports_rich_tool_shape(MCP_PROTOCOL_VERSION_2025_06));
+        assert!(!supports_rich_tool_shape(MCP_PROTOCOL_VERSION_FALLBACK));
+    }
+
+    #[test]
+    fn card_tools_present_for_2026_absent_for_fallback() {
+        let names = |version| {
+            tool_definitions(version)
+                .into_iter()
+                .map(|t| t.name)
+                .collect::<Vec<_>>()
+        };
+        assert!(names(MCP_PROTOCOL_VERSION_LATEST).contains(&"agent_get_card".to_string()));
+        assert!(names(MCP_PROTOCOL_VERSION_2025_06).contains(&"agent_get_card".to_string()));
+        assert!(!names(MCP_PROTOCOL_VERSION_FALLBACK).contains(&"agent_get_card".to_string()));
+    }
+
+    #[test]
+    fn client_info_parsed_from_meta() {
+        let params = json!({
+            "_meta": {
+                "io.modelcontextprotocol/clientInfo": { "name": "my-app", "version": "1.2.3" }
+            }
+        });
+        assert_eq!(
+            client_info_from_params(&params),
+            Some(("my-app".to_string(), "1.2.3".to_string()))
+        );
+    }
+
+    #[test]
+    fn client_info_defaults_missing_fields() {
+        let params = json!({
+            "_meta": { "io.modelcontextprotocol/clientInfo": {} }
+        });
+        assert_eq!(
+            client_info_from_params(&params),
+            Some(("unknown".to_string(), "unknown".to_string()))
+        );
+    }
+
+    #[test]
+    fn client_info_absent_returns_none() {
+        assert_eq!(client_info_from_params(&json!({})), None);
+    }
+
+    fn req(method: &str, params: Value) -> JsonRpcRequest {
+        JsonRpcRequest {
+            jsonrpc: "2.0".to_string(),
+            id: Some(json!(1)),
+            method: method.to_string(),
+            params,
+        }
+    }
+
+    #[test]
+    fn routing_headers_absent_is_ok() {
+        let headers = HeaderMap::new();
+        assert!(validate_routing_headers(&headers, &req("tools/list", json!({}))).is_ok());
+    }
+
+    #[test]
+    fn routing_headers_matching_is_ok() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Method", "tools/call".parse().unwrap());
+        headers.insert("Mcp-Name", "agent_run".parse().unwrap());
+        let request = req("tools/call", json!({ "name": "agent_run" }));
+        assert!(validate_routing_headers(&headers, &request).is_ok());
+    }
+
+    #[test]
+    fn routing_header_method_mismatch_is_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Method", "tools/list".parse().unwrap());
+        let err = validate_routing_headers(&headers, &req("tools/call", json!({})))
+            .expect_err("mismatch must reject");
+        assert!(err.contains("Mcp-Method"));
+    }
+
+    #[test]
+    fn routing_header_name_mismatch_is_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Name", "discover".parse().unwrap());
+        let request = req("tools/call", json!({ "name": "agent_run" }));
+        let err =
+            validate_routing_headers(&headers, &request).expect_err("name mismatch must reject");
+        assert!(err.contains("Mcp-Name"));
+    }
+
+    #[test]
+    fn routing_header_name_ignored_for_non_tools_call() {
+        // `Mcp-Name` only cross-checks against `tools/call` bodies.
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Name", "anything".parse().unwrap());
+        assert!(validate_routing_headers(&headers, &req("tools/list", json!({}))).is_ok());
     }
 }
