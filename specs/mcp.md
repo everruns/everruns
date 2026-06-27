@@ -208,10 +208,12 @@ Authorization endpoint. Redirects to login when no session cookie is present.
 
 The confirmation page is rendered by the backend because `/oauth/*` routes are
 root-level OAuth endpoints, not frontend application routes. It shows the
-registered client name and client ID, signed-in user, selected organization,
-redirect URI, requested scope, and the concrete MCP access being granted.
-Canceling redirects back to the registered redirect URI with
-`error=access_denied` and the original `state`.
+registered client name and client ID, signed-in user, redirect URI, requested
+scope, and the concrete MCP access being granted. It deliberately shows no
+organization: MCP OAuth tokens are user-scoped (the access token carries no
+`org_id`) and resolve org per request, so naming a single org on the consent
+page would misrepresent the grant. Canceling redirects back to the registered
+redirect URI with `error=access_denied` and the original `state`.
 
 Authorization codes: random 32-byte hex, 5-minute TTL, one-time use, stored with PKCE challenge.
 
