@@ -1145,6 +1145,7 @@ mod tests {
                     url: "https://example.com/mcp".into(),
                     transport_type: McpServerTransportType::Http,
                     auth_mode: Some(McpServerAuthMode::None),
+                    protocol_mode: None,
                     api_key: Some("secret".into()),
                     headers: None,
                 },
