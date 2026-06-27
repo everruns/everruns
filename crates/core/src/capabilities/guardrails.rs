@@ -306,11 +306,15 @@ async fn run_judge_check(
         }
     };
 
-    // Parse the verdict from the first JSON-like fragment in the response.
     let text = response.text.trim();
-    let start = text.find('{').unwrap_or(0);
-    let end = text.rfind('}').map(|i| i + 1).unwrap_or(text.len());
-    let fragment = &text[start..end];
+    let Some(fragment) = json_like_fragment(text) else {
+        tracing::warn!(
+            check = %check.label,
+            raw = %text,
+            "guardrails: judge response missing JSON fragment, failing open"
+        );
+        return None;
+    };
 
     match serde_json::from_str::<serde_json::Value>(fragment) {
         Ok(v) if v.get("verdict").and_then(|v| v.as_str()) == Some("block") => {
@@ -448,6 +452,13 @@ fn truncate_on_char_boundary(content: &str, cap: usize) -> &str {
     &content[..end]
 }
 
+/// Extract the first JSON-like object fragment from `text`.
+fn json_like_fragment(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let end = text.rfind('}')?.checked_add(1)?;
+    (start < end).then(|| &text[start..end])
+}
+
 /// Parse a `{"verdict":"allow"|"block","reason":"..."}` verdict out of a JSON
 /// value (or a string holding such JSON). Mirrors the judge verdict shape.
 /// Returns `Some(Block)` on an explicit block verdict, `Some(Log)` for allow /
@@ -459,9 +470,14 @@ fn parse_verdict(value: &serde_json::Value, label: &str) -> Option<GuardrailActi
     let verdict_obj = match value {
         serde_json::Value::String(s) => {
             let text = s.trim();
-            let start = text.find('{').unwrap_or(0);
-            let end = text.rfind('}').map(|i| i + 1).unwrap_or(text.len());
-            match serde_json::from_str::<serde_json::Value>(&text[start..end]) {
+            let Some(fragment) = json_like_fragment(text) else {
+                tracing::warn!(
+                    check = %label,
+                    "guardrails: mcp response missing JSON fragment, failing open"
+                );
+                return None;
+            };
+            match serde_json::from_str::<serde_json::Value>(fragment) {
                 Ok(v) => {
                     parsed_owned = v;
                     &parsed_owned
@@ -1133,6 +1149,12 @@ mod tests {
                 response: r#"{"verdict":"allow"}"#.to_string(),
             })
         }
+        fn malformed(response: &str) -> Arc<Self> {
+            Arc::new(Self {
+                response: response.to_string(),
+            })
+        }
+
         fn error() -> Arc<Self> {
             Arc::new(Self {
                 response: "".to_string(), // unused; chat_completion errors
@@ -1799,6 +1821,27 @@ mod tests {
             matches!(decision, PreToolUseDecision::Continue(_)),
             "judge error must fail open"
         );
+    }
+
+    #[tokio::test]
+    async fn judge_pre_tool_hook_fails_open_on_malformed_output() {
+        let cap = GuardrailsCapability;
+        let hooks = cap.pre_tool_use_hooks_with_config(&json!({
+            "checks": [{"stage": "tool_use", "type": "llm_judge",
+                        "prompt": "Block bad things."}]
+        }));
+
+        for malformed in ["} bad {", "not json", "{unterminated"] {
+            let ctx = ToolContext::new(SessionId::new())
+                .with_utility_llm_service(StubJudge::malformed(malformed));
+            let decision = hooks[0]
+                .before_exec(tool_call("any_tool", json!({})), &tool_def(), &ctx)
+                .await;
+            assert!(
+                matches!(decision, PreToolUseDecision::Continue(_)),
+                "malformed judge output must fail open: {malformed:?}"
+            );
+        }
     }
 
     #[tokio::test]
