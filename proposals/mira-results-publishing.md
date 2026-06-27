@@ -222,8 +222,13 @@ eval-results pages** in SaaS, reusing the isolated support-app pattern
 (1)+(2) are the minimum for "Mira can publish and you can see it." (3) is the
 bulk of the user-facing value. (4) is additive.
 
-## Remaining open question
+## Resolved: slug namespacing
 
-- **OQ-3 Slug namespacing.** How an org namespaces eval slugs coming from
-  multiple external projects (prefix? a `project` field on import? per-source
-  namespace?). Affects collisions when several systems publish to one org.
+Identity of an imported eval is the **eval name within the org** — no
+namespacing for now. The upsert-by-name is load-bearing: re-publishing the same
+eval lands on the same `Eval` row so runs accumulate into history (trends,
+comparison). Collisions (two unrelated suites named the same, or a clash with a
+native eval) merge — treated as a name-hygiene problem, acceptable because
+`eval.import` is gated on `OrgAgentsManage` (few, trusted publishers per org).
+A future optional `project` field can add `(project, name)` identity without
+breaking this (absent project = today's behavior); deferred until it bites.
