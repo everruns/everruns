@@ -280,7 +280,7 @@ impl GrpcDurableStore {
         worker_id: &str,
         activity_types: &[String],
         max_tasks: usize,
-    ) -> Result<Vec<ClaimedTask>> {
+    ) -> Result<Vec<everruns_durable::ClaimedTask>> {
         let request = ClaimDurableTasksRequest {
             worker_id: worker_id.to_string(),
             activity_types: activity_types.to_vec(),
@@ -304,13 +304,15 @@ impl GrpcDurableStore {
                     .map(|s| everruns_internal_protocol::proto_struct_to_json(&s))
                     .unwrap_or_else(|| serde_json::json!({}));
 
-                Ok(ClaimedTask {
+                Ok(everruns_durable::ClaimedTask {
                     id,
                     workflow_id,
                     activity_id: t.activity_id,
                     activity_type: t.activity_type,
                     input,
+                    options: everruns_durable::ActivityOptions::default(),
                     attempt: t.attempt as u32,
+                    max_attempts: t.max_attempts as u32,
                 })
             })
             .collect::<Result<Vec<_>>>()?;
@@ -630,17 +632,6 @@ pub enum TaskNotificationEvent {
     },
     /// Heartbeat to keep the connection alive
     Heartbeat,
-}
-
-/// Claimed task from the queue
-#[derive(Debug, Clone)]
-pub struct ClaimedTask {
-    pub id: Uuid,
-    pub workflow_id: Option<Uuid>,
-    pub activity_id: String,
-    pub activity_type: String,
-    pub input: serde_json::Value,
-    pub attempt: u32,
 }
 
 /// Response from heartbeat operation

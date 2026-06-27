@@ -8,14 +8,16 @@
 // It unifies the two worker implementations into one, eliminating code duplication
 // while preserving the different deployment models (in-process vs external).
 
-use crate::durable_worker;
 use anyhow::Result;
+use async_trait::async_trait;
 use everruns_core::ActInput;
 use everruns_core::atoms::AtomContext;
 use everruns_core::typed_id::{ExecId, TurnId};
 use everruns_durable::{
-    ClaimedTask, WorkerInfo, WorkflowEventStore, WorkflowStatus, record_activity_completed,
-    record_activity_failed, record_activity_started,
+    ActivityOptions, ClaimedTask, HeartbeatResponse, StoreError, TaskDefinition,
+    TaskFailureOutcome, WorkerInfo, WorkflowError, WorkflowEvent, WorkflowEventStore,
+    WorkflowStatus, append_event, record_activity_completed, record_activity_failed,
+    record_activity_started,
 };
 use everruns_runtime::{
     RuntimeActPlan, RuntimeTurnPlan, execute_act_activity as runtime_execute_act_activity,
@@ -26,10 +28,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use tokio::sync::watch;
+use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::durable_runner::DurableTurnInput;
+use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::summarize_task_failure;
 use crate::worker_adapters::WorkerAdapters;
@@ -41,6 +45,41 @@ pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
 // =============================================================================
 // Configuration
 // =============================================================================
+
+/// Default execution concurrency for workers.
+///
+/// Historically 1000, which let a single worker advertise too much capacity for
+/// small Postgres instances. 1000-way concurrency is now opt-in via
+/// `MAX_CONCURRENT_TASKS`; the default mirrors the server's default DB pool.
+pub const DEFAULT_MAX_CONCURRENT_TASKS: usize = 50;
+
+/// Upper bound on a single claim request, independent of execution concurrency.
+pub const DEFAULT_CLAIM_BATCH_SIZE: usize = 50;
+
+/// Base fallback poll interval when push notifications are unavailable.
+pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Maximum fallback poll interval while the queue is empty.
+pub const DEFAULT_POLL_BACKOFF_MAX: Duration = Duration::from_secs(5);
+
+/// How many tasks to claim in one request, given currently-free execution slots.
+pub(crate) fn claim_limit(available_slots: usize, claim_batch_size: usize) -> usize {
+    available_slots.min(claim_batch_size)
+}
+
+/// Next fallback poll interval.
+pub(crate) fn next_poll_backoff(
+    current: Duration,
+    base: Duration,
+    max: Duration,
+    found_work: bool,
+) -> Duration {
+    if found_work {
+        base.min(max)
+    } else {
+        current.checked_mul(2).unwrap_or(max).min(max)
+    }
+}
 
 /// Configuration for the task worker
 #[derive(Debug, Clone)]
@@ -61,6 +100,10 @@ pub struct TaskWorkerConfig {
     pub heartbeat_interval: Duration,
     /// Worker group name (optional, for routing)
     pub worker_group: Option<String>,
+    /// gRPC address for standalone worker control-plane communication.
+    pub grpc_address: String,
+    /// Timeout for initial connection to control-plane gRPC.
+    pub connect_timeout: Duration,
 }
 
 impl Default for TaskWorkerConfig {
@@ -75,12 +118,14 @@ impl Default for TaskWorkerConfig {
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
             ],
-            max_concurrent_tasks: durable_worker::DEFAULT_MAX_CONCURRENT_TASKS,
-            claim_batch_size: durable_worker::DEFAULT_CLAIM_BATCH_SIZE,
-            poll_interval: durable_worker::DEFAULT_POLL_INTERVAL,
-            poll_backoff_max: durable_worker::DEFAULT_POLL_BACKOFF_MAX,
+            max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
+            claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
+            poll_interval: DEFAULT_POLL_INTERVAL,
+            poll_backoff_max: DEFAULT_POLL_BACKOFF_MAX,
             heartbeat_interval: Duration::from_secs(10),
             worker_group: None,
+            grpc_address: "127.0.0.1:9001".to_string(),
+            connect_timeout: Duration::from_secs(30),
         }
     }
 }
@@ -96,7 +141,7 @@ impl TaskWorkerConfig {
             worker_group: Some("dev".to_string()),
             max_concurrent_tasks,
             // Keep the claim batch within execution concurrency.
-            claim_batch_size: durable_worker::DEFAULT_CLAIM_BATCH_SIZE.min(max_concurrent_tasks),
+            claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE.min(max_concurrent_tasks),
             poll_interval: Duration::from_millis(10),
             poll_backoff_max: Duration::from_millis(250),
             ..Default::default()
@@ -119,7 +164,7 @@ impl TaskWorkerConfig {
     /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are independent.
     /// The claim batch is clamped to the execution concurrency.
     pub fn from_env() -> Self {
-        use everruns_config::{env_duration_ms, env_or};
+        use everruns_config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
 
         let worker_id =
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));
@@ -138,6 +183,14 @@ impl TaskWorkerConfig {
                 defaults.poll_backoff_max,
             ),
             worker_group: std::env::var("WORKER_GROUP").ok(),
+            grpc_address: env_string_any(
+                &["SERVER_GRPC_ADDRESS", "WORKER_GRPC_ADDRESS"],
+                &defaults.grpc_address,
+            ),
+            connect_timeout: env_duration_secs(
+                "WORKER_GRPC_CONNECT_TIMEOUT",
+                defaults.connect_timeout,
+            ),
             ..defaults
         }
     }
@@ -147,14 +200,429 @@ impl TaskWorkerConfig {
 // Unified Worker
 // =============================================================================
 
+#[async_trait]
+pub trait TaskStore: Send + Sync + 'static {
+    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError>;
+
+    async fn worker_heartbeat(
+        &self,
+        worker_id: &str,
+        current_load: usize,
+        accepting_tasks: bool,
+    ) -> Result<(), StoreError>;
+
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError>;
+
+    async fn claim_task(
+        &self,
+        worker_id: &str,
+        activity_types: &[String],
+        max_tasks: usize,
+    ) -> Result<Vec<ClaimedTask>, StoreError>;
+
+    async fn heartbeat_task(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        details: Option<serde_json::Value>,
+    ) -> Result<HeartbeatResponse, StoreError>;
+
+    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError>;
+
+    async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str);
+
+    async fn complete_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+    ) -> Result<(), StoreError>;
+
+    async fn fail_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        error: &str,
+    ) -> Result<TaskFailureOutcome, StoreError>;
+
+    async fn enqueue_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+    ) -> Result<Uuid, StoreError>;
+
+    async fn update_workflow_status(
+        &self,
+        workflow_id: Uuid,
+        status: WorkflowStatus,
+        output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError>;
+
+    async fn complete_workflow(
+        &self,
+        workflow_id: Uuid,
+        event_output: serde_json::Value,
+        stored_output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError>;
+
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
+}
+
+#[async_trait]
+impl<S> TaskStore for S
+where
+    S: WorkflowEventStore,
+{
+    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
+        WorkflowEventStore::register_worker(self, worker).await
+    }
+
+    async fn worker_heartbeat(
+        &self,
+        worker_id: &str,
+        current_load: usize,
+        accepting_tasks: bool,
+    ) -> Result<(), StoreError> {
+        WorkflowEventStore::worker_heartbeat(self, worker_id, current_load, accepting_tasks).await
+    }
+
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
+        WorkflowEventStore::deregister_worker(self, worker_id).await
+    }
+
+    async fn claim_task(
+        &self,
+        worker_id: &str,
+        activity_types: &[String],
+        max_tasks: usize,
+    ) -> Result<Vec<ClaimedTask>, StoreError> {
+        WorkflowEventStore::claim_task(self, worker_id, activity_types, max_tasks).await
+    }
+
+    async fn heartbeat_task(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        details: Option<serde_json::Value>,
+    ) -> Result<HeartbeatResponse, StoreError> {
+        WorkflowEventStore::heartbeat_task(self, task_id, worker_id, details).await
+    }
+
+    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
+        WorkflowEventStore::get_workflow_status(self, workflow_id).await
+    }
+
+    async fn record_activity_started(&self, task: &ClaimedTask, worker_id: &str) {
+        record_activity_started(
+            self,
+            task.workflow_id,
+            task.activity_id.clone(),
+            task.attempt,
+            worker_id.to_string(),
+        )
+        .await;
+    }
+
+    async fn complete_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        WorkflowEventStore::complete_task(self, task.id, worker_id, output.clone()).await?;
+        record_activity_completed(self, task.workflow_id, task.activity_id.clone(), output).await;
+        Ok(())
+    }
+
+    async fn fail_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        error: &str,
+    ) -> Result<TaskFailureOutcome, StoreError> {
+        let will_retry = task.attempt < task.max_attempts;
+        record_activity_failed(
+            self,
+            task.workflow_id,
+            task.activity_id.clone(),
+            error.to_string(),
+            will_retry,
+        )
+        .await;
+        WorkflowEventStore::fail_task(self, task.id, error).await
+    }
+
+    async fn enqueue_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+    ) -> Result<Uuid, StoreError> {
+        let event = WorkflowEvent::ActivityScheduled {
+            activity_id: activity_id.clone(),
+            activity_type: activity_type.clone(),
+            input: input.clone(),
+            options: ActivityOptions::default(),
+        };
+        append_event(self, workflow_id, event).await?;
+        WorkflowEventStore::enqueue_task(
+            self,
+            TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id,
+                activity_type,
+                input,
+                options: ActivityOptions::default(),
+            },
+        )
+        .await
+    }
+
+    async fn update_workflow_status(
+        &self,
+        workflow_id: Uuid,
+        status: WorkflowStatus,
+        output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError> {
+        WorkflowEventStore::update_workflow_status(self, workflow_id, status, output, error).await
+    }
+
+    async fn complete_workflow(
+        &self,
+        workflow_id: Uuid,
+        event_output: serde_json::Value,
+        stored_output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError> {
+        everruns_durable::record_workflow_completed(self, workflow_id, event_output).await;
+        WorkflowEventStore::update_workflow_status(
+            self,
+            workflow_id,
+            WorkflowStatus::Completed,
+            stored_output,
+            error,
+        )
+        .await
+    }
+
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        WorkflowEventStore::consume_pending_signals(self, workflow_id).await
+    }
+}
+
+#[async_trait]
+impl TaskStore for GrpcDurableStore {
+    async fn register_worker(&self, worker: WorkerInfo) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::register_worker(
+            &mut store,
+            &worker.id,
+            worker.worker_group,
+            worker.activity_types,
+            worker.max_concurrency,
+        )
+        .await
+        .map_err(store_error)
+    }
+
+    async fn worker_heartbeat(
+        &self,
+        worker_id: &str,
+        current_load: usize,
+        accepting_tasks: bool,
+    ) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::heartbeat_worker(
+            &mut store,
+            worker_id,
+            current_load as u32,
+            accepting_tasks,
+        )
+        .await
+        .map_err(store_error)
+    }
+
+    async fn deregister_worker(&self, worker_id: &str) -> Result<usize, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::deregister_worker(&mut store, worker_id)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn claim_task(
+        &self,
+        worker_id: &str,
+        activity_types: &[String],
+        max_tasks: usize,
+    ) -> Result<Vec<ClaimedTask>, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::claim_tasks(&mut store, worker_id, activity_types, max_tasks)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn heartbeat_task(
+        &self,
+        task_id: Uuid,
+        worker_id: &str,
+        details: Option<serde_json::Value>,
+    ) -> Result<HeartbeatResponse, StoreError> {
+        let mut store = self.clone();
+        let response = GrpcDurableStore::heartbeat_task(&mut store, task_id, worker_id, details)
+            .await
+            .map_err(store_error)?;
+        Ok(HeartbeatResponse {
+            accepted: response.acknowledged,
+            should_cancel: response.should_cancel,
+        })
+    }
+
+    async fn get_workflow_status(&self, workflow_id: Uuid) -> Result<WorkflowStatus, StoreError> {
+        let mut store = self.clone();
+        let (status, _, _) = GrpcDurableStore::get_workflow_status(&mut store, workflow_id)
+            .await
+            .map_err(store_error)?;
+        Ok(grpc_status_to_workflow_status(status))
+    }
+
+    async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {
+        // The control plane owns workflow history for gRPC workers. Claim,
+        // complete, fail, and enqueue RPCs record the durable task events.
+    }
+
+    async fn complete_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        worker_id: &str,
+        output: serde_json::Value,
+    ) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::complete_task(&mut store, task.id, worker_id, output)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn fail_task_and_record(
+        &self,
+        task: &ClaimedTask,
+        error: &str,
+    ) -> Result<TaskFailureOutcome, StoreError> {
+        let mut store = self.clone();
+        let will_retry = GrpcDurableStore::fail_task(&mut store, task.id, error)
+            .await
+            .map_err(store_error)?;
+        Ok(if will_retry {
+            TaskFailureOutcome::WillRetry {
+                next_attempt: task.attempt + 1,
+                delay: Duration::ZERO,
+            }
+        } else {
+            TaskFailureOutcome::MovedToDlq
+        })
+    }
+
+    async fn enqueue_task_and_record(
+        &self,
+        workflow_id: Uuid,
+        activity_id: String,
+        activity_type: String,
+        input: serde_json::Value,
+    ) -> Result<Uuid, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::enqueue_task(&mut store, workflow_id, activity_id, activity_type, input)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn update_workflow_status(
+        &self,
+        workflow_id: Uuid,
+        status: WorkflowStatus,
+        output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::update_workflow_status(
+            &mut store,
+            workflow_id,
+            workflow_status_to_grpc_status(status),
+            output,
+            error.map(|err| err.message),
+        )
+        .await
+        .map_err(store_error)
+    }
+
+    async fn complete_workflow(
+        &self,
+        workflow_id: Uuid,
+        _event_output: serde_json::Value,
+        stored_output: Option<serde_json::Value>,
+        error: Option<WorkflowError>,
+    ) -> Result<(), StoreError> {
+        self.update_workflow_status(workflow_id, WorkflowStatus::Completed, stored_output, error)
+            .await
+    }
+
+    async fn consume_pending_signals(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::get_and_consume_signals(&mut store, workflow_id)
+            .await
+            .map_err(store_error)
+    }
+}
+
+fn store_error(error: anyhow::Error) -> StoreError {
+    StoreError::Database(error.to_string())
+}
+
+fn grpc_status_to_workflow_status(
+    status: crate::grpc_durable_store::WorkflowStatus,
+) -> WorkflowStatus {
+    match status {
+        crate::grpc_durable_store::WorkflowStatus::Pending => WorkflowStatus::Pending,
+        crate::grpc_durable_store::WorkflowStatus::Running => WorkflowStatus::Running,
+        crate::grpc_durable_store::WorkflowStatus::Completed => WorkflowStatus::Completed,
+        crate::grpc_durable_store::WorkflowStatus::Failed => WorkflowStatus::Failed,
+        crate::grpc_durable_store::WorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
+        crate::grpc_durable_store::WorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
+    }
+}
+
+fn workflow_status_to_grpc_status(
+    status: WorkflowStatus,
+) -> crate::grpc_durable_store::WorkflowStatus {
+    match status {
+        WorkflowStatus::Pending => crate::grpc_durable_store::WorkflowStatus::Pending,
+        WorkflowStatus::Running => crate::grpc_durable_store::WorkflowStatus::Running,
+        WorkflowStatus::Completed => crate::grpc_durable_store::WorkflowStatus::Completed,
+        WorkflowStatus::Failed => crate::grpc_durable_store::WorkflowStatus::Failed,
+        WorkflowStatus::Cancelled => crate::grpc_durable_store::WorkflowStatus::Cancelled,
+        WorkflowStatus::ContinuedAsNew => crate::grpc_durable_store::WorkflowStatus::ContinuedAsNew,
+    }
+}
+
 /// Unified worker that executes tasks from the durable task queue
 ///
 /// This worker is generic over:
-/// - `S`: WorkflowEventStore implementation (InMemory or Postgres)
+/// - `S`: TaskStore implementation (direct store or gRPC store)
 /// - `A`: WorkerAdapters implementation (Direct or gRPC)
 pub struct TaskWorker<S, A>
 where
-    S: WorkflowEventStore,
+    S: TaskStore,
     A: WorkerAdapters,
 {
     config: TaskWorkerConfig,
@@ -167,7 +635,7 @@ where
 
 impl<S, A> TaskWorker<S, A>
 where
-    S: WorkflowEventStore,
+    S: TaskStore,
     A: WorkerAdapters,
 {
     /// Create a new unified worker
@@ -233,7 +701,7 @@ where
         let mut heartbeat_shutdown_rx = self.shutdown_rx.clone();
         let in_flight_for_heartbeat = self.in_flight.clone();
 
-        tokio::spawn(async move {
+        let heartbeat_handle = tokio::spawn(async move {
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(heartbeat_interval) => {
@@ -257,6 +725,7 @@ where
         // `poll_backoff_max` while the queue is empty, so an idle worker stops
         // issuing tight-loop `claim_task` requests. Reset to base on any work.
         let mut poll_backoff = self.config.poll_interval.min(self.config.poll_backoff_max);
+        let mut task_handles = JoinSet::new();
 
         // Main poll loop
         loop {
@@ -265,7 +734,9 @@ where
                 break;
             }
 
-            match self.poll_and_execute().await {
+            Self::drain_finished_tasks(&mut task_handles);
+
+            match self.poll_and_execute(&mut task_handles).await {
                 Ok(executed) => {
                     if executed == 0 {
                         tokio::select! {
@@ -276,7 +747,7 @@ where
                             }
                         }
                     }
-                    poll_backoff = durable_worker::next_poll_backoff(
+                    poll_backoff = next_poll_backoff(
                         poll_backoff,
                         self.config.poll_interval,
                         self.config.poll_backoff_max,
@@ -289,6 +760,17 @@ where
                 }
             }
         }
+
+        task_handles.abort_all();
+        while let Some(result) = task_handles.join_next().await {
+            if let Err(error) = result
+                && !error.is_cancelled()
+            {
+                warn!(error = %error, "Worker task join failed during shutdown");
+            }
+        }
+        let _ = self.shutdown_tx.send(true);
+        let _ = heartbeat_handle.await;
 
         // Deregister on shutdown
         if let Err(e) = self.store.deregister_worker(&self.config.worker_id).await {
@@ -311,8 +793,18 @@ where
         }
     }
 
+    fn drain_finished_tasks(task_handles: &mut JoinSet<()>) {
+        while let Some(result) = task_handles.try_join_next() {
+            if let Err(error) = result
+                && !error.is_cancelled()
+            {
+                warn!(error = %error, "Worker task join failed");
+            }
+        }
+    }
+
     /// Poll for tasks and execute them
-    async fn poll_and_execute(&self) -> Result<usize> {
+    async fn poll_and_execute(&self, task_handles: &mut JoinSet<()>) -> Result<usize> {
         let current_in_flight = self.in_flight.load(Ordering::SeqCst);
         let available_slots = self
             .config
@@ -330,7 +822,7 @@ where
 
         // Bound the claim by claim_batch_size so a single claim_task stays cheap
         // even when execution concurrency is high.
-        let to_claim = durable_worker::claim_limit(available_slots, self.config.claim_batch_size);
+        let to_claim = claim_limit(available_slots, self.config.claim_batch_size);
         let tasks = self
             .store
             .claim_task(
@@ -361,9 +853,11 @@ where
             let adapters = self.adapters.clone();
             let worker_id = self.config.worker_id.clone();
             let in_flight = self.in_flight.clone();
+            let heartbeat_interval = self.config.heartbeat_interval;
 
-            tokio::spawn(async move {
-                let result = execute_task(&store, &adapters, &worker_id, &task).await;
+            task_handles.spawn(async move {
+                let result =
+                    execute_task(&store, &adapters, &worker_id, heartbeat_interval, &task).await;
 
                 if let Err(e) = result {
                     let failure = summarize_task_failure(
@@ -386,8 +880,6 @@ where
                         error_chain = %failure.error_chain,
                         "Task execution failed"
                     );
-
-                    let _ = store.fail_task(task.id, &failure.persisted_message).await;
                 }
 
                 in_flight.fetch_sub(1, Ordering::SeqCst);
@@ -420,10 +912,11 @@ async fn execute_task<S, A>(
     store: &Arc<S>,
     adapters: &A,
     worker_id: &str,
+    heartbeat_interval: Duration,
     task: &ClaimedTask,
 ) -> Result<()>
 where
-    S: WorkflowEventStore,
+    S: TaskStore,
     A: WorkerAdapters,
 {
     info!(
@@ -445,20 +938,19 @@ where
                 workflow_id = %wf_id,
                 "Workflow cancelled, skipping task"
             );
-            let _ = store.fail_task(task.id, "Workflow cancelled").await;
+            let _ = store.fail_task_and_record(task, "Workflow cancelled").await;
             return Ok(());
         }
     }
 
-    // Record ActivityStarted event
-    record_activity_started(
-        store.as_ref(),
-        task.workflow_id,
-        task.activity_id.clone(),
-        task.attempt,
+    store.record_activity_started(task, worker_id).await;
+
+    let (heartbeat_cancel_tx, heartbeat_handle) = spawn_task_heartbeat(
+        store.clone(),
+        task.id,
         worker_id.to_string(),
-    )
-    .await;
+        heartbeat_interval,
+    );
 
     // Execute based on activity type
     let (result, turn_input_opt) = match task.activity_type.as_str() {
@@ -563,20 +1055,14 @@ where
         ),
     };
 
+    let _ = heartbeat_cancel_tx.send(());
+    let _ = heartbeat_handle.await;
+
     match result {
         Ok(output) => {
-            // Record ActivityCompleted event
-            record_activity_completed(
-                store.as_ref(),
-                task.workflow_id,
-                task.activity_id.clone(),
-                output.clone(),
-            )
-            .await;
-
             // Complete the task - verify ownership
             let complete_result = store
-                .complete_task(task.id, worker_id, output.clone())
+                .complete_task_and_record(task, worker_id, output.clone())
                 .await;
 
             match complete_result {
@@ -610,7 +1096,6 @@ where
             }
         }
         Err(e) => {
-            let will_retry = task.attempt < task.max_attempts;
             let failure = summarize_task_failure(
                 task.id,
                 task.workflow_id,
@@ -620,20 +1105,53 @@ where
                 &task.input,
                 &e,
             );
-            record_activity_failed(
-                store.as_ref(),
-                task.workflow_id,
-                task.activity_id.clone(),
-                failure.persisted_message,
-                will_retry,
-            )
-            .await;
+            let _ = store
+                .fail_task_and_record(task, &failure.persisted_message)
+                .await;
 
             return Err(e);
         }
     }
 
     Ok(())
+}
+
+fn spawn_task_heartbeat<S: TaskStore>(
+    store: Arc<S>,
+    task_id: Uuid,
+    worker_id: String,
+    heartbeat_interval: Duration,
+) -> (
+    tokio::sync::oneshot::Sender<()>,
+    tokio::task::JoinHandle<()>,
+) {
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(heartbeat_interval);
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    match store.heartbeat_task(task_id, &worker_id, None).await {
+                        Ok(response) => {
+                            if response.should_cancel {
+                                warn!(task_id = %task_id, "Task cancellation requested via heartbeat");
+                                break;
+                            }
+                            debug!(task_id = %task_id, "Task heartbeat sent");
+                        }
+                        Err(error) => {
+                            warn!(task_id = %task_id, error = %error, "Failed to send task heartbeat");
+                        }
+                    }
+                }
+                _ = &mut cancel_rx => {
+                    debug!(task_id = %task_id, "Task heartbeat loop cancelled");
+                    break;
+                }
+            }
+        }
+    });
+    (cancel_tx, handle)
 }
 
 fn parse_resume_state(input: &serde_json::Value) -> Result<Option<DurableTurnInput>> {
@@ -765,7 +1283,7 @@ async fn execute_act_activity<A: WorkerAdapters>(
 // =============================================================================
 
 /// Schedule the next activity based on current activity completion
-async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone>(
+async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     store: &Arc<S>,
     adapters: &A,
     workflow_id: Uuid,
@@ -807,16 +1325,10 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
             enqueue_act_task(store, workflow_id, &plan).await?;
         }
         RuntimeTurnPlan::Complete { error } => {
-            everruns_durable::record_workflow_completed(
-                store.as_ref(),
-                workflow_id,
-                output.clone(),
-            )
-            .await;
             store
-                .update_workflow_status(
+                .complete_workflow(
                     workflow_id,
-                    WorkflowStatus::Completed,
+                    output.clone(),
                     None,
                     error.map(everruns_durable::WorkflowError::new),
                 )
@@ -824,16 +1336,10 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
                 .map_err(|e| anyhow::anyhow!("Failed to update workflow status: {}", e))?;
         }
         RuntimeTurnPlan::WaitForToolResults { resume } => {
-            everruns_durable::record_workflow_completed(
-                store.as_ref(),
-                workflow_id,
-                output.clone(),
-            )
-            .await;
             store
-                .update_workflow_status(
+                .complete_workflow(
                     workflow_id,
-                    WorkflowStatus::Completed,
+                    output.clone(),
                     Some(serde_json::to_value(&resume)?),
                     None,
                 )
@@ -845,36 +1351,21 @@ async fn schedule_next_activity<S: WorkflowEventStore, A: WorkerAdapters + Clone
     Ok(())
 }
 
-async fn enqueue_reason_task<S: WorkflowEventStore>(
+async fn enqueue_reason_task<S: TaskStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     input: &DurableTurnInput,
 ) -> Result<()> {
     let activity_id = format!("reason_{}", Uuid::now_v7());
     let input_json = serde_json::to_value(input)?;
-    let task = everruns_durable::TaskDefinition {
-        workflow_id: Some(workflow_id),
-        activity_id: activity_id.clone(),
-        activity_type: "reason".to_string(),
-        input: input_json.clone(),
-        options: Default::default(),
-    };
     store
-        .enqueue_task(task)
+        .enqueue_task_and_record(workflow_id, activity_id, "reason".to_string(), input_json)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to enqueue reason task: {}", e))?;
-
-    let scheduled_event = everruns_durable::WorkflowEvent::ActivityScheduled {
-        activity_id,
-        activity_type: "reason".to_string(),
-        input: input_json,
-        options: everruns_durable::ActivityOptions::default(),
-    };
-    let _ = everruns_durable::append_event(store.as_ref(), workflow_id, scheduled_event).await;
     Ok(())
 }
 
-async fn enqueue_act_task<S: WorkflowEventStore>(
+async fn enqueue_act_task<S: TaskStore>(
     store: &Arc<S>,
     workflow_id: Uuid,
     plan: &RuntimeActPlan,
@@ -890,31 +1381,19 @@ async fn enqueue_act_task<S: WorkflowEventStore>(
     act_input_json["resume_state"] = serde_json::to_value(plan.resume_state.as_ref())?;
 
     let activity_id = format!("act_{}", Uuid::now_v7());
-    let task = everruns_durable::TaskDefinition {
-        workflow_id: Some(workflow_id),
-        activity_id: activity_id.clone(),
-        activity_type: "act".to_string(),
-        input: act_input_json.clone(),
-        options: Default::default(),
-    };
     store
-        .enqueue_task(task)
+        .enqueue_task_and_record(workflow_id, activity_id, "act".to_string(), act_input_json)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to enqueue act task: {}", e))?;
-
-    let scheduled_event = everruns_durable::WorkflowEvent::ActivityScheduled {
-        activity_id,
-        activity_type: "act".to_string(),
-        input: act_input_json,
-        options: everruns_durable::ActivityOptions::default(),
-    };
-    let _ = everruns_durable::append_event(store.as_ref(), workflow_id, scheduled_event).await;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::error::Result as CoreResult;
+    use std::collections::HashMap;
+    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn parse_resume_state_allows_missing_field() {
@@ -946,14 +1425,8 @@ mod tests {
         let config = TaskWorkerConfig::default();
         assert!(config.worker_id.starts_with("worker-"));
         // Safe-by-default concurrency; 1000-way is opt-in.
-        assert_eq!(
-            config.max_concurrent_tasks,
-            durable_worker::DEFAULT_MAX_CONCURRENT_TASKS
-        );
-        assert_eq!(
-            config.claim_batch_size,
-            durable_worker::DEFAULT_CLAIM_BATCH_SIZE
-        );
+        assert_eq!(config.max_concurrent_tasks, DEFAULT_MAX_CONCURRENT_TASKS);
+        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
         assert!(config.claim_batch_size <= config.max_concurrent_tasks);
     }
 
@@ -972,10 +1445,456 @@ mod tests {
         // batch stays bounded independently of execution concurrency.
         let config = TaskWorkerConfig::production();
         assert_eq!(config.max_concurrent_tasks, 1000);
-        assert_eq!(
-            config.claim_batch_size,
-            durable_worker::DEFAULT_CLAIM_BATCH_SIZE
-        );
+        assert_eq!(config.claim_batch_size, DEFAULT_CLAIM_BATCH_SIZE);
         assert!(config.claim_batch_size < config.max_concurrent_tasks);
+    }
+
+    #[test]
+    fn test_claim_limit_bounds_to_batch() {
+        assert_eq!(
+            claim_limit(1000, DEFAULT_CLAIM_BATCH_SIZE),
+            DEFAULT_CLAIM_BATCH_SIZE
+        );
+        assert_eq!(claim_limit(1000, 50), 50);
+        assert_eq!(claim_limit(10, 50), 10);
+        assert_eq!(claim_limit(0, 50), 0);
+    }
+
+    #[test]
+    fn test_next_poll_backoff() {
+        let base = Duration::from_millis(100);
+        let max = Duration::from_secs(5);
+        let mut backoff = base;
+
+        backoff = next_poll_backoff(backoff, base, max, false);
+        assert_eq!(backoff, Duration::from_millis(200));
+        backoff = next_poll_backoff(backoff, base, max, false);
+        assert_eq!(backoff, Duration::from_millis(400));
+
+        for _ in 0..10 {
+            backoff = next_poll_backoff(backoff, base, max, false);
+        }
+        assert_eq!(backoff, max);
+
+        assert_eq!(next_poll_backoff(backoff, base, max, true), base);
+        assert_eq!(next_poll_backoff(base, max * 2, max, true), max);
+        assert_eq!(next_poll_backoff(Duration::MAX, base, max, false), max);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn poll_and_execute_allows_concurrent_store_calls() {
+        #[derive(Clone, Default)]
+        struct ConcurrentStore {
+            claimed: Arc<AtomicBool>,
+            current: Arc<AtomicUsize>,
+            max: Arc<AtomicUsize>,
+        }
+
+        #[async_trait::async_trait]
+        impl TaskStore for ConcurrentStore {
+            async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
+                Ok(())
+            }
+
+            async fn worker_heartbeat(
+                &self,
+                _worker_id: &str,
+                _current_load: usize,
+                _accepting_tasks: bool,
+            ) -> Result<(), StoreError> {
+                Ok(())
+            }
+
+            async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
+                Ok(0)
+            }
+
+            async fn claim_task(
+                &self,
+                _worker_id: &str,
+                _activity_types: &[String],
+                _max_tasks: usize,
+            ) -> Result<Vec<ClaimedTask>, StoreError> {
+                if self.claimed.swap(true, Ordering::SeqCst) {
+                    return Ok(vec![]);
+                }
+
+                Ok((0..2)
+                    .map(|_| ClaimedTask {
+                        id: Uuid::now_v7(),
+                        workflow_id: None,
+                        activity_id: format!("unknown_{}", Uuid::now_v7()),
+                        activity_type: "unknown".to_string(),
+                        input: serde_json::json!({}),
+                        options: ActivityOptions::default(),
+                        attempt: 1,
+                        max_attempts: 1,
+                    })
+                    .collect())
+            }
+
+            async fn heartbeat_task(
+                &self,
+                _task_id: Uuid,
+                _worker_id: &str,
+                _details: Option<serde_json::Value>,
+            ) -> Result<HeartbeatResponse, StoreError> {
+                Ok(HeartbeatResponse {
+                    accepted: true,
+                    should_cancel: false,
+                })
+            }
+
+            async fn get_workflow_status(
+                &self,
+                _workflow_id: Uuid,
+            ) -> Result<WorkflowStatus, StoreError> {
+                Ok(WorkflowStatus::Running)
+            }
+
+            async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
+
+            async fn complete_task_and_record(
+                &self,
+                _task: &ClaimedTask,
+                _worker_id: &str,
+                _output: serde_json::Value,
+            ) -> Result<(), StoreError> {
+                Ok(())
+            }
+
+            async fn fail_task_and_record(
+                &self,
+                _task: &ClaimedTask,
+                _error: &str,
+            ) -> Result<TaskFailureOutcome, StoreError> {
+                let current = self.current.fetch_add(1, Ordering::SeqCst) + 1;
+                self.max.fetch_max(current, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                self.current.fetch_sub(1, Ordering::SeqCst);
+                Ok(TaskFailureOutcome::MovedToDlq)
+            }
+
+            async fn enqueue_task_and_record(
+                &self,
+                _workflow_id: Uuid,
+                _activity_id: String,
+                _activity_type: String,
+                _input: serde_json::Value,
+            ) -> Result<Uuid, StoreError> {
+                Ok(Uuid::now_v7())
+            }
+
+            async fn update_workflow_status(
+                &self,
+                _workflow_id: Uuid,
+                _status: WorkflowStatus,
+                _output: Option<serde_json::Value>,
+                _error: Option<WorkflowError>,
+            ) -> Result<(), StoreError> {
+                Ok(())
+            }
+
+            async fn complete_workflow(
+                &self,
+                _workflow_id: Uuid,
+                _event_output: serde_json::Value,
+                _stored_output: Option<serde_json::Value>,
+                _error: Option<WorkflowError>,
+            ) -> Result<(), StoreError> {
+                Ok(())
+            }
+
+            async fn consume_pending_signals(
+                &self,
+                _workflow_id: Uuid,
+            ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+                Ok(vec![])
+            }
+        }
+
+        #[derive(Clone)]
+        struct NoopAdapters;
+
+        #[async_trait::async_trait]
+        impl WorkerAdapters for NoopAdapters {
+            async fn get_agent(
+                &self,
+                _org_id: i64,
+                _agent_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::Agent>> {
+                unimplemented!()
+            }
+            async fn get_harness(
+                &self,
+                _org_id: i64,
+                _harness_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::Harness>> {
+                unimplemented!()
+            }
+            async fn get_session(
+                &self,
+                _org_id: i64,
+                _session_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::Session>> {
+                unimplemented!()
+            }
+            async fn set_session_status(
+                &self,
+                _org_id: i64,
+                _session_id: Uuid,
+                _status: &str,
+            ) -> CoreResult<everruns_core::Session> {
+                unimplemented!()
+            }
+            async fn set_session_title(
+                &self,
+                _org_id: i64,
+                _session_id: Uuid,
+                _title: String,
+            ) -> CoreResult<everruns_core::Session> {
+                unimplemented!()
+            }
+            async fn get_message(
+                &self,
+                _session_id: Uuid,
+                _message_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::Message>> {
+                unimplemented!()
+            }
+            async fn load_messages(
+                &self,
+                _session_id: Uuid,
+            ) -> CoreResult<Vec<everruns_core::Message>> {
+                unimplemented!()
+            }
+            async fn emit_event(
+                &self,
+                _request: everruns_core::events::EventRequest,
+            ) -> CoreResult<everruns_core::events::Event> {
+                unimplemented!()
+            }
+            async fn get_resolved_model(
+                &self,
+                _org_id: i64,
+                _model_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::traits::ResolvedModel>> {
+                unimplemented!()
+            }
+            async fn get_default_model(
+                &self,
+                _org_id: i64,
+            ) -> CoreResult<Option<everruns_core::traits::ResolvedModel>> {
+                unimplemented!()
+            }
+            async fn resolve_image(
+                &self,
+                _org_id: i64,
+                _image_id: Uuid,
+            ) -> CoreResult<Option<everruns_core::traits::ResolvedImage>> {
+                unimplemented!()
+            }
+            async fn resolve_images_batch(
+                &self,
+                _org_id: i64,
+                _image_ids: &[Uuid],
+            ) -> CoreResult<HashMap<Uuid, everruns_core::traits::ResolvedImage>> {
+                unimplemented!()
+            }
+            async fn read_file(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+            ) -> CoreResult<Option<everruns_core::session_file::SessionFile>> {
+                unimplemented!()
+            }
+            async fn write_file(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+                _content: &str,
+                _encoding: &str,
+            ) -> CoreResult<everruns_core::session_file::SessionFile> {
+                unimplemented!()
+            }
+            async fn delete_file(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+                _recursive: bool,
+            ) -> CoreResult<bool> {
+                unimplemented!()
+            }
+            async fn list_directory(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+            ) -> CoreResult<Vec<everruns_core::session_file::FileInfo>> {
+                unimplemented!()
+            }
+            async fn stat_file(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+            ) -> CoreResult<Option<everruns_core::session_file::FileStat>> {
+                unimplemented!()
+            }
+            async fn grep_files(
+                &self,
+                _session_id: Uuid,
+                _pattern: &str,
+                _path_pattern: Option<&str>,
+            ) -> CoreResult<Vec<everruns_core::session_file::GrepMatch>> {
+                unimplemented!()
+            }
+            async fn create_directory(
+                &self,
+                _session_id: Uuid,
+                _path: &str,
+            ) -> CoreResult<everruns_core::session_file::FileInfo> {
+                unimplemented!()
+            }
+            async fn get_mcp_server_by_prefix(
+                &self,
+                _org_id: i64,
+                _session_id: Option<Uuid>,
+                _server_prefix: &str,
+            ) -> CoreResult<crate::mcp_executor::McpServerInfo> {
+                unimplemented!()
+            }
+            async fn load_turn_context(
+                &self,
+                _org_id: i64,
+                _session_id: Uuid,
+            ) -> CoreResult<crate::worker_adapters::TurnContext> {
+                unimplemented!()
+            }
+            async fn invoke_scheduled_app_channel(
+                &self,
+                _org_id: i64,
+                _app_id: &str,
+                _channel_id: &str,
+            ) -> CoreResult<serde_json::Value> {
+                unimplemented!()
+            }
+            async fn claim_due_leased_resources(
+                &self,
+                _limit: u32,
+                _stale_after_seconds: u32,
+            ) -> CoreResult<Vec<everruns_core::leased_resource::LeasedResource>> {
+                unimplemented!()
+            }
+            async fn mark_leased_resource_released(
+                &self,
+                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+            ) -> CoreResult<bool> {
+                unimplemented!()
+            }
+            async fn mark_leased_resource_cleanup_failed(
+                &self,
+                _resource_id: everruns_core::typed_id::LeasedResourceId,
+                _expected_cleanup_started_at: chrono::DateTime<chrono::Utc>,
+                _retry_after_seconds: u32,
+                _error: &str,
+            ) -> CoreResult<bool> {
+                unimplemented!()
+            }
+            async fn list_orphaned_session_task_ids(
+                &self,
+                _stale_after: chrono::Duration,
+                _limit: i64,
+            ) -> CoreResult<Vec<(everruns_core::SessionId, String)>> {
+                unimplemented!()
+            }
+            async fn prune_terminal_session_tasks(
+                &self,
+                _ttl: chrono::Duration,
+                _limit: i64,
+            ) -> CoreResult<usize> {
+                unimplemented!()
+            }
+
+            fn capability_registry(&self) -> everruns_core::capabilities::CapabilityRegistry {
+                unimplemented!()
+            }
+            fn driver_registry(&self) -> everruns_core::DriverRegistry {
+                unimplemented!()
+            }
+            fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
+                unimplemented!()
+            }
+            fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
+                unimplemented!()
+            }
+            fn image_artifact_store(
+                &self,
+                _org_id: i64,
+            ) -> Arc<dyn everruns_core::traits::ImageArtifactStore> {
+                unimplemented!()
+            }
+            fn provider_credential_store(
+                &self,
+                _org_id: i64,
+            ) -> Arc<dyn everruns_core::traits::ProviderCredentialStore> {
+                unimplemented!()
+            }
+            fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
+                unimplemented!()
+            }
+            fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+                unimplemented!()
+            }
+            fn platform_store(
+                &self,
+                _org_id: i64,
+                _session_id: everruns_core::SessionId,
+            ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+                unimplemented!()
+            }
+            fn connection_resolver(
+                &self,
+            ) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+                unimplemented!()
+            }
+            fn leased_resource_store(&self) -> Arc<dyn everruns_core::traits::LeasedResourceStore> {
+                unimplemented!()
+            }
+            fn schedule_store(
+                &self,
+                _org_id: i64,
+            ) -> Arc<dyn everruns_core::traits::SessionScheduleStore> {
+                unimplemented!()
+            }
+            fn reaper_session_task_registry(
+                &self,
+            ) -> Arc<dyn everruns_core::session_task::SessionTaskRegistry> {
+                unimplemented!()
+            }
+        }
+
+        let store = Arc::new(ConcurrentStore::default());
+        let config = TaskWorkerConfig {
+            max_concurrent_tasks: 2,
+            claim_batch_size: 2,
+            heartbeat_interval: Duration::from_secs(60),
+            ..Default::default()
+        };
+
+        let worker = TaskWorker::new(config, store.clone(), NoopAdapters);
+        let mut task_handles = JoinSet::new();
+
+        let claimed = worker
+            .poll_and_execute(&mut task_handles)
+            .await
+            .expect("poll succeeds");
+
+        assert_eq!(claimed, 2);
+        while task_handles.join_next().await.is_some() {}
+
+        assert!(
+            store.max.load(Ordering::SeqCst) > 1,
+            "store calls were serialized"
+        );
     }
 }

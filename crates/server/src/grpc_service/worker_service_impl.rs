@@ -1292,12 +1292,25 @@ impl WorkerService for WorkerServiceImpl {
         // TODO: Map proto options to ActivityOptions when needed
         let options = ActivityOptions::default();
 
-        let task = TaskDefinition {
-            workflow_id: Some(workflow_id),
+        let event = WorkflowEvent::ActivityScheduled {
             activity_id: task_def.activity_id.clone(),
             activity_type: task_def.activity_type.clone(),
             input: input.clone(),
             options: options.clone(),
+        };
+        append_event(store.as_ref(), workflow_id, event)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to append ActivityScheduled event: {}", e);
+                Status::internal("Failed to append ActivityScheduled event")
+            })?;
+
+        let task = TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: task_def.activity_id.clone(),
+            activity_type: task_def.activity_type.clone(),
+            input,
+            options,
         };
 
         let task_id = store.enqueue_task(task).await.map_err(|e| {
@@ -1319,15 +1332,6 @@ impl WorkerService for WorkerServiceImpl {
                 .notify_task_available(&task_def.activity_type)
                 .await;
         }
-
-        // Record ActivityScheduled event
-        let event = WorkflowEvent::ActivityScheduled {
-            activity_id: task_def.activity_id,
-            activity_type: task_def.activity_type,
-            input,
-            options,
-        };
-        let _ = append_event(store.as_ref(), workflow_id, event).await;
 
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
@@ -1361,6 +1365,7 @@ impl WorkerService for WorkerServiceImpl {
                 activity_type: t.activity_type,
                 input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
                 attempt: t.attempt as i32,
+                max_attempts: t.max_attempts as i32,
             })
             .collect();
 

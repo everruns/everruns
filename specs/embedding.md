@@ -235,7 +235,7 @@ Implementations must be best-effort: a slow or failing reporter must never propa
 
 ### Worker hook
 
-`WorkerAppBuilder::error_reporter(reporter)` installs the same reporter on the worker side. Today, OSS forwards fatal `DurableWorker::run()` failures through the reporter with the `durable_worker` component in scope. Fatal-path calls are bounded by a short timeout so a stalled reporter cannot block worker termination or supervisor restart.
+`WorkerAppBuilder::error_reporter(reporter)` installs the same reporter on the worker side. OSS forwards fatal `TaskWorker::run()` failures through the reporter with the `task_worker` component in scope. Fatal-path calls are bounded by a short timeout so a stalled reporter cannot block worker termination or supervisor restart.
 
 Panic interception and per-task / per-workflow scoping are wrapper responsibilities today: wrappers that want that granularity wrap task execution themselves and emit their own reports. See **Not goals** below.
 
@@ -432,7 +432,7 @@ Those may be added later, but they are outside the current embedding contract.
 - `crates/server/src/org_init.rs`
 - `crates/worker/src/app_builder.rs`
 - `crates/worker/src/platform.rs`
-- `crates/worker/src/durable_worker.rs`
+- `crates/worker/src/unified_worker.rs`
 - `crates/worker/src/activities.rs`
 - `apps/ui/src/lib/ui-route-manifest.ts`
 - `apps/ui/package.json`

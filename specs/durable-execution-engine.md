@@ -108,7 +108,7 @@ Reasoning:
 
 ### Worker Concurrency & Sizing
 
-External/gRPC workers (`crates/worker/src/durable_worker.rs`) and the in-process worker (`crates/worker/src/unified_worker.rs`) expose three independent knobs so concurrency, claim batch size, and idle polling can be tuned separately:
+External/gRPC workers and the in-process worker both run `crates/worker/src/unified_worker.rs`, which exposes three independent knobs so concurrency, claim batch size, and idle polling can be tuned separately:
 
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |

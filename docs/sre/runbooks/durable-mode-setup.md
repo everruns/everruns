@@ -45,7 +45,7 @@ In a separate terminal:
 # Workers only need gRPC address - NO DATABASE_URL required!
 export SERVER_GRPC_ADDRESS="127.0.0.1:9001"
 
-# Start the durable worker
+# Start the task worker
 cargo run -p everruns-worker --bin durable-worker
 ```
 
@@ -55,12 +55,13 @@ require direct database access. This improves security and simplifies deployment
 Or programmatically:
 
 ```rust
-use everruns_worker::{DurableWorker, DurableWorkerConfig};
+use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let mut worker = DurableWorker::from_env().await?;
-    worker.run().await
+    WorkerAppBuilder::new(TaskWorkerConfig::from_env())
+        .run()
+        .await
 }
 ```
 

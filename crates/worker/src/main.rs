@@ -3,7 +3,7 @@
 
 use anyhow::Result;
 use everruns_core::telemetry::{TelemetryConfig, init_telemetry};
-use everruns_worker::{DurableWorkerConfig, WorkerAppBuilder};
+use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
 
 // Use mimalloc as the global allocator. The worker runs heavy concurrent
 // agent/tool execution; a sharded allocator reduces fragmentation and improves
@@ -30,7 +30,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("everrun-worker starting...");
 
-    WorkerAppBuilder::new(DurableWorkerConfig::from_env())
+    WorkerAppBuilder::new(TaskWorkerConfig::from_env())
         .run()
         .await
 }

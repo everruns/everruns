@@ -6,7 +6,7 @@
 //! extracting the common logic from two previously duplicated implementations:
 //!
 //! 1. **In-Memory Loop** (`in_memory_loop.rs`) - imperative loop for testing/prototyping
-//! 2. **Durable Worker** (`worker/durable_worker.rs`) - event-sourced via task queue
+//! 2. **Task Worker** (`worker/unified_worker.rs`) - event-sourced via task queue
 //!
 //! ## Problems This Solves
 //!
