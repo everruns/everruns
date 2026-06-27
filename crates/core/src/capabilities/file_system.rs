@@ -152,7 +152,7 @@ fn effective_read_defaults(
 /// - `/workspace` -> `/`
 /// - `/foo.txt` -> `/foo.txt` (already normalized)
 fn normalize_path(path: &str) -> String {
-    crate::workspace_paths::to_session_path(path)
+    crate::session_path::to_session_path(path)
 }
 
 fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {

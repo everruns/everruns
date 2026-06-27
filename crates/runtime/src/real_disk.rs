@@ -17,7 +17,6 @@ use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_core::typed_id::SessionId;
-use everruns_core::workspace_paths::WorkspacePaths;
 use ignore::WalkBuilder;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
@@ -40,11 +39,11 @@ use uuid::Uuid;
 /// other host processes can still modify the file directly.
 #[derive(Debug, Clone)]
 pub struct RealDiskFileStore {
-    /// The unified workspace path model (EVE-660). Owns the host root and all
-    /// parsing/host-mapping/display logic; the store no longer hand-rolls
-    /// `/workspace` stripping or containment checks. The root is shared so an
-    /// embedder's worktree switch via `set_host_root` is seen everywhere.
-    paths: WorkspacePaths,
+    /// Maps the virtual workspace namespace onto this host directory (EVE-660):
+    /// `/workspace` alias and host-absolute aliases, `..` rejection, containment,
+    /// and host-absolute display. The root is shared (Arc) so an embedder's
+    /// worktree switch via `set_host_root` is seen by every clone of the store.
+    paths: HostPathMap,
     readonly: Arc<RwLock<HashSet<String>>>,
 }
 
@@ -81,7 +80,7 @@ impl RealDiskFileStore {
     /// whose canonical-form path would escape the root is rejected.
     pub fn new(root: impl Into<PathBuf>) -> Result<Self> {
         Ok(Self {
-            paths: WorkspacePaths::host(root)?,
+            paths: HostPathMap::new(root)?,
             readonly: Arc::new(RwLock::new(HashSet::new())),
         })
     }
@@ -101,18 +100,15 @@ impl RealDiskFileStore {
 
     /// The current canonicalized workspace root.
     pub fn root(&self) -> PathBuf {
-        self.paths
-            .host_root()
-            .expect("RealDiskFileStore is always host-rooted")
+        self.paths.root()
     }
 
     /// Repoint the workspace root, e.g. when an embedder switches worktrees.
     ///
-    /// The shared path model means every consumer that took its
-    /// [`WorkspacePaths`] from this store (file tools, shell cwd, host-path
-    /// capabilities) immediately addresses the new root. See EVE-660.
+    /// The root handle is shared, so every clone of this store immediately
+    /// addresses the new root. See EVE-660.
     pub fn set_host_root(&self, root: impl Into<PathBuf>) -> Result<()> {
-        self.paths.set_host_root(root)
+        self.paths.set_root(root)
     }
 
     /// Resolve a capability-facing path to an absolute host path.
@@ -176,14 +172,23 @@ impl RealDiskFileStore {
     /// Map an absolute host path under the root back to its canonical
     /// leading-slash session path (e.g. `/src/lib.rs`).
     fn relative_capability_path(&self, absolute: &Path) -> Result<String> {
-        Ok(self.paths.from_host(absolute)?.to_session_path())
+        Ok(self.paths.relativize(absolute)?.to_session_path())
     }
 }
 
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
-    fn workspace_paths(&self) -> WorkspacePaths {
-        self.paths.clone()
+    /// A real-disk store shows where files actually live: the host-absolute root.
+    /// (Behind `MountFs` the model still sees a stable `/workspace`.)
+    fn display_root(&self) -> String {
+        self.paths.display_root()
+    }
+
+    fn display_path(&self, path: &str) -> String {
+        match self.paths.parse_input(path) {
+            Ok(rel) => self.paths.to_display(&rel),
+            Err(_) => path.to_string(),
+        }
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
@@ -638,6 +643,202 @@ fn saturating_i64(value: u64) -> i64 {
     } else {
         value as i64
     }
+}
+
+// ============================================================================
+// HostPathMap — virtual workspace namespace ⇄ this host directory
+// ============================================================================
+//
+// EVE-660 demoted the old shared `WorkspacePaths` abstraction to what it always
+// was: a detail of the host-backed store. `MountFs` owns the *virtual* namespace
+// (mounts, cwd, `/workspace`); the only thing that genuinely needs a host root
+// is the real-disk backend, so the mapper lives here, private to it. Pure-VFS
+// stores need none of this — they key directly on the session path.
+
+/// A canonical workspace-relative path: forward-slash separated, no leading
+/// slash, no `.`/`..`, no host prefix. The workspace root is the empty path.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+struct RelPath(String);
+
+impl RelPath {
+    fn is_root(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn as_relative(&self) -> &str {
+        &self.0
+    }
+
+    /// The leading-slash session path the `SessionFileSystem` contract uses.
+    fn to_session_path(&self) -> String {
+        if self.0.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{}", self.0)
+        }
+    }
+}
+
+/// Maps the virtual workspace namespace onto a host directory. The root is
+/// shared via `Arc<RwLock<_>>` so a worktree switch propagates to every clone.
+#[derive(Debug, Clone)]
+struct HostPathMap {
+    root: Arc<std::sync::RwLock<PathBuf>>,
+}
+
+impl HostPathMap {
+    fn new(root: impl Into<PathBuf>) -> Result<Self> {
+        Ok(Self {
+            root: Arc::new(std::sync::RwLock::new(canonicalize_root(root.into())?)),
+        })
+    }
+
+    fn root(&self) -> PathBuf {
+        self.root.read().expect("host root lock poisoned").clone()
+    }
+
+    fn set_root(&self, root: impl Into<PathBuf>) -> Result<()> {
+        let canonical = canonicalize_root(root.into())?;
+        *self.root.write().expect("host root lock poisoned") = canonical;
+        Ok(())
+    }
+
+    /// Parse any accepted spelling into a canonical [`RelPath`]:
+    ///   * relative `src/foo`, absolute session `/src/foo`
+    ///   * the `/workspace` alias, `/workspace/src/foo`
+    ///   * host-absolute under the root (`<root>/src/foo`) — same canonical path
+    ///
+    /// Rejects `..` traversal anywhere and host-absolute paths outside the root.
+    fn parse_input(&self, input: &str) -> Result<RelPath> {
+        let trimmed = input.trim();
+
+        // Host-absolute paths under the root are aliases for the same canonical
+        // path (e.g. a model echoing the real checkout path).
+        let candidate = Path::new(trimmed);
+        if candidate.is_absolute()
+            && let Ok(relative) = candidate.strip_prefix(self.root())
+        {
+            return rel_from_path(relative);
+        }
+
+        // Otherwise normalize the `/workspace` alias to a session path and split.
+        let session = everruns_core::session_path::to_session_path(trimmed);
+        rel_from_str(&session)
+    }
+
+    /// Canonical path → absolute host path, rejecting any escape from the root.
+    fn to_host(&self, path: &RelPath) -> Result<PathBuf> {
+        let root = self.root();
+        if path.is_root() {
+            return Ok(root);
+        }
+        let candidate = root.join(path.as_relative());
+        if !candidate.starts_with(&root) {
+            return Err(AgentLoopError::tool(format!(
+                "path escapes workspace root: {}",
+                path.as_relative()
+            )));
+        }
+        Ok(candidate)
+    }
+
+    /// Host path under the root → canonical, if contained.
+    fn relativize(&self, host: &Path) -> Result<RelPath> {
+        let relative = host.strip_prefix(self.root()).map_err(|_| {
+            AgentLoopError::tool(format!(
+                "path is outside workspace root: {}",
+                host.display()
+            ))
+        })?;
+        rel_from_path(relative)
+    }
+
+    /// The host-absolute display root.
+    fn display_root(&self) -> String {
+        self.root().display().to_string()
+    }
+
+    /// Canonical path → host-absolute display string.
+    fn to_display(&self, path: &RelPath) -> String {
+        let root = self.root();
+        if path.is_root() {
+            return root.display().to_string();
+        }
+        root.join(path.as_relative()).display().to_string()
+    }
+}
+
+/// Normalize a slash-separated string into a [`RelPath`], rejecting traversal.
+fn rel_from_str(s: &str) -> Result<RelPath> {
+    let mut segments = Vec::new();
+    for part in s.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                return Err(AgentLoopError::tool(format!(
+                    "path traversal rejected: {s}"
+                )));
+            }
+            segment => segments.push(segment),
+        }
+    }
+    Ok(RelPath(segments.join("/")))
+}
+
+/// Normalize a host-relative `Path` into a [`RelPath`], rejecting traversal and
+/// non-UTF-8 components. `.` segments are skipped so host aliases like
+/// `<root>/./src/lib.rs` resolve cleanly.
+fn rel_from_path(relative: &Path) -> Result<RelPath> {
+    let mut segments = Vec::new();
+    for component in relative.components() {
+        match component {
+            Component::CurDir => {}
+            Component::Normal(seg) => {
+                let segment = seg.to_str().ok_or_else(|| {
+                    AgentLoopError::tool(format!(
+                        "non-UTF-8 path component: {}",
+                        relative.display()
+                    ))
+                })?;
+                segments.push(segment.to_string());
+            }
+            Component::ParentDir => {
+                return Err(AgentLoopError::tool(format!(
+                    "path traversal rejected: {}",
+                    relative.display()
+                )));
+            }
+            Component::RootDir | Component::Prefix(_) => {
+                return Err(AgentLoopError::tool(format!(
+                    "absolute path component rejected: {}",
+                    relative.display()
+                )));
+            }
+        }
+    }
+    Ok(RelPath(segments.join("/")))
+}
+
+fn canonicalize_root(root: PathBuf) -> Result<PathBuf> {
+    if !root.exists() {
+        return Err(AgentLoopError::config(format!(
+            "workspace directory does not exist: {}",
+            root.display()
+        )));
+    }
+    let canonical = std::fs::canonicalize(&root).map_err(|e| {
+        AgentLoopError::config(format!(
+            "failed to canonicalize workspace root {}: {e}",
+            root.display()
+        ))
+    })?;
+    if !canonical.is_dir() {
+        return Err(AgentLoopError::config(format!(
+            "workspace root is not a directory: {}",
+            canonical.display()
+        )));
+    }
+    Ok(canonical)
 }
 
 #[cfg(test)]

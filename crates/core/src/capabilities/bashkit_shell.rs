@@ -1502,10 +1502,16 @@ mod tests {
         // The same file is visible via the `/workspace` alias and the
         // backend-native path — one namespace.
         assert_eq!(
-            adapter.read_file(Path::new("/workspace/file.txt")).await.unwrap(),
+            adapter
+                .read_file(Path::new("/workspace/file.txt"))
+                .await
+                .unwrap(),
             b"hi"
         );
-        assert_eq!(adapter.read_file(Path::new("/file.txt")).await.unwrap(), b"hi");
+        assert_eq!(
+            adapter.read_file(Path::new("/file.txt")).await.unwrap(),
+            b"hi"
+        );
     }
 
     #[tokio::test]
@@ -1518,7 +1524,10 @@ mod tests {
             .write_file(Path::new("/tmp/file.txt"), b"x")
             .await
             .unwrap();
-        assert_eq!(adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(), b"x");
+        assert_eq!(
+            adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(),
+            b"x"
+        );
     }
 
     // ========================================================================
@@ -1802,7 +1811,11 @@ mod tests {
 
         match result {
             ToolExecutionResult::Success(output) => {
-                assert_ne!(output["exit_code"], 0, "missing file should fail: {:?}", output);
+                assert_ne!(
+                    output["exit_code"], 0,
+                    "missing file should fail: {:?}",
+                    output
+                );
             }
             ToolExecutionResult::ToolError(msg) => {
                 assert!(
@@ -1951,7 +1964,10 @@ mod tests {
             .write_file(Path::new("/tmp/file.txt"), b"data")
             .await
             .unwrap();
-        assert_eq!(adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(), b"data");
+        assert_eq!(
+            adapter.read_file(Path::new("/tmp/file.txt")).await.unwrap(),
+            b"data"
+        );
     }
 
     #[tokio::test]

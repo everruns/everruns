@@ -87,65 +87,77 @@ onto *different* backends later is `MountFs::with_mount(...)` — the resolver d
 not change. The model-facing namespace is a stable `/workspace` even for a
 host-rooted backend; host-absolute display is opt-in rendering, not addressing.
 
-Underneath, the workspace backend normalizes paths and maps to the host
-filesystem through `everruns_core::workspace_paths::WorkspacePaths`. It is the
-single normalizer/host-mapper the stores share, below the resolver.
+`MountFs` is the only path authority. It normalizes input against the cwd,
+collapses `.`/`..`, and dispatches to the longest-matching mount; the chosen
+backend then keys on the resulting **leading-slash session path** (`/src/lib.rs`).
+There is no shared "path model" object that callers reach for — capabilities use
+the `SessionFileSystem` methods (`read_file`, `write_file`, `grep_files`,
+`display_path`, `resolve_path`), and `MountFs` resolves underneath. The
+host-agnostic `/workspace`-alias normalization is `everruns_core::session_path`
+(`to_session_path`, `to_display_path`); mapping the virtual namespace onto a real
+directory is a backend detail (see *Host mapping*).
 
-- **Canonical form is workspace-relative.** The in-memory representation is
-  `RelPath` — normalized, no `..`, no leading slash, no host prefix
-  (`src/lib.rs`, `Cargo.toml`). The workspace root is the empty path.
-- **The wire form stays leading-slash.** `RelPath::to_session_path()` produces
-  the legacy `/src/lib.rs` form that `SessionFileSystem` methods and the DB
-  store key on, so storage backends need no change.
-- **`/workspace` is a display alias, not a namespace.** It is one accepted
-  spelling on input and the default display prefix on output — never a second
-  addressing scheme.
-
-`WorkspacePaths` binds an optional host root (set for real-disk stores and
-shells; absent for the pure VFS) shared behind a handle, so an embedder's
-worktree switch via `set_host_root` propagates to every consumer that took its
-`WorkspacePaths` from the same store. `spawn_cwd()` validates the root exists and
-fails clearly (`workspace directory does not exist: …`) rather than letting a
-spawn surface an opaque `No such file or directory`.
+- **The wire form is the leading-slash session path.** `/src/lib.rs`,
+  `/Cargo.toml`, `/` for the root — what `SessionFileSystem` methods and the DB
+  store key on. VFS backends key on it directly; no separate canonical type is
+  shared across crates.
+- **`/workspace` is a mount + the default cwd, not a namespace.** It is one
+  accepted spelling on input and the default display prefix on output. The root
+  mount (`/`) means **any** path is addressable — the shell can read and write
+  anywhere from `/`, with `/workspace` simply being where it starts.
 
 ### Path Namespace
 
-`parse_input` accepts every spelling below and normalizes to the same canonical
-path. The store's wire form is **absolute, forward-slash, leading-slash**.
+Every spelling below resolves to the same backend session path. The wire form is
+**absolute, forward-slash, leading-slash**.
 
-| Input | Canonical (`RelPath`) | Wire form |
-|-------|-----------------------|-----------|
-| `"src/bar.txt"` | `src/bar.txt` | `/src/bar.txt` |
-| `"/src/bar.txt"` | `src/bar.txt` | `/src/bar.txt` |
-| `"/workspace/src/bar.txt"` | `src/bar.txt` | `/src/bar.txt` |
-| host-absolute under root | `src/bar.txt` | `/src/bar.txt` |
-| `"/workspace"`, `""`, `"/"` | (root) | `/` |
+| Input (cwd `/workspace`) | Backend session path |
+|--------------------------|----------------------|
+| `"src/bar.txt"` | `/src/bar.txt` |
+| `"/src/bar.txt"` | `/src/bar.txt` |
+| `"/workspace/src/bar.txt"` | `/src/bar.txt` |
+| host-absolute under root (real-disk) | `/src/bar.txt` |
+| `"/workspace"`, `""`, `"/"` | `/` |
 
-Implementations MUST route path handling through `WorkspacePaths` and MUST NOT
-hand-roll prefix logic. The shared parser guarantees:
+Guarantees:
 
 - The optional leading `/workspace` segment is equivalent to the root. Bare
   `workspace/...` (no leading slash) is **not** the alias, so a real top-level
   `workspace/` directory stays reachable.
-- Trailing slashes are stripped (except for `/`).
-- Path traversal is rejected: `..` anywhere returns an error regardless of input
-  shape, and host mapping re-checks containment under the root.
+- Trailing slashes are stripped (except for `/`); `.`/`..` collapse, with a
+  leading `..` clamped at root.
+- Host-backed stores reject `..` traversal and symlinks and re-check containment
+  under the root, so resolving outside `/workspace` still cannot escape the
+  backend root (it just lands at `<root>/etc/...`, not the host `/etc/...`).
 - Backslashes are not separators and environment variables are not expanded.
-  Paths are opaque slash-separated segments.
+
+### Host mapping (real-disk backend)
+
+`MountFs` is a pure *virtual* router with no host knowledge. The only place that
+needs to translate the virtual namespace onto a real directory is the host-backed
+store, so that logic is private to `everruns_runtime::RealDiskFileStore`
+(`HostPathMap`), not a shared abstraction:
+
+- It maps a session path to an absolute host path, accepts host-absolute inputs
+  under the root as aliases for the same file, rejects `..`/symlink escapes, and
+  re-checks containment.
+- The root is shared behind a handle, so an embedder's worktree switch via
+  `RealDiskFileStore::set_host_root` is seen by every clone of the store at once
+  while the model-facing `/workspace` stays stable.
 
 ### Display Paths
 
-`WorkspacePaths::to_display` is the single formatter. The display prefix is
-configurable, not magical:
+Each backend owns its `display_path`/`display_root`:
 
-- Default in-memory and storage-backed implementations display `/workspace`,
-  matching the server workspace model.
-- `RealDiskFileStore` displays its canonical host root by default and accepts
-  host-absolute paths under that root as aliases for the same canonical paths.
-  This lets embedders show `/Users/alex/project/src/lib.rs` while preserving
-  `/workspace/src/lib.rs` as a valid compatibility input. An embedder may set
-  the prefix to `/workspace` (to show the cloud alias) or to empty (bare
-  relative paths) without changing the addressing.
+- VFS/storage-backed stores display the `/workspace` alias (the
+  `session_path::to_display_path` default).
+- `RealDiskFileStore` displays its canonical host root, and accepts host-absolute
+  paths under that root as aliases — so embedders can show
+  `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
+  input.
+- `MountFs` forces the `/workspace` view on top, so behind the resolver (the
+  production wiring) the model always sees a stable `/workspace` regardless of
+  backend.
 
 ### Encoding
 
@@ -288,14 +300,14 @@ upstream.
 > a host process (e.g. the bash tool spawns a shell, which inherits the
 > host filesystem regardless of which `SessionFileSystem` is plugged in).
 
-> Capabilities that accept `path` arguments MUST resolve them through
-> `ToolContext.workspace_paths()` / `SystemPromptContext.workspace_paths()`
-> (which derive from the file store) — or through the store's own
-> `SessionFileSystem::workspace_paths()`. They MUST NOT implement their own
-> `/workspace` stripping, alias handling, or containment checks. This includes
-> host-process tools: the shell resolves its working directory and translates
-> command paths through the same `WorkspacePaths`, so it shares one namespace
-> with the file tools.
+> Capabilities that accept `path` arguments MUST resolve them through the
+> `SessionFileSystem` (the `file_store`, a `MountFs` in production) — its
+> `read_file`/`write_file`/`grep_files`/`display_path`/`resolve_path` methods —
+> and MUST NOT implement their own `/workspace` stripping, alias handling, or
+> containment checks. This includes host-process tools: the shell seeds its
+> working directory from `SessionFileSystem::resolve_path` and hands every path
+> straight to the store, so it shares one namespace with the file tools and the
+> resolver routes both.
 
 This rule keeps all existing and future capabilities aligned with the
 pluggable seam. A capability that follows the rule works against the
@@ -427,11 +439,14 @@ When the mount-overlay resolver lands, the migration path is:
 
 ## Source Index
 
-- `crates/core/src/mount_fs.rs` — `MountFs` (the mount + cwd resolver, EVE-660)
-- `crates/core/src/workspace_paths.rs` — `WorkspacePaths`, `RelPath` (the
-  backend normalizer / host-mapper under the resolver, EVE-660)
+- `crates/core/src/mount_fs.rs` — `MountFs` (the mount + cwd resolver, the only
+  path authority, EVE-660)
+- `crates/core/src/session_path.rs` — host-agnostic `/workspace`-alias helpers
+  (`to_session_path`, `to_display_path`)
+- `crates/runtime/src/real_disk.rs` — `RealDiskFileStore` + its private
+  `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
 - `crates/core/src/traits.rs` — `SessionFileSystem` trait
-  (`workspace_paths()`), `ToolContext::workspace_paths()`
+  (`display_path`/`display_root`/`resolve_path`)
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
 - `crates/runtime/src/backends.rs` — `RuntimeBackends`

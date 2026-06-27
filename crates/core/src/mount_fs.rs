@@ -27,7 +27,6 @@ use crate::error::Result;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::traits::SessionFileSystem;
 use crate::typed_id::SessionId;
-use crate::workspace_paths::WorkspacePaths;
 
 /// The conventional mount point and default cwd for the workspace. Models
 /// trained on cloud-agent layouts address files here; it is a real mount, not a
@@ -202,15 +201,6 @@ fn join_backend_path(backend_root: &str, rest: &str) -> String {
 
 #[async_trait]
 impl SessionFileSystem for MountFs {
-    fn workspace_paths(&self) -> WorkspacePaths {
-        // Present the workspace mount's view: host mapping (if the backend is
-        // host-rooted) preserved, display forced to the `/workspace` mount so
-        // the model sees one namespace regardless of backend.
-        self.primary
-            .workspace_paths()
-            .with_display_prefix(WORKSPACE_MOUNT)
-    }
-
     fn display_root(&self) -> String {
         WORKSPACE_MOUNT.to_string()
     }
@@ -335,7 +325,6 @@ impl SessionFileSystem for MountFs {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace_paths::WorkspacePaths;
 
     fn sid() -> SessionId {
         SessionId::from_seed(1)
@@ -488,9 +477,6 @@ mod tests {
         assert_eq!(fs.display_root(), "/workspace");
         assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
         assert_eq!(fs.display_path("/"), "/workspace");
-        // And it agrees with the workspace_paths view.
-        let wp = fs.workspace_paths();
-        assert_eq!(wp.display_root(), "/workspace");
     }
 
     #[tokio::test]
@@ -509,20 +495,5 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(from_volume.content.as_deref(), Some("1,2,3"));
-    }
-
-    #[test]
-    fn workspace_paths_keeps_host_mapping() {
-        let dir = tempfile::TempDir::new().unwrap();
-        // A host-rooted WorkspacePaths backend would expose to_host; here we
-        // assert the resolver forces the /workspace display while delegating.
-        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
-        let fs = MountFs::new(backend);
-        let wp = fs.workspace_paths();
-        // VFS backend has no host root.
-        assert!(wp.host_root().is_none());
-        // Sanity: a standalone host WorkspacePaths still maps (unrelated to fs).
-        let host = WorkspacePaths::host(dir.path()).unwrap();
-        assert!(host.host_root().is_some());
     }
 }
