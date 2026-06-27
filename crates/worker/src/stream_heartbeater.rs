@@ -2,8 +2,6 @@
 
 use async_trait::async_trait;
 use everruns_core::traits::{StreamHeartbeater, StreamProgress};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use uuid::Uuid;
 
 use crate::grpc_durable_store::GrpcDurableStore;
@@ -13,7 +11,7 @@ use crate::grpc_durable_store::GrpcDurableStore;
 /// Created per-task in `execute_reason_activity` and wired into `GrpcWorkerAdapters`.
 /// Errors are logged but never propagated so they cannot disrupt the streaming loop.
 pub struct GrpcTaskHeartbeater {
-    pub store: Arc<Mutex<GrpcDurableStore>>,
+    pub store: GrpcDurableStore,
     pub task_id: Uuid,
     pub worker_id: String,
 }
@@ -25,7 +23,7 @@ impl StreamHeartbeater for GrpcTaskHeartbeater {
             "accumulated_len": progress.accumulated_len,
             "last_delta_at": progress.last_delta_at,
         });
-        let mut store = self.store.lock().await;
+        let mut store = self.store.clone();
         if let Err(e) = store
             .heartbeat_task(self.task_id, &self.worker_id, Some(details))
             .await

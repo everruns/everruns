@@ -17,7 +17,6 @@ pub mod activities;
 pub mod adapters;
 pub mod app_builder;
 pub mod durable_runner;
-pub mod durable_worker;
 pub mod grpc_adapters;
 pub mod grpc_durable_store;
 pub mod grpc_worker_adapters;
@@ -38,9 +37,8 @@ pub use durable_runner::{
     DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
     DurableTurnOutput, InMemoryDurableStore,
 };
-pub use durable_worker::{DurableWorker, DurableWorkerConfig, ShutdownHandle};
 pub use grpc_durable_store::{
-    ClaimedTask as GrpcClaimedTask, GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
+    GrpcDurableStore, HeartbeatResponse as GrpcHeartbeatResponse,
     WorkflowStatus as GrpcWorkflowStatus,
 };
 pub use runner::{AgentRunner, RunnerBackend, create_runner, create_runner_with_backend};
@@ -59,7 +57,7 @@ pub use grpc_adapters::{
 pub use grpc_worker_adapters::GrpcWorkerAdapters;
 pub use runtime_host::WorkerRuntimeHost;
 pub use stream_heartbeater::GrpcTaskHeartbeater;
-pub use unified_worker::{TaskWorker, TaskWorkerConfig};
+pub use unified_worker::{ShutdownHandle, TaskWorker, TaskWorkerConfig};
 pub use worker_adapters::{
     AdapterAgentStore, AdapterEventEmitter, AdapterMessageRetriever, AdapterProviderStore,
     AdapterSessionFileStore, AdapterSessionStore, TurnContext as WorkerTurnContext, WorkerAdapters,

@@ -248,4 +248,4 @@ Tests verify delivery and mapping correctness:
 7. **privacy controls**: redaction/summary modes strip raw tool payloads by default
 8. **session grouping metadata**: root turn spans carry stable `session_id` and session-ordering metadata
 
-Both test suites must cover dev_worker (DEV_MODE) and durable_worker (Full mode) execution paths.
+Both test suites must cover the task worker's DEV_MODE direct-store and full-mode gRPC-store execution paths.
