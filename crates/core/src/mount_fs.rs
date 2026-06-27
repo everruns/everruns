@@ -21,7 +21,7 @@
 // See `specs/file-store.md` for the contract and the migration plan.
 
 use async_trait::async_trait;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use crate::error::Result;
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
@@ -30,8 +30,9 @@ use crate::typed_id::SessionId;
 
 /// The conventional mount point and default cwd for the workspace. Models
 /// trained on cloud-agent layouts address files here; it is a real mount, not a
-/// strip-prefix.
-pub const WORKSPACE_MOUNT: &str = "/workspace";
+/// strip-prefix. Same string as [`crate::session_path::WORKSPACE_PREFIX`] (the
+/// display alias) — kept as one source of truth.
+pub const WORKSPACE_MOUNT: &str = crate::session_path::WORKSPACE_PREFIX;
 
 /// A single entry in the mount table.
 #[derive(Clone)]
@@ -54,8 +55,9 @@ pub struct MountFs {
     /// The workspace backend — used for grep, display, and host mapping.
     primary: Arc<dyn SessionFileSystem>,
     /// Current working directory (a normalized virtual path). Relative inputs
-    /// resolve against it. Defaults to [`WORKSPACE_MOUNT`].
-    cwd: Arc<RwLock<String>>,
+    /// resolve against it; defaults to [`WORKSPACE_MOUNT`]. Fixed at
+    /// construction — persistent `cd` across tool calls is not a feature yet.
+    cwd: String,
 }
 
 impl MountFs {
@@ -80,7 +82,7 @@ impl MountFs {
         let mut fs = Self {
             mounts,
             primary: workspace,
-            cwd: Arc::new(RwLock::new(WORKSPACE_MOUNT.to_string())),
+            cwd: WORKSPACE_MOUNT.to_string(),
         };
         fs.sort_mounts();
         fs
@@ -110,13 +112,7 @@ impl MountFs {
 
     /// The current working directory (normalized virtual path).
     pub fn cwd(&self) -> String {
-        self.cwd.read().expect("MountFs cwd lock poisoned").clone()
-    }
-
-    /// Repoint the current working directory. Relative paths resolve against it.
-    pub fn set_cwd(&self, cwd: impl AsRef<str>) {
-        let normalized = normalize_virtual(cwd.as_ref(), "/");
-        *self.cwd.write().expect("MountFs cwd lock poisoned") = normalized;
+        self.cwd.clone()
     }
 
     fn sort_mounts(&mut self) {
@@ -216,14 +212,7 @@ impl SessionFileSystem for MountFs {
     fn display_path(&self, path: &str) -> String {
         // `path` is a backend keyspace path (e.g. `/foo`); render it under the
         // workspace mount.
-        if path == "/" || path.is_empty() {
-            return WORKSPACE_MOUNT.to_string();
-        }
-        if let Some(rest) = path.strip_prefix('/') {
-            format!("{WORKSPACE_MOUNT}/{rest}")
-        } else {
-            format!("{WORKSPACE_MOUNT}/{path}")
-        }
+        crate::session_path::to_display_path(path)
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {

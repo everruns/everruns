@@ -890,8 +890,8 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-BASH-001 | Workspace boundary escape | Critical | `SessionFileSystemAdapter` rejects paths outside `/workspace`; returns `PermissionDenied` | MITIGATED |
-| TM-BASH-002 | Read host /etc/passwd or system files | Critical | No real filesystem; all I/O goes through `SessionFileSystemAdapter` → session file store | MITIGATED |
+| TM-BASH-001 | Workspace boundary escape | Critical | Bash paths resolve through `MountFs` into the **session-scoped** session file store. `/workspace` is the default cwd, not a boundary (the root mount makes any path addressable, EVE-660). The actual boundary holds regardless: the server backend is a VFS with no real filesystem (TM-BASH-002) and is keyed per session/workspace, and the real-disk backend (`RealDiskFileStore`) clamps every path under the workspace root with symlink rejection. `/etc/passwd` resolves to a key *inside this session's* store (server) or `<root>/etc/passwd` contained under the workspace root (real-disk) — never the host file or another tenant. | MITIGATED |
+| TM-BASH-002 | Read host /etc/passwd or system files | Critical | No real filesystem; all I/O goes through the session-scoped store (server VFS) or the root-clamped `RealDiskFileStore` (embedded). This — not `/workspace` prefixing — is the primary boundary. | MITIGATED |
 | TM-BASH-003 | Network access from bash | Critical | Bashkit has no network builtins; curl/wget not available (no real process execution) | MITIGATED |
 | TM-BASH-004 | Fork bomb / process spawning | Critical | No real process execution; `exec`, subprocesses, background processes not implemented (exit 127) | MITIGATED |
 | TM-BASH-005 | Infinite loop CPU exhaustion | High | `max_loop_iterations: 10000`; `max_commands: 1000`; parser timeout 5s | MITIGATED |
@@ -900,7 +900,7 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 | TM-BASH-008 | Execution timeout | High | Default 30s, max 60s; enforced by tool executor | MITIGATED |
 | TM-BASH-009 | Environment variable leak | Medium | Controlled env: only HOME, SHELL, PATH, WORKSPACE; hardcoded username/hostname ("everruns") | MITIGATED |
 | TM-BASH-010 | Symlink escape | Medium | `SessionFileSystemAdapter.symlink()` returns `Error (unsupported)` | MITIGATED |
-| TM-BASH-011 | Path traversal via bash | High | Paths normalized by bashkit; `to_session_path()` rejects paths outside `/workspace` | MITIGATED |
+| TM-BASH-011 | Path traversal via bash | High | `MountFs` collapses `.`/`..` (a leading `..` is clamped at root); the real-disk backend additionally rejects `..` and symlinks and re-checks containment under the root. Traversal cannot escape the session store / workspace root. | MITIGATED |
 | TM-BASH-012 | Privilege escalation (sudo, su) | Low | No privilege commands implemented; sandboxed interpreter only | MITIGATED |
 | TM-BASH-013 | eval/bash re-invocation escape | Medium | `eval` and `bash`/`sh` commands re-invoke the sandboxed interpreter, not real shell | MITIGATED |
 | TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
@@ -910,15 +910,14 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 ### Mitigation Details
 
 **TM-BASH-001 / TM-BASH-011 — Workspace Boundary:**
-```rust
-fn to_session_path(path: &Path) -> Option<String> {
-    // /workspace       → /
-    // /workspace/foo   → /foo
-    // /tmp/foo         → None  → PermissionDenied
-    // /etc/passwd      → None  → PermissionDenied
-}
+```text
+bash path ──> SessionFileSystemAdapter ──> MountFs.resolve ──> backend
+  /workspace/foo │ /foo │ ../x │ /etc/passwd   (all addressable)
+                                   │
+   server VFS: key in THIS session's store (session/workspace-scoped) — no host, no other tenant
+   real-disk : <workspace-root>/etc/passwd, clamped + symlink-rejected — never host /etc/passwd
 ```
-All bashkit filesystem operations go through `SessionFileSystemAdapter`, which maps paths rooted at `/workspace` to session file store paths. Anything outside `/workspace` returns `PermissionDenied`.
+All bashkit filesystem operations go through `SessionFileSystemAdapter`, which hands the path to `MountFs` (the sole resolver). `/workspace` is the default cwd and the root mount makes any path addressable (EVE-660); the boundary is **not** the `/workspace` prefix but the backend — the server VFS has no real filesystem and is per-session/workspace scoped, and the real-disk backend clamps every resolved path under the workspace root with symlink rejection. So a path outside `/workspace` resolves *into the session's own store*, never to the host or another tenant.
 
 **TM-BASH-005 — Resource Limits:**
 ```rust
@@ -974,7 +973,7 @@ configuration knobs.
 | TM-LUA-001 | Arbitrary code execution | High | Admin-gated assignment (High risk tier); only string/table/math/os/utf8 libs loaded; dangerous globals scrubbed | MITIGATED |
 | TM-LUA-002 | CPU / wall-clock exhaustion | High | Instruction-count hook (every 100k ops) enforces an instruction budget + wall-clock deadline; outer tokio timeout backstop. The VM runs on a dedicated blocking thread, so a pathological *synchronous* op (e.g. catastrophic Lua pattern in C, which the hook cannot interrupt) occupies one blocking-pool thread instead of stalling a shared runtime worker. **Residual:** such an op is not force-killable in-process — robust fix is out-of-process execution. | MITIGATED (best-effort for synchronous C ops) |
 | TM-LUA-003 | Memory exhaustion | High | `Lua::set_memory_limit` hard 32 MiB cap (over-budget alloc → Lua error). Host-side reads bounded by `SessionFileSystem` quotas (TM-FS-008). | MITIGATED |
-| TM-LUA-004 | Filesystem escape / cross-tenant access | High | All paths route through `LuaVfs` → session-scoped `SessionFileSystem`; `/workspace`-rooted, traversal/outside-workspace rejected; `io` library not loaded | MITIGATED |
+| TM-LUA-004 | Filesystem escape / cross-tenant access | High | All paths route through `LuaVfs` → the **session-scoped** `SessionFileSystem` (a `MountFs`). The session scope is the tenant boundary, not the `/workspace` prefix: `MountFs` rejects `..` traversal and the real-disk backend clamps under the workspace root with symlink rejection. `/workspace` is the default cwd; addressing outside it stays within this session's own store (consistent with bash, TM-BASH-001). `io` library not loaded. | MITIGATED |
 | TM-LUA-005 | Network egress / SSRF / exfiltration | High | No socket library. `http.get/post` is **fail-closed**: routed only through the host `EgressService` (the central egress boundary) AND requires a non-empty `network_access` allow-list that permits the URL — checked before the request. Absent either, `http.*` is not even defined. Response bodies capped at 1 MiB. | MITIGATED (allow-listed egress) |
 | TM-LUA-006 | Dynamic code / bytecode loading | Medium | `load`/`loadstring`/`dofile`/`loadfile`/`require`/`package` scrubbed to nil; `string.dump` removed; no untrusted-bytecode path | MITIGATED |
 | TM-LUA-007 | Native escape (FFI / C modules) | High | Lua 5.4, never LuaJIT (no FFI); `package`/`require` scrubbed so `package.loadlib` cannot `dlopen` a shared object; `debug` library not loaded | MITIGATED |
