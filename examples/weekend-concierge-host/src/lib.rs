@@ -7,8 +7,8 @@ use everruns_core::session_file::InitialFile;
 use everruns_core::tool_types::{ToolCall, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness, HarnessStatus,
-    Message, PlatformDefinition, ResolvedModel, Session, SessionStatus,
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, DriverId, Harness,
+    HarnessStatus, Message, PlatformDefinition, ResolvedModel, Session, SessionStatus,
 };
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -212,8 +212,9 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
         name: "weekend-concierge".into(),
         display_name: Some("Weekend Concierge".into()),
         description: Some("A hosted in-process concierge for planning fun local outings.".into()),
-        system_prompt: "You are a concise local concierge. Use host tools when venue facts matter."
-            .into(),
+        system_prompt: Some(
+            "You are a concise local concierge. Use host tools when venue facts matter.".into(),
+        ),
         parent_harness_id: None,
         default_model_id: None,
         tags: vec!["example".into(), "embedded".into()],
@@ -226,6 +227,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
             is_readonly: true,
         }],
         network_access: None,
+        parallel_tool_calls: None,
         embedder_metadata: Default::default(),
         is_built_in: false,
         status: HarnessStatus::Active,
@@ -250,12 +252,17 @@ fn agent(
             "Keep the recommendation practical: one primary pick, one backup, one reason each."
                 .into(),
         default_model_id: default_model,
+        default_version_id: None,
+        forked_from_agent_id: None,
+        forked_from_version_id: None,
+        root_agent_id: None,
         tags: vec!["example".into()],
         capabilities: vec![],
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,
         max_iterations: Some(6),
+        parallel_tool_calls: None,
         tools: vec![],
         status: AgentStatus::Active,
         created_at: Utc::now(),
@@ -277,7 +284,12 @@ fn session(
         organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
         harness_id,
         agent_id: Some(agent_id),
+        agent_version_id: None,
         agent_identity_id: None,
+        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        owner: None,
+        effective_owner: None,
         title: Some("Friday Team Outing".into()),
         locale: Some("en-US".into()),
         preview: None,
@@ -292,6 +304,7 @@ fn session(
         hints: None,
         network_access: None,
         max_iterations: None,
+        parallel_tool_calls: None,
         status: SessionStatus::Started,
         created_at: Utc::now(),
         updated_at: Utc::now(),
