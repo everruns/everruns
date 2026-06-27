@@ -1138,24 +1138,6 @@ impl Tool for SpawnBackgroundTool {
                 );
             };
 
-            // Enforce per-session cap, per-org cap, and minimum recurring cron
-            // interval (shared with the create_schedule tool).
-            match crate::session_schedule::enforce_create_limits(
-                schedule_store.as_ref(),
-                context.session_id,
-                schedule_request.cron_expression.as_deref(),
-            )
-            .await
-            {
-                Ok(()) => {}
-                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
-                    return ToolExecutionResult::internal_error(err);
-                }
-                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
-                    return ToolExecutionResult::tool_error(msg);
-                }
-            }
-
             let description = build_background_schedule_description(
                 tool_name,
                 &tool_args,
@@ -1164,7 +1146,7 @@ impl Tool for SpawnBackgroundTool {
             );
 
             return match schedule_store
-                .create_schedule(
+                .create_schedule_enforcing_limits(
                     context.session_id,
                     description,
                     schedule_request.cron_expression.clone(),
@@ -1233,7 +1215,12 @@ impl Tool for SpawnBackgroundTool {
                         "task_id": monitor_task_id,
                     }))
                 }
-                Err(err) => ToolExecutionResult::internal_error(err),
+                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
+                    ToolExecutionResult::internal_error(err)
+                }
+                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+                    ToolExecutionResult::tool_error(msg)
+                }
             };
         }
 
