@@ -1158,6 +1158,8 @@ message McpServerInfo {
     map<string, string> headers = 5;
     string auth_mode = 6;
     optional string oauth_provider_id = 7;
+    // Protocol-era adoption policy: "auto" (default), "legacy", "stable", "rc".
+    string protocol_mode = 8;
 }
 
 // Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")

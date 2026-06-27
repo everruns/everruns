@@ -449,13 +449,14 @@ pub use leased_resource::{
 };
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
-    McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
-    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
-    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
+    MCP_PROTOCOL_VERSION_LEGACY, MCP_PROTOCOL_VERSION_RC, MCP_PROTOCOL_VERSION_STABLE, McpContent,
+    McpError, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
+    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
     mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
-    scoped_mcp_servers_is_empty,
+    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
+    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,

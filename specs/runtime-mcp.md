@@ -300,6 +300,16 @@ Landed:
   `everruns-mcp::http_list_tools`.
 - Coding CLI (D8): reads `.mcp.json` (HTTP + stdio), wires servers into the
   session, adds a `/mcp` command.
+- Multi-era protocol negotiation (D9): the HTTP transport speaks legacy
+  (`2025-03-26`), current (`2025-06-18`), and the 2026 stateless RC
+  (`2026-07-28`) through one code path. `McpConnection.protocol_mode` (from
+  `McpServer`/`ScopedMcpServer`/`McpServerInfo`) selects the policy; `auto`
+  tries stateless-first and falls back to the `initialize` handshake +
+  `Mcp-Session-Id`, caching the verdict per server. Every request carries
+  `_meta` (client info) and routable headers (`MCP-Protocol-Version`,
+  `Mcp-Method`, `Mcp-Name`). Pure pieces in `crates/mcp/src/protocol.rs`,
+  orchestration in `http.rs`. Contract detail in
+  [mcp-servers.md](mcp-servers.md) ("Multi-era protocol support").
 
 Remaining follow-up:
 
