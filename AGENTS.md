@@ -39,6 +39,7 @@ doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'
 - To find relevant specs, use `rg -n "<topic>" specs` and read the linked specs before changing behavior.
 - Specs capture why/what, not exhaustive how. Do not duplicate fields, enum variants, SQL DDL, or exact API shapes already readable from source.
 - Public product documentation lives in `docs/`. Internal proposals, durable design intent, and temporary investigations do not belong there.
+- UI design system (Slate): `apps/ui/src/app/design-system.css` is the runtime source of truth; `apps/ui/DESIGN.md` is its agent-readable companion in the [DESIGN.md format](https://github.com/google-labs-code/design.md). When changing design tokens, update both together and run `pnpm run design:lint` in `apps/ui`. See `specs/brand.md`.
 
 ### Local dev and tests
 

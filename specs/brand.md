@@ -140,6 +140,25 @@ surrounding canvas — never re-derive ring coordinates by bounding box.
 
 The "Slate" design system defines the visual language for the Everruns UI application.
 
+#### Sources of truth and DESIGN.md
+
+The Slate design system has two co-located, machine-readable sources of truth in
+the UI app:
+
+- `apps/ui/src/app/design-system.css` — the **runtime** source of truth: CSS
+  custom properties, theme tokens, utilities, and animations consumed at build
+  time. Downstream apps import this file rather than duplicating it.
+- `apps/ui/DESIGN.md` — the **agent- and human-readable** source of truth in the
+  [DESIGN.md format](https://github.com/google-labs-code/design.md) (YAML token
+  front matter + design-rationale prose). Its tokens mirror the light-mode values
+  in `design-system.css`.
+
+These two files MUST stay in sync: when changing a token in `design-system.css`,
+update `DESIGN.md` in the same change (and vice versa). Validate `DESIGN.md`
+structurally and against WCAG contrast with `pnpm run design:lint` (in
+`apps/ui`), which runs `@google/design.md lint`. This spec captures intent only;
+do not duplicate the full token tables here — read them from those two files.
+
 #### Corners & Radius
 
 **Sharp corners (0px)** throughout for a clean, developer-focused aesthetic.
