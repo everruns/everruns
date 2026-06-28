@@ -26,8 +26,9 @@ use uuid::Uuid;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
-    GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcProviderStore, GrpcSessionFileStore,
-    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcOutboundToolRateLimiter, GrpcPaymentAuthority, GrpcProviderCredentialStore,
+    GrpcProviderStore, GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore,
+    GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -479,6 +480,15 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             GrpcPaymentAuthority::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
+    }
+
+    fn outbound_tool_rate_limiter(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::traits::OutboundToolRateLimiter>> {
+        Some(Arc::new(GrpcOutboundToolRateLimiter::new(
+            self.client.clone(),
+        )))
     }
 
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
