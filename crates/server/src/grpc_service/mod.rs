@@ -290,12 +290,19 @@ pub fn grpc_auth_token_from_env() -> Option<String> {
 /// TM-DURABLE-002: Validate that WORKER_GRPC_AUTH_TOKEN is set in production.
 /// Panics if the token is missing when not in dev mode.
 pub fn require_grpc_auth_token() -> String {
-    grpc_auth_token_from_env().unwrap_or_else(|| {
-        panic!(
+    require_grpc_auth_token_result().unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Fallible variant used by server startup so invalid infrastructure config
+/// fails before the gRPC server is spawned.
+pub fn require_grpc_auth_token_result() -> anyhow::Result<String> {
+    match grpc_auth_token_from_env() {
+        Some(token) => Ok(token),
+        None => anyhow::bail!(
             "WORKER_GRPC_AUTH_TOKEN must be set when not in dev mode. \
              Without it, gRPC endpoints are unauthenticated."
-        )
-    })
+        ),
+    }
 }
 
 /// Build server-side TLS config from environment variables for mutual TLS (mTLS).
@@ -306,19 +313,32 @@ pub fn require_grpc_auth_token() -> String {
 ///
 /// Returns `None` when TLS env vars are not configured (plain HTTP/2).
 pub fn grpc_server_tls_from_env() -> Option<tonic::transport::ServerTlsConfig> {
+    grpc_server_tls_from_env_result().unwrap_or_else(|error| panic!("{error}"))
+}
+
+/// Fallible variant used by server startup to validate TLS material before
+/// spawning the gRPC server task.
+pub fn grpc_server_tls_from_env_result() -> anyhow::Result<Option<tonic::transport::ServerTlsConfig>>
+{
     use tonic::transport::{Certificate, Identity, ServerTlsConfig};
 
     let cert_path = std::env::var("WORKER_GRPC_TLS_CERT")
         .ok()
-        .filter(|s| !s.is_empty())?;
+        .filter(|s| !s.is_empty());
+    let Some(cert_path) = cert_path else {
+        return Ok(None);
+    };
     let key_path = std::env::var("WORKER_GRPC_TLS_KEY")
         .ok()
-        .filter(|s| !s.is_empty())?;
+        .filter(|s| !s.is_empty());
+    let Some(key_path) = key_path else {
+        return Ok(None);
+    };
 
     let cert_pem = std::fs::read_to_string(&cert_path)
-        .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_CERT at {cert_path}: {e}"));
+        .map_err(|e| anyhow::anyhow!("Failed to read WORKER_GRPC_TLS_CERT at {cert_path}: {e}"))?;
     let key_pem = std::fs::read_to_string(&key_path)
-        .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_KEY at {key_path}: {e}"));
+        .map_err(|e| anyhow::anyhow!("Failed to read WORKER_GRPC_TLS_KEY at {key_path}: {e}"))?;
 
     let identity = Identity::from_pem(cert_pem, key_pem);
     let mut tls = ServerTlsConfig::new().identity(identity);
@@ -328,15 +348,16 @@ pub fn grpc_server_tls_from_env() -> Option<tonic::transport::ServerTlsConfig> {
         .ok()
         .filter(|s| !s.is_empty())
     {
-        let ca_pem = std::fs::read_to_string(&ca_path)
-            .unwrap_or_else(|e| panic!("Failed to read WORKER_GRPC_TLS_CA_CERT at {ca_path}: {e}"));
+        let ca_pem = std::fs::read_to_string(&ca_path).map_err(|e| {
+            anyhow::anyhow!("Failed to read WORKER_GRPC_TLS_CA_CERT at {ca_path}: {e}")
+        })?;
         tls = tls.client_ca_root(Certificate::from_pem(ca_pem));
         tracing::info!("gRPC mTLS enabled: server cert + client CA verification");
     } else {
         tracing::info!("gRPC TLS enabled: server cert only (no client verification)");
     }
 
-    Some(tls)
+    Ok(Some(tls))
 }
 
 /// Tonic interceptor that validates bearer token on every gRPC request.

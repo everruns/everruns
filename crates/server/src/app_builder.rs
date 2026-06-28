@@ -17,6 +17,7 @@ use crate::openapi::ApiDoc;
 use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
+use crate::supervised_task::{RestartPolicy, TaskSupervisor};
 use crate::{api, seed, services};
 
 use crate::middleware::RequestIdLayer;
@@ -62,6 +63,63 @@ type BackgroundTaskFn =
 
 type PersonalAccessTokenRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
 
+#[derive(Clone)]
+struct CoreDeps {
+    db: Arc<StorageBackend>,
+    runner: Arc<dyn AgentRunner>,
+    auth: auth::AuthState,
+    encryption: Option<Arc<EncryptionService>>,
+    event_delivery: EventDelivery,
+}
+
+impl CoreDeps {
+    fn new(
+        db: Arc<StorageBackend>,
+        runner: Arc<dyn AgentRunner>,
+        auth: auth::AuthState,
+        encryption: Option<Arc<EncryptionService>>,
+        event_delivery: EventDelivery,
+    ) -> Self {
+        Self {
+            db,
+            runner,
+            auth,
+            encryption,
+            event_delivery,
+        }
+    }
+}
+
+fn github_app_token_minter(
+    auth_config: &auth::AuthConfig,
+) -> Option<crate::storage::GitHubAppTokenMinter> {
+    auth_config.github_connection.as_ref().map(|config| {
+        crate::storage::GitHubAppTokenMinter::new(config.app_id.clone(), config.private_key.clone())
+    })
+}
+
+fn build_connection_resolver(
+    db: &Arc<StorageBackend>,
+    encryption: &Arc<EncryptionService>,
+    auth_config: &auth::AuthConfig,
+) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
+    Arc::new(crate::storage::DbConnectionResolver::new(
+        db.as_ref().clone(),
+        encryption.as_ref().clone(),
+        github_app_token_minter(auth_config),
+    ))
+}
+
+fn optional_connection_resolver(
+    db: &Arc<StorageBackend>,
+    encryption: &Option<Arc<EncryptionService>>,
+    auth_config: &auth::AuthConfig,
+) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
+    encryption
+        .as_ref()
+        .map(|enc| build_connection_resolver(db, enc, auth_config))
+}
+
 struct ServerTaskNotifier {
     broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
 }
@@ -70,6 +128,136 @@ struct ServerTaskNotifier {
 impl DurableTaskNotifier for ServerTaskNotifier {
     async fn notify_task_available(&self, activity_type: &str) {
         self.broadcaster.notify_task_available(activity_type).await;
+    }
+}
+
+struct StorageInit {
+    db: Arc<StorageBackend>,
+    runner: Arc<dyn AgentRunner>,
+    shared_durable_store: Option<Arc<InMemoryWorkflowEventStore>>,
+    database_url: Option<String>,
+    database_unpooled_url: Option<String>,
+    task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>,
+}
+
+async fn init_storage(config: &ServerConfig, migrations: Vec<MigrationFn>) -> Result<StorageInit> {
+    let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
+
+    if config.dev_mode {
+        tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
+        let runner =
+            create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
+                .await
+                .context("Failed to create in-memory agent runner")?;
+
+        tracing::info!(
+            "Using in-memory storage and durable execution engine with in-process worker"
+        );
+        return Ok(StorageInit {
+            db,
+            runner,
+            shared_durable_store: Some(shared_store),
+            database_url: None,
+            database_unpooled_url,
+            task_broadcaster: None,
+        });
+    }
+
+    let database_url =
+        std::env::var("DATABASE_URL").context("DATABASE_URL environment variable required")?;
+
+    // TM-NEW: Warn when DATABASE_URL lacks TLS in production.
+    if !database_url.contains("sslmode=") {
+        tracing::warn!(
+            "DATABASE_URL does not specify sslmode. \
+             For production, use sslmode=require or sslmode=verify-full \
+             to encrypt database connections."
+        );
+    } else if database_url.contains("sslmode=disable") {
+        tracing::warn!(
+            "DATABASE_URL has sslmode=disable — database connections are unencrypted. \
+             For production, use sslmode=require or sslmode=verify-full."
+        );
+    }
+
+    let backend = StorageBackend::postgres(&database_url)
+        .await
+        .context("Failed to connect to database")?;
+    tracing::info!("Connected to PostgreSQL database");
+
+    // Optional S3-compatible blob backend for file/image content offload
+    // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
+    let blob_store = crate::storage::blob_store::blob_store_from_env()
+        .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
+    let backend = backend.with_blob_store(blob_store);
+
+    if !config.no_migrations {
+        tracing::info!("Running database migrations...");
+        let pool = backend.pool().expect("PostgreSQL backend should have pool");
+        if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
+            tracing::error!(
+                error = %e,
+                "Database migration failed - check migration files and database state"
+            );
+            return Err(e)
+                .context("Database migration failed - check migration files and database state");
+        }
+        tracing::info!("Database migrations complete");
+
+        for migration_fn in migrations {
+            if let Err(e) = migration_fn(pool.clone()).await {
+                tracing::error!(error = %e, "Custom database migration failed");
+                return Err(e);
+            }
+        }
+    } else {
+        tracing::info!("Skipping database migrations (--no-migrations)");
+    }
+
+    let pool = backend
+        .pool()
+        .expect("PostgreSQL backend should have pool")
+        .clone();
+    let task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
+        Some(database_url.as_str()),
+        database_unpooled_url.as_deref(),
+    )
+    .await
+    .map(Arc::new);
+    let runner_backend = if let Some(broadcaster) = task_broadcaster.clone() {
+        RunnerBackend::PostgresWithNotifier {
+            pool,
+            task_notifier: Arc::new(ServerTaskNotifier { broadcaster }),
+        }
+    } else {
+        RunnerBackend::Postgres(pool)
+    };
+    let runner = create_runner_with_backend(runner_backend)
+        .await
+        .context("Failed to create agent runner")?;
+
+    tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
+    Ok(StorageInit {
+        db: Arc::new(backend),
+        runner,
+        shared_durable_store: None,
+        database_url: Some(database_url),
+        database_unpooled_url,
+        task_broadcaster,
+    })
+}
+
+fn spawn_background_tasks(
+    supervisor: &mut TaskSupervisor,
+    server_context: &ServerContext,
+    background_tasks: Vec<BackgroundTaskFn>,
+) {
+    for task_fn in background_tasks {
+        let ctx = server_context.clone();
+        supervisor.track("custom_background_task", tokio::spawn(task_fn(ctx)));
     }
 }
 
@@ -328,106 +516,20 @@ impl ServerAppBuilder {
                 .clone()
                 .unwrap_or_else(crate::platform::oss_platform_definition),
         );
+        let mut supervisor = TaskSupervisor::new();
 
         // =====================================================================
         // Phase 1: Storage backend & runner
         // =====================================================================
-        let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
-        let task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>;
-        let (db, runner, shared_durable_store, database_url) = if self.config.dev_mode {
-            tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
-
-            let db = Arc::new(StorageBackend::in_memory());
-            let shared_store = Arc::new(InMemoryWorkflowEventStore::new());
-            let runner =
-                create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
-                    .await
-                    .context("Failed to create in-memory agent runner")?;
-            task_broadcaster = None;
-
-            tracing::info!(
-                "Using in-memory storage and durable execution engine with in-process worker"
-            );
-            (db, runner, Some(shared_store), None)
-        } else {
-            let database_url = std::env::var("DATABASE_URL")
-                .context("DATABASE_URL environment variable required")?;
-
-            // TM-NEW: Warn when DATABASE_URL lacks TLS in production
-            if !database_url.contains("sslmode=") {
-                tracing::warn!(
-                    "DATABASE_URL does not specify sslmode. \
-                     For production, use sslmode=require or sslmode=verify-full \
-                     to encrypt database connections."
-                );
-            } else if database_url.contains("sslmode=disable") {
-                tracing::warn!(
-                    "DATABASE_URL has sslmode=disable — database connections are unencrypted. \
-                     For production, use sslmode=require or sslmode=verify-full."
-                );
-            }
-
-            let backend = StorageBackend::postgres(&database_url)
-                .await
-                .context("Failed to connect to database")?;
-            tracing::info!("Connected to PostgreSQL database");
-
-            // Optional S3-compatible blob backend for file/image content offload
-            // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
-            let blob_store = crate::storage::blob_store::blob_store_from_env()
-                .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
-            let backend = backend.with_blob_store(blob_store);
-
-            if !self.config.no_migrations {
-                tracing::info!("Running database migrations...");
-                let pool = backend.pool().expect("PostgreSQL backend should have pool");
-                if let Err(e) = sqlx::migrate!("./migrations").run(pool).await {
-                    tracing::error!(
-                        error = %e,
-                        "Database migration failed - check migration files and database state"
-                    );
-                    return Err(e).context(
-                        "Database migration failed - check migration files and database state",
-                    );
-                }
-                tracing::info!("Database migrations complete");
-
-                // Run custom migrations
-                for migration_fn in self.migrations {
-                    if let Err(e) = migration_fn(pool.clone()).await {
-                        tracing::error!(error = %e, "Custom database migration failed");
-                        return Err(e);
-                    }
-                }
-            } else {
-                tracing::info!("Skipping database migrations (--no-migrations)");
-            }
-
-            let pool = backend
-                .pool()
-                .expect("PostgreSQL backend should have pool")
-                .clone();
-            task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
-                Some(database_url.as_str()),
-                database_unpooled_url.as_deref(),
-            )
-            .await
-            .map(Arc::new);
-            let runner_backend = if let Some(broadcaster) = task_broadcaster.clone() {
-                RunnerBackend::PostgresWithNotifier {
-                    pool,
-                    task_notifier: Arc::new(ServerTaskNotifier { broadcaster }),
-                }
-            } else {
-                RunnerBackend::Postgres(pool)
-            };
-            let runner = create_runner_with_backend(runner_backend)
-                .await
-                .context("Failed to create agent runner")?;
-
-            tracing::info!("Using Durable execution engine runner (PostgreSQL-backed)");
-            (Arc::new(backend), runner, None, Some(database_url))
-        };
+        let migrations = self.migrations;
+        let StorageInit {
+            db,
+            runner,
+            shared_durable_store,
+            database_url,
+            database_unpooled_url,
+            task_broadcaster,
+        } = init_storage(&self.config, migrations).await?;
 
         // =====================================================================
         // Phase 2: Seed & infrastructure services
@@ -451,14 +553,17 @@ impl ServerAppBuilder {
         // Seed must run after encryption is resolved: single-tenant/dev seeding
         // materializes DEFAULT_*_API_KEY env vars into the default org's
         // provider rows (encrypted), which requires the encryption service.
-        seed::spawn_seed_task_with_platform_definition(
-            db.clone(),
-            seed::SeedAuthContext {
-                mode: auth_config.mode.clone(),
-                admin: auth_config.admin.clone(),
-            },
-            platform_definition.as_ref().clone(),
-            encryption.clone(),
+        supervisor.track(
+            "seed",
+            seed::spawn_seed_task_with_platform_definition(
+                db.clone(),
+                seed::SeedAuthContext {
+                    mode: auth_config.mode.clone(),
+                    admin: auth_config.admin.clone(),
+                },
+                platform_definition.as_ref().clone(),
+                encryption.clone(),
+            ),
         );
 
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
@@ -562,20 +667,8 @@ impl ServerAppBuilder {
                                 database.clone(),
                                 enc.as_ref().clone(),
                             ));
-                        let github_app_minter =
-                            auth_config.github_connection.as_ref().map(|config| {
-                                crate::storage::GitHubAppTokenMinter::new(
-                                    config.app_id.clone(),
-                                    config.private_key.clone(),
-                                )
-                            });
                         let connection_resolver =
-                            Some(Arc::new(crate::storage::DbConnectionResolver::new(
-                                db.as_ref().clone(),
-                                enc.as_ref().clone(),
-                                github_app_minter,
-                            ))
-                                as Arc<dyn everruns_core::traits::UserConnectionResolver>);
+                            Some(build_connection_resolver(&db, enc, &auth_config));
                         let service =
                             Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
                                 db.clone(),
@@ -597,20 +690,8 @@ impl ServerAppBuilder {
                     }
                 },
                 crate::storage::StorageBackend::InMemory(mem_db) => {
-                    let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
-                        crate::storage::GitHubAppTokenMinter::new(
-                            config.app_id.clone(),
-                            config.private_key.clone(),
-                        )
-                    });
-                    let connection_resolver = encryption.as_ref().map(|enc| {
-                        Arc::new(crate::storage::DbConnectionResolver::new(
-                            db.as_ref().clone(),
-                            enc.as_ref().clone(),
-                            github_app_minter,
-                        ))
-                            as Arc<dyn everruns_core::traits::UserConnectionResolver>
-                    });
+                    let connection_resolver =
+                        optional_connection_resolver(&db, &encryption, &auth_config);
                     let service =
                         Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
                             db.clone(),
@@ -700,6 +781,13 @@ impl ServerAppBuilder {
         let sse_tracker = Arc::new(crate::api::sse::SseConnectionTracker::new(
             crate::api::sse::SseConnectionLimits::from_env(),
         ));
+        let core_deps = CoreDeps::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            encryption.clone(),
+            event_delivery.clone(),
+        );
 
         let event_broadcaster = if matches!(event_delivery, EventDelivery::Nats(_)) {
             tracing::info!(
@@ -778,17 +866,17 @@ impl ServerAppBuilder {
             )
         });
         let messages_state = api::messages::AppState::new(
-            db.clone(),
-            runner.clone(),
-            auth_state.clone(),
+            core_deps.db.clone(),
+            core_deps.runner.clone(),
+            core_deps.auth.clone(),
             notifications_enabled,
-            event_delivery.clone(),
+            core_deps.event_delivery.clone(),
         );
         let tool_results_state = api::tool_results::AppState::new(
-            db.clone(),
-            runner.clone(),
-            auth_state.clone(),
-            event_delivery.clone(),
+            core_deps.db.clone(),
+            core_deps.runner.clone(),
+            core_deps.auth.clone(),
+            core_deps.event_delivery.clone(),
         );
         // Slack delivery dispatcher: event-driven message posting (replaces 120s polling).
         // Must be created before events_state takes ownership of event_broadcaster.
@@ -842,27 +930,30 @@ impl ServerAppBuilder {
                     driver_registry.clone(),
                     provider_resolver.clone(),
                 ));
-            crate::domains::observers::spawn_observer_worker(
-                crate::domains::observers::ObserverWorkerDeps {
-                    db: db.clone(),
-                    judge: Some(judge),
-                },
-                observer_wake,
-                crate::domains::observers::ObserverWorkerConfig::default(),
+            supervisor.track(
+                "observer_scoring",
+                crate::domains::observers::spawn_observer_worker(
+                    crate::domains::observers::ObserverWorkerDeps {
+                        db: db.clone(),
+                        judge: Some(judge),
+                    },
+                    observer_wake,
+                    crate::domains::observers::ObserverWorkerConfig::default(),
+                ),
             );
             tracing::info!("Observers enabled: scoring worker started");
         }
 
         let providers_state = api::providers::AppState::new(
-            db.clone(),
-            encryption.clone(),
+            core_deps.db.clone(),
+            core_deps.encryption.clone(),
             driver_registry.clone(),
-            auth_state.clone(),
+            core_deps.auth.clone(),
             Some(provider_resolver.clone()),
         );
         let models_state = api::models::AppState::new(
-            db.clone(),
-            auth_state.clone(),
+            core_deps.db.clone(),
+            core_deps.auth.clone(),
             Some(provider_resolver.clone()),
         );
         let voice_state = api::voice::AppState::new(
@@ -1106,8 +1197,11 @@ impl ServerAppBuilder {
         )
         .with_virtual_registry(virtual_registry.clone());
         let session_git_state = api::session_git::AppState::new(db.clone(), auth_state.clone());
-        let session_storage_state =
-            api::session_storage::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+        let session_storage_state = api::session_storage::AppState::new(
+            core_deps.db.clone(),
+            core_deps.encryption.clone(),
+            core_deps.auth.clone(),
+        );
         let session_databases_state = api::session_databases::AppState::new(
             sqldb_store.clone(),
             db.clone(),
@@ -1500,7 +1594,10 @@ impl ServerAppBuilder {
         //  - otherwise → do not expose /metrics HTTP endpoint
         if let Some(ref handle) = prometheus_handle {
             if let Some(ref addr) = prometheus_config.metrics_addr {
-                api::prometheus::spawn_metrics_server(handle.clone(), addr.clone());
+                supervisor.track(
+                    "prometheus_metrics_server",
+                    api::prometheus::spawn_metrics_server(handle.clone(), addr.clone()),
+                );
             } else if prometheus_config.public_on_main {
                 app = app.merge(api::prometheus::route(handle.clone()));
             } else {
@@ -1644,48 +1741,78 @@ impl ServerAppBuilder {
 
             let grpc_task_broadcaster = task_broadcaster.clone();
             let grpc_virtual_registry = virtual_registry.clone();
+            let grpc_addr: std::net::SocketAddr = grpc_addr
+                .parse()
+                .context("Invalid SERVER_GRPC_BIND_ADDR/WORKER_GRPC_ADDR")?;
+            let grpc_token = grpc_service::require_grpc_auth_token_result()
+                .context("Invalid gRPC authentication configuration")?;
+            let grpc_tls_config = grpc_service::grpc_server_tls_from_env_result()
+                .context("Invalid gRPC TLS configuration")?;
+            if let Some(tls) = grpc_tls_config.clone() {
+                tonic::transport::Server::builder()
+                    .tls_config(tls)
+                    .context("Invalid gRPC TLS configuration")?;
+            }
 
-            tokio::spawn(async move {
-                let mut grpc_svc = grpc_service::WorkerServiceImpl::with_virtual_registry(
-                    (*grpc_event_service).clone(),
-                    grpc_db,
-                    grpc_encryption,
-                    Some(grpc_runner),
-                    grpc_platform_definition.as_ref().clone(),
-                    Some(grpc_virtual_registry),
-                    Some(grpc_provider_resolver),
-                );
-                if let Some(broadcaster) = grpc_task_broadcaster {
-                    grpc_svc.set_task_broadcaster(broadcaster);
-                }
-                grpc_svc.set_permission_resolver(grpc_permission_resolver);
-                // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
-                // Mitigation: Bearer token auth + optional mTLS
-                let grpc_token = grpc_service::require_grpc_auth_token();
-                let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
-                let tls_config = grpc_service::grpc_server_tls_from_env();
-                let addr = grpc_addr
-                    .parse()
-                    .expect("Invalid SERVER_GRPC_BIND_ADDR/WORKER_GRPC_ADDR");
-                tracing::info!("gRPC server listening on {}", addr);
+            supervisor.spawn(
+                "grpc_server",
+                RestartPolicy::always_after(std::time::Duration::from_secs(5)),
+                move || {
+                    let grpc_event_service = grpc_event_service.clone();
+                    let grpc_db = grpc_db.clone();
+                    let grpc_encryption = grpc_encryption.clone();
+                    let grpc_runner = grpc_runner.clone();
+                    let grpc_platform_definition = grpc_platform_definition.clone();
+                    let grpc_provider_resolver = grpc_provider_resolver.clone();
+                    let grpc_permission_resolver = grpc_permission_resolver.clone();
+                    let grpc_task_broadcaster = grpc_task_broadcaster.clone();
+                    let grpc_virtual_registry = grpc_virtual_registry.clone();
+                    let grpc_token = grpc_token.clone();
+                    let grpc_tls_config = grpc_tls_config.clone();
 
-                let mut builder = tonic::transport::Server::builder();
-                if let Some(tls) = tls_config {
-                    builder = builder
-                        .tls_config(tls)
-                        .expect("Invalid gRPC TLS configuration");
-                }
-                if let Err(e) = builder
-                    .layer(tonic::service::interceptor::InterceptorLayer::new(
-                        auth_interceptor,
-                    ))
-                    .add_service(grpc_svc.into_server())
-                    .serve(addr)
-                    .await
-                {
-                    tracing::error!("gRPC server error: {}", e);
-                }
-            });
+                    async move {
+                        let mut grpc_svc = grpc_service::WorkerServiceImpl::with_virtual_registry(
+                            (*grpc_event_service).clone(),
+                            grpc_db,
+                            grpc_encryption,
+                            Some(grpc_runner),
+                            grpc_platform_definition.as_ref().clone(),
+                            Some(grpc_virtual_registry),
+                            Some(grpc_provider_resolver),
+                        );
+                        if let Some(broadcaster) = grpc_task_broadcaster {
+                            grpc_svc.set_task_broadcaster(broadcaster);
+                        }
+                        grpc_svc.set_permission_resolver(grpc_permission_resolver);
+                        // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
+                        // Mitigation: Bearer token auth + optional mTLS validated before spawn.
+                        let auth_interceptor =
+                            grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
+                        tracing::info!("gRPC server listening on {}", grpc_addr);
+
+                        let mut builder = tonic::transport::Server::builder();
+                        if let Some(tls) = grpc_tls_config {
+                            match builder.tls_config(tls) {
+                                Ok(tls_builder) => builder = tls_builder,
+                                Err(e) => {
+                                    tracing::error!(error = %e, "Invalid gRPC TLS configuration");
+                                    return;
+                                }
+                            }
+                        }
+                        if let Err(e) = builder
+                            .layer(tonic::service::interceptor::InterceptorLayer::new(
+                                auth_interceptor,
+                            ))
+                            .add_service(grpc_svc.into_server())
+                            .serve(grpc_addr)
+                            .await
+                        {
+                            tracing::error!("gRPC server error: {}", e);
+                        }
+                    }
+                },
+            );
 
             // -- Stale task reclamation --
             {
@@ -1699,19 +1826,28 @@ impl ServerAppBuilder {
                     let reclaim_event_service = event_service.clone();
                     let reclaim_session_service = reclaim_session_service.clone();
 
-                    tokio::spawn(async move {
-                        let store = PostgresWorkflowEventStore::new(pool);
-                        let mut interval = tokio::time::interval(reclaim_interval);
+                    supervisor.spawn(
+                        "stale_task_reclaim",
+                        RestartPolicy::always_after(Duration::from_secs(5)),
+                        move || {
+                            let pool = pool.clone();
+                            let reclaim_error_reporter = reclaim_error_reporter.clone();
+                            let reclaim_event_service = reclaim_event_service.clone();
+                            let reclaim_session_service = reclaim_session_service.clone();
 
-                        tracing::info!(
-                            stale_threshold_secs = stale_threshold.as_secs(),
-                            reclaim_interval_secs = reclaim_interval.as_secs(),
-                            "Started stale task reclamation background task"
-                        );
+                            async move {
+                                let store = PostgresWorkflowEventStore::new(pool);
+                                let mut interval = tokio::time::interval(reclaim_interval);
 
-                        loop {
-                            interval.tick().await;
-                            match store.reclaim_stale_tasks(stale_threshold).await {
+                                tracing::info!(
+                                    stale_threshold_secs = stale_threshold.as_secs(),
+                                    reclaim_interval_secs = reclaim_interval.as_secs(),
+                                    "Started stale task reclamation background task"
+                                );
+
+                                loop {
+                                    interval.tick().await;
+                                    match store.reclaim_stale_tasks(stale_threshold).await {
                                 Ok(result) => {
                                     if !result.reclaimed_ids.is_empty() {
                                         tracing::info!(
@@ -1800,9 +1936,11 @@ impl ServerAppBuilder {
                                             .await;
                                     });
                                 }
+                                    }
+                                }
                             }
-                        }
-                    });
+                        },
+                    );
                 }
             }
 
@@ -1823,58 +1961,67 @@ impl ServerAppBuilder {
                     ));
                     let sync_interval = Duration::from_secs(sync_interval_hours * 3600);
 
-                    tokio::spawn(async move {
-                        let mut interval = tokio::time::interval(sync_interval);
-                        interval.tick().await;
+                    supervisor.spawn(
+                        "model_sync",
+                        RestartPolicy::always_after(Duration::from_secs(5)),
+                        move || {
+                            let sync_service = sync_service.clone();
+                            async move {
+                                let mut interval = tokio::time::interval(sync_interval);
+                                interval.tick().await;
 
-                        tracing::info!(
-                            interval_hours = sync_interval_hours,
-                            "Started model discovery sync background task"
-                        );
+                                tracing::info!(
+                                    interval_hours = sync_interval_hours,
+                                    "Started model discovery sync background task"
+                                );
 
-                        loop {
-                            interval.tick().await;
-                            tracing::info!("Starting scheduled model sync for all providers");
+                                loop {
+                                    interval.tick().await;
+                                    tracing::info!(
+                                        "Starting scheduled model sync for all providers"
+                                    );
 
-                            match sync_service.sync_all().await {
-                                Ok(results) => {
-                                    for (provider_id, result) in results {
-                                        match result {
-                                            services::SyncResult::Success {
-                                                created,
-                                                updated,
-                                                stale,
-                                            } => {
-                                                tracing::info!(
-                                                    %provider_id,
-                                                    created,
-                                                    updated,
-                                                    stale,
-                                                    "Model sync completed for provider"
-                                                );
+                                    match sync_service.sync_all().await {
+                                        Ok(results) => {
+                                            for (provider_id, result) in results {
+                                                match result {
+                                                    services::SyncResult::Success {
+                                                        created,
+                                                        updated,
+                                                        stale,
+                                                    } => {
+                                                        tracing::info!(
+                                                            %provider_id,
+                                                            created,
+                                                            updated,
+                                                            stale,
+                                                            "Model sync completed for provider"
+                                                        );
+                                                    }
+                                                    services::SyncResult::NotSupported => {
+                                                        tracing::debug!(
+                                                            %provider_id,
+                                                            "Model sync not supported for provider"
+                                                        );
+                                                    }
+                                                    services::SyncResult::Failed { error } => {
+                                                        tracing::warn!(
+                                                            %provider_id,
+                                                            %error,
+                                                            "Model sync failed for provider"
+                                                        );
+                                                    }
+                                                }
                                             }
-                                            services::SyncResult::NotSupported => {
-                                                tracing::debug!(
-                                                    %provider_id,
-                                                    "Model sync not supported for provider"
-                                                );
-                                            }
-                                            services::SyncResult::Failed { error } => {
-                                                tracing::warn!(
-                                                    %provider_id,
-                                                    %error,
-                                                    "Model sync failed for provider"
-                                                );
-                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::error!("Failed to run model sync: {}", e);
                                         }
                                     }
                                 }
-                                Err(e) => {
-                                    tracing::error!("Failed to run model sync: {}", e);
-                                }
                             }
-                        }
-                    });
+                        },
+                    );
                 } else {
                     tracing::info!(
                         "Model sync background task disabled (MODEL_SYNC_INTERVAL_HOURS=0)"
@@ -1885,16 +2032,22 @@ impl ServerAppBuilder {
             // -- Event retention --
             if let Some(pool) = db.pool() {
                 let retention_days = crate::event_retention::retention_days_from_env();
-                crate::event_retention::spawn_retention_task(pool.clone(), retention_days);
+                supervisor.track_optional(
+                    "event_retention",
+                    crate::event_retention::spawn_retention_task(pool.clone(), retention_days),
+                );
             }
 
             // -- Object-storage blob GC --
             // Reconciles bucket contents against the sidecar pointer tables and
             // reclaims orphaned objects. No-ops for the inline (db) backend
             // (no external objects to collect). See specs/object-storage.md.
-            crate::blob_gc::spawn_blob_gc_task(
-                db.clone(),
-                crate::blob_gc::BlobGcConfig::from_env(),
+            supervisor.track_optional(
+                "blob_gc",
+                crate::blob_gc::spawn_blob_gc_task(
+                    db.clone(),
+                    crate::blob_gc::BlobGcConfig::from_env(),
+                ),
             );
         } else {
             // DEV MODE: Start in-process task worker
@@ -1955,31 +2108,26 @@ impl ServerAppBuilder {
                 // slot empty — `runtime_host::connection_resolver()` always calls into the
                 // adapter at runtime and would otherwise panic.
                 let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
-                    if let Some(ref enc) = encryption {
-                        let github_app_minter =
-                            auth_config.github_connection.as_ref().map(|config| {
-                                crate::storage::GitHubAppTokenMinter::new(
-                                    config.app_id.clone(),
-                                    config.private_key.clone(),
-                                )
-                            });
-                        Arc::new(crate::storage::DbConnectionResolver::new(
-                            db.as_ref().clone(),
-                            enc.as_ref().clone(),
-                            github_app_minter,
-                        ))
-                    } else {
-                        Arc::new(crate::storage::NoopConnectionResolver)
-                    };
+                    optional_connection_resolver(&db, &encryption, &auth_config)
+                        .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
                 adapters = adapters.with_connection_resolver(connection_resolver);
 
                 let worker_config = TaskWorkerConfig::dev_mode();
-                tokio::spawn(async move {
-                    let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
-                    if let Err(e) = worker.run().await {
-                        tracing::error!("Task worker error: {}", e);
-                    }
-                });
+                supervisor.spawn(
+                    "dev_task_worker",
+                    RestartPolicy::always_after(std::time::Duration::from_secs(5)),
+                    move || {
+                        let worker_config = worker_config.clone();
+                        let shared_store = shared_store.clone();
+                        let adapters = adapters.clone();
+                        async move {
+                            let mut worker = TaskWorker::new(worker_config, shared_store, adapters);
+                            if let Err(e) = worker.run().await {
+                                tracing::error!("Task worker error: {}", e);
+                            }
+                        }
+                    },
+                );
 
                 tracing::info!("DEV MODE: Task worker started - server is fully functional");
             } else {
@@ -1991,9 +2139,12 @@ impl ServerAppBuilder {
         if let Some(ref dispatcher) = slack_dispatcher {
             let dispatcher = dispatcher.clone();
             let recovery_enc = encryption.clone();
-            tokio::spawn(async move {
-                dispatcher.recover(recovery_enc.as_ref()).await;
-            });
+            supervisor.track(
+                "slack_delivery_recovery",
+                tokio::spawn(async move {
+                    dispatcher.recover(recovery_enc.as_ref()).await;
+                }),
+            );
         }
 
         // -- Agent health-check reaper (both prod and dev) --
@@ -2036,64 +2187,66 @@ impl ServerAppBuilder {
         }
 
         // -- Tool result timeout sweep (both prod and dev) --
-        crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
-            db.clone(),
-            runner.clone(),
-            event_delivery.clone(),
+        supervisor.track(
+            "tool_result_timeout_sweep",
+            crate::tool_result_timeout::spawn_tool_result_timeout_sweep(
+                db.clone(),
+                runner.clone(),
+                event_delivery.clone(),
+            ),
         );
 
         // -- Session schedule poller (both prod and dev) --
         // Provide a built-in probe registry so monitors with a `spec["tool"]`
         // can run their probe directly without delegating to an agent turn.
         let probe_registry = std::sync::Arc::new(everruns_core::ToolRegistry::with_defaults());
-        crate::session_scheduler::spawn_session_scheduler(
-            db.clone(),
-            session_schedule_service,
-            event_service,
-            runner,
-            Some(probe_registry),
-            std::time::Duration::from_secs(15),
+        supervisor.track(
+            "session_scheduler",
+            crate::session_scheduler::spawn_session_scheduler(
+                db.clone(),
+                session_schedule_service,
+                event_service,
+                runner,
+                Some(probe_registry),
+                std::time::Duration::from_secs(15),
+            ),
         );
 
         // -- Source-backed Memory sync (both prod and dev) --
-        let memory_connection_resolver = encryption.as_ref().map(|enc| {
-            let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
-                crate::storage::GitHubAppTokenMinter::new(
-                    config.app_id.clone(),
-                    config.private_key.clone(),
-                )
-            });
-            Arc::new(crate::storage::DbConnectionResolver::new(
-                db.as_ref().clone(),
-                enc.as_ref().clone(),
-                github_app_minter,
-            )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
-        });
-        crate::domains::memory::source_sync::spawn_memory_source_sync_task(
-            db.clone(),
-            memory_connection_resolver.clone(),
+        let memory_connection_resolver =
+            optional_connection_resolver(&db, &encryption, &auth_config);
+        supervisor.track_optional(
+            "memory_source_sync",
+            crate::domains::memory::source_sync::spawn_memory_source_sync_task(
+                db.clone(),
+                memory_connection_resolver.clone(),
+            ),
         );
 
         // -- Knowledge Index Syncout (both prod and dev) --
         // Reuses the same GitHub connection resolver as Memory sync, plus the
         // shared provider resolver / driver registry (for embeddings) and the
         // platform-selected vector store. See specs/knowledge-indexes.md.
-        crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
-            db.clone(),
-            memory_connection_resolver,
-            provider_resolver.clone(),
-            driver_registry.clone(),
-            platform_definition.vector_store(),
+        supervisor.track_optional(
+            "knowledge_index_sync",
+            crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
+                db.clone(),
+                memory_connection_resolver,
+                provider_resolver.clone(),
+                driver_registry.clone(),
+                platform_definition.vector_store(),
+            ),
         );
 
         // -- Reporting projection and missing-work reconciliation (both prod and dev) --
-        crate::domains::reporting::background::spawn_reporting_background_task(db.clone());
+        for handle in
+            crate::domains::reporting::background::spawn_reporting_background_task(db.clone())
+        {
+            supervisor.track("reporting_background", handle);
+        }
 
         // -- Custom background tasks --
-        for task_fn in self.background_tasks {
-            let ctx = server_context.clone();
-            tokio::spawn(task_fn(ctx));
-        }
+        spawn_background_tasks(&mut supervisor, &server_context, self.background_tasks);
 
         // =====================================================================
         // Phase 8: Start HTTP server
