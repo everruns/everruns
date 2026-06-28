@@ -3649,6 +3649,42 @@ fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
 }
 
 // ============================================================================
+// OutboundToolRateLimiter — gate tool execution via control-plane limiter
+// ============================================================================
+
+pub struct GrpcOutboundToolRateLimiter {
+    client: GrpcClient,
+}
+
+impl GrpcOutboundToolRateLimiter {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
+    async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CheckOutboundToolRateLimitRequest {
+            org_key: org_id.to_string(),
+        };
+
+        match client.check_outbound_tool_rate_limit(request).await {
+            Ok(response) => response.into_inner().allowed,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    org_id = %org_id,
+                    "gRPC outbound tool rate-limit check failed; denying tool call"
+                );
+                false
+            }
+        }
+    }
+}
+
+// ============================================================================
 // BudgetChecker — check budget status from check_budget tool
 // ============================================================================
 
