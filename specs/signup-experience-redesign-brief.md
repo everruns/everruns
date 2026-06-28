@@ -386,30 +386,45 @@ email+password AND Google/GitHub OAuth, remove the dependency; accept MFA loss.
 
 PR sequence (each PR-sized, tested, green before the next):
 
-1. **OSS auth gaps (backend)** — password reset + email verification flows in
-   `crates/server/src/auth/` (endpoints, `088_*` migration, hashed single-use tokens,
-   emails via existing `EmailSender`, enumeration-safe, reset revokes refresh tokens).
-   General-purpose; needed under every option. *(in progress)*
-2. **OSS auth gaps (UI)** — `(auth)/forgot-password`, `(auth)/reset-password`,
-   `(auth)/verify-email` pages + "Forgot password?" link; Slate-styled.
-3. **OSS onboarding shell** — shell + data-driven stepper + brand-panel components.
-4. **OSS onboarding content** — enhance `ZeroOrgOnboarding` (explainer, invite-later,
-   `suggestedName`); restyle setup wizard into the shell; Done/first-action screen;
-   add durable `onboarding_completed_at` (migration + setup page sets it on finish/skip).
+1. **OSS auth gaps (backend)** — password reset + email verification flows. **DONE**
+   (commit 13c0b50): endpoints, `088_*` migration, hashed single-use tokens, emails via
+   `EmailSender`, enumeration-safe, reset revokes refresh tokens; tests green.
+2. **OSS auth gaps (UI)** — `(auth)/forgot-password`, `reset-password`, `verify-email`
+   pages + "Forgot password?" link. **DONE** (commit c25804a); build green.
+3. **OSS onboarding shell** — shell + data-driven stepper + brand panel. **DONE**
+   (commit c9863ff); build green.
+4. **OSS onboarding content** — create-org enhancements (explainer, invite-later,
+   `suggestedName`), setup wizard restyled into the shell, conditional Done/first-action
+   screen, shared step list. **DONE** (commit 437c9a2); build + tests green.
+   NOTE: durable `onboarding_completed_at` was split out — see PR 4b below.
+4b. **OSS onboarding-complete state + resume** — add durable `onboarding_completed_at`
+   (migration + org field; setup Done/skip sets it) and the resume state machine (B6).
+   Deferred to design together with the SaaS routing resolver (PR 7).
 5. **SaaS cutover to OSS auth** — mount OSS `BuiltinAuthBackend` (`full` mode) in the
    SaaS server instead of the PropelAuth backend; build the custom Slate auth screen
    (Frame 2, two-panel) on our domain; retire PropelAuth provider/SDK from the UI;
    update `specs/propelauth-integration.md` + SaaS architecture/access-control specs.
+   ⚠️ CHECKPOINT before starting (see B9 gating question).
 6. **User migration (rehash-on-login)** — export PropelAuth bcrypt hashes; add a
    one-time bcrypt verifier in OSS login that, on success, rehashes to Argon2id and
    clears the legacy hash; OAuth users re-link by email. Backfill `email_verified` from
    PropelAuth `email_confirmed` at export so verified users skip Verify.
-7. **SaaS onboarding** — consume OSS onboarding via `usePolicy`/`useCreateOrg` (retire
-   the duplicated page); entry gateway page (redirects authed users); single routing
-   resolver (B4/B6).
+7. **SaaS onboarding + routing** — consume OSS onboarding via `usePolicy`/`useCreateOrg`
+   (retire the duplicated page); entry gateway page (redirects authed users); single
+   server-state routing resolver (B4/B6); relocate onboarding/setup out of the sidebar
+   shell (see follow-up below).
 8. **SaaS welcome email** — wire `EmailSender` into `ManagementState`; send on org
    create, best-effort (B3).
 9. **Verify** end-to-end per the drop/return matrix (B6); smoke on dev.everruns.com.
+
+### Follow-ups / known gaps
+- **Sidebar on Configure/Done.** The setup route is under `(main)`, so the app sidebar
+  still shows on the Configure/Done steps; the design is sidebar-less full-screen.
+  Relocate the route (or hide the sidebar during onboarding) as part of PR 7's routing
+  work — deferred to avoid a guard/redirect change inside a restyle.
+- **verify-email resend needs the email.** Backend builds `/verify-email?token=…` with no
+  `email`, so the UI's "resend verification" affordance falls back to a login link.
+  Add `&email=` (or a logged-in resend) when wiring SaaS verification.
 
 ## B9. Open items / dependencies
 
