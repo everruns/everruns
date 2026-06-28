@@ -2860,6 +2860,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-observability"
+version = "0.17.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "insta",
+ "rand 0.9.4",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid 1.23.4",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.17.1"
 dependencies = [
@@ -2978,6 +2996,7 @@ dependencies = [
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-mcp",
+ "everruns-observability",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-turbopuffer",

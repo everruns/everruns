@@ -1267,6 +1267,24 @@ mod error_tests {
         );
     }
 
+    // EVE-645: MCP server lookups raise `ResourceNotFoundError::new("MCP
+    // server")` (mcp_servers/service.rs) instead of a stringly-typed
+    // `anyhow!("MCP server not found")` that fell through to Internal/500.
+    // Pin that it now classifies as a 404.
+    #[test]
+    fn classify_anyhow_maps_mcp_server_not_found() {
+        let err = classify_anyhow(crate::errors::ResourceNotFoundError::new("MCP server").into());
+        let CommandError {
+            kind: CommandErrorKind::NotFound(msg),
+            ..
+        } = &err
+        else {
+            panic!("MCP server not-found must classify as NotFound, got {err:?}");
+        };
+        assert_eq!(msg, "MCP server not found");
+        assert_eq!(err.status(), StatusCode::NOT_FOUND);
+    }
+
     // EVE-437: every substring added to the `is_bad_request` list must in
     // fact map an `anyhow::bail!` to `CommandError::BadRequest` rather than
     // silently 500ing. New entries here pin the contract.
