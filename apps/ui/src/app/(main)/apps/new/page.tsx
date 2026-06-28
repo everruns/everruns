@@ -46,7 +46,7 @@ import {
   getSessionStrategyDisplayName,
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
-import { DEFAULT_AG_UI_GENERIC_TOOL_TEXT } from "@/lib/api/types/app-types";
+import { DEFAULT_AG_UI_GENERIC_TOOL_TEXT } from "@/lib/api/types";
 import { generateChannelToken } from "@/lib/channel-tokens";
 import {
   CRON_MIN_INTERVAL_SECONDS,

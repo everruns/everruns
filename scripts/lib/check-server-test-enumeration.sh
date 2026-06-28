@@ -26,14 +26,17 @@ CI_FILE="$PROJECT_ROOT/.github/workflows/ci.yml"
 # Files failing against a fresh migrated DB are parked here (explicit skip, not
 # silent) with a tracking issue, until their failures are fixed and they are
 # wired into a CI server-test step.
-declare -A ALLOWLIST=(
-  [test_harness]="shared TestServer helper module, not a standalone test target"
-  [mcp_endpoint_test]="8 MCP tool/contract tests fail on a fresh DB — see EVE-668"
-  [skills_integration_test]="12 tests fail on fixed-name collisions (isolation) — see EVE-668"
-  [openapi_coverage_test]="13 plugin handlers missing from ApiDoc — see EVE-667"
-  [openapi_descriptions_test]="doc/example coverage below MIN_*_PCT floors — see EVE-668"
-  [reporting_integration_test]="backfill test omits NOT NULL owner_principal_id — see EVE-668"
-)
+allowlist_reason() {
+  case "$1" in
+    test_harness) echo "shared TestServer helper module, not a standalone test target" ;;
+    mcp_endpoint_test) echo "8 MCP tool/contract tests fail on a fresh DB - see EVE-668" ;;
+    skills_integration_test) echo "12 tests fail on fixed-name collisions (isolation) - see EVE-668" ;;
+    openapi_coverage_test) echo "13 plugin handlers missing from ApiDoc - see EVE-667" ;;
+    openapi_descriptions_test) echo "doc/example coverage below MIN_*_PCT floors - see EVE-668" ;;
+    reporting_integration_test) echo "backfill test omits NOT NULL owner_principal_id - see EVE-668" ;;
+    *) return 1 ;;
+  esac
+}
 
 if [ ! -d "$TESTS_DIR" ]; then
   echo "error: server tests directory not found: $TESTS_DIR"
@@ -58,14 +61,10 @@ missing=()
 
 for path in "${test_files[@]}"; do
   name="$(basename "$path" .rs)"
-  if [ -n "${ALLOWLIST[$name]+x}" ]; then
+  if allowlist_reason "$name" >/dev/null; then
     continue
   fi
   # A test is "run" when CI invokes it as `--test <name>` for everruns-server.
-  # Use a here-string, not `printf | grep -q`: grep -q exits on first match and
-  # closes the pipe, so printf gets SIGPIPE; under `set -o pipefail` that turns a
-  # match into a non-zero pipeline status (a false "missing"). Flaky by ci.yml
-  # size vs the pipe buffer; a here-string avoids the pipe entirely.
   if grep -qE -- "--test[[:space:]]+${name}([[:space:]]|\$)" <<<"$ci_contents"; then
     continue
   fi
