@@ -341,6 +341,20 @@ use utoipa::OpenApi;
         api::reporting::get_diagnostics,
         api::reporting::backfill_reporting,
         api::reporting::run_projector,
+        // Plugins & plugin marketplaces (EVE-667)
+        api::plugins::list_plugins,
+        api::plugins::get_plugin,
+        api::plugins::install_plugin,
+        api::plugins::uninstall_plugin,
+        api::plugins::update_plugin,
+        api::plugins::patch_installed_plugin,
+        api::plugins::list_plugin_marketplaces,
+        api::plugins::get_plugin_marketplace,
+        api::plugins::create_plugin_marketplace,
+        api::plugins::update_plugin_marketplace,
+        api::plugins::delete_plugin_marketplace,
+        api::plugins::sync_plugin_marketplace,
+        api::plugins::get_marketplace_catalog,
     ),
     components(
         schemas(

@@ -29,7 +29,6 @@ CI_FILE="$PROJECT_ROOT/.github/workflows/ci.yml"
 allowlist_reason() {
   case "$1" in
     test_harness) echo "shared TestServer helper module, not a standalone test target" ;;
-    openapi_coverage_test) echo "13 plugin handlers missing from ApiDoc - see EVE-667" ;;
     *) return 1 ;;
   esac
 }

@@ -8873,6 +8873,653 @@
         }
       }
     },
+    "/v1/plugin_marketplaces": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces",
+        "operationId": "list_plugin_marketplaces",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of plugin marketplaces"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces",
+        "operationId": "create_plugin_marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Marketplace created"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}",
+        "operationId": "get_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace found"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugin_marketplaces/{id}",
+        "operationId": "delete_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marketplace deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugin_marketplaces/{id}",
+        "operationId": "update_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marketplace updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}/plugins",
+        "operationId": "get_marketplace_catalog",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog entries"
+          },
+          "400": {
+            "description": "Marketplace not yet synced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/sync": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces/{id}/sync",
+        "operationId": "sync_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace synced"
+          },
+          "400": {
+            "description": "Sync not supported or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins",
+        "operationId": "list_plugins",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of installed plugins"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins",
+        "operationId": "install_plugin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Plugin installed"
+          },
+          "400": {
+            "description": "Compilation or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Plugin already installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins/{id}",
+        "operationId": "get_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed plugin"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugins/{id}",
+        "operationId": "uninstall_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Plugin uninstalled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugins/{id}",
+        "operationId": "patch_installed_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInstalledPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}/update": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins/{id}/update",
+        "operationId": "update_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "No marketplace or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/providers": {
       "get": {
         "tags": [
@@ -17352,6 +17999,32 @@
           }
         }
       },
+      "CreatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for creating a plugin marketplace.",
+        "required": [
+          "name",
+          "source_type",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique name within the org (kebab-case, e.g. `my-org-plugins`).",
+            "example": "everruns-plugins"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source value. For `github`: `\"owner/repo\"`. For `url`: full HTTPS URL.\nFor `local_path` (dev only): absolute filesystem path.",
+            "example": "everruns/plugins"
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source type: `github`, `url`, or `local_path` (dev/test only).",
+            "example": "github"
+          }
+        }
+      },
       "CreateProviderRequest": {
         "type": "object",
         "description": "Request to create a new LLM provider",
@@ -20956,6 +21629,26 @@
           "message": {
             "$ref": "#/components/schemas/Message",
             "description": "The user message"
+          }
+        }
+      },
+      "InstallPluginRequest": {
+        "type": "object",
+        "description": "Request body for installing a plugin from a marketplace catalog entry.",
+        "required": [
+          "marketplace_id",
+          "plugin_name"
+        ],
+        "properties": {
+          "marketplace_id": {
+            "type": "string",
+            "description": "Public ID of the marketplace to install from.",
+            "example": "plgmkt_01933b5a000070008000000000000001"
+          },
+          "plugin_name": {
+            "type": "string",
+            "description": "Name of the plugin entry in the marketplace catalog.",
+            "example": "microsoft-docs"
           }
         }
       },
@@ -33541,6 +34234,19 @@
           }
         }
       },
+      "UpdateInstalledPluginRequest": {
+        "type": "object",
+        "description": "Request body for updating an installed plugin (status only; use POST .../update for recompile).",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New lifecycle status: `active` or `disabled`."
+          }
+        }
+      },
       "UpdateKnowledgeBaseRequest": {
         "type": "object",
         "description": "Request body for the `update_knowledge_base` operation.",
@@ -34066,6 +34772,24 @@
             ],
             "description": "New lifecycle status. Valid values: `active`, `disabled`.",
             "example": "disabled"
+          }
+        }
+      },
+      "UpdatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for updating a plugin marketplace.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
