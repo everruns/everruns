@@ -56,6 +56,7 @@ import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { useOrg } from "@/providers/org-provider";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 export type SearchResultCategory =
   | "navigation"
@@ -279,7 +280,10 @@ export function useGlobalSearch(query: string) {
   const { data: mcpServersData } = useMcpServers();
   const { data: capabilitiesData } = useCapabilities();
   const { data: declarativeCapabilitiesData } = useDeclarativeCapabilities();
-  const { data: evalsData } = useEvals();
+  // Evals is an experimental, flag-gated feature; only fetch when enabled to
+  // avoid a 404 on every palette open for orgs without the flag.
+  const evalsEnabled = useFeatureFlag("evals");
+  const { data: evalsData } = useEvals({ enabled: evalsEnabled });
   const { data: appsData } = useApps();
   const { data: agentIdentitiesData } = useAgentIdentities();
 

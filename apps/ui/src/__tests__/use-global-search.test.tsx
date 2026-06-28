@@ -30,6 +30,9 @@ jest.mock("@/hooks/use-apps", () => ({
 jest.mock("@/hooks/use-agent-identities", () => ({
   useAgentIdentities: () => ({ data: [] }),
 }));
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => false,
+}));
 
 const mockSetCurrentOrg = jest.fn();
 
